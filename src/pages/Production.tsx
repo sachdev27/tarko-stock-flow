@@ -28,6 +28,8 @@ const Production = () => {
     autoBatchNo: true,
     parameters: {} as Record<string, string>,
     notes: '',
+    numberOfRolls: '1',
+    lengthPerRoll: '',
   });
 
   useEffect(() => {
@@ -174,6 +176,8 @@ const Production = () => {
         autoBatchNo: true,
         parameters: {},
         notes: '',
+        numberOfRolls: '1',
+        lengthPerRoll: '',
       });
     } catch (error: any) {
       console.error('Error creating production batch:', error);
@@ -309,16 +313,59 @@ const Production = () => {
 
               {/* Quantity */}
               <div className="space-y-2">
-                <Label htmlFor="quantity">Quantity * {selectedProductType && `(${selectedProductType.units?.abbreviation})`}</Label>
+                <Label htmlFor="quantity">Total Quantity * {selectedProductType && `(${selectedProductType.units?.abbreviation})`}</Label>
                 <Input
                   id="quantity"
                   type="number"
                   step="0.001"
-                  placeholder="Enter quantity"
+                  placeholder="Enter total quantity"
                   value={formData.quantity}
                   onChange={(e) => setFormData({...formData, quantity: e.target.value})}
                   className="h-12"
                 />
+              </div>
+
+              {/* Roll Information */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="numberOfRolls">Number of Rolls *</Label>
+                  <Input
+                    id="numberOfRolls"
+                    type="number"
+                    min="1"
+                    placeholder="1"
+                    value={formData.numberOfRolls}
+                    onChange={(e) => {
+                      const numberOfRolls = e.target.value;
+                      setFormData({ 
+                        ...formData, 
+                        numberOfRolls,
+                        lengthPerRoll: formData.quantity && numberOfRolls 
+                          ? (parseFloat(formData.quantity) / parseInt(numberOfRolls)).toFixed(2)
+                          : ''
+                      });
+                    }}
+                    className="h-12"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="lengthPerRoll">
+                    Length per Roll {selectedProductType && `(${selectedProductType.units?.abbreviation})`}
+                  </Label>
+                  <Input
+                    id="lengthPerRoll"
+                    type="number"
+                    step="0.001"
+                    placeholder="Auto-calculated"
+                    value={formData.lengthPerRoll}
+                    onChange={(e) => setFormData({ ...formData, lengthPerRoll: e.target.value })}
+                    className="h-12"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Leave blank to distribute evenly
+                  </p>
+                </div>
               </div>
 
               {/* Batch Number */}
