@@ -1,0 +1,40 @@
+from flask import Flask, jsonify
+from flask_cors import CORS
+from flask_jwt_extended import JWTManager
+from config import Config
+
+# Import blueprints
+from routes.auth_routes import auth_bp
+from routes.inventory_routes import inventory_bp
+from routes.production_routes import production_bp
+from routes.transaction_routes import transaction_bp
+
+app = Flask(__name__)
+app.config.from_object(Config)
+
+# Enable CORS
+CORS(app, origins=["http://localhost:5173", "http://localhost:3000"])
+
+# Setup JWT
+jwt = JWTManager(app)
+
+# Register blueprints
+app.register_blueprint(auth_bp)
+app.register_blueprint(inventory_bp)
+app.register_blueprint(production_bp)
+app.register_blueprint(transaction_bp)
+
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    return jsonify({'status': 'healthy', 'message': 'Tarko API is running'}), 200
+
+@app.errorhandler(404)
+def not_found(error):
+    return jsonify({'error': 'Not found'}), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    return jsonify({'error': 'Internal server error'}), 500
+
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0', port=5000)

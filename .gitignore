@@ -7,10 +7,39 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Dependencies
 node_modules
 dist
 dist-ssr
+
+# Environment files
+.env
+.env.local
+.env.*.local
 *.local
+
+# Python
+backend/venv/
+backend/__pycache__/
+backend/*.pyc
+backend/*.pyo
+backend/*.pyd
+backend/.Python
+backend/pip-log.txt
+backend/pip-delete-this-directory.txt
+backend/.venv
+backend/env/
+backend/ENV/
+backend/.pytest_cache/
+backend/.coverage
+backend/htmlcov/
+backend/*.egg-info/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+backend/database.db
 
 # Editor directories and files
 .vscode/*
@@ -22,3 +51,17 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Build artifacts
+build/
+dist/
+*.tgz
+
+# Lock files (optional - uncomment if you want to ignore)
+# package-lock.json
+# yarn.lock
+bun.lockb

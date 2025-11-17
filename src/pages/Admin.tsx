@@ -1,0 +1,555 @@
+import { useState, useEffect } from 'react';
+import { Layout } from '@/components/Layout';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
+import { toast } from 'sonner';
+import { Settings, Plus, Trash2, Edit, Building, Tag, Package, Users, Shield } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+
+const Admin = () => {
+  const { user, isAdmin } = useAuth();
+  const [loading, setLoading] = useState(false);
+
+  // Master data states
+  const [locations, setLocations] = useState<any[]>([]);
+  const [brands, setBrands] = useState<any[]>([]);
+  const [productTypes, setProductTypes] = useState<any[]>([]);
+  const [customers, setCustomers] = useState<any[]>([]);
+  const [units, setUnits] = useState<any[]>([]);
+  const [auditLogs, setAuditLogs] = useState<any[]>([]);
+
+  // Dialog states
+  const [locationDialog, setLocationDialog] = useState(false);
+  const [brandDialog, setBrandDialog] = useState(false);
+  const [productTypeDialog, setProductTypeDialog] = useState(false);
+  const [customerDialog, setCustomerDialog] = useState(false);
+
+  // Form data
+  const [locationForm, setLocationForm] = useState({ name: '', address: '' });
+  const [brandForm, setBrandForm] = useState({ name: '' });
+  const [customerForm, setCustomerForm] = useState({
+    name: '',
+    contact_person: '',
+    phone: '',
+    email: '',
+    gstin: '',
+    address: '',
+  });
+
+  useEffect(() => {
+    if (isAdmin) {
+      fetchAllData();
+    }
+  }, [isAdmin]);
+
+  const fetchAllData = async () => {
+    setLoading(true);
+    try {
+      const [locsRes, brandsRes, typesRes, customersRes, unitsRes, logsRes] = await Promise.all([
+        supabase.from('locations').select('*').is('deleted_at', null),
+        supabase.from('brands').select('*').is('deleted_at', null),
+        supabase.from('product_types').select('*, units(*)').is('deleted_at', null),
+        supabase.from('customers').select('*').is('deleted_at', null),
+        supabase.from('units').select('*'),
+        supabase.from('audit_logs').select('*').order('created_at', { ascending: false }).limit(50),
+      ]);
+
+      if (locsRes.data) setLocations(locsRes.data);
+      if (brandsRes.data) setBrands(brandsRes.data);
+      if (typesRes.data) setProductTypes(typesRes.data);
+      if (customersRes.data) setCustomers(customersRes.data);
+      if (unitsRes.data) setUnits(unitsRes.data);
+      if (logsRes.data) setAuditLogs(logsRes.data);
+    } catch (error) {
+      console.error('Error fetching data:', error);
+      toast.error('Failed to load admin data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAddLocation = async () => {
+    if (!locationForm.name) {
+      toast.error('Location name is required');
+      return;
+    }
+
+    try {
+      const { error } = await supabase.from('locations').insert(locationForm);
+      if (error) throw error;
+
+      toast.success('Location added successfully');
+      setLocationDialog(false);
+      setLocationForm({ name: '', address: '' });
+      fetchAllData();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to add location');
+    }
+  };
+
+  const handleAddBrand = async () => {
+    if (!brandForm.name) {
+      toast.error('Brand name is required');
+      return;
+    }
+
+    try {
+      const { error } = await supabase.from('brands').insert(brandForm);
+      if (error) throw error;
+
+      toast.success('Brand added successfully');
+      setBrandDialog(false);
+      setBrandForm({ name: '' });
+      fetchAllData();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to add brand');
+    }
+  };
+
+  const handleAddCustomer = async () => {
+    if (!customerForm.name) {
+      toast.error('Customer name is required');
+      return;
+    }
+
+    try {
+      const { error } = await supabase.from('customers').insert(customerForm);
+      if (error) throw error;
+
+      toast.success('Customer added successfully');
+      setCustomerDialog(false);
+      setCustomerForm({
+        name: '',
+        contact_person: '',
+        phone: '',
+        email: '',
+        gstin: '',
+        address: '',
+      });
+      fetchAllData();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to add customer');
+    }
+  };
+
+  const handleDelete = async (table: string, id: string) => {
+    if (!confirm('Are you sure you want to delete this item?')) return;
+
+    try {
+      const { error } = await supabase
+        .from(table)
+        .update({ deleted_at: new Date().toISOString() })
+        .eq('id', id);
+
+      if (error) throw error;
+
+      toast.success('Item deleted successfully');
+      fetchAllData();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to delete item');
+    }
+  };
+
+  if (!isAdmin) {
+    return (
+      <Layout>
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <Card className="max-w-md">
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <Shield className="h-5 w-5 mr-2 text-red-500" />
+                Access Denied
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-muted-foreground">
+                You don't have permission to access the admin panel. Contact your administrator for access.
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      </Layout>
+    );
+  }
+
+  return (
+    <Layout>
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex items-center space-x-3">
+          <div className="h-10 w-10 rounded-lg bg-primary flex items-center justify-center">
+            <Settings className="h-6 w-6 text-primary-foreground" />
+          </div>
+          <div>
+            <h1 className="text-3xl font-bold text-foreground">Admin Panel</h1>
+            <p className="text-muted-foreground">Manage master data and system configuration</p>
+          </div>
+        </div>
+
+        <Tabs defaultValue="locations" className="space-y-6">
+          <TabsList className="grid w-full grid-cols-5">
+            <TabsTrigger value="locations">Locations</TabsTrigger>
+            <TabsTrigger value="brands">Brands</TabsTrigger>
+            <TabsTrigger value="products">Products</TabsTrigger>
+            <TabsTrigger value="customers">Customers</TabsTrigger>
+            <TabsTrigger value="audit">Audit Logs</TabsTrigger>
+          </TabsList>
+
+          {/* Locations Tab */}
+          <TabsContent value="locations">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle>Locations / Warehouses</CardTitle>
+                  <CardDescription>Manage storage locations and warehouses</CardDescription>
+                </div>
+                <Dialog open={locationDialog} onOpenChange={setLocationDialog}>
+                  <DialogTrigger asChild>
+                    <Button>
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add Location
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Add New Location</DialogTitle>
+                      <DialogDescription>Create a new warehouse or storage location</DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="locName">Location Name *</Label>
+                        <Input
+                          id="locName"
+                          value={locationForm.name}
+                          onChange={(e) => setLocationForm({ ...locationForm, name: e.target.value })}
+                          placeholder="e.g., Main Warehouse"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="locAddress">Address</Label>
+                        <Textarea
+                          id="locAddress"
+                          value={locationForm.address}
+                          onChange={(e) => setLocationForm({ ...locationForm, address: e.target.value })}
+                          placeholder="Full address"
+                          rows={3}
+                        />
+                      </div>
+                      <Button onClick={handleAddLocation} className="w-full">
+                        Add Location
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {locations.map((loc) => (
+                    <div
+                      key={loc.id}
+                      className="flex items-center justify-between p-4 bg-secondary/30 rounded-lg"
+                    >
+                      <div className="flex items-center space-x-3">
+                        <Building className="h-5 w-5 text-muted-foreground" />
+                        <div>
+                          <div className="font-medium">{loc.name}</div>
+                          {loc.address && (
+                            <div className="text-sm text-muted-foreground">{loc.address}</div>
+                          )}
+                        </div>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDelete('locations', loc.id)}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Brands Tab */}
+          <TabsContent value="brands">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle>Brands</CardTitle>
+                  <CardDescription>Manage product brands</CardDescription>
+                </div>
+                <Dialog open={brandDialog} onOpenChange={setBrandDialog}>
+                  <DialogTrigger asChild>
+                    <Button>
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add Brand
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Add New Brand</DialogTitle>
+                      <DialogDescription>Create a new product brand</DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="brandName">Brand Name *</Label>
+                        <Input
+                          id="brandName"
+                          value={brandForm.name}
+                          onChange={(e) => setBrandForm({ name: e.target.value })}
+                          placeholder="e.g., Tarko Premium"
+                        />
+                      </div>
+                      <Button onClick={handleAddBrand} className="w-full">
+                        Add Brand
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-2 md:grid-cols-3">
+                  {brands.map((brand) => (
+                    <div
+                      key={brand.id}
+                      className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg"
+                    >
+                      <div className="flex items-center space-x-2">
+                        <Tag className="h-4 w-4 text-muted-foreground" />
+                        <span className="font-medium">{brand.name}</span>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDelete('brands', brand.id)}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Product Types Tab */}
+          <TabsContent value="products">
+            <Card>
+              <CardHeader>
+                <CardTitle>Product Types</CardTitle>
+                <CardDescription>Product categories with parameter definitions</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {productTypes.map((type) => (
+                    <div
+                      key={type.id}
+                      className="p-4 bg-secondary/30 rounded-lg"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-start space-x-3">
+                          <Package className="h-5 w-5 text-muted-foreground mt-1" />
+                          <div>
+                            <div className="font-semibold text-lg">{type.name}</div>
+                            {type.description && (
+                              <div className="text-sm text-muted-foreground">{type.description}</div>
+                            )}
+                            <div className="mt-2 flex items-center space-x-2">
+                              <Badge variant="outline">Unit: {type.units.name}</Badge>
+                              <Badge variant="outline">
+                                {type.parameter_schema.length} parameters
+                              </Badge>
+                            </div>
+                            <div className="mt-2 text-sm">
+                              <strong>Parameters:</strong>
+                              {type.parameter_schema.map((param: any, idx: number) => (
+                                <span key={idx} className="ml-2 text-muted-foreground">
+                                  {param.name}({param.type})
+                                  {idx < type.parameter_schema.length - 1 && ','}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Customers Tab */}
+          <TabsContent value="customers">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle>Customers</CardTitle>
+                  <CardDescription>Manage customer information</CardDescription>
+                </div>
+                <Dialog open={customerDialog} onOpenChange={setCustomerDialog}>
+                  <DialogTrigger asChild>
+                    <Button>
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add Customer
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-2xl">
+                    <DialogHeader>
+                      <DialogTitle>Add New Customer</DialogTitle>
+                      <DialogDescription>Create a new customer record</DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 max-h-[60vh] overflow-y-auto">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="custName">Customer Name *</Label>
+                          <Input
+                            id="custName"
+                            value={customerForm.name}
+                            onChange={(e) => setCustomerForm({ ...customerForm, name: e.target.value })}
+                            placeholder="Company or Person Name"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="custContact">Contact Person</Label>
+                          <Input
+                            id="custContact"
+                            value={customerForm.contact_person}
+                            onChange={(e) => setCustomerForm({ ...customerForm, contact_person: e.target.value })}
+                            placeholder="Contact Person"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="custPhone">Phone</Label>
+                          <Input
+                            id="custPhone"
+                            value={customerForm.phone}
+                            onChange={(e) => setCustomerForm({ ...customerForm, phone: e.target.value })}
+                            placeholder="Phone Number"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="custEmail">Email</Label>
+                          <Input
+                            id="custEmail"
+                            type="email"
+                            value={customerForm.email}
+                            onChange={(e) => setCustomerForm({ ...customerForm, email: e.target.value })}
+                            placeholder="Email Address"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="custGstin">GSTIN</Label>
+                        <Input
+                          id="custGstin"
+                          value={customerForm.gstin}
+                          onChange={(e) => setCustomerForm({ ...customerForm, gstin: e.target.value })}
+                          placeholder="GST Identification Number"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="custAddress">Address</Label>
+                        <Textarea
+                          id="custAddress"
+                          value={customerForm.address}
+                          onChange={(e) => setCustomerForm({ ...customerForm, address: e.target.value })}
+                          placeholder="Full Address"
+                          rows={3}
+                        />
+                      </div>
+
+                      <Button onClick={handleAddCustomer} className="w-full">
+                        Add Customer
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {customers.map((customer) => (
+                    <div
+                      key={customer.id}
+                      className="flex items-center justify-between p-4 bg-secondary/30 rounded-lg"
+                    >
+                      <div className="flex items-center space-x-3">
+                        <Users className="h-5 w-5 text-muted-foreground" />
+                        <div>
+                          <div className="font-medium">{customer.name}</div>
+                          <div className="text-sm text-muted-foreground">
+                            {customer.phone && `${customer.phone} | `}
+                            {customer.email}
+                          </div>
+                        </div>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDelete('customers', customer.id)}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Audit Logs Tab */}
+          <TabsContent value="audit">
+            <Card>
+              <CardHeader>
+                <CardTitle>Audit Logs</CardTitle>
+                <CardDescription>System activity and change history</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {auditLogs.map((log) => (
+                    <div
+                      key={log.id}
+                      className="p-3 bg-secondary/20 rounded-lg text-sm"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <Badge variant="outline" className="mr-2">
+                            {log.action_type}
+                          </Badge>
+                          <span className="font-medium">{log.entity_type}</span>
+                          <span className="text-muted-foreground ml-2">
+                            {log.description}
+                          </span>
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(log.created_at).toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      </div>
+    </Layout>
+  );
+};
+
+export default Admin;

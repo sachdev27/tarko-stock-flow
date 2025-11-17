@@ -1,0 +1,621 @@
+{
+  "rootFolder": "/Users/sachdevs/Projects/Tarko-Inv/tarko-stock-flow",
+  "analyzedAt": "2025-11-17T21:16:46.691Z",
+  "rootStructure": [
+    {
+      "name": ".gitignore",
+      "type": "file",
+      "size": 824,
+      "lines": 68
+    },
+    {
+      "name": "CLEANUP_SUMMARY.md",
+      "type": "file",
+      "size": 3814,
+      "lines": 114
+    },
+    {
+      "name": "MIGRATION_GUIDE.md",
+      "type": "file",
+      "size": 4994,
+      "lines": 238
+    },
+    {
+      "name": "README.md",
+      "type": "file",
+      "size": 5907,
+      "lines": 212
+    },
+    {
+      "name": "backend",
+      "type": "dir"
+    },
+    {
+      "name": "bun.lockb",
+      "type": "file",
+      "size": 201126,
+      "lines": 337
+    },
+    {
+      "name": "components.json",
+      "type": "file",
+      "size": 414,
+      "lines": 21
+    },
+    {
+      "name": "eslint.config.js",
+      "type": "file",
+      "size": 765,
+      "lines": 27
+    },
+    {
+      "name": "index.html",
+      "type": "file",
+      "size": 1107,
+      "lines": 25
+    },
+    {
+      "name": "node_modules",
+      "type": "dir"
+    },
+    {
+      "name": "package-lock.json",
+      "type": "file",
+      "size": 232734,
+      "lines": 6471
+    },
+    {
+      "name": "package.json",
+      "type": "file",
+      "size": 2707,
+      "lines": 84
+    },
+    {
+      "name": "postcss.config.js",
+      "type": "file",
+      "size": 81,
+      "lines": 7
+    },
+    {
+      "name": "public",
+      "type": "dir"
+    },
+    {
+      "name": "src",
+      "type": "dir"
+    },
+    {
+      "name": "tailwind.config.ts",
+      "type": "file",
+      "size": 2745,
+      "lines": 97
+    },
+    {
+      "name": "tsconfig.app.json",
+      "type": "file",
+      "size": 652,
+      "lines": 31
+    },
+    {
+      "name": "tsconfig.json",
+      "type": "file",
+      "size": 369,
+      "lines": 17
+    },
+    {
+      "name": "tsconfig.node.json",
+      "type": "file",
+      "size": 481,
+      "lines": 23
+    },
+    {
+      "name": "vite.config.ts",
+      "type": "file",
+      "size": 327,
+      "lines": 18
+    }
+  ],
+  "rootFileSnippets": {
+    "CLEANUP_SUMMARY.md": [
+      "# Cleanup Summary",
+      "",
+      "## ✅ Completed Tasks",
+      "",
+      "### 1. Enhanced .gitignore",
+      "- Added Python virtual environment exclusions (`backend/venv/`, `__pycache__/`, etc.)",
+      "- Added environment file patterns (`.env`, `.env.local`, etc.)",
+      "- Added database file exclusions",
+      "- Added comprehensive OS and editor exclusions",
+      ""
+    ],
+    "MIGRATION_GUIDE.md": [
+      "# Migration Guide: Supabase Cloud → Local PostgreSQL",
+      "",
+      "## Overview",
+      "",
+      "This guide walks you through migrating from Supabase cloud to a local PostgreSQL database with Flask backend.",
+      "",
+      "## What Changes",
+      "",
+      "### Before (Supabase)",
+      "- Frontend → Supabase Client SDK → Supabase Cloud"
+    ],
+    "README.md": [
+      "# Tarko Inventory Management System",
+      "",
+      "A **mobile-first, production-grade inventory management web application** for Tarko HDPE pipe manufacturing company.",
+      "",
+      "## 🎯 Features",
+      "",
+      "### Core Functionality",
+      "- ✅ **Multi-level Inventory Tracking** - Product → Batch → Roll granularity",
+      "- ✅ **Dynamic Product Configuration** - Parameter-driven product definitions",
+      "- ✅ **Production Entry** - Daily production recording with batch and roll creation"
+    ],
+    "bun.lockb": [
+      "#!/usr/bin/env bun",
+      "bun-lockfile-format-v0",
+      "\u0003\u0000\u0000\u0000�'\u0004�k�\"�\u001e��y+\u0011c\u000eo���\u0002�4\u0013`&����\u0013\u0016\u0011\u0003\u0000\u0000\u0000\u0000\u0000�\u0001\u0000\u0000\u0000\u0000\u0000\u0000\b\u0000\u0000\u0000\u0000\u0000\u0000\u0000\b\u0000\u0000\u0000\u0000\u0000\u0000\u0000�\u0000\u0000\u0000\u0000\u0000\u0000\u0000��\u0001\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0014\u0000\u0000�zod\u0000\u0000\u0000\u0000\u0000vaul\u0000\u0000\u0000\u0000\u0000\u0004\u0000\u0000\t\u0000\u0000�react\u0000\u0000\u0000\u0011\u0005\u0000\u0000\f\u0000\u0000��\u0005\u0000\u0000\t\u0000\u0000�\u001d\u0005\u0000\u0000\t\u0000\u0000��\u0001\u0000\u0000\u0016\u0000\u0000��\u0007\u0000\u0000&\u0000\u0000�e\b\u0000\u0000!\u0000\u0000�E\b\u0000\u0000 \u0000\u0000�f\u0007\u0000\u0000!\u0000\u0000��\t\u0000\u0000\"\u0000\u0000��\t\u0000\u0000 \u0000\u0000�.\u0007\u0000\u0000\u001c\u0000\u0000��\u0006\u0000\u0000\u0019\u0000\u0000��\u0002\u0000\u0000\u0014\u0000\u0000��\u0006\u0000\u0000\u0013\u0000\u0000�J\u0007\u0000\u0000\u001c\u0000\u0000�\u0013\u0007\u0000\u0000\u001b\u0000\u0000��\u0006\u0000\u0000\u0018\u0000\u0000��\u0006\u0000\u0000\u0017\u0000\u0000��\u0006\u0000\u0000\u0016\u0000\u0000��\u0006\u0000\u0000\u0013\u0000\u0000��\r\u0000\u0000\u000b\u0000\u0000�tslib\u0000\u0000\u0000n\u000e\u0000\u0000\u000e\u0000\u0000��\r\u0000\u0000\u0010\u0000\u0000��\r\u0000\u0000\u0015\u0000\u0000��\u000f\u0000\u0000\t\u0000\u0000��\r\u0000\u0000\u0017\u0000\u0000�}\u0006\u0000\u0000\u0012\u0000\u0000�r\u0006\u0000\u0000\u000b\u0000\u0000�L\u0004\u0000\u0000\u0013\u0000\u0000��\u0000\u0000\u0000\u000b\u0000\u0000�sucrase\u0000�\u0012\u0000\u0000\u0014\u0000\u0000�pirates\u0000mz\u0000\u0000\u0000\u0000\u0000\u0000�\u0013\u0000\u0000\u000b\u0000\u0000�thenify\u0000�\u0013\u0000\u0000\u000b\u0000\u0000��\u0013\u0000\u0000\r\u0000\u0000��\u0012\u0000\u0000\u0011\u0000\u0000�glob\u0000\u0000\u0000\u0000g\u0015\u0000\u0000\u000b\u0000\u0000�minipass�\u0015\u0000\u0000\t\u0000\u0000�Q\u0015\u0000\u0000\u0016\u0000\u0000�H\u0015\u0000\u0000\t\u0000\u0000��\u0016\u0000\u0000\u000f\u0000\u0000�*\u0017\u0000\u0000\u000e\u0000\u0000�?\u0015\u0000\u0000\t\u0000\u0000��\u0017\u0000\u0000\u0010\u0000\u0000��\u0017\u0000\u0000\r\u0000\u0000��\u0018\u0000\u0000\t\u0000\u0000��\u0018\u0000\u0000",
+      "\u0000\u0000�Z\u0019\u0000\u0000",
+      "\u0000\u0000�O\u0018\u0000\u0000\f\u0000\u0000��\u0019\u0000\u0000\u0017\u0000\u0000��\u0019\u0000\u0000\u000b\u0000\u0000�\u0013\u0019\u0000\u0000\u000b\u0000\u0000��\u001a\u0000\u0000\r\u0000\u0000�#\u001b\u0000\u0000",
+      "\u0000\u0000��\u0018\u0000\u0000\t\u0000\u0000��\u0018\u0000\u0000",
+      "\u0000\u0000�Z\u0019\u0000\u0000",
+      "\u0000\u0000�O\u0018\u0000\u0000\f\u0000\u0000��\u0018\u0000\u0000",
+      "\u0000\u0000�Z\u0019\u0000\u0000",
+      "\u0000\u0000��\u0019\u0000\u0000\u000b\u0000\u0000�[\u001c\u0000\u0000\u000e\u0000\u0000�\u0013\u0019\u0000\u0000\u000b\u0000\u0000��\u0018\u0000\u0000"
+    ],
+    "components.json": [
+      "{",
+      "\"$schema\": \"https://ui.shadcn.com/schema.json\",",
+      "\"style\": \"default\",",
+      "\"rsc\": false,",
+      "\"tsx\": true,",
+      "\"tailwind\": {",
+      "\"config\": \"tailwind.config.ts\",",
+      "\"css\": \"src/index.css\",",
+      "\"baseColor\": \"slate\",",
+      "\"cssVariables\": true,"
+    ],
+    "eslint.config.js": [
+      "import js from \"@eslint/js\";",
+      "import globals from \"globals\";",
+      "import reactHooks from \"eslint-plugin-react-hooks\";",
+      "import reactRefresh from \"eslint-plugin-react-refresh\";",
+      "import tseslint from \"typescript-eslint\";",
+      "",
+      "export default tseslint.config(",
+      "{ ignores: [\"dist\"] },",
+      "{",
+      "extends: [js.configs.recommended, ...tseslint.configs.recommended],"
+    ],
+    "index.html": [
+      "<!doctype html>",
+      "<html lang=\"en\">",
+      "<head>",
+      "<meta charset=\"UTF-8\" />",
+      "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />",
+      "<title>Tarko Inventory - Manufacturing Management System</title>",
+      "<meta name=\"description\" content=\"Mobile-first inventory management system for HDPE pipe manufacturing. Track batches, manage production, quality control, and reports.\" />",
+      "<meta name=\"author\" content=\"Tarko\" />",
+      "",
+      "<meta property=\"og:title\" content=\"Tarko Inventory - Manufacturing Management\" />"
+    ],
+    "package-lock.json": [
+      "{",
+      "\"name\": \"vite_react_shadcn_ts\",",
+      "\"version\": \"0.0.0\",",
+      "\"lockfileVersion\": 3,",
+      "\"requires\": true,",
+      "\"packages\": {",
+      "\"\": {",
+      "\"name\": \"vite_react_shadcn_ts\",",
+      "\"version\": \"0.0.0\",",
+      "\"dependencies\": {"
+    ],
+    "package.json": [
+      "{",
+      "\"name\": \"vite_react_shadcn_ts\",",
+      "\"private\": true,",
+      "\"version\": \"0.0.0\",",
+      "\"type\": \"module\",",
+      "\"scripts\": {",
+      "\"dev\": \"vite\",",
+      "\"build\": \"vite build\",",
+      "\"build:dev\": \"vite build --mode development\",",
+      "\"lint\": \"eslint .\","
+    ],
+    "postcss.config.js": [
+      "export default {",
+      "plugins: {",
+      "tailwindcss: {},",
+      "autoprefixer: {},",
+      "},",
+      "};",
+      ""
+    ],
+    "tailwind.config.ts": [
+      "import type { Config } from \"tailwindcss\";",
+      "",
+      "export default {",
+      "darkMode: [\"class\"],",
+      "content: [\"./pages/**/*.{ts,tsx}\", \"./components/**/*.{ts,tsx}\", \"./app/**/*.{ts,tsx}\", \"./src/**/*.{ts,tsx}\"],",
+      "prefix: \"\",",
+      "theme: {",
+      "container: {",
+      "center: true,",
+      "padding: \"2rem\","
+    ],
+    "tsconfig.app.json": [
+      "{",
+      "\"compilerOptions\": {",
+      "\"target\": \"ES2020\",",
+      "\"useDefineForClassFields\": true,",
+      "\"lib\": [\"ES2020\", \"DOM\", \"DOM.Iterable\"],",
+      "\"module\": \"ESNext\",",
+      "\"skipLibCheck\": true,",
+      "",
+      "/* Bundler mode */",
+      "\"moduleResolution\": \"bundler\","
+    ],
+    "tsconfig.json": [
+      "{",
+      "\"files\": [],",
+      "\"references\": [{ \"path\": \"./tsconfig.app.json\" }, { \"path\": \"./tsconfig.node.json\" }],",
+      "\"compilerOptions\": {",
+      "\"baseUrl\": \".\",",
+      "\"paths\": {",
+      "\"@/*\": [\"./src/*\"]",
+      "},",
+      "\"noImplicitAny\": false,",
+      "\"noUnusedParameters\": false,"
+    ],
+    "tsconfig.node.json": [
+      "{",
+      "\"compilerOptions\": {",
+      "\"target\": \"ES2022\",",
+      "\"lib\": [\"ES2023\"],",
+      "\"module\": \"ESNext\",",
+      "\"skipLibCheck\": true,",
+      "",
+      "/* Bundler mode */",
+      "\"moduleResolution\": \"bundler\",",
+      "\"allowImportingTsExtensions\": true,"
+    ],
+    "vite.config.ts": [
+      "import { defineConfig } from \"vite\";",
+      "import react from \"@vitejs/plugin-react-swc\";",
+      "import path from \"path\";",
+      "",
+      "// https://vitejs.dev/config/",
+      "export default defineConfig({",
+      "server: {",
+      "host: \"::\",",
+      "port: 8080,",
+      "},"
+    ]
+  },
+  "importantFolders": [
+    {
+      "path": "backend",
+      "category": "backend",
+      "fileCount": 14,
+      "primaryLanguage": "Python"
+    },
+    {
+      "path": "backend/routes",
+      "category": "build",
+      "fileCount": 4,
+      "primaryLanguage": "Python"
+    },
+    {
+      "path": "public",
+      "category": "assets",
+      "fileCount": 3
+    },
+    {
+      "path": "src/components",
+      "category": "frontend",
+      "fileCount": 52,
+      "primaryLanguage": "TypeScript"
+    },
+    {
+      "path": "src/components/ui",
+      "category": "frontend",
+      "fileCount": 49,
+      "primaryLanguage": "TypeScript"
+    },
+    {
+      "path": "src/lib",
+      "category": "core",
+      "fileCount": 2,
+      "primaryLanguage": "TypeScript"
+    }
+  ],
+  "readmeParagraphs": {
+    "backend": "# Tarko Inventory - Backend API",
+    "root": "# Tarko Inventory Management System"
+  },
+  "totals": {
+    "numFiles": 107,
+    "numDirs": 13,
+    "totalSizeBytes": 779635,
+    "totalLinesOfCode": 8365
+  },
+  "fileCategories": {
+    "other": 13,
+    "documentation": 6,
+    "source": 82,
+    "config": 6
+  },
+  "linesOfCodePerLanguage": {
+    "Python": 549,
+    "Shell": 70,
+    "JavaScript": 34,
+    "TypeScript": 7712
+  },
+  "filesPerLanguage": {
+    "Python": 8,
+    "Shell": 1,
+    "JavaScript": 2,
+    "TypeScript": 71
+  },
+  "projectTypes": [
+    "Python (requirements)",
+    "JavaScript/Node.js"
+  ],
+  "frameworks": [
+    "Flask",
+    "React",
+    "Vite"
+  ],
+  "entryPoints": [
+    "backend/setup_db.sh"
+  ],
+  "ciCdTools": [],
+  "packageManagers": [
+    "npm/yarn"
+  ],
+  "topLevelDirectories": [
+    {
+      "name": "src",
+      "numFiles": 71,
+      "totalLoc": 7597,
+      "dominantLanguage": "TypeScript"
+    },
+    {
+      "name": "backend",
+      "numFiles": 14,
+      "totalLoc": 619,
+      "dominantLanguage": "Python"
+    },
+    {
+      "name": "public",
+      "numFiles": 3,
+      "totalLoc": 0
+    }
+  ],
+  "detailedDirectories": [
+    {
+      "path": "src",
+      "name": "src",
+      "level": 1,
+      "numFiles": 71,
+      "totalLoc": 7597,
+      "dominantLanguage": "TypeScript",
+      "category": "General",
+      "description": "General module with 71 files (TypeScript)",
+      "subdirectories": [
+        {
+          "path": "src/components",
+          "name": "components",
+          "level": 2,
+          "numFiles": 52,
+          "totalLoc": 4252,
+          "dominantLanguage": "TypeScript",
+          "category": "General",
+          "description": "General module with 52 files (TypeScript)",
+          "subdirectories": [
+            {
+              "path": "src/components/ui",
+              "name": "ui",
+              "level": 3,
+              "numFiles": 49,
+              "totalLoc": 4003,
+              "dominantLanguage": "TypeScript",
+              "category": "Web/UI",
+              "description": "Web/UI module with 49 files (TypeScript)",
+              "subdirectories": []
+            }
+          ]
+        },
+        {
+          "path": "src/pages",
+          "name": "pages",
+          "level": 2,
+          "numFiles": 9,
+          "totalLoc": 2843,
+          "dominantLanguage": "TypeScript",
+          "category": "General",
+          "description": "General module with 9 files (TypeScript)",
+          "subdirectories": []
+        },
+        {
+          "path": "src/hooks",
+          "name": "hooks",
+          "level": 2,
+          "numFiles": 2,
+          "totalLoc": 207,
+          "dominantLanguage": "TypeScript",
+          "category": "General",
+          "description": "General module with 2 files (TypeScript)",
+          "subdirectories": []
+        },
+        {
+          "path": "src/contexts",
+          "name": "contexts",
+          "level": 2,
+          "numFiles": 1,
+          "totalLoc": 126,
+          "dominantLanguage": "TypeScript",
+          "category": "General",
+          "description": "General module with 1 files (TypeScript)",
+          "subdirectories": []
+        },
+        {
+          "path": "src/lib",
+          "name": "lib",
+          "level": 2,
+          "numFiles": 2,
+          "totalLoc": 74,
+          "dominantLanguage": "TypeScript",
+          "category": "Library",
+          "description": "Library module with 2 files (TypeScript)",
+          "subdirectories": []
+        }
+      ]
+    },
+    {
+      "path": "backend",
+      "name": "backend",
+      "level": 1,
+      "numFiles": 14,
+      "totalLoc": 619,
+      "dominantLanguage": "Python",
+      "category": "General",
+      "description": "# Tarko Inventory - Backend API",
+      "subdirectories": [
+        {
+          "path": "backend/routes",
+          "name": "routes",
+          "level": 2,
+          "numFiles": 4,
+          "totalLoc": 375,
+          "dominantLanguage": "Python",
+          "category": "General",
+          "description": "General module with 4 files (Python)",
+          "subdirectories": []
+        }
+      ]
+    },
+    {
+      "path": "public",
+      "name": "public",
+      "level": 1,
+      "numFiles": 3,
+      "totalLoc": 0,
+      "category": "General",
+      "description": "General module with 3 files",
+      "subdirectories": []
+    }
+  ],
+  "architecturalInsights": {
+    "coreApplications": [],
+    "entryPointDetails": [
+      {
+        "path": "../../../../../backend/setup_db.sh",
+        "type": "Unknown",
+        "description": ""
+      }
+    ],
+    "serviceArchitecture": {
+      "microservices": [],
+      "monoliths": [],
+      "libraries": []
+    },
+    "layeredArchitecture": {
+      "presentation": [],
+      "business": [],
+      "data": [],
+      "infrastructure": []
+    }
+  },
+  "largeFiles": [],
+  "dependencies": {
+    "production": [
+      "@hookform/resolvers",
+      "@radix-ui/react-accordion",
+      "@radix-ui/react-alert-dialog",
+      "@radix-ui/react-aspect-ratio",
+      "@radix-ui/react-avatar",
+      "@radix-ui/react-checkbox",
+      "@radix-ui/react-collapsible",
+      "@radix-ui/react-context-menu",
+      "@radix-ui/react-dialog",
+      "@radix-ui/react-dropdown-menu",
+      "@radix-ui/react-hover-card",
+      "@radix-ui/react-label",
+      "@radix-ui/react-menubar",
+      "@radix-ui/react-navigation-menu",
+      "@radix-ui/react-popover",
+      "@radix-ui/react-progress",
+      "@radix-ui/react-radio-group",
+      "@radix-ui/react-scroll-area",
+      "@radix-ui/react-select",
+      "@radix-ui/react-separator",
+      "@radix-ui/react-slider",
+      "@radix-ui/react-slot",
+      "@radix-ui/react-switch",
+      "@radix-ui/react-tabs",
+      "@radix-ui/react-toast",
+      "@radix-ui/react-toggle",
+      "@radix-ui/react-toggle-group",
+      "@radix-ui/react-tooltip",
+      "@tanstack/react-query",
+      "axios",
+      "class-variance-authority",
+      "clsx",
+      "cmdk",
+      "date-fns",
+      "embla-carousel-react",
+      "input-otp",
+      "lucide-react",
+      "next-themes",
+      "react",
+      "react-day-picker",
+      "react-dom",
+      "react-hook-form",
+      "react-resizable-panels",
+      "react-router-dom",
+      "recharts",
+      "sonner",
+      "tailwind-merge",
+      "tailwindcss-animate",
+      "vaul",
+      "zod"
+    ],
+    "development": [
+      "@eslint/js",
+      "@tailwindcss/typography",
+      "@types/node",
+      "@types/react",
+      "@types/react-dom",
+      "@vitejs/plugin-react-swc",
+      "autoprefixer",
+      "eslint",
+      "eslint-plugin-react-hooks",
+      "eslint-plugin-react-refresh",
+      "globals",
+      "postcss",
+      "tailwindcss",
+      "typescript",
+      "typescript-eslint",
+      "vite"
+    ],
+    "total": 66
+  },
+  "complexity": {
+    "averageFileSize": 78.17757009345794,
+    "maxFileSize": 0,
+    "nestedDepth": 0,
+    "estimatedComplexity": "high"
+  },
+  "gitRepo": {
+    "firstCommitDate": "2025-11-17",
+    "totalCommits": 5,
+    "numContributors": 0,
+    "currentBranch": "main",
+    "remoteUrls": [
+      "https://github.com/sachdev27/tarko-stock-flow.git"
+    ]
+  }
+}

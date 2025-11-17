@@ -17,7 +17,7 @@ const Production = () => {
   const [locations, setLocations] = useState<any[]>([]);
   const [productTypes, setProductTypes] = useState<any[]>([]);
   const [brands, setBrands] = useState<any[]>([]);
-  
+
   const [formData, setFormData] = useState({
     locationId: '',
     productTypeId: '',
@@ -66,19 +66,19 @@ const Production = () => {
     const date = new Date();
     const year = date.getFullYear();
     const seq = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
-    
+
     if (productType.name === 'HDPE Pipe') {
       return `HDPE-${params.PE}-PN${params.PN}-${params.OD}-${brand}-${year}-${seq}`;
     } else if (productType.name === 'Sprinkler Pipe') {
       return `SPR-${params.Type}-PN${params.PN}-${params.OD}-${brand}-${year}-${seq}`;
     }
-    
+
     return `${productType.name.toUpperCase()}-${brand}-${year}-${seq}`;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!formData.locationId || !formData.productTypeId || !formData.brandId || !formData.quantity) {
       toast.error('Please fill in all required fields');
       return;
@@ -95,7 +95,7 @@ const Production = () => {
     try {
       const productType = productTypes.find(pt => pt.id === formData.productTypeId);
       const paramSchema = productType?.parameter_schema || [];
-      
+
       // Validate required parameters
       for (const param of paramSchema) {
         if (param.required && !formData.parameters[param.name]) {
@@ -154,17 +154,49 @@ const Production = () => {
 
       if (transactionError) throw transactionError;
 
+      // Create rolls based on numberOfRolls
+      const numberOfRolls = parseInt(formData.numberOfRolls);
+      const rolls = [];
+
+      if (numberOfRolls > 0) {
+        let lengthPerRoll: number;
+
+        if (formData.lengthPerRoll) {
+          // Use custom length per roll
+          lengthPerRoll = parseFloat(formData.lengthPerRoll);
+        } else {
+          // Distribute evenly
+          lengthPerRoll = quantity / numberOfRolls;
+        }
+
+        for (let i = 0; i < numberOfRolls; i++) {
+          rolls.push({
+            batch_id: batchData.id,
+            product_variant_id: variantData.id,
+            length_meters: lengthPerRoll,
+            initial_length_meters: lengthPerRoll,
+            status: 'AVAILABLE',
+          });
+        }
+
+        const { error: rollsError } = await supabase
+          .from('rolls')
+          .insert(rolls);
+
+        if (rollsError) throw rollsError;
+      }
+
       // Log audit
       await supabase.from('audit_logs').insert({
         user_id: user?.id,
         action_type: 'CREATE_BATCH',
         entity_type: 'BATCH',
         entity_id: batchData.id,
-        description: `Created batch ${batchCode} with ${quantity} units`,
+        description: `Created batch ${batchCode} with ${quantity} units and ${numberOfRolls} rolls`,
       });
 
-      toast.success(`Production batch ${batchCode} created successfully!`);
-      
+      toast.success(`Production batch ${batchCode} created successfully with ${numberOfRolls} roll(s)!`);
+
       // Reset form
       setFormData({
         locationId: '',
@@ -265,10 +297,10 @@ const Production = () => {
                     <div key={param.name} className="space-y-2">
                       <Label htmlFor={param.name}>{param.name} {param.required && '*'}</Label>
                       {param.type === 'select' ? (
-                        <Select 
-                          value={formData.parameters[param.name] || ''} 
+                        <Select
+                          value={formData.parameters[param.name] || ''}
                           onValueChange={(value) => setFormData({
-                            ...formData, 
+                            ...formData,
                             parameters: {...formData.parameters, [param.name]: value}
                           })}
                         >
@@ -288,7 +320,7 @@ const Production = () => {
                           placeholder={`Enter ${param.name}${param.unit ? ` (${param.unit})` : ''}`}
                           value={formData.parameters[param.name] || ''}
                           onChange={(e) => setFormData({
-                            ...formData, 
+                            ...formData,
                             parameters: {...formData.parameters, [param.name]: e.target.value}
                           })}
                           className="h-12"
@@ -337,10 +369,10 @@ const Production = () => {
                     value={formData.numberOfRolls}
                     onChange={(e) => {
                       const numberOfRolls = e.target.value;
-                      setFormData({ 
-                        ...formData, 
+                      setFormData({
+                        ...formData,
                         numberOfRolls,
-                        lengthPerRoll: formData.quantity && numberOfRolls 
+                        lengthPerRoll: formData.quantity && numberOfRolls
                           ? (parseFloat(formData.quantity) / parseInt(numberOfRolls)).toFixed(2)
                           : ''
                       });
