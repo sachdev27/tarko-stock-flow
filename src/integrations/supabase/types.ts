@@ -343,6 +343,57 @@ export type Database = {
           },
         ]
       }
+      rolls: {
+        Row: {
+          batch_id: string
+          created_at: string
+          deleted_at: string | null
+          id: string
+          initial_length_meters: number
+          length_meters: number
+          product_variant_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          batch_id: string
+          created_at?: string
+          deleted_at?: string | null
+          id?: string
+          initial_length_meters: number
+          length_meters: number
+          product_variant_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          batch_id?: string
+          created_at?: string
+          deleted_at?: string | null
+          id?: string
+          initial_length_meters?: number
+          length_meters?: number
+          product_variant_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rolls_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rolls_product_variant_id_fkey"
+            columns: ["product_variant_id"]
+            isOneToOne: false
+            referencedRelation: "product_variants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       transactions: {
         Row: {
           batch_id: string
@@ -355,6 +406,7 @@ export type Database = {
           invoice_no: string | null
           notes: string | null
           quantity_change: number
+          roll_id: string | null
           to_location_id: string | null
           transaction_date: string
           transaction_type: Database["public"]["Enums"]["transaction_type"]
@@ -371,6 +423,7 @@ export type Database = {
           invoice_no?: string | null
           notes?: string | null
           quantity_change: number
+          roll_id?: string | null
           to_location_id?: string | null
           transaction_date?: string
           transaction_type: Database["public"]["Enums"]["transaction_type"]
@@ -387,6 +440,7 @@ export type Database = {
           invoice_no?: string | null
           notes?: string | null
           quantity_change?: number
+          roll_id?: string | null
           to_location_id?: string | null
           transaction_date?: string
           transaction_type?: Database["public"]["Enums"]["transaction_type"]
@@ -412,6 +466,13 @@ export type Database = {
             columns: ["from_location_id"]
             isOneToOne: false
             referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_roll_id_fkey"
+            columns: ["roll_id"]
+            isOneToOne: false
+            referencedRelation: "rolls"
             referencedColumns: ["id"]
           },
           {
