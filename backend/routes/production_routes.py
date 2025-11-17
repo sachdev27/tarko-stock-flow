@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import get_jwt_identity
 from database import execute_insert, execute_query, get_db_cursor
 from auth import jwt_required_with_role
+import json
 
 production_bp = Blueprint('production', __name__, url_prefix='/api/production')
 
@@ -31,7 +32,7 @@ def create_batch():
             VALUES (%s, %s, %s, NOW(), NOW())
             ON CONFLICT DO NOTHING
             RETURNING id
-        """, (product_type_id, brand_id, str(parameters)))
+        """, (product_type_id, brand_id, json.dumps(parameters)))
 
         variant = cursor.fetchone()
         if not variant:
@@ -39,7 +40,7 @@ def create_batch():
             cursor.execute("""
                 SELECT id FROM product_variants
                 WHERE product_type_id = %s AND brand_id = %s AND parameters::text = %s
-            """, (product_type_id, brand_id, str(parameters)))
+            """, (product_type_id, brand_id, json.dumps(parameters)))
             variant = cursor.fetchone()
 
         variant_id = variant['id']

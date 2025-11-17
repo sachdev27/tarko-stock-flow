@@ -15,16 +15,25 @@ def create_transaction():
     transaction_type = data.get('transaction_type')
     batch_id = data.get('batch_id')
     roll_id = data.get('roll_id')
-    quantity = float(data.get('quantity'))
+    quantity_change = data.get('quantity_change')
     customer_id = data.get('customer_id')
     invoice_no = data.get('invoice_no')
     notes = data.get('notes', '')
 
-    # Determine quantity change
-    if transaction_type in ['PRODUCTION', 'RETURN', 'TRANSFER_IN']:
-        quantity_change = quantity
-    else:
-        quantity_change = -quantity
+    # Validate required fields
+    if not transaction_type or not batch_id:
+        return jsonify({'error': 'Transaction type and batch ID are required'}), 400
+
+    if quantity_change is None:
+        return jsonify({'error': 'Quantity is required'}), 400
+
+    try:
+        quantity_change = float(quantity_change)
+    except (ValueError, TypeError):
+        return jsonify({'error': 'Invalid quantity value'}), 400
+
+    # For roll operations, we need the absolute quantity
+    quantity = abs(quantity_change)
 
     with get_db_cursor() as cursor:
         # Update roll if specified
@@ -32,11 +41,15 @@ def create_transaction():
             cursor.execute("SELECT length_meters, initial_length_meters FROM rolls WHERE id = %s", (roll_id,))
             roll = cursor.fetchone()
 
-            new_length = roll['length_meters'] - quantity
+            # Convert Decimal to float for calculation
+            current_length = float(roll['length_meters'])
+            initial_length = float(roll['initial_length_meters'])
+
+            new_length = current_length - quantity
             if new_length < 0:
                 return jsonify({'error': 'Insufficient roll length'}), 400
 
-            new_status = 'SOLD_OUT' if new_length <= 0 else ('PARTIAL' if new_length < roll['initial_length_meters'] else 'AVAILABLE')
+            new_status = 'SOLD_OUT' if new_length <= 0 else ('PARTIAL' if new_length < initial_length else 'AVAILABLE')
 
             cursor.execute("""
                 UPDATE rolls

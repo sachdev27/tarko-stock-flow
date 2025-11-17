@@ -58,7 +58,7 @@ cp .env.example .env
 # Configure frontend environment
 cd ..
 cp .env.local.example .env.local
-# Set VITE_API_URL=http://localhost:5000/api
+# Set VITE_API_URL=http://localhost:5500/api
 ```
 
 ### Running the Application

@@ -6,10 +6,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { Factory, Plus } from 'lucide-react';
+import { inventory, production } from '@/lib/api';
 
 const Production = () => {
   const { user } = useAuth();
@@ -39,9 +39,9 @@ const Production = () => {
   const fetchMasterData = async () => {
     try {
       const [locationsRes, productTypesRes, brandsRes] = await Promise.all([
-        supabase.from('locations').select('*').is('deleted_at', null),
-        supabase.from('product_types').select('*, units(*)').is('deleted_at', null),
-        supabase.from('brands').select('*').is('deleted_at', null),
+        inventory.getLocations(),
+        inventory.getProductTypes(),
+        inventory.getBrands(),
       ]);
 
       if (locationsRes.data) setLocations(locationsRes.data);
@@ -105,97 +105,25 @@ const Production = () => {
         }
       }
 
-      // Create product variant first
-      const { data: variantData, error: variantError } = await supabase
-        .from('product_variants')
-        .insert({
-          product_type_id: formData.productTypeId,
-          brand_id: formData.brandId,
-          parameters: formData.parameters,
-        })
-        .select()
-        .single();
-
-      if (variantError) throw variantError;
-
       const batchNo = formData.autoBatchNo ? generateBatchNo() : formData.batchNo;
       const batchCode = generateBatchCode(productType, formData.parameters);
-
-      // Create batch
-      const { data: batchData, error: batchError } = await supabase
-        .from('batches')
-        .insert({
-          batch_no: batchNo,
-          batch_code: batchCode,
-          product_variant_id: variantData.id,
-          location_id: formData.locationId,
-          production_date: formData.productionDate,
-          initial_quantity: quantity,
-          current_quantity: quantity,
-          notes: formData.notes,
-          created_by: user?.id,
-        })
-        .select()
-        .single();
-
-      if (batchError) throw batchError;
-
-      // Create production transaction
-      const { error: transactionError } = await supabase
-        .from('transactions')
-        .insert({
-          batch_id: batchData.id,
-          transaction_type: 'PRODUCTION',
-          quantity_change: quantity,
-          transaction_date: formData.productionDate,
-          notes: `Initial production: ${formData.notes}`,
-          created_by: user?.id,
-        });
-
-      if (transactionError) throw transactionError;
-
-      // Create rolls based on numberOfRolls
       const numberOfRolls = parseInt(formData.numberOfRolls);
-      const rolls = [];
 
-      if (numberOfRolls > 0) {
-        let lengthPerRoll: number;
-
-        if (formData.lengthPerRoll) {
-          // Use custom length per roll
-          lengthPerRoll = parseFloat(formData.lengthPerRoll);
-        } else {
-          // Distribute evenly
-          lengthPerRoll = quantity / numberOfRolls;
-        }
-
-        for (let i = 0; i < numberOfRolls; i++) {
-          rolls.push({
-            batch_id: batchData.id,
-            product_variant_id: variantData.id,
-            length_meters: lengthPerRoll,
-            initial_length_meters: lengthPerRoll,
-            status: 'AVAILABLE',
-          });
-        }
-
-        const { error: rollsError } = await supabase
-          .from('rolls')
-          .insert(rolls);
-
-        if (rollsError) throw rollsError;
-      }
-
-      // Log audit
-      await supabase.from('audit_logs').insert({
-        user_id: user?.id,
-        action_type: 'CREATE_BATCH',
-        entity_type: 'BATCH',
-        entity_id: batchData.id,
-        description: `Created batch ${batchCode} with ${quantity} units and ${numberOfRolls} rolls`,
+      // Call production API
+      const { data } = await production.createBatch({
+        location_id: formData.locationId,
+        product_type_id: formData.productTypeId,
+        brand_id: formData.brandId,
+        parameters: formData.parameters,
+        production_date: formData.productionDate,
+        quantity: parseFloat(formData.quantity),
+        batch_no: batchNo,
+        batch_code: batchCode,
+        notes: formData.notes,
+        number_of_rolls: numberOfRolls,
       });
 
-      toast.success(`Production batch ${batchCode} created successfully with ${numberOfRolls} roll(s)!`);
+      toast.success(`Production batch ${data.batch_code} created successfully with ${numberOfRolls} roll(s)!`);
 
       // Reset form
       setFormData({
@@ -212,8 +140,8 @@ const Production = () => {
         lengthPerRoll: '',
       });
     } catch (error: any) {
-      console.error('Error creating production batch:', error);
-      toast.error(error.message || 'Failed to create production batch');
+      console.error('Error creating batch:', error);
+      toast.error(error.response?.data?.error || 'Failed to create production batch');
     } finally {
       setLoading(false);
     }

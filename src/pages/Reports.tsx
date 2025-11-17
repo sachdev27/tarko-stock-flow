@@ -3,10 +3,10 @@ import { Layout } from '@/components/Layout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { BarChart, Download, TrendingUp } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { reports } from '@/lib/api';
 
 interface ProductSalesData {
   product_type: string;
@@ -60,180 +60,54 @@ const Reports = () => {
 
   const fetchTopSellingProducts = async () => {
     try {
-      const startDate = new Date();
-      startDate.setDate(startDate.getDate() - parseInt(dateRange));
-
-      const { data, error } = await supabase
-        .from('transactions')
-        .select(`
-          quantity_change,
-          batches!inner (
-            product_variants!inner (
-              parameters,
-              product_types!inner (name),
-              brands!inner (name)
-            )
-          )
-        `)
-        .eq('transaction_type', 'SALE')
-        .gte('transaction_date', startDate.toISOString())
-        .is('deleted_at', null);
-
-      if (error) throw error;
-
-      // Group by product variant
-      const productMap = new Map<string, ProductSalesData>();
-
-      data?.forEach((txn: any) => {
-        const variant = txn.batches.product_variants;
-        const key = `${variant.product_types.name}-${variant.brands.name}-${JSON.stringify(variant.parameters)}`;
-
-        if (!productMap.has(key)) {
-          productMap.set(key, {
-            product_type: variant.product_types.name,
-            brand: variant.brands.name,
-            parameters: variant.parameters,
-            total_sold: 0,
-            sales_count: 0,
-          });
-        }
-
-        const product = productMap.get(key)!;
-        product.total_sold += Math.abs(parseFloat(txn.quantity_change));
-        product.sales_count += 1;
-      });
-
-      const sorted = Array.from(productMap.values())
-        .sort((a, b) => b.total_sold - a.total_sold)
-        .slice(0, 10);
-
-      setTopProducts(sorted);
+      const response = await reports.getTopSellingProducts(parseInt(dateRange));
+      setTopProducts(response.data.map((item: any) => ({
+        ...item,
+        total_sold: parseFloat(item.total_sold || 0),
+      })));
     } catch (error) {
       console.error('Error fetching top products:', error);
+      toast.error('Failed to load top selling products');
     }
   };
 
   const fetchLocationInventory = async () => {
     try {
-      const { data, error } = await supabase
-        .from('batches')
-        .select(`
-          current_quantity,
-          locations!inner (name)
-        `)
-        .gt('current_quantity', 0)
-        .is('deleted_at', null);
-
-      if (error) throw error;
-
-      const locationMap = new Map<string, LocationInventory>();
-
-      data?.forEach((batch: any) => {
-        const locationName = batch.locations.name;
-
-        if (!locationMap.has(locationName)) {
-          locationMap.set(locationName, {
-            location: locationName,
-            total_quantity: 0,
-            batch_count: 0,
-          });
-        }
-
-        const loc = locationMap.get(locationName)!;
-        loc.total_quantity += parseFloat(batch.current_quantity);
-        loc.batch_count += 1;
-      });
-
-      setLocationInventory(Array.from(locationMap.values()));
+      const response = await reports.getLocationInventory();
+      setLocationInventory(response.data.map((item: any) => ({
+        ...item,
+        total_quantity: parseFloat(item.total_quantity || 0),
+      })));
     } catch (error) {
       console.error('Error fetching location inventory:', error);
+      toast.error('Failed to load location inventory');
     }
   };
 
   const fetchCustomerSales = async () => {
     try {
-      const startDate = new Date();
-      startDate.setDate(startDate.getDate() - parseInt(dateRange));
-
-      const { data, error } = await supabase
-        .from('transactions')
-        .select(`
-          quantity_change,
-          customers!inner (name)
-        `)
-        .eq('transaction_type', 'SALE')
-        .gte('transaction_date', startDate.toISOString())
-        .is('deleted_at', null);
-
-      if (error) throw error;
-
-      const customerMap = new Map<string, CustomerSales>();
-
-      data?.forEach((txn: any) => {
-        const customerName = txn.customers.name;
-
-        if (!customerMap.has(customerName)) {
-          customerMap.set(customerName, {
-            customer_name: customerName,
-            total_quantity: 0,
-            transaction_count: 0,
-            total_amount: 0,
-          });
-        }
-
-        const customer = customerMap.get(customerName)!;
-        customer.total_quantity += Math.abs(parseFloat(txn.quantity_change));
-        customer.transaction_count += 1;
-      });
-
-      const sorted = Array.from(customerMap.values())
-        .sort((a, b) => b.total_quantity - a.total_quantity);
-
-      setCustomerSales(sorted);
+      const response = await reports.getCustomerSales(parseInt(dateRange));
+      setCustomerSales(response.data.map((item: any) => ({
+        ...item,
+        total_quantity: parseFloat(item.total_quantity || 0),
+        total_amount: parseFloat(item.total_amount || 0),
+      })));
     } catch (error) {
       console.error('Error fetching customer sales:', error);
+      toast.error('Failed to load customer sales');
     }
   };
 
   const fetchProductInventory = async () => {
     try {
-      const { data, error } = await supabase
-        .from('batches')
-        .select(`
-          current_quantity,
-          product_variants!inner (
-            parameters,
-            product_types!inner (name),
-            brands!inner (name)
-          )
-        `)
-        .gt('current_quantity', 0)
-        .is('deleted_at', null);
-
-      if (error) throw error;
-
-      const productMap = new Map<string, any>();
-
-      data?.forEach((batch: any) => {
-        const variant = batch.product_variants;
-        const key = `${variant.product_types.name}-${variant.brands.name}-${JSON.stringify(variant.parameters)}`;
-
-        if (!productMap.has(key)) {
-          productMap.set(key, {
-            product_type: variant.product_types.name,
-            brand: variant.brands.name,
-            parameters: variant.parameters,
-            total_quantity: 0,
-          });
-        }
-
-        const product = productMap.get(key)!;
-        product.total_quantity += parseFloat(batch.current_quantity);
-      });
-
-      setProductInventory(Array.from(productMap.values()));
+      const response = await reports.getProductInventory();
+      setProductInventory(response.data.map((item: any) => ({
+        ...item,
+        total_quantity: parseFloat(item.total_quantity || 0),
+      })));
     } catch (error) {
       console.error('Error fetching product inventory:', error);
+      toast.error('Failed to load product inventory');
     }
   };
 

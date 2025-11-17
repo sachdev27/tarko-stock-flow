@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Package, TrendingUp, AlertTriangle, CheckCircle } from 'lucide-react';
 import { Layout } from '@/components/Layout';
+import { stats } from '@/lib/api';
+import { toast } from 'sonner';
 
 const Dashboard = () => {
-  const [stats, setStats] = useState({
+  const navigate = useNavigate();
+  const [statsData, setStatsData] = useState({
     totalBatches: 0,
     activeBatches: 0,
     qcPending: 0,
@@ -19,41 +22,11 @@ const Dashboard = () => {
 
   const fetchStats = async () => {
     try {
-      // Get total batches
-      const { count: totalCount } = await supabase
-        .from('batches')
-        .select('*', { count: 'exact', head: true })
-        .is('deleted_at', null);
-
-      // Get active batches (with stock)
-      const { count: activeCount } = await supabase
-        .from('batches')
-        .select('*', { count: 'exact', head: true })
-        .gt('current_quantity', 0)
-        .is('deleted_at', null);
-
-      // Get QC pending
-      const { count: pendingCount } = await supabase
-        .from('batches')
-        .select('*', { count: 'exact', head: true })
-        .eq('qc_status', 'PENDING')
-        .is('deleted_at', null);
-
-      // Get QC passed
-      const { count: passedCount } = await supabase
-        .from('batches')
-        .select('*', { count: 'exact', head: true })
-        .eq('qc_status', 'PASSED')
-        .is('deleted_at', null);
-
-      setStats({
-        totalBatches: totalCount || 0,
-        activeBatches: activeCount || 0,
-        qcPending: pendingCount || 0,
-        qcPassed: passedCount || 0,
-      });
+      const response = await stats.getDashboard();
+      setStatsData(response.data);
     } catch (error) {
       console.error('Error fetching stats:', error);
+      toast.error('Failed to load dashboard stats');
     } finally {
       setLoading(false);
     }
@@ -62,28 +35,28 @@ const Dashboard = () => {
   const statCards = [
     {
       title: 'Total Batches',
-      value: stats.totalBatches,
+      value: statsData.totalBatches,
       icon: Package,
       description: 'All production batches',
       color: 'text-primary',
     },
     {
       title: 'Active Stock',
-      value: stats.activeBatches,
+      value: statsData.activeBatches,
       icon: TrendingUp,
       description: 'Batches with inventory',
       color: 'text-success',
     },
     {
       title: 'QC Pending',
-      value: stats.qcPending,
+      value: statsData.qcPending,
       icon: AlertTriangle,
       description: 'Awaiting quality check',
       color: 'text-warning',
     },
     {
       title: 'QC Passed',
-      value: stats.qcPassed,
+      value: statsData.qcPassed,
       icon: CheckCircle,
       description: 'Quality approved',
       color: 'text-success',
@@ -140,20 +113,20 @@ const Dashboard = () => {
           </CardHeader>
           <CardContent>
             <div className="grid gap-4 md:grid-cols-3">
-              <button 
-                onClick={() => window.location.href = '/production'}
+              <button
+                onClick={() => navigate('/production')}
                 className="h-24 bg-primary text-primary-foreground rounded-lg hover:bg-primary-dark transition-colors font-semibold text-lg"
               >
                 Daily Production Entry
               </button>
-              <button 
-                onClick={() => window.location.href = '/transactions'}
+              <button
+                onClick={() => navigate('/transactions')}
                 className="h-24 bg-secondary text-secondary-foreground rounded-lg hover:bg-secondary/80 transition-colors font-semibold text-lg"
               >
                 New Transaction
               </button>
-              <button 
-                onClick={() => window.location.href = '/inventory'}
+              <button
+                onClick={() => navigate('/inventory')}
                 className="h-24 bg-accent text-accent-foreground rounded-lg hover:bg-accent/80 transition-colors font-semibold text-lg"
               >
                 View Inventory

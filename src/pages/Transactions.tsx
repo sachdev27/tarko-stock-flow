@@ -7,11 +7,11 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { ArrowRightLeft, Plus, Search } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { inventory as inventoryAPI, transactions as transactionsAPI } from '@/lib/api';
 
 interface TransactionFormData {
   type: string;
@@ -67,21 +67,9 @@ const Transactions = () => {
   const fetchMasterData = async () => {
     try {
       const [batchesRes, customersRes, locationsRes] = await Promise.all([
-        supabase
-          .from('batches')
-          .select(`
-            *,
-            locations(name),
-            product_variants(
-              parameters,
-              product_types(name),
-              brands(name)
-            )
-          `)
-          .is('deleted_at', null)
-          .gt('current_quantity', 0),
-        supabase.from('customers').select('*').is('deleted_at', null),
-        supabase.from('locations').select('*').is('deleted_at', null),
+        inventoryAPI.getBatches(),
+        inventoryAPI.getCustomers(),
+        inventoryAPI.getLocations(),
       ]);
 
       if (batchesRes.data) setBatches(batchesRes.data);
@@ -95,15 +83,9 @@ const Transactions = () => {
 
   const fetchRollsForBatch = async (batchId: string) => {
     try {
-      const { data, error } = await supabase
-        .from('rolls')
-        .select('*')
-        .eq('batch_id', batchId)
-        .gt('length_meters', 0)
-        .is('deleted_at', null);
-
-      if (error) throw error;
-      setRolls(data || []);
+      // For now, rolls will be included in batch data
+      const selectedBatch = batches.find(b => b.id === batchId);
+      setRolls(selectedBatch?.rolls || []);
     } catch (error) {
       console.error('Error fetching rolls:', error);
     }
@@ -111,20 +93,7 @@ const Transactions = () => {
 
   const fetchTransactions = async () => {
     try {
-      const { data, error } = await supabase
-        .from('transactions')
-        .select(`
-          *,
-          batches(batch_code),
-          customers(name),
-          from_location:from_location_id(name),
-          to_location:to_location_id(name)
-        `)
-        .is('deleted_at', null)
-        .order('created_at', { ascending: false })
-        .limit(50);
-
-      if (error) throw error;
+      const { data } = await transactionsAPI.getAll();
       setTransactions(data || []);
     } catch (error) {
       console.error('Error fetching transactions:', error);
@@ -216,49 +185,7 @@ const Transactions = () => {
         transactionData.to_location_id = formData.toLocationId;
       }
 
-      const { data: txnData, error: txnError } = await supabase
-        .from('transactions')
-        .insert(transactionData)
-        .select()
-        .single();
-
-      if (txnError) throw txnError;
-
-      // Update roll if specified
-      if (formData.rollId && roll) {
-        const newLength = roll.length_meters - quantity;
-        const newStatus = newLength <= 0 ? 'SOLD_OUT' : newLength < roll.initial_length_meters ? 'PARTIAL' : 'AVAILABLE';
-
-        const { error: rollError } = await supabase
-          .from('rolls')
-          .update({
-            length_meters: newLength,
-            status: newStatus,
-          })
-          .eq('id', formData.rollId);
-
-        if (rollError) throw rollError;
-      }
-
-      // Update batch quantity
-      const newBatchQuantity = selectedBatch.current_quantity + quantityChange;
-      const { error: batchError } = await supabase
-        .from('batches')
-        .update({
-          current_quantity: newBatchQuantity,
-        })
-        .eq('id', formData.batchId);
-
-      if (batchError) throw batchError;
-
-      // Log audit
-      await supabase.from('audit_logs').insert({
-        user_id: user?.id,
-        action_type: `${formData.type}_TRANSACTION`,
-        entity_type: 'TRANSACTION',
-        entity_id: txnData.id,
-        description: `${formData.type} transaction: ${quantity} units`,
-      });
+      await transactionsAPI.create(transactionData);
 
       toast.success('Transaction recorded successfully!');
 
@@ -280,7 +207,7 @@ const Transactions = () => {
       fetchTransactions();
     } catch (error: any) {
       console.error('Error creating transaction:', error);
-      toast.error(error.message || 'Failed to record transaction');
+      toast.error(error.response?.data?.error || 'Failed to record transaction');
     } finally {
       setLoading(false);
     }
@@ -356,8 +283,8 @@ const Transactions = () => {
                     <SelectContent>
                       {batches.map((batch) => (
                         <SelectItem key={batch.id} value={batch.id}>
-                          {batch.batch_code} - {batch.product_variants.brands.name} {batch.product_variants.product_types.name}
-                          ({batch.current_quantity.toFixed(2)} m available)
+                          {batch.batch_code} - {batch.brand_name} {batch.product_type_name}
+                          ({parseFloat(batch.current_quantity).toFixed(2)} m available)
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -375,7 +302,7 @@ const Transactions = () => {
                       <SelectContent>
                         {rolls.map((roll, idx) => (
                           <SelectItem key={roll.id} value={roll.id}>
-                            Roll #{idx + 1} - {roll.length_meters.toFixed(2)} m ({roll.status})
+                            Roll #{idx + 1} - {parseFloat(roll.length_meters).toFixed(2)} m ({roll.status})
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -511,15 +438,15 @@ const Transactions = () => {
                         <Badge className={getTransactionColor(txn.transaction_type)}>
                           {txn.transaction_type}
                         </Badge>
-                        <code className="text-sm font-mono">{txn.batches.batch_code}</code>
-                        {txn.customers && (
+                        <code className="text-sm font-mono">{txn.batch_code}</code>
+                        {txn.customer_name && (
                           <span className="text-sm text-muted-foreground">
-                            → {txn.customers.name}
+                            → {txn.customer_name}
                           </span>
                         )}
                       </div>
                       <div className="text-sm text-muted-foreground mt-1">
-                        {txn.quantity_change > 0 ? '+' : ''}{txn.quantity_change.toFixed(2)} m
+                        {txn.quantity_change > 0 ? '+' : ''}{parseFloat(txn.quantity_change).toFixed(2)} m
                         {txn.invoice_no && ` | Invoice: ${txn.invoice_no}`}
                         {txn.notes && ` | ${txn.notes}`}
                       </div>

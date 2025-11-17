@@ -8,11 +8,11 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { Settings, Plus, Trash2, Edit, Building, Tag, Package, Users, Shield } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { admin } from '@/lib/api';
 
 const Admin = () => {
   const { user, isAdmin } = useAuth();
@@ -54,20 +54,20 @@ const Admin = () => {
     setLoading(true);
     try {
       const [locsRes, brandsRes, typesRes, customersRes, unitsRes, logsRes] = await Promise.all([
-        supabase.from('locations').select('*').is('deleted_at', null),
-        supabase.from('brands').select('*').is('deleted_at', null),
-        supabase.from('product_types').select('*, units(*)').is('deleted_at', null),
-        supabase.from('customers').select('*').is('deleted_at', null),
-        supabase.from('units').select('*'),
-        supabase.from('audit_logs').select('*').order('created_at', { ascending: false }).limit(50),
+        admin.getLocations(),
+        admin.getBrands(),
+        admin.getProductTypes(),
+        admin.getCustomers(),
+        admin.getUnits(),
+        admin.getAuditLogs(),
       ]);
 
-      if (locsRes.data) setLocations(locsRes.data);
-      if (brandsRes.data) setBrands(brandsRes.data);
-      if (typesRes.data) setProductTypes(typesRes.data);
-      if (customersRes.data) setCustomers(customersRes.data);
-      if (unitsRes.data) setUnits(unitsRes.data);
-      if (logsRes.data) setAuditLogs(logsRes.data);
+      setLocations(locsRes.data);
+      setBrands(brandsRes.data);
+      setProductTypes(typesRes.data);
+      setCustomers(customersRes.data);
+      setUnits(unitsRes.data);
+      setAuditLogs(logsRes.data);
     } catch (error) {
       console.error('Error fetching data:', error);
       toast.error('Failed to load admin data');
@@ -83,15 +83,13 @@ const Admin = () => {
     }
 
     try {
-      const { error } = await supabase.from('locations').insert(locationForm);
-      if (error) throw error;
-
+      await admin.createLocation(locationForm);
       toast.success('Location added successfully');
       setLocationDialog(false);
       setLocationForm({ name: '', address: '' });
       fetchAllData();
     } catch (error: any) {
-      toast.error(error.message || 'Failed to add location');
+      toast.error(error.response?.data?.error || 'Failed to add location');
     }
   };
 
@@ -102,15 +100,13 @@ const Admin = () => {
     }
 
     try {
-      const { error } = await supabase.from('brands').insert(brandForm);
-      if (error) throw error;
-
+      await admin.createBrand(brandForm);
       toast.success('Brand added successfully');
       setBrandDialog(false);
       setBrandForm({ name: '' });
       fetchAllData();
     } catch (error: any) {
-      toast.error(error.message || 'Failed to add brand');
+      toast.error(error.response?.data?.error || 'Failed to add brand');
     }
   };
 
@@ -121,9 +117,7 @@ const Admin = () => {
     }
 
     try {
-      const { error } = await supabase.from('customers').insert(customerForm);
-      if (error) throw error;
-
+      await admin.createCustomer(customerForm);
       toast.success('Customer added successfully');
       setCustomerDialog(false);
       setCustomerForm({
@@ -136,7 +130,7 @@ const Admin = () => {
       });
       fetchAllData();
     } catch (error: any) {
-      toast.error(error.message || 'Failed to add customer');
+      toast.error(error.response?.data?.error || 'Failed to add customer');
     }
   };
 
@@ -144,17 +138,25 @@ const Admin = () => {
     if (!confirm('Are you sure you want to delete this item?')) return;
 
     try {
-      const { error } = await supabase
-        .from(table)
-        .update({ deleted_at: new Date().toISOString() })
-        .eq('id', id);
-
-      if (error) throw error;
+      switch (table) {
+        case 'locations':
+          await admin.deleteLocation(id);
+          break;
+        case 'brands':
+          await admin.deleteBrand(id);
+          break;
+        case 'product_types':
+          await admin.deleteProductType(id);
+          break;
+        case 'customers':
+          await admin.deleteCustomer(id);
+          break;
+      }
 
       toast.success('Item deleted successfully');
       fetchAllData();
     } catch (error: any) {
-      toast.error(error.message || 'Failed to delete item');
+      toast.error(error.response?.data?.error || 'Failed to delete item');
     }
   };
 

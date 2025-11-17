@@ -29,7 +29,7 @@ def get_batches():
     """
 
     params = []
-    if location_id:
+    if location_id and location_id != 'all':
         query += " AND b.location_id = %s"
         params.append(location_id)
 

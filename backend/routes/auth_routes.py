@@ -83,8 +83,10 @@ def get_current_user():
     role = get_user_role(user_id)
 
     return jsonify({
-        'id': user['id'],
-        'email': user['email'],
-        'role': role,
-        'created_at': user['created_at'].isoformat() if user['created_at'] else None
+        'user': {
+            'id': user['id'],
+            'email': user['email'],
+            'role': role,
+            'created_at': user['created_at'].isoformat() if user['created_at'] else None
+        }
     }), 200

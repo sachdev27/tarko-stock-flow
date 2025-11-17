@@ -6,10 +6,10 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Package, Search, Filter, QrCode, ChevronDown, ChevronUp, MapPin } from 'lucide-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { inventory as inventoryAPI } from '@/lib/api';
 
 interface ProductInventory {
   product_type: string;
@@ -52,12 +52,7 @@ const Inventory = () => {
 
   const fetchLocations = async () => {
     try {
-      const { data, error } = await supabase
-        .from('locations')
-        .select('*')
-        .is('deleted_at', null);
-
-      if (error) throw error;
+      const { data } = await inventoryAPI.getLocations();
       setLocations(data || []);
     } catch (error) {
       console.error('Error fetching locations:', error);
@@ -67,70 +62,39 @@ const Inventory = () => {
   const fetchInventory = async () => {
     setLoading(true);
     try {
-      // Fetch batches with related data
-      let query = supabase
-        .from('batches')
-        .select(`
-          id,
-          batch_code,
-          batch_no,
-          current_quantity,
-          qc_status,
-          production_date,
-          location_id,
-          locations (name),
-          product_variants (
-            id,
-            parameters,
-            product_types (name),
-            brands (name)
-          ),
-          rolls (
-            id,
-            length_meters,
-            initial_length_meters,
-            status
-          )
-        `)
-        .is('deleted_at', null)
-        .gt('current_quantity', 0);
+      const { data } = await inventoryAPI.getBatches(selectedLocation === 'all' ? undefined : selectedLocation);
 
-      if (selectedLocation !== 'all') {
-        query = query.eq('location_id', selectedLocation);
-      }
-
-      const { data: batches, error } = await query;
-
-      if (error) throw error;
-
-      // Group by product variant
+      // Transform backend flat batch data to grouped ProductInventory structure
       const productMap = new Map<string, ProductInventory>();
 
-      batches?.forEach((batch: any) => {
-        const variant = batch.product_variants;
-        const key = `${variant.product_types.name}-${variant.brands.name}-${JSON.stringify(variant.parameters)}`;
+      (data || []).forEach((batch: any) => {
+        const key = `${batch.product_type_name}-${batch.brand_name}-${JSON.stringify(batch.parameters)}`;
 
         if (!productMap.has(key)) {
           productMap.set(key, {
-            product_type: variant.product_types.name,
-            brand: variant.brands.name,
-            parameters: variant.parameters,
+            product_type: batch.product_type_name,
+            brand: batch.brand_name,
+            parameters: batch.parameters,
             total_quantity: 0,
             batches: [],
           });
         }
 
         const product = productMap.get(key)!;
-        product.total_quantity += parseFloat(batch.current_quantity);
+        product.total_quantity += parseFloat(batch.current_quantity || 0);
         product.batches.push({
           id: batch.id,
           batch_code: batch.batch_code,
           batch_no: batch.batch_no,
-          location: batch.locations.name,
-          current_quantity: parseFloat(batch.current_quantity),
+          location: batch.location_name,
+          current_quantity: parseFloat(batch.current_quantity || 0),
           qc_status: batch.qc_status,
           production_date: batch.production_date,
-          rolls: batch.rolls || [],
+          rolls: (batch.rolls || []).map((roll: any) => ({
+            ...roll,
+            length_meters: parseFloat(roll.length_meters || 0),
+            initial_length_meters: parseFloat(roll.initial_length_meters || 0),
+          })),
         });
       });
 
