@@ -39,6 +39,7 @@ const Production = () => {
     // Weight tracking
     weightPerMeter: '',
     totalWeight: '',
+    lengthPerPiece: '6', // Default length for sprinkler pipes in meters
   });
 
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
@@ -108,13 +109,26 @@ const Production = () => {
   useEffect(() => {
     const qty = parseFloat(formData.quantity) || 0;
     const weightPerM = parseFloat(formData.weightPerMeter) || 0;
+    const lengthPerPiece = parseFloat(formData.lengthPerPiece) || 0;
+
     if (qty > 0 && weightPerM > 0) {
-      const totalWeightGrams = qty * weightPerM;
+      // Check if this is a quantity-based product (like sprinkler pipes)
+      const selectedPT = productTypes.find(pt => pt.id === formData.productTypeId);
+      const isQuantityBased = selectedPT?.roll_configuration?.quantity_based;
+
+      let totalWeightGrams;
+      if (isQuantityBased && lengthPerPiece > 0) {
+        // For quantity-based: total_weight = quantity * lengthPerPiece * weightPerMeter
+        totalWeightGrams = qty * lengthPerPiece * weightPerM;
+      } else {
+        // For length-based: total_weight = quantity * weightPerMeter
+        totalWeightGrams = qty * weightPerM;
+      }
       setFormData(prev => ({ ...prev, totalWeight: totalWeightGrams.toFixed(2) }));
     } else {
       setFormData(prev => ({ ...prev, totalWeight: '' }));
     }
-  }, [formData.quantity, formData.weightPerMeter]);
+  }, [formData.quantity, formData.weightPerMeter, formData.lengthPerPiece, formData.productTypeId, productTypes]);
 
   const fetchMasterData = async () => {
     try {
@@ -261,6 +275,7 @@ const Production = () => {
         sparePipes: [],
         weightPerMeter: '',
         totalWeight: '',
+        lengthPerPiece: '6',
       });
       setAttachmentFile(null);
       setNewCutRollLength('');
@@ -763,7 +778,7 @@ const Production = () => {
               {/* Weight Tracking */}
               <Card className="p-4 bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800">
                 <h3 className="font-medium mb-3 text-blue-900 dark:text-blue-100">Weight Tracking (Optional)</h3>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-3 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="weightPerMeter">
                       Weight per Meter (g/m)
@@ -779,9 +794,29 @@ const Production = () => {
                       className="h-12"
                     />
                     <p className="text-xs text-muted-foreground">
-                      For HDPE pipes: weight in grams per meter
+                      Weight in grams per meter
                     </p>
                   </div>
+                  {productTypes.find(pt => pt.id === formData.productTypeId)?.roll_configuration?.quantity_based && (
+                    <div className="space-y-2">
+                      <Label htmlFor="lengthPerPiece">
+                        Length per Piece (m)
+                      </Label>
+                      <Input
+                        id="lengthPerPiece"
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        placeholder="e.g., 6"
+                        value={formData.lengthPerPiece}
+                        onChange={(e) => setFormData({...formData, lengthPerPiece: e.target.value})}
+                        className="h-12"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Default length for each piece
+                      </p>
+                    </div>
+                  )}
                   <div className="space-y-2">
                     <Label htmlFor="totalWeight">
                       Total Weight (Auto-calculated)

@@ -169,13 +169,9 @@ def create_batch():
                     """, (batch_id, variant_id, actual_length, actual_length, int(pipe_length) if quantity_based else None))
                     total_items += 1
 
-        # Create production transaction
-        cursor.execute("""
-            INSERT INTO transactions (
-                batch_id, transaction_type, quantity_change,
-                transaction_date, notes, created_by, created_at, updated_at
-            ) VALUES (%s, 'PRODUCTION', %s, %s, %s, %s, NOW(), NOW())
-        """, (batch_id, quantity, production_date, notes, user_id))
+        # Note: We don't create a transaction record for production
+        # Production batches are shown directly from the batches table
+        # Only SALE/DISPATCH operations create transaction records
 
         # Audit log
         actor_label = f"{actor['name']} ({actor['role']})"

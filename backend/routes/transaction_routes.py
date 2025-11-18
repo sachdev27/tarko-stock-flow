@@ -136,7 +136,7 @@ def get_transactions():
 
     query = f"""
         SELECT
-            t.id,
+            CONCAT('txn_', t.id) as id,
             t.transaction_type,
             t.quantity_change,
             t.transaction_date,
@@ -180,7 +180,7 @@ def get_transactions():
 
     production_query = f"""
         SELECT
-            b.id,
+            CONCAT('batch_', b.id) as id,
             'PRODUCTION' as transaction_type,
             b.initial_quantity as quantity_change,
             b.created_at as transaction_date,
@@ -229,5 +229,16 @@ def get_transactions():
     all_records.sort(key=lambda x: x['created_at'], reverse=True)
 
     print(f"  Total records returned: {len(all_records)}")
+
+    # Check for duplicate IDs
+    all_ids = [r['id'] for r in all_records]
+    duplicate_ids = [id for id in all_ids if all_ids.count(id) > 1]
+    if duplicate_ids:
+        print(f"  ⚠️ WARNING: Duplicate IDs found: {set(duplicate_ids)}")
+
+    # Show sample IDs
+    if all_records:
+        sample_ids = [r['id'] for r in all_records[:3]]
+        print(f"  Sample IDs: {sample_ids}")
 
     return jsonify(all_records), 200

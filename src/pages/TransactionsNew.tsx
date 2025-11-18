@@ -114,9 +114,11 @@ const Transactions = () => {
     applyFilters();
   }, [transactions, filterType, filterProductType, filterBrand, filterCustomer, filterParameters, searchTerm]);
 
-  // Re-fetch when date filters change
+  // Re-fetch when date filters change (backend filtering)
   useEffect(() => {
-    fetchTransactions();
+    if (filterDateFrom && filterDateTo) {
+      fetchTransactions();
+    }
   }, [filterDateFrom, filterDateTo]);
 
   const fetchMasterData = async () => {
@@ -167,11 +169,21 @@ const Transactions = () => {
 
       console.log('📊 Received transactions:', response.data?.length || 0);
 
+      // Check for duplicates in raw data
+      const allIds = (response.data || []).map((t: any) => t.id);
+      const duplicateIds = allIds.filter((id: any, index: number) => allIds.indexOf(id) !== index);
+      if (duplicateIds.length > 0) {
+        console.warn('⚠️ Duplicate IDs found:', duplicateIds);
+      }
+
       // Transform transactions data and remove duplicates
       const seenIds = new Set();
       const transformedData = (response.data || []).filter((txn: any) => {
         // Remove duplicates based on id
-        if (seenIds.has(txn.id)) return false;
+        if (seenIds.has(txn.id)) {
+          console.warn('🔄 Filtering duplicate:', txn.id, txn.batch_code);
+          return false;
+        }
         seenIds.add(txn.id);
         return true;
       }).map((txn: any) => ({
@@ -307,8 +319,12 @@ const Transactions = () => {
       .filter(t => t.transaction_type === 'SALE')
       .reduce((sum, t) => sum + t.quantity, 0),
     totalWeight: filteredTransactions
-      .filter(t => t.transaction_type === 'PRODUCTION' && t.total_weight)
-      .reduce((sum, t) => sum + (t.total_weight || 0), 0),
+      .filter(t => t.total_weight)
+      .reduce((sum, t) => {
+        // total_weight is stored in grams in the database
+        const weight = typeof t.total_weight === 'string' ? parseFloat(t.total_weight) : t.total_weight;
+        return sum + (weight || 0);
+      }, 0),
     productionCount: filteredTransactions.filter(t => t.transaction_type === 'PRODUCTION').length,
     salesCount: filteredTransactions.filter(t => t.transaction_type === 'SALE').length,
   };
@@ -357,7 +373,9 @@ const Transactions = () => {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{(summary.totalWeight / 1000).toFixed(2)} kg</div>
-              <p className="text-xs text-muted-foreground">From production</p>
+              <p className="text-sm font-bold text-primary bg-primary/10 px-2 py-1 rounded mt-1 inline-block">
+                {(summary.totalWeight / 1000000).toFixed(3)} tons
+              </p>
             </CardContent>
           </Card>
           <Card>
