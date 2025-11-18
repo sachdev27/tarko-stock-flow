@@ -3,6 +3,11 @@ from functools import wraps
 from flask import jsonify, request
 from flask_jwt_extended import verify_jwt_in_request, get_jwt_identity
 from database import execute_query, execute_insert
+from datetime import datetime, timedelta
+
+# Account lockout settings
+MAX_FAILED_ATTEMPTS = 5
+LOCKOUT_DURATION_MINUTES = 30
 
 def hash_password(password):
     """Hash a password using bcrypt"""
@@ -11,6 +16,73 @@ def hash_password(password):
 def check_password(password, hashed):
     """Check if password matches hash"""
     return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
+
+def is_account_locked(user):
+    """Check if account is currently locked"""
+    if not user.get('locked_until'):
+        return False
+
+    # Check if lockout period has expired
+    locked_until = user['locked_until']
+    if isinstance(locked_until, str):
+        from dateutil import parser
+        locked_until = parser.parse(locked_until)
+
+    return datetime.now(locked_until.tzinfo) < locked_until
+
+def record_failed_login(user_id):
+    """Record a failed login attempt and lock account if threshold reached"""
+    query = """
+        UPDATE users
+        SET failed_login_attempts = COALESCE(failed_login_attempts, 0) + 1,
+            last_failed_login = NOW()
+        WHERE id = %s
+        RETURNING failed_login_attempts
+    """
+    result = execute_query(query, (user_id,), fetch_one=True)
+
+    if result and result['failed_login_attempts'] >= MAX_FAILED_ATTEMPTS:
+        # Lock the account
+        lock_query = """
+            UPDATE users
+            SET locked_until = NOW() + INTERVAL '%s minutes'
+            WHERE id = %s
+        """
+        execute_query(lock_query, (LOCKOUT_DURATION_MINUTES, user_id), fetch_all=False)
+        return True  # Account is now locked
+
+    return False  # Account not locked yet
+
+def reset_failed_login_attempts(user_id):
+    """Reset failed login attempts after successful login"""
+    query = """
+        UPDATE users
+        SET failed_login_attempts = 0,
+            locked_until = NULL,
+            last_failed_login = NULL
+        WHERE id = %s
+    """
+    execute_query(query, (user_id,), fetch_all=False)
+
+def get_lockout_info(user):
+    """Get human-readable lockout information"""
+    if not is_account_locked(user):
+        return None
+
+    locked_until = user['locked_until']
+    if isinstance(locked_until, str):
+        from dateutil import parser
+        locked_until = parser.parse(locked_until)
+
+    now = datetime.now(locked_until.tzinfo)
+    time_remaining = locked_until - now
+    minutes_remaining = int(time_remaining.total_seconds() / 60)
+
+    return {
+        'locked': True,
+        'minutes_remaining': minutes_remaining,
+        'locked_until': locked_until.isoformat()
+    }
 
 def get_user_by_email(email):
     """Get user by email"""
