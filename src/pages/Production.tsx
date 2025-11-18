@@ -42,6 +42,7 @@ const Production = () => {
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
   const [newCutRollLength, setNewCutRollLength] = useState('');
   const [newSparePipeLength, setNewSparePipeLength] = useState('');
+  const [submitAttempted, setSubmitAttempted] = useState(false);
 
   useEffect(() => {
     fetchMasterData();
@@ -156,6 +157,7 @@ const Production = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitAttempted(true);
 
     if (!formData.locationId || !formData.productTypeId || !formData.brandId || !formData.quantity) {
       toast.error('Please fill in all required fields');
@@ -240,6 +242,7 @@ const Production = () => {
       setAttachmentFile(null);
       setNewCutRollLength('');
       setNewSparePipeLength('');
+      setSubmitAttempted(false);
     } catch (error: any) {
       console.error('Error creating batch:', error);
       toast.error(error.response?.data?.error || 'Failed to create production batch');
@@ -288,7 +291,7 @@ const Production = () => {
               <div className="space-y-2">
                 <Label htmlFor="location">Location *</Label>
                 <Select value={formData.locationId} onValueChange={(value) => setFormData({...formData, locationId: value})}>
-                  <SelectTrigger id="location" className={`h-12 ${!formData.locationId ? 'border-red-500 border-2' : ''}`}>
+                  <SelectTrigger id="location" className={`h-12 ${submitAttempted && !formData.locationId ? 'border-red-500 border-2' : ''}`}>
                     <SelectValue placeholder="Select location" />
                   </SelectTrigger>
                   <SelectContent>
@@ -305,7 +308,7 @@ const Production = () => {
                 <Select value={formData.productTypeId} onValueChange={(value) => {
                   setFormData({...formData, productTypeId: value, parameters: {}});
                 }}>
-                  <SelectTrigger id="productType" className={`h-12 ${!formData.productTypeId ? 'border-red-500 border-2' : ''}`}>
+                  <SelectTrigger id="productType" className={`h-12 ${submitAttempted && !formData.productTypeId ? 'border-red-500 border-2' : ''}`}>
                     <SelectValue placeholder="Select product type" />
                   </SelectTrigger>
                   <SelectContent>
@@ -320,7 +323,7 @@ const Production = () => {
               <div className="space-y-2">
                 <Label htmlFor="brand">Brand *</Label>
                 <Select value={formData.brandId} onValueChange={(value) => setFormData({...formData, brandId: value})}>
-                  <SelectTrigger id="brand" className={`h-12 ${!formData.brandId ? 'border-red-500 border-2' : ''}`}>
+                  <SelectTrigger id="brand" className={`h-12 ${submitAttempted && !formData.brandId ? 'border-red-500 border-2' : ''}`}>
                     <SelectValue placeholder="Select brand" />
                   </SelectTrigger>
                   <SelectContent>
@@ -348,7 +351,7 @@ const Production = () => {
                         >
                           <SelectTrigger
                             id={param.name}
-                            className={`h-12 ${param.required && !formData.parameters[param.name] ? 'border-red-500 border-2' : ''}`}
+                            className={`h-12 ${submitAttempted && param.required && !formData.parameters[param.name] ? 'border-red-500 border-2' : ''}`}
                           >
                             <SelectValue placeholder={`Select ${param.name}`} />
                           </SelectTrigger>
@@ -371,7 +374,7 @@ const Production = () => {
                             ...formData,
                             parameters: {...formData.parameters, [param.name]: e.target.value}
                           })}
-                          className={`h-12 ${param.required && !formData.parameters[param.name] ? 'border-red-500 border-2' : ''}`}
+                          className={`h-12 ${submitAttempted && param.required && !formData.parameters[param.name] ? 'border-red-500 border-2' : ''}`}
                         />
                       )}
                     </div>
