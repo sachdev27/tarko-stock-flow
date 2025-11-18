@@ -111,6 +111,7 @@ CREATE TABLE batches (
   qc_date TIMESTAMPTZ,
   qc_notes TEXT,
   notes TEXT,
+  attachment_url TEXT,
   created_by UUID REFERENCES users(id) NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),

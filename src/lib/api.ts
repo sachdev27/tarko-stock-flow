@@ -67,6 +67,17 @@ export const inventory = {
 
   getCustomers: () =>
     api.get('/inventory/customers'),
+
+  // Batch management
+  updateBatch: (batchId: string, data: any) =>
+    api.put(`/inventory/batches/${batchId}`, data),
+
+  updateBatchQC: (batchId: string, data: { qc_status: string; notes?: string }) =>
+    api.put(`/inventory/batches/${batchId}/qc`, data),
+
+  // Roll management
+  updateRoll: (rollId: string, data: any) =>
+    api.put(`/inventory/rolls/${rollId}`, data),
 };
 
 // Production endpoints
@@ -136,6 +147,17 @@ export const admin = {
     api.put(`/admin/customers/${id}`, data),
   deleteCustomer: (id: string) =>
     api.delete(`/admin/customers/${id}`),
+  exportCustomers: () =>
+    api.get('/admin/customers/export', { responseType: 'blob' }),
+  downloadCustomerTemplate: () =>
+    api.get('/admin/customers/template', { responseType: 'blob' }),
+  importCustomers: (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/admin/customers/import', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  },
 
   // Units
   getUnits: () =>
@@ -144,6 +166,16 @@ export const admin = {
   // Audit Logs
   getAuditLogs: () =>
     api.get('/admin/audit-logs'),
+
+  // Users
+  getUsers: () =>
+    api.get('/admin/users'),
+  createUser: (data: any) =>
+    api.post('/admin/users', data),
+  updateUser: (id: string, data: any) =>
+    api.put(`/admin/users/${id}`, data),
+  deleteUser: (id: string) =>
+    api.delete(`/admin/users/${id}`),
 };
 
 // Reports endpoints
@@ -171,6 +203,9 @@ export const parameters = {
 
   addOption: (data: { parameter_name: string; option_value: string }) =>
     api.post('/parameters/options', data),
+
+  updateOption: (optionId: string, data: { parameter_name: string; option_value: string }) =>
+    api.put(`/parameters/options/${optionId}`, data),
 
   deleteOption: (optionId: number) =>
     api.delete(`/parameters/options/${optionId}`),

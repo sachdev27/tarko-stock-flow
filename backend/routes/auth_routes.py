@@ -1,68 +1,44 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
 from auth import create_user, get_user_by_email, check_password, get_user_role
+from database import execute_query
 
 auth_bp = Blueprint('auth', __name__, url_prefix='/api/auth')
 
 @auth_bp.route('/signup', methods=['POST'])
 def signup():
-    """Register a new user"""
-    try:
-        data = request.get_json()
-
-        if not data:
-            return jsonify({'error': 'No data provided'}), 400
-
-        email = data.get('email')
-        password = data.get('password')
-
-        if not email or not password:
-            return jsonify({'error': 'Email and password required'}), 400
-
-        if len(password) < 6:
-            return jsonify({'error': 'Password must be at least 6 characters'}), 400
-
-        # Check if user exists
-        existing_user = get_user_by_email(email)
-        if existing_user:
-            return jsonify({'error': 'User already exists'}), 400
-
-        # Create user
-        user = create_user(email, password)
-
-        # Create token
-        access_token = create_access_token(identity=str(user['id']))
-
-        return jsonify({
-            'user': {
-                'id': user['id'],
-                'email': user['email'],
-                'role': 'user'
-            },
-            'access_token': access_token
-        }), 201
-    except Exception as e:
-        print(f"Signup error: {str(e)}")
-        return jsonify({'error': f'Signup failed: {str(e)}'}), 500
+    """Public signup disabled - users must be created by admin"""
+    return jsonify({'error': 'Public signup is disabled. Please contact your administrator for an account.'}), 403
 
 @auth_bp.route('/login', methods=['POST'])
 def login():
-    """Login user"""
+    """Login user with email or username"""
     data = request.get_json()
-    email = data.get('email')
+    login_input = data.get('email') or data.get('username')  # Support both
     password = data.get('password')
 
-    if not email or not password:
-        return jsonify({'error': 'Email and password required'}), 400
+    if not login_input or not password:
+        return jsonify({'error': 'Email/username and password required'}), 400
 
-    # Get user
-    user = get_user_by_email(email)
+    # Get user by email or username (try email first, then username)
+    user = get_user_by_email(login_input)
+    if not user:
+        # Try as username
+        user = execute_query("SELECT * FROM users WHERE username = %s AND deleted_at IS NULL", (login_input,), fetch_one=True)
+
     if not user:
         return jsonify({'error': 'Invalid credentials'}), 401
+
+    # Check if user is active
+    if not user.get('is_active', True):
+        return jsonify({'error': 'Account is disabled'}), 403
 
     # Check password
     if not check_password(password, user['password_hash']):
         return jsonify({'error': 'Invalid credentials'}), 401
+
+    # Update last login
+    execute_query("UPDATE users SET last_login_at = NOW() WHERE id = %s", (user['id'],), fetch_all=False)
 
     # Get role
     role = get_user_role(user['id'])
@@ -74,6 +50,8 @@ def login():
         'user': {
             'id': user['id'],
             'email': user['email'],
+            'username': user.get('username'),
+            'full_name': user.get('full_name'),
             'role': role
         },
         'access_token': access_token
@@ -85,8 +63,7 @@ def get_current_user():
     """Get current user info"""
     user_id = get_jwt_identity()
 
-    from database import execute_query
-    query = "SELECT id, email, created_at FROM users WHERE id = %s"
+    query = "SELECT id, email, username, full_name, is_active, created_at, last_login_at FROM users WHERE id = %s"
     user = execute_query(query, (user_id,), fetch_one=True)
 
     if not user:
@@ -98,7 +75,11 @@ def get_current_user():
         'user': {
             'id': user['id'],
             'email': user['email'],
+            'username': user.get('username'),
+            'full_name': user.get('full_name'),
             'role': role,
-            'created_at': user['created_at'].isoformat() if user['created_at'] else None
+            'is_active': user.get('is_active', True),
+            'created_at': user['created_at'].isoformat() if user.get('created_at') else None,
+            'last_login_at': user['last_login_at'].isoformat() if user.get('last_login_at') else None
         }
     }), 200

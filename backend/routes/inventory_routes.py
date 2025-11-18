@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from database import execute_query, execute_insert
-from auth import jwt_required_with_role
+from auth import jwt_required_with_role, get_user_identity_details
 
 inventory_bp = Blueprint('inventory', __name__, url_prefix='/api/inventory')
 
@@ -14,10 +14,12 @@ def get_batches():
     query = """
         SELECT
             b.id, b.batch_code, b.batch_no, b.current_quantity,
-            b.qc_status, b.production_date,
+            b.qc_status, b.production_date, b.attachment_url,
             l.name as location_name,
             pv.parameters,
+            pt.id as product_type_id,
             pt.name as product_type_name,
+            br.id as brand_id,
             br.name as brand_name
         FROM batches b
         JOIN locations l ON b.location_id = l.id
@@ -40,10 +42,11 @@ def get_batches():
     # Get rolls for each batch
     for batch in batches:
         rolls_query = """
-            SELECT id, length_meters, initial_length_meters, status
+            SELECT id, length_meters, initial_length_meters, status, is_cut_roll,
+                   roll_type, bundle_size
             FROM rolls
             WHERE batch_id = %s AND deleted_at IS NULL
-            ORDER BY created_at
+            ORDER BY roll_type, created_at
         """
         batch['rolls'] = execute_query(rolls_query, (batch['id'],))
 
@@ -78,6 +81,181 @@ def get_brands():
     query = "SELECT * FROM brands WHERE deleted_at IS NULL ORDER BY name"
     brands = execute_query(query)
     return jsonify(brands), 200
+
+@inventory_bp.route('/batches/<uuid:batch_id>', methods=['PUT'])
+@jwt_required_with_role('admin')
+def update_batch(batch_id):
+    """Update batch details (admin only)"""
+    user_id = get_jwt_identity()
+    data = request.get_json()
+    actor = get_user_identity_details(user_id)
+
+    allowed_fields = ['batch_no', 'batch_code', 'notes', 'location_id']
+    updates = []
+    params = []
+
+    for field in allowed_fields:
+        if field in data:
+            updates.append(f"{field} = %s")
+            params.append(data[field])
+
+    if not updates:
+        return jsonify({'error': 'No valid fields to update'}), 400
+
+    updates.append("updated_at = NOW()")
+    params.append(str(batch_id))
+
+    query = f"UPDATE batches SET {', '.join(updates)} WHERE id = %s"
+    execute_query(query, params, fetch_all=False)
+
+    # Audit log
+    execute_query("""
+        INSERT INTO audit_logs (
+            user_id, action_type, entity_type, entity_id,
+            description, created_at
+        ) VALUES (%s, 'UPDATE_BATCH', 'BATCH', %s, %s, NOW())
+    """, (
+        user_id,
+        str(batch_id),
+        f"{actor['name']} ({actor['role']}) updated batch fields: {', '.join(allowed_fields)}"
+    ), fetch_all=False)
+
+    return jsonify({'message': 'Batch updated successfully'}), 200
+
+@inventory_bp.route('/batches/<uuid:batch_id>/qc', methods=['PUT'])
+@jwt_required_with_role('admin')
+def update_batch_qc(batch_id):
+    """Update QC status for a batch"""
+    user_id = get_jwt_identity()
+    data = request.get_json()
+    actor = get_user_identity_details(user_id)
+
+    qc_status = data.get('qc_status')
+    notes = data.get('notes', '')
+
+    if qc_status not in ['PENDING', 'PASSED', 'FAILED']:
+        return jsonify({'error': 'Invalid QC status'}), 400
+
+    execute_query("""
+        UPDATE batches
+        SET qc_status = %s, notes = %s, updated_at = NOW()
+        WHERE id = %s
+    """, (qc_status, notes, str(batch_id)), fetch_all=False)
+
+    # Audit log
+    execute_query("""
+        INSERT INTO audit_logs (
+            user_id, action_type, entity_type, entity_id,
+            description, created_at
+        ) VALUES (%s, 'QC_CHECK', 'BATCH', %s, %s, NOW())
+    """, (
+        user_id,
+        str(batch_id),
+        f"{actor['name']} ({actor['role']}) set QC status to {qc_status}: {notes}"
+    ), fetch_all=False)
+
+    return jsonify({'message': 'QC status updated successfully'}), 200
+
+@inventory_bp.route('/rolls/<uuid:roll_id>', methods=['PUT'])
+@jwt_required_with_role('admin')
+def update_roll(roll_id):
+    """Update roll details (admin only)"""
+    user_id = get_jwt_identity()
+    data = request.get_json()
+    actor = get_user_identity_details(user_id)
+
+    length_meters = data.get('length_meters')
+    status = data.get('status')
+    create_transaction = data.get('create_transaction', False)
+
+    # Get the current roll data before update
+    current_roll = execute_query("""
+        SELECT r.*, b.batch_code, b.batch_no
+        FROM rolls r
+        JOIN batches b ON r.batch_id = b.id
+        WHERE r.id = %s
+    """, (str(roll_id),))
+
+    if not current_roll:
+        return jsonify({'error': 'Roll not found'}), 404
+
+    current_roll = current_roll[0]
+    old_status = current_roll['status']
+    old_length = current_roll['length_meters']
+
+    updates = []
+    params = []
+
+    if length_meters is not None:
+        updates.append("length_meters = %s")
+        params.append(float(length_meters))
+
+    if status and status in ['AVAILABLE', 'PARTIAL', 'SOLD_OUT']:
+        updates.append("status = %s")
+        params.append(status)
+
+    if not updates:
+        return jsonify({'error': 'No valid fields to update'}), 400
+
+    updates.append("updated_at = NOW()")
+    params.append(str(roll_id))
+
+    query = f"UPDATE rolls SET {', '.join(updates)} WHERE id = %s"
+    execute_query(query, params, fetch_all=False)
+
+    # Update batch current_quantity
+    execute_query("""
+        UPDATE batches b
+        SET current_quantity = (
+            SELECT COALESCE(SUM(length_meters), 0)
+            FROM rolls
+            WHERE batch_id = b.id AND deleted_at IS NULL
+        ),
+        updated_at = NOW()
+        WHERE id = (
+            SELECT batch_id FROM rolls WHERE id = %s
+        )
+    """, (str(roll_id),), fetch_all=False)
+
+    # Create transaction if status changed to SOLD_OUT
+    if create_transaction and status == 'SOLD_OUT' and old_status != 'SOLD_OUT':
+        quantity_change = -(float(length_meters) if length_meters is not None else old_length)
+
+        execute_query("""
+            INSERT INTO transactions (
+                batch_id, transaction_type, quantity_change,
+                transaction_date, notes, created_by, created_at, updated_at
+            ) VALUES (
+                %s, 'SALE', %s, NOW(), %s, %s, NOW(), NOW()
+            )
+        """, (
+            str(current_roll['batch_id']),
+            quantity_change,
+            f"Roll marked as SOLD_OUT by {actor['name']} ({actor['role']})",
+            user_id
+        ), fetch_all=False)
+
+    # Audit log
+    log_description = f"{actor['name']} ({actor['role']}) updated roll"
+    if old_status != status:
+        log_description += f" (status: {old_status} → {status})"
+    if length_meters is not None and old_length != length_meters:
+        log_description += f" (length: {old_length} → {length_meters}m)"
+    if create_transaction and status == 'SOLD_OUT':
+        log_description += " [Transaction created]"
+
+    execute_query("""
+        INSERT INTO audit_logs (
+            user_id, action_type, entity_type, entity_id,
+            description, created_at
+        ) VALUES (%s, 'UPDATE_ROLL', 'ROLL', %s, %s, NOW())
+    """, (
+        user_id,
+        str(roll_id),
+        log_description
+    ), fetch_all=False)
+
+    return jsonify({'message': 'Roll updated successfully'}), 200
 
 @inventory_bp.route('/customers', methods=['GET'])
 @jwt_required()

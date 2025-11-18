@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
-import { Settings, Plus, Trash2, Edit, Building, Tag, Package, Users, Shield, Sliders } from 'lucide-react';
+import { Settings, Plus, Trash2, Edit, Building, Tag, Package, Users, Shield, Sliders, Upload, Download, FileText } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { admin, parameters } from '@/lib/api';
 
@@ -26,6 +26,7 @@ const Admin = () => {
   const [units, setUnits] = useState<any[]>([]);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [parameterOptions, setParameterOptions] = useState<Record<string, any[]>>({});
+  const [users, setUsers] = useState<any[]>([]);
 
   // Dialog states
   const [locationDialog, setLocationDialog] = useState(false);
@@ -33,9 +34,20 @@ const Admin = () => {
   const [productTypeDialog, setProductTypeDialog] = useState(false);
   const [customerDialog, setCustomerDialog] = useState(false);
   const [parameterDialog, setParameterDialog] = useState(false);
+  const [userDialog, setUserDialog] = useState(false);
 
   // Edit mode states
   const [editingProductType, setEditingProductType] = useState<any>(null);
+  const [editingUser, setEditingUser] = useState<any>(null);
+  const [editingParameter, setEditingParameter] = useState<any>(null);
+
+  // Validation attempt tracking
+  const [locationSubmitAttempted, setLocationSubmitAttempted] = useState(false);
+  const [brandSubmitAttempted, setBrandSubmitAttempted] = useState(false);
+  const [customerSubmitAttempted, setCustomerSubmitAttempted] = useState(false);
+  const [productTypeSubmitAttempted, setProductTypeSubmitAttempted] = useState(false);
+  const [parameterSubmitAttempted, setParameterSubmitAttempted] = useState(false);
+  const [userSubmitAttempted, setUserSubmitAttempted] = useState(false);
 
   // Form data
   const [locationForm, setLocationForm] = useState({ name: '', address: '' });
@@ -45,6 +57,18 @@ const Admin = () => {
     unit_id: '',
     description: '',
     parameter_schema: [] as any[],
+    roll_configuration: {
+      type: 'standard_rolls',
+      options: [
+        { value: 500, label: '500m' },
+        { value: 300, label: '300m' },
+        { value: 200, label: '200m' },
+        { value: 100, label: '100m' }
+      ],
+      allow_cut_rolls: true,
+      bundle_sizes: [],
+      allow_spare: false
+    }
   });
   const [newParameter, setNewParameter] = useState({
     name: '',
@@ -60,8 +84,17 @@ const Admin = () => {
     address: '',
   });
   const [parameterForm, setParameterForm] = useState({
+    id: '',
     parameter_name: 'PE',
     option_value: '',
+  });
+  const [userForm, setUserForm] = useState({
+    email: '',
+    username: '',
+    full_name: '',
+    password: '',
+    role: 'user',
+    is_active: true,
   });
 
   useEffect(() => {
@@ -74,7 +107,7 @@ const Admin = () => {
     setLoading(true);
     try {
       console.log('Fetching admin data...');
-      const [locsRes, brandsRes, typesRes, customersRes, unitsRes, logsRes, paramsRes] = await Promise.all([
+      const [locsRes, brandsRes, typesRes, customersRes, unitsRes, logsRes, paramsRes, usersRes] = await Promise.all([
         admin.getLocations(),
         admin.getBrands(),
         admin.getProductTypes(),
@@ -82,9 +115,10 @@ const Admin = () => {
         admin.getUnits(),
         admin.getAuditLogs(),
         parameters.getOptions(),
+        admin.getUsers(),
       ]);
 
-      console.log('Admin data fetched:', { locsRes, brandsRes, typesRes, customersRes, unitsRes, logsRes, paramsRes });
+      console.log('Admin data fetched:', { locsRes, brandsRes, typesRes, customersRes, unitsRes, logsRes, paramsRes, usersRes });
       setLocations(locsRes.data || []);
       setBrands(brandsRes.data || []);
       setProductTypes(typesRes.data || []);
@@ -92,6 +126,7 @@ const Admin = () => {
       setUnits(unitsRes.data || []);
       setAuditLogs(logsRes.data || []);
       setParameterOptions(paramsRes.data || {});
+      setUsers(usersRes.data || []);
     } catch (error: any) {
       console.error('Error fetching admin data:', error);
       console.error('Error details:', error.response?.data);
@@ -102,6 +137,8 @@ const Admin = () => {
   };
 
   const handleAddLocation = async () => {
+    setLocationSubmitAttempted(true);
+
     if (!locationForm.name) {
       toast.error('Location name is required');
       return;
@@ -112,6 +149,7 @@ const Admin = () => {
       toast.success('Location added successfully');
       setLocationDialog(false);
       setLocationForm({ name: '', address: '' });
+      setLocationSubmitAttempted(false);
       fetchAllData();
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Failed to add location');
@@ -119,6 +157,8 @@ const Admin = () => {
   };
 
   const handleAddBrand = async () => {
+    setBrandSubmitAttempted(true);
+
     if (!brandForm.name) {
       toast.error('Brand name is required');
       return;
@@ -129,6 +169,7 @@ const Admin = () => {
       toast.success('Brand added successfully');
       setBrandDialog(false);
       setBrandForm({ name: '' });
+      setBrandSubmitAttempted(false);
       fetchAllData();
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Failed to add brand');
@@ -136,6 +177,8 @@ const Admin = () => {
   };
 
   const handleAddCustomer = async () => {
+    setCustomerSubmitAttempted(true);
+
     if (!customerForm.name) {
       toast.error('Customer name is required');
       return;
@@ -153,6 +196,7 @@ const Admin = () => {
         gstin: '',
         address: '',
       });
+      setCustomerSubmitAttempted(false);
       fetchAllData();
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Failed to add customer');
@@ -160,6 +204,8 @@ const Admin = () => {
   };
 
   const handleAddProductType = async () => {
+    setProductTypeSubmitAttempted(true);
+
     if (!productTypeForm.name || !productTypeForm.unit_id) {
       toast.error('Product type name and unit are required');
       return;
@@ -181,8 +227,21 @@ const Admin = () => {
         unit_id: '',
         description: '',
         parameter_schema: [],
+        roll_configuration: {
+          type: 'standard_rolls',
+          options: [
+            { value: 500, label: '500m' },
+            { value: 300, label: '300m' },
+            { value: 200, label: '200m' },
+            { value: 100, label: '100m' }
+          ],
+          allow_cut_rolls: true,
+          bundle_sizes: [],
+          allow_spare: false,
+        },
       });
       setNewParameter({ name: '', type: 'text', required: false });
+      setProductTypeSubmitAttempted(false);
       fetchAllData();
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Failed to save product type');
@@ -196,32 +255,116 @@ const Admin = () => {
       unit_id: productType.unit_id,
       description: productType.description || '',
       parameter_schema: productType.parameter_schema || [],
+      roll_configuration: productType.roll_configuration || {
+        type: 'standard_rolls',
+        options: [
+          { value: 500, label: '500m' },
+          { value: 300, label: '300m' },
+          { value: 200, label: '200m' },
+          { value: 100, label: '100m' }
+        ],
+        allow_cut_rolls: true,
+        bundle_sizes: [],
+        allow_spare: false,
+      },
     });
     setProductTypeDialog(true);
   };
 
   const handleAddParameter = async () => {
+    setParameterSubmitAttempted(true);
+
     if (!parameterForm.option_value.trim()) {
       toast.error('Please enter a value');
       return;
     }
 
     try {
-      await parameters.addOption({
-        parameter_name: parameterForm.parameter_name,
-        option_value: parameterForm.option_value.trim(),
-      });
+      if (editingParameter) {
+        // Update existing parameter
+        await parameters.updateOption(parameterForm.id, {
+          parameter_name: parameterForm.parameter_name,
+          option_value: parameterForm.option_value.trim(),
+        });
+        toast.success('Parameter option updated successfully');
+      } else {
+        // Add new parameter
+        await parameters.addOption({
+          parameter_name: parameterForm.parameter_name,
+          option_value: parameterForm.option_value.trim(),
+        });
+        toast.success('Parameter option added successfully');
+      }
 
-      toast.success('Parameter option added successfully');
       setParameterDialog(false);
+      setEditingParameter(null);
       setParameterForm({
+        id: '',
         parameter_name: 'PE',
         option_value: '',
       });
+      setParameterSubmitAttempted(false);
       fetchAllData();
     } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to add parameter option');
+      toast.error(error.response?.data?.error || `Failed to ${editingParameter ? 'update' : 'add'} parameter option`);
     }
+  };
+
+  const handleAddUser = async () => {
+    setUserSubmitAttempted(true);
+
+    if (!userForm.email || !userForm.username || !userForm.full_name || !userForm.password) {
+      toast.error('Email, username, full name, and password are required');
+      return;
+    }
+
+    try {
+      if (editingUser) {
+        const updateData: any = {
+          email: userForm.email,
+          username: userForm.username,
+          full_name: userForm.full_name,
+          role: userForm.role,
+          is_active: userForm.is_active,
+        };
+        if (userForm.password) {
+          updateData.password = userForm.password;
+        }
+        await admin.updateUser(editingUser.id, updateData);
+        toast.success('User updated successfully');
+      } else {
+        await admin.createUser(userForm);
+        toast.success('User created successfully');
+      }
+
+      setUserDialog(false);
+      setEditingUser(null);
+      setUserForm({
+        email: '',
+        username: '',
+        full_name: '',
+        password: '',
+        role: 'user',
+        is_active: true,
+      });
+      setUserSubmitAttempted(false);
+      fetchAllData();
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Failed to save user');
+    }
+  };
+
+  const handleEditUser = (usr: any) => {
+    setEditingUser(usr);
+    setUserForm({
+      email: usr.email,
+      username: usr.username || '',
+      full_name: usr.full_name || '',
+      password: '', // Don't populate password on edit
+      role: usr.role,
+      is_active: usr.is_active ?? true,
+    });
+    setUserDialog(true);
   };
 
   const handleDelete = async (table: string, id: string) => {
@@ -244,12 +387,81 @@ const Admin = () => {
         case 'parameters':
           await parameters.deleteOption(parseInt(id));
           break;
+        case 'users':
+          await admin.deleteUser(id);
+          break;
       }
 
       toast.success('Item deleted successfully');
       fetchAllData();
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Failed to delete item');
+    }
+  };
+
+  const handleDownloadTemplate = async () => {
+    try {
+      const response = await admin.downloadCustomerTemplate();
+
+      // Create a blob from the response
+      const blob = new Blob([response.data], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'customer_import_template.csv');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      toast.success('Template downloaded successfully');
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Failed to download template');
+    }
+  };
+
+  const handleExportCustomers = async () => {
+    try {
+      const response = await admin.exportCustomers();
+
+      // Create a blob from the response
+      const blob = new Blob([response.data], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'customers.csv');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      toast.success('Customers exported successfully');
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Failed to export customers');
+    }
+  };
+
+  const handleImportCustomers = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const response = await admin.importCustomers(file);
+      toast.success(response.data.message);
+
+      if (response.data.errors && response.data.errors.length > 0) {
+        const errorCount = response.data.errors.length - (response.data.skipped || 0);
+        if (errorCount > 0) {
+          toast.error(`${errorCount} rows had errors. Check console for details.`);
+        }
+        console.error('Import errors:', response.data.errors);
+      }
+
+      fetchAllData();
+      event.target.value = ''; // Reset input
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Failed to import customers');
+      event.target.value = ''; // Reset input
     }
   };
 
@@ -290,11 +502,12 @@ const Admin = () => {
         </div>
 
         <Tabs defaultValue="locations" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-6">
+          <TabsList className="grid w-full grid-cols-7">
             <TabsTrigger value="locations">Locations</TabsTrigger>
             <TabsTrigger value="brands">Brands</TabsTrigger>
             <TabsTrigger value="products">Products</TabsTrigger>
             <TabsTrigger value="customers">Customers</TabsTrigger>
+            <TabsTrigger value="users">Users</TabsTrigger>
             <TabsTrigger value="parameters">Parameters</TabsTrigger>
             <TabsTrigger value="audit">Audit Logs</TabsTrigger>
           </TabsList>
@@ -456,6 +669,18 @@ const Admin = () => {
                         unit_id: '',
                         description: '',
                         parameter_schema: [],
+                        roll_configuration: {
+                          type: 'standard_rolls',
+                          options: [
+                            { value: 500, label: '500m' },
+                            { value: 300, label: '300m' },
+                            { value: 200, label: '200m' },
+                            { value: 100, label: '100m' }
+                          ],
+                          allow_cut_rolls: true,
+                          bundle_sizes: [],
+                          allow_spare: false,
+                        },
                       });
                       setNewParameter({ name: '', type: 'text', required: false });
                     }
@@ -581,6 +806,119 @@ const Admin = () => {
                           </div>
                         </div>
 
+                        {/* Roll Configuration */}
+                        <div className="space-y-3">
+                          <Label className="text-base font-semibold">Roll/Bundle Configuration</Label>
+
+                          <div className="space-y-2">
+                            <Label htmlFor="rollType">Roll Type</Label>
+                            <Select
+                              value={productTypeForm.roll_configuration.type}
+                              onValueChange={(value) => {
+                                // When changing type, ensure all required fields exist
+                                const baseConfig = productTypeForm.roll_configuration;
+                                const newConfig = {
+                                  ...baseConfig,
+                                  type: value,
+                                  // Ensure all fields have defaults
+                                  options: baseConfig.options || [
+                                    { value: 500, label: '500m' },
+                                    { value: 300, label: '300m' },
+                                    { value: 200, label: '200m' },
+                                    { value: 100, label: '100m' }
+                                  ],
+                                  allow_cut_rolls: baseConfig.allow_cut_rolls ?? true,
+                                  bundle_sizes: baseConfig.bundle_sizes || [],
+                                  allow_spare: baseConfig.allow_spare ?? false,
+                                };
+                                setProductTypeForm({
+                                  ...productTypeForm,
+                                  roll_configuration: newConfig
+                                });
+                              }}
+                            >
+                              <SelectTrigger id="rollType">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="standard_rolls">Standard Rolls (HDPE Pipe)</SelectItem>
+                                <SelectItem value="bundles">Bundles (Sprinkler Pipe)</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          {productTypeForm.roll_configuration.type === 'standard_rolls' && (
+                            <div className="space-y-2">
+                              <Label className="flex items-center space-x-2">
+                                <input
+                                  type="checkbox"
+                                  checked={productTypeForm.roll_configuration.allow_cut_rolls ?? true}
+                                  onChange={(e) => setProductTypeForm({
+                                    ...productTypeForm,
+                                    roll_configuration: { ...productTypeForm.roll_configuration, allow_cut_rolls: e.target.checked }
+                                  })}
+                                  className="rounded"
+                                />
+                                <span>Allow Cut Rolls</span>
+                              </Label>
+                            </div>
+                          )}
+
+                          {productTypeForm.roll_configuration.type === 'bundles' && (
+                            <div className="space-y-2">
+                              <Label>Bundle Sizes</Label>
+                              <div className="flex gap-2">
+                                <label className="flex items-center space-x-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={(productTypeForm.roll_configuration.bundle_sizes || []).includes(10)}
+                                    onChange={(e) => {
+                                      const sizes = e.target.checked
+                                        ? [...(productTypeForm.roll_configuration.bundle_sizes || []), 10]
+                                        : (productTypeForm.roll_configuration.bundle_sizes || []).filter(s => s !== 10);
+                                      setProductTypeForm({
+                                        ...productTypeForm,
+                                        roll_configuration: { ...productTypeForm.roll_configuration, bundle_sizes: sizes }
+                                      });
+                                    }}
+                                    className="rounded"
+                                  />
+                                  <span>10 pipes</span>
+                                </label>
+                                <label className="flex items-center space-x-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={(productTypeForm.roll_configuration.bundle_sizes || []).includes(20)}
+                                    onChange={(e) => {
+                                      const sizes = e.target.checked
+                                        ? [...(productTypeForm.roll_configuration.bundle_sizes || []), 20]
+                                        : (productTypeForm.roll_configuration.bundle_sizes || []).filter(s => s !== 20);
+                                      setProductTypeForm({
+                                        ...productTypeForm,
+                                        roll_configuration: { ...productTypeForm.roll_configuration, bundle_sizes: sizes }
+                                      });
+                                    }}
+                                    className="rounded"
+                                  />
+                                  <span>20 pipes</span>
+                                </label>
+                              </div>
+                              <Label className="flex items-center space-x-2 mt-2">
+                                <input
+                                  type="checkbox"
+                                  checked={productTypeForm.roll_configuration.allow_spare ?? false}
+                                  onChange={(e) => setProductTypeForm({
+                                    ...productTypeForm,
+                                    roll_configuration: { ...productTypeForm.roll_configuration, allow_spare: e.target.checked }
+                                  })}
+                                  className="rounded"
+                                />
+                                <span>Allow Spare Pipes (not bundled)</span>
+                              </Label>
+                            </div>
+                          )}
+                        </div>
+
                         <Button onClick={handleAddProductType} className="w-full">
                           {editingProductType ? 'Update' : 'Add'} Product Type
                         </Button>
@@ -653,13 +991,45 @@ const Admin = () => {
                   <CardTitle>Customers</CardTitle>
                   <CardDescription>Manage customer information</CardDescription>
                 </div>
-                <Dialog open={customerDialog} onOpenChange={setCustomerDialog}>
-                  <DialogTrigger asChild>
-                    <Button>
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add Customer
-                    </Button>
-                  </DialogTrigger>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleDownloadTemplate}
+                  >
+                    <FileText className="h-4 w-4 mr-2" />
+                    Download Template
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleExportCustomers}
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Export CSV
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => document.getElementById('customer-csv-upload')?.click()}
+                  >
+                    <Upload className="h-4 w-4 mr-2" />
+                    Import CSV
+                  </Button>
+                  <input
+                    id="customer-csv-upload"
+                    type="file"
+                    accept=".csv"
+                    className="hidden"
+                    onChange={handleImportCustomers}
+                  />
+                  <Dialog open={customerDialog} onOpenChange={setCustomerDialog}>
+                    <DialogTrigger asChild>
+                      <Button>
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add Customer
+                      </Button>
+                    </DialogTrigger>
                   <DialogContent className="max-w-2xl">
                     <DialogHeader>
                       <DialogTitle>Add New Customer</DialogTitle>
@@ -736,6 +1106,7 @@ const Admin = () => {
                     </div>
                   </DialogContent>
                 </Dialog>
+                </div>
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
@@ -768,6 +1139,176 @@ const Admin = () => {
             </Card>
           </TabsContent>
 
+          {/* Users Tab */}
+          <TabsContent value="users">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center">
+                      <Users className="h-5 w-5 mr-2" />
+                      User Management
+                    </CardTitle>
+                    <CardDescription>Manage system users and their roles</CardDescription>
+                  </div>
+                  <Dialog open={userDialog} onOpenChange={(open) => {
+                    setUserDialog(open);
+                    if (!open) {
+                      setEditingUser(null);
+                      setUserForm({
+                        email: '',
+                        username: '',
+                        full_name: '',
+                        password: '',
+                        role: 'user',
+                        is_active: true,
+                      });
+                    }
+                  }}>
+                    <DialogTrigger asChild>
+                      <Button>
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add User
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>{editingUser ? 'Edit' : 'Add'} User</DialogTitle>
+                        <DialogDescription>
+                          {editingUser ? 'Update user details' : 'Create a new user account'}
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="user_email">Email</Label>
+                          <Input
+                            id="user_email"
+                            type="email"
+                            placeholder="user@example.com"
+                            value={userForm.email}
+                            onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="user_username">Username</Label>
+                          <Input
+                            id="user_username"
+                            placeholder="username"
+                            value={userForm.username}
+                            onChange={(e) => setUserForm({ ...userForm, username: e.target.value })}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="user_full_name">Full Name</Label>
+                          <Input
+                            id="user_full_name"
+                            placeholder="John Doe"
+                            value={userForm.full_name}
+                            onChange={(e) => setUserForm({ ...userForm, full_name: e.target.value })}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="user_password">Password {editingUser && '(leave blank to keep current)'}</Label>
+                          <Input
+                            id="user_password"
+                            type="password"
+                            placeholder={editingUser ? 'Leave blank to keep current' : 'Password'}
+                            value={userForm.password}
+                            onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="user_role">Role</Label>
+                          <Select
+                            value={userForm.role}
+                            onValueChange={(value) => setUserForm({ ...userForm, role: value })}
+                          >
+                            <SelectTrigger id="user_role">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="user">User</SelectItem>
+                              <SelectItem value="admin">Admin</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <input
+                            type="checkbox"
+                            id="user_is_active"
+                            checked={userForm.is_active}
+                            onChange={(e) => setUserForm({ ...userForm, is_active: e.target.checked })}
+                            className="rounded"
+                          />
+                          <Label htmlFor="user_is_active">Active</Label>
+                        </div>
+                        <Button onClick={handleAddUser} className="w-full">
+                          {editingUser ? 'Update' : 'Create'} User
+                        </Button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="rounded-md border">
+                  <table className="w-full text-sm">
+                    <thead className="border-b bg-muted/50">
+                      <tr>
+                        <th className="p-3 text-left font-medium">Email</th>
+                        <th className="p-3 text-left font-medium">Username</th>
+                        <th className="p-3 text-left font-medium">Full Name</th>
+                        <th className="p-3 text-left font-medium">Role</th>
+                        <th className="p-3 text-left font-medium">Status</th>
+                        <th className="p-3 text-left font-medium">Last Login</th>
+                        <th className="p-3 text-right font-medium">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {users.map((usr) => (
+                        <tr key={usr.id} className="border-b hover:bg-muted/50">
+                          <td className="p-3">{usr.email}</td>
+                          <td className="p-3">{usr.username || '-'}</td>
+                          <td className="p-3">{usr.full_name || '-'}</td>
+                          <td className="p-3">
+                            <Badge variant={usr.role === 'admin' ? 'default' : 'secondary'}>
+                              {usr.role}
+                            </Badge>
+                          </td>
+                          <td className="p-3">
+                            <Badge variant={usr.is_active ? 'default' : 'secondary'}>
+                              {usr.is_active ? 'Active' : 'Inactive'}
+                            </Badge>
+                          </td>
+                          <td className="p-3">
+                            {usr.last_login_at ? new Date(usr.last_login_at).toLocaleString() : 'Never'}
+                          </td>
+                          <td className="p-3 text-right space-x-2">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleEditUser(usr)}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleDelete('users', usr.id)}
+                              disabled={usr.id === user?.id}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
           {/* Parameters Tab */}
           <TabsContent value="parameters">
             <Card>
@@ -778,9 +1319,19 @@ const Admin = () => {
                       <Sliders className="h-5 w-5 mr-2" />
                       Parameter Options
                     </CardTitle>
-                    <CardDescription>Manage PE, PN, and OD parameter values</CardDescription>
+                    <CardDescription>Manage PE, PN, OD, and Type parameter values</CardDescription>
                   </div>
-                  <Dialog open={parameterDialog} onOpenChange={setParameterDialog}>
+                  <Dialog open={parameterDialog} onOpenChange={(open) => {
+                    setParameterDialog(open);
+                    if (!open) {
+                      setEditingParameter(null);
+                      setParameterForm({
+                        id: '',
+                        parameter_name: 'PE',
+                        option_value: '',
+                      });
+                    }
+                  }}>
                     <DialogTrigger asChild>
                       <Button>
                         <Plus className="h-4 w-4 mr-2" />
@@ -789,8 +1340,8 @@ const Admin = () => {
                     </DialogTrigger>
                     <DialogContent>
                       <DialogHeader>
-                        <DialogTitle>Add Parameter Option</DialogTitle>
-                        <DialogDescription>Add a new value for a parameter</DialogDescription>
+                        <DialogTitle>{editingParameter ? 'Edit' : 'Add'} Parameter Option</DialogTitle>
+                        <DialogDescription>{editingParameter ? 'Update' : 'Add a new'} value for a parameter</DialogDescription>
                       </DialogHeader>
                       <div className="space-y-4">
                         <div className="space-y-2">
@@ -808,6 +1359,7 @@ const Admin = () => {
                               <SelectItem value="PE">PE (Polyethylene)</SelectItem>
                               <SelectItem value="PN">PN (Pressure Nominal)</SelectItem>
                               <SelectItem value="OD">OD (Outer Diameter)</SelectItem>
+                              <SelectItem value="Type">Type (Sprinkler Type)</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
@@ -823,7 +1375,7 @@ const Admin = () => {
                           />
                         </div>
                         <Button onClick={handleAddParameter} className="w-full">
-                          Add Option
+                          {editingParameter ? 'Update' : 'Add'} Option
                         </Button>
                       </div>
                     </DialogContent>
@@ -831,7 +1383,7 @@ const Admin = () => {
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                   {/* PE Options */}
                   <div>
                     <h3 className="font-semibold mb-3 text-sm">PE (Polyethylene)</h3>
@@ -842,13 +1394,30 @@ const Admin = () => {
                           className="flex items-center justify-between p-2 bg-secondary/20 rounded"
                         >
                           <span className="text-sm">{option.value}</span>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDelete('parameters', option.id.toString())}
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
+                          <div className="flex gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setEditingParameter(option);
+                                setParameterForm({
+                                  id: option.id,
+                                  parameter_name: 'PE',
+                                  option_value: option.value,
+                                });
+                                setParameterDialog(true);
+                              }}
+                            >
+                              <Edit className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDelete('parameters', option.id.toString())}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
                         </div>
                       ))}
                       {(!parameterOptions['PE'] || parameterOptions['PE'].length === 0) && (
@@ -867,13 +1436,30 @@ const Admin = () => {
                           className="flex items-center justify-between p-2 bg-secondary/20 rounded"
                         >
                           <span className="text-sm">{option.value}</span>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDelete('parameters', option.id.toString())}
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
+                          <div className="flex gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setEditingParameter(option);
+                                setParameterForm({
+                                  id: option.id,
+                                  parameter_name: 'PN',
+                                  option_value: option.value,
+                                });
+                                setParameterDialog(true);
+                              }}
+                            >
+                              <Edit className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDelete('parameters', option.id.toString())}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
                         </div>
                       ))}
                       {(!parameterOptions['PN'] || parameterOptions['PN'].length === 0) && (
@@ -892,16 +1478,75 @@ const Admin = () => {
                           className="flex items-center justify-between p-2 bg-secondary/20 rounded"
                         >
                           <span className="text-sm">{option.value}</span>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDelete('parameters', option.id.toString())}
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
+                          <div className="flex gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setEditingParameter(option);
+                                setParameterForm({
+                                  id: option.id,
+                                  parameter_name: 'OD',
+                                  option_value: option.value,
+                                });
+                                setParameterDialog(true);
+                              }}
+                            >
+                              <Edit className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDelete('parameters', option.id.toString())}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
                         </div>
                       ))}
                       {(!parameterOptions['OD'] || parameterOptions['OD'].length === 0) && (
+                        <p className="text-sm text-muted-foreground italic">No options added</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Type Options */}
+                  <div>
+                    <h3 className="font-semibold mb-3 text-sm">Type (Sprinkler Type)</h3>
+                    <div className="space-y-2">
+                      {(parameterOptions['Type'] || []).map((option) => (
+                        <div
+                          key={option.id}
+                          className="flex items-center justify-between p-2 bg-secondary/20 rounded"
+                        >
+                          <span className="text-sm">{option.value}</span>
+                          <div className="flex gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setEditingParameter(option);
+                                setParameterForm({
+                                  id: option.id,
+                                  parameter_name: 'Type',
+                                  option_value: option.value,
+                                });
+                                setParameterDialog(true);
+                              }}
+                            >
+                              <Edit className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDelete('parameters', option.id.toString())}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                      {(!parameterOptions['Type'] || parameterOptions['Type'].length === 0) && (
                         <p className="text-sm text-muted-foreground italic">No options added</p>
                       )}
                     </div>

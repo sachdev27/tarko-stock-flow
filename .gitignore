@@ -65,3 +65,12 @@ dist/
 # package-lock.json
 # yarn.lock
 bun.lockb
+
+
+# Images and pdf
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.pdf
+*.svg

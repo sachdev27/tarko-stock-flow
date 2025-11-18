@@ -1,12 +1,12 @@
 {
   "rootFolder": "/Users/sachdevs/Projects/Tarko-Inv/tarko-stock-flow",
-  "analyzedAt": "2025-11-18T08:13:44.890Z",
+  "analyzedAt": "2025-11-18T13:25:46.644Z",
   "rootStructure": [
     {
       "name": ".gitignore",
       "type": "file",
-      "size": 824,
-      "lines": 68
+      "size": 879,
+      "lines": 76
     },
     {
       "name": "README.md",
@@ -49,8 +49,8 @@
     {
       "name": "overview.json",
       "type": "file",
-      "size": 18784,
-      "lines": 621
+      "size": 19116,
+      "lines": 634
     },
     {
       "name": "package-lock.json",
@@ -173,13 +173,13 @@
     "overview.json": [
       "{",
       "\"rootFolder\": \"/Users/sachdevs/Projects/Tarko-Inv/tarko-stock-flow\",",
-      "\"analyzedAt\": \"2025-11-17T21:16:46.691Z\",",
+      "\"analyzedAt\": \"2025-11-18T13:25:36.160Z\",",
       "\"rootStructure\": [",
       "{",
       "\"name\": \".gitignore\",",
       "\"type\": \"file\",",
-      "\"size\": 824,",
-      "\"lines\": 68",
+      "\"size\": 829,",
+      "\"lines\": 70",
       "},"
     ],
     "package-lock.json": [
@@ -280,13 +280,13 @@
     {
       "path": "backend",
       "category": "backend",
-      "fileCount": 17,
+      "fileCount": 25,
       "primaryLanguage": "Python"
     },
     {
       "path": "backend/routes",
       "category": "build",
-      "fileCount": 7,
+      "fileCount": 8,
       "primaryLanguage": "Python"
     },
     {
@@ -318,25 +318,25 @@
     "root": "# Tarko Inventory Management System"
   },
   "totals": {
-    "numFiles": 111,
-    "numDirs": 13,
-    "totalSizeBytes": 800536,
-    "totalLinesOfCode": 8672
+    "numFiles": 119,
+    "numDirs": 16,
+    "totalSizeBytes": 1539855,
+    "totalLinesOfCode": 11569
   },
   "fileCategories": {
-    "other": 14,
+    "other": 21,
     "documentation": 4,
-    "source": 86,
+    "source": 87,
     "config": 7
   },
   "linesOfCodePerLanguage": {
-    "Python": 1012,
+    "Python": 1786,
     "Shell": 70,
     "JavaScript": 34,
-    "TypeScript": 7556
+    "TypeScript": 9679
   },
   "filesPerLanguage": {
-    "Python": 11,
+    "Python": 12,
     "Shell": 1,
     "JavaScript": 2,
     "TypeScript": 72
@@ -361,13 +361,13 @@
     {
       "name": "src",
       "numFiles": 72,
-      "totalLoc": 7441,
+      "totalLoc": 9564,
       "dominantLanguage": "TypeScript"
     },
     {
       "name": "backend",
-      "numFiles": 17,
-      "totalLoc": 1082,
+      "numFiles": 25,
+      "totalLoc": 1856,
       "dominantLanguage": "Python"
     },
     {
@@ -382,17 +382,28 @@
       "name": "src",
       "level": 1,
       "numFiles": 72,
-      "totalLoc": 7441,
+      "totalLoc": 9564,
       "dominantLanguage": "TypeScript",
       "category": "General",
       "description": "General module with 72 files (TypeScript)",
       "subdirectories": [
         {
+          "path": "src/pages",
+          "name": "pages",
+          "level": 2,
+          "numFiles": 10,
+          "totalLoc": 4662,
+          "dominantLanguage": "TypeScript",
+          "category": "General",
+          "description": "General module with 10 files (TypeScript)",
+          "subdirectories": []
+        },
+        {
           "path": "src/components",
           "name": "components",
           "level": 2,
           "numFiles": 52,
-          "totalLoc": 4252,
+          "totalLoc": 4273,
           "dominantLanguage": "TypeScript",
           "category": "General",
           "description": "General module with 52 files (TypeScript)",
@@ -411,14 +422,14 @@
           ]
         },
         {
-          "path": "src/pages",
-          "name": "pages",
+          "path": "src/lib",
+          "name": "lib",
           "level": 2,
-          "numFiles": 10,
-          "totalLoc": 2606,
+          "numFiles": 2,
+          "totalLoc": 211,
           "dominantLanguage": "TypeScript",
-          "category": "General",
-          "description": "General module with 10 files (TypeScript)",
+          "category": "Library",
+          "description": "Library module with 2 files (TypeScript)",
           "subdirectories": []
         },
         {
@@ -430,17 +441,6 @@
           "dominantLanguage": "TypeScript",
           "category": "General",
           "description": "General module with 2 files (TypeScript)",
-          "subdirectories": []
-        },
-        {
-          "path": "src/lib",
-          "name": "lib",
-          "level": 2,
-          "numFiles": 2,
-          "totalLoc": 165,
-          "dominantLanguage": "TypeScript",
-          "category": "Library",
-          "description": "Library module with 2 files (TypeScript)",
           "subdirectories": []
         },
         {
@@ -460,8 +460,8 @@
       "path": "backend",
       "name": "backend",
       "level": 1,
-      "numFiles": 17,
-      "totalLoc": 1082,
+      "numFiles": 25,
+      "totalLoc": 1856,
       "dominantLanguage": "Python",
       "category": "General",
       "description": "# Tarko Inventory - Backend API",
@@ -470,12 +470,43 @@
           "path": "backend/routes",
           "name": "routes",
           "level": 2,
-          "numFiles": 7,
-          "totalLoc": 832,
+          "numFiles": 8,
+          "totalLoc": 1578,
           "dominantLanguage": "Python",
           "category": "General",
-          "description": "General module with 7 files (Python)",
+          "description": "General module with 8 files (Python)",
           "subdirectories": []
+        },
+        {
+          "path": "backend/migrations",
+          "name": "migrations",
+          "level": 2,
+          "numFiles": 5,
+          "totalLoc": 0,
+          "category": "General",
+          "description": "General module with 5 files",
+          "subdirectories": []
+        },
+        {
+          "path": "backend/uploads",
+          "name": "uploads",
+          "level": 2,
+          "numFiles": 1,
+          "totalLoc": 0,
+          "category": "General",
+          "description": "General module with 1 files",
+          "subdirectories": [
+            {
+              "path": "backend/uploads/batches",
+              "name": "batches",
+              "level": 3,
+              "numFiles": 1,
+              "totalLoc": 0,
+              "category": "General",
+              "description": "General module with 1 files",
+              "subdirectories": []
+            }
+          ]
         }
       ]
     },
@@ -586,16 +617,16 @@
     "total": 66
   },
   "complexity": {
-    "averageFileSize": 78.12612612612612,
+    "averageFileSize": 97.21848739495799,
     "maxFileSize": 0,
     "nestedDepth": 0,
     "estimatedComplexity": "high"
   },
   "gitRepo": {
     "firstCommitDate": "2025-11-18",
-    "totalCommits": 8,
+    "totalCommits": 12,
     "numContributors": 0,
-    "currentBranch": "sachdevs/update_admin_production_entry",
+    "currentBranch": "sachdevs/logs_auth",
     "remoteUrls": [
       "https://github.com/sachdev27/tarko-stock-flow.git"
     ]
