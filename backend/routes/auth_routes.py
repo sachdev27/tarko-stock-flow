@@ -1,6 +1,10 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
-from auth import create_user, get_user_by_email, check_password, get_user_role
+from auth import (
+    create_user, get_user_by_email, check_password, get_user_role,
+    is_account_locked, record_failed_login, reset_failed_login_attempts,
+    get_lockout_info
+)
 from database import execute_query
 
 auth_bp = Blueprint('auth', __name__, url_prefix='/api/auth')
@@ -12,7 +16,7 @@ def signup():
 
 @auth_bp.route('/login', methods=['POST'])
 def login():
-    """Login user with email or username"""
+    """Login user with email or username - with account lockout protection"""
     data = request.get_json()
     login_input = data.get('email') or data.get('username')  # Support both
     password = data.get('password')
@@ -29,13 +33,40 @@ def login():
     if not user:
         return jsonify({'error': 'Invalid credentials'}), 401
 
+    # Check if account is locked
+    if is_account_locked(user):
+        lockout_info = get_lockout_info(user)
+        return jsonify({
+            'error': f'Account is locked due to too many failed login attempts. Please try again in {lockout_info["minutes_remaining"]} minutes.',
+            'locked_until': lockout_info['locked_until']
+        }), 423  # 423 Locked status code
+
     # Check if user is active
     if not user.get('is_active', True):
         return jsonify({'error': 'Account is disabled'}), 403
 
     # Check password
     if not check_password(password, user['password_hash']):
-        return jsonify({'error': 'Invalid credentials'}), 401
+        # Record failed login attempt
+        is_now_locked = record_failed_login(user['id'])
+
+        if is_now_locked:
+            return jsonify({
+                'error': f'Too many failed login attempts. Account has been locked for 30 minutes.',
+                'locked': True
+            }), 423
+
+        # Get remaining attempts
+        remaining_attempts = 5 - (user.get('failed_login_attempts', 0) + 1)
+        if remaining_attempts > 0:
+            return jsonify({
+                'error': f'Invalid credentials. {remaining_attempts} attempts remaining before account lockout.'
+            }), 401
+        else:
+            return jsonify({'error': 'Invalid credentials'}), 401
+
+    # Reset failed attempts on successful login
+    reset_failed_login_attempts(user['id'])
 
     # Update last login
     execute_query("UPDATE users SET last_login_at = NOW() WHERE id = %s", (user['id'],), fetch_all=False)

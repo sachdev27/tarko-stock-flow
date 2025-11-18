@@ -42,6 +42,7 @@ const Production = () => {
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
   const [newCutRollLength, setNewCutRollLength] = useState('');
   const [newSparePipeLength, setNewSparePipeLength] = useState('');
+  const [submitAttempted, setSubmitAttempted] = useState(false);
 
   useEffect(() => {
     fetchMasterData();
@@ -156,6 +157,7 @@ const Production = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitAttempted(true);
 
     if (!formData.locationId || !formData.productTypeId || !formData.brandId || !formData.quantity) {
       toast.error('Please fill in all required fields');
@@ -240,6 +242,7 @@ const Production = () => {
       setAttachmentFile(null);
       setNewCutRollLength('');
       setNewSparePipeLength('');
+      setSubmitAttempted(false);
     } catch (error: any) {
       console.error('Error creating batch:', error);
       toast.error(error.response?.data?.error || 'Failed to create production batch');
@@ -288,7 +291,7 @@ const Production = () => {
               <div className="space-y-2">
                 <Label htmlFor="location">Location *</Label>
                 <Select value={formData.locationId} onValueChange={(value) => setFormData({...formData, locationId: value})}>
-                  <SelectTrigger id="location" className={`h-12 ${!formData.locationId ? 'border-red-500 border-2' : ''}`}>
+                  <SelectTrigger id="location" className={`h-12 ${submitAttempted && !formData.locationId ? 'border-red-500 border-2' : ''}`}>
                     <SelectValue placeholder="Select location" />
                   </SelectTrigger>
                   <SelectContent>
@@ -305,7 +308,7 @@ const Production = () => {
                 <Select value={formData.productTypeId} onValueChange={(value) => {
                   setFormData({...formData, productTypeId: value, parameters: {}});
                 }}>
-                  <SelectTrigger id="productType" className={`h-12 ${!formData.productTypeId ? 'border-red-500 border-2' : ''}`}>
+                  <SelectTrigger id="productType" className={`h-12 ${submitAttempted && !formData.productTypeId ? 'border-red-500 border-2' : ''}`}>
                     <SelectValue placeholder="Select product type" />
                   </SelectTrigger>
                   <SelectContent>
@@ -320,7 +323,7 @@ const Production = () => {
               <div className="space-y-2">
                 <Label htmlFor="brand">Brand *</Label>
                 <Select value={formData.brandId} onValueChange={(value) => setFormData({...formData, brandId: value})}>
-                  <SelectTrigger id="brand" className={`h-12 ${!formData.brandId ? 'border-red-500 border-2' : ''}`}>
+                  <SelectTrigger id="brand" className={`h-12 ${submitAttempted && !formData.brandId ? 'border-red-500 border-2' : ''}`}>
                     <SelectValue placeholder="Select brand" />
                   </SelectTrigger>
                   <SelectContent>
@@ -348,7 +351,7 @@ const Production = () => {
                         >
                           <SelectTrigger
                             id={param.name}
-                            className={`h-12 ${param.required && !formData.parameters[param.name] ? 'border-red-500 border-2' : ''}`}
+                            className={`h-12 ${submitAttempted && param.required && !formData.parameters[param.name] ? 'border-red-500 border-2' : ''}`}
                           >
                             <SelectValue placeholder={`Select ${param.name}`} />
                           </SelectTrigger>
@@ -371,7 +374,7 @@ const Production = () => {
                             ...formData,
                             parameters: {...formData.parameters, [param.name]: e.target.value}
                           })}
-                          className={`h-12 ${param.required && !formData.parameters[param.name] ? 'border-red-500 border-2' : ''}`}
+                          className={`h-12 ${submitAttempted && param.required && !formData.parameters[param.name] ? 'border-red-500 border-2' : ''}`}
                         />
                       )}
                     </div>
@@ -598,63 +601,95 @@ const Production = () => {
                       {/* Spare Pipes */}
                       {rollConfig.allow_spare && (
                         <Card className="p-4 bg-secondary/20">
-                          <div className="flex items-center justify-between mb-3">
-                            <h3 className="font-medium">Spare {rollConfig.quantity_based ? 'Pieces' : 'Pipes'} (Not Bundled)</h3>
-                            <div className="flex items-center gap-2">
-                              <Input
-                                type="number"
-                                step={rollConfig.quantity_based ? "1" : "0.001"}
-                                placeholder={rollConfig.quantity_based ? "Enter quantity" : "Enter length"}
-                                value={newSparePipeLength}
-                                onChange={(e) => setNewSparePipeLength(e.target.value)}
-                                className="h-9 w-32"
-                              />
-                              <Button
-                                type="button"
-                                size="sm"
-                                onClick={() => {
-                                  if (newSparePipeLength && parseFloat(newSparePipeLength) > 0) {
-                                    setFormData({
-                                      ...formData,
-                                      sparePipes: [...formData.sparePipes, { length: newSparePipeLength }]
-                                    });
-                                    setNewSparePipeLength('');
-                                  } else {
-                                    toast.error(`Please enter a valid ${rollConfig.quantity_based ? 'quantity' : 'length'}`);
-                                  }
-                                }}
-                              >
-                                <Plus className="h-4 w-4 mr-1" />
-                                Add
-                              </Button>
-                            </div>
-                          </div>
-
-                          {formData.sparePipes.length > 0 && (
-                            <div className="space-y-2 max-h-40 overflow-y-auto">
-                              {formData.sparePipes.map((pipe, index) => (
-                                <div key={index} className="flex items-center justify-between p-2 bg-background rounded">
-                                  <span className="text-sm">
-                                    {rollConfig.quantity_based ? 'Piece' : 'Pipe'} {index + 1}: {pipe.length} {rollConfig.quantity_based ? 'pcs' : (selectedProductType?.units?.abbreviation || 'm')}
-                                  </span>
+                          <div className="mb-3">
+                            <h3 className="font-medium mb-2">Spare {rollConfig.quantity_based ? 'Pieces' : 'Pipes'} (Not Bundled)</h3>
+                            {rollConfig.quantity_based ? (
+                              // Single input for quantity-based products (sprinkler)
+                              <div className="space-y-2">
+                                <Label htmlFor="sparePieces">Total Spare Pieces</Label>
+                                <Input
+                                  id="sparePieces"
+                                  type="number"
+                                  step="1"
+                                  min="0"
+                                  placeholder="Enter total spare pieces"
+                                  value={formData.sparePipes.length > 0 ? formData.sparePipes[0].length : ''}
+                                  onChange={(e) => {
+                                    const value = e.target.value;
+                                    if (value === '' || parseInt(value) === 0) {
+                                      setFormData({...formData, sparePipes: []});
+                                    } else {
+                                      setFormData({...formData, sparePipes: [{length: value}]});
+                                    }
+                                  }}
+                                  className="h-12"
+                                />
+                                {formData.sparePipes.length > 0 && formData.sparePipes[0].length && (
+                                  <p className="text-sm text-muted-foreground">
+                                    {formData.sparePipes[0].length} spare pieces will be added
+                                  </p>
+                                )}
+                              </div>
+                            ) : (
+                              // Multiple entries for length-based products (HDPE)
+                              <>
+                                <div className="flex items-center gap-2 mb-3">
+                                  <Input
+                                    type="number"
+                                    step="0.001"
+                                    placeholder="Enter length"
+                                    value={newSparePipeLength}
+                                    onChange={(e) => setNewSparePipeLength(e.target.value)}
+                                    className="h-9 flex-1"
+                                  />
                                   <Button
                                     type="button"
-                                    variant="ghost"
                                     size="sm"
                                     onClick={() => {
-                                      const newSpares = formData.sparePipes.filter((_, i) => i !== index);
-                                      setFormData({...formData, sparePipes: newSpares});
+                                      if (newSparePipeLength && parseFloat(newSparePipeLength) > 0) {
+                                        setFormData({
+                                          ...formData,
+                                          sparePipes: [...formData.sparePipes, { length: newSparePipeLength }]
+                                        });
+                                        setNewSparePipeLength('');
+                                      } else {
+                                        toast.error('Please enter a valid length');
+                                      }
                                     }}
                                   >
-                                    <Trash2 className="h-4 w-4 text-destructive" />
+                                    <Plus className="h-4 w-4 mr-1" />
+                                    Add
                                   </Button>
                                 </div>
-                              ))}
-                            </div>
-                          )}
-                          {formData.sparePipes.length === 0 && (
-                            <p className="text-sm text-muted-foreground italic">No spare {rollConfig.quantity_based ? 'pieces' : 'pipes'} added</p>
-                          )}
+
+                                {formData.sparePipes.length > 0 && (
+                                  <div className="space-y-2 max-h-40 overflow-y-auto">
+                                    {formData.sparePipes.map((pipe, index) => (
+                                      <div key={index} className="flex items-center justify-between p-2 bg-background rounded">
+                                        <span className="text-sm">
+                                          Pipe {index + 1}: {pipe.length} {selectedProductType?.units?.abbreviation || 'm'}
+                                        </span>
+                                        <Button
+                                          type="button"
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() => {
+                                            const newSpares = formData.sparePipes.filter((_, i) => i !== index);
+                                            setFormData({...formData, sparePipes: newSpares});
+                                          }}
+                                        >
+                                          <Trash2 className="h-4 w-4 text-destructive" />
+                                        </Button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                                {formData.sparePipes.length === 0 && (
+                                  <p className="text-sm text-muted-foreground italic">No spare pipes added</p>
+                                )}
+                              </>
+                            )}
+                          </div>
                         </Card>
                       )}
                     </>

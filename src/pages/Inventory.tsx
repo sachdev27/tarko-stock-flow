@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { Package, Search, Filter, QrCode, ChevronDown, ChevronUp, MapPin, Edit2, CheckCircle, XCircle, Clock, Paperclip } from 'lucide-react';
+import { Package, Search, Filter, QrCode, ChevronDown, ChevronUp, MapPin, Edit2, CheckCircle, XCircle, Clock, Paperclip, Calendar } from 'lucide-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { inventory as inventoryAPI } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
@@ -61,6 +61,9 @@ const Inventory = () => {
   const [parameterFilters, setParameterFilters] = useState<Record<string, string>>({});
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'product' | 'batch' | 'roll'>('product');
+  const [timeFilter, setTimeFilter] = useState<string>('all');
+  const [customStartDate, setCustomStartDate] = useState<string>('');
+  const [customEndDate, setCustomEndDate] = useState<string>('');
 
   // Edit dialogs
   const [editingBatch, setEditingBatch] = useState<any>(null);
@@ -89,6 +92,10 @@ const Inventory = () => {
     try {
       const { data } = await inventoryAPI.getProductTypes();
       setProductTypes(data || []);
+      // Set default to first product type if currently 'all'
+      if (selectedProductType === 'all' && data && data.length > 0) {
+        setSelectedProductType(data[0].id);
+      }
     } catch (error) {
       console.error('Error fetching product types:', error);
     }
@@ -145,8 +152,9 @@ const Inventory = () => {
             return sum + bundleSize;
           }, 0);
 
-          // Spare rolls are individual pieces for quantity-based products
-          product.total_quantity += bundlePieces + spareRolls.length;
+          // Count total pieces from spare rolls (each spare roll has bundle_size field with quantity)
+          const sparePieces = spareRolls.reduce((sum, r) => sum + (r.bundle_size || 1), 0);
+          product.total_quantity += bundlePieces + sparePieces;
         } else if (product.roll_config?.type === 'bundles') {
           // For length-based bundles, count pieces but still use meters
           const bundleRolls = (batch.rolls || []).filter((r: any) => r.roll_type?.startsWith('bundle_'));
@@ -197,6 +205,50 @@ const Inventory = () => {
     // Parameter filters
     for (const [paramKey, paramValue] of Object.entries(parameterFilters)) {
       if (paramValue && item.parameters[paramKey] !== paramValue) {
+        return false;
+      }
+    }
+
+    // Time range filter
+    if (timeFilter !== 'all' || (customStartDate && customEndDate)) {
+      const hasMatchingBatch = item.batches.some(batch => {
+        const productionDate = new Date(batch.production_date);
+        const now = new Date();
+
+        if (timeFilter !== 'all' && timeFilter !== 'custom') {
+          // Preset time filters
+          let startDate: Date;
+          switch (timeFilter) {
+            case '1day':
+              startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+              break;
+            case '2days':
+              startDate = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000);
+              break;
+            case '1week':
+              startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+              break;
+            case '2weeks':
+              startDate = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+              break;
+            case '1month':
+              startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+              break;
+            default:
+              return true;
+          }
+          return productionDate >= startDate && productionDate <= now;
+        } else if (timeFilter === 'custom' && customStartDate && customEndDate) {
+          // Custom date range
+          const startDate = new Date(customStartDate);
+          const endDate = new Date(customEndDate);
+          endDate.setHours(23, 59, 59, 999); // Include entire end date
+          return productionDate >= startDate && productionDate <= endDate;
+        }
+        return true;
+      });
+
+      if (!hasMatchingBatch) {
         return false;
       }
     }
@@ -407,14 +459,60 @@ const Inventory = () => {
                 </SelectContent>
               </Select>
 
+              {/* Time Range Filter */}
+              <Select value={timeFilter} onValueChange={(value) => {
+                setTimeFilter(value);
+                if (value !== 'custom') {
+                  setCustomStartDate('');
+                  setCustomEndDate('');
+                }
+              }}>
+                <SelectTrigger className="h-12">
+                  <Calendar className="h-4 w-4 mr-2" />
+                  <SelectValue placeholder="Time Range" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Time</SelectItem>
+                  <SelectItem value="1day">Last 24 Hours</SelectItem>
+                  <SelectItem value="2days">Last 2 Days</SelectItem>
+                  <SelectItem value="1week">Last Week</SelectItem>
+                  <SelectItem value="2weeks">Last 2 Weeks</SelectItem>
+                  <SelectItem value="1month">Last Month</SelectItem>
+                  <SelectItem value="custom">Custom Range</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {/* Custom Date Range Inputs */}
+              {timeFilter === 'custom' && (
+                <>
+                  <Input
+                    type="date"
+                    value={customStartDate}
+                    onChange={(e) => setCustomStartDate(e.target.value)}
+                    placeholder="Start Date"
+                    className="h-12"
+                  />
+                  <Input
+                    type="date"
+                    value={customEndDate}
+                    onChange={(e) => setCustomEndDate(e.target.value)}
+                    placeholder="End Date"
+                    className="h-12"
+                  />
+                </>
+              )}
+
               {/* Clear Filters Button */}
-              {(selectedLocation !== 'all' || selectedBrand !== 'all' || Object.keys(parameterFilters).length > 0) && (
+              {(selectedLocation !== 'all' || selectedBrand !== 'all' || timeFilter !== 'all' || Object.keys(parameterFilters).length > 0) && (
                 <Button
                   variant="outline"
                   onClick={() => {
                     setSelectedLocation('all');
                     setSelectedBrand('all');
                     setParameterFilters({});
+                    setTimeFilter('all');
+                    setCustomStartDate('');
+                    setCustomEndDate('');
                   }}
                   className="h-12"
                 >
@@ -562,7 +660,7 @@ const Inventory = () => {
                                         </span>
                                         {batch.attachment_url && (
                                           <a
-                                            href={batch.attachment_url}
+                                            href={`${import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5500'}${batch.attachment_url}`}
                                             target="_blank"
                                             rel="noopener noreferrer"
                                             onClick={(e) => e.stopPropagation()}
@@ -584,23 +682,37 @@ const Inventory = () => {
                                                 const bundleSize = r.bundle_size || parseInt(r.roll_type?.split('_')[1] || '0');
                                                 return sum + bundleSize;
                                               }, 0);
-                                              return `${bundlePieces + spareRolls.length} pcs`;
+                                              const sparePieces = spareRolls.reduce((sum, r) => sum + (r.bundle_size || 1), 0);
+                                              return `${bundlePieces + sparePieces} pcs`;
                                             })()
                                           : `${batch.current_quantity.toFixed(2)} m`
                                         } |
                                         {(() => {
-                                          const standardRolls = batch.rolls.filter(r => r.roll_type === 'standard' || (!r.roll_type && !r.is_cut_roll)).length;
-                                          const cutRolls = batch.rolls.filter(r => r.roll_type === 'cut' || r.is_cut_roll).length;
-                                          const bundles = batch.rolls.filter(r => r.roll_type?.startsWith('bundle_')).length;
-                                          const sparePipes = batch.rolls.filter(r => r.roll_type === 'spare').length;
+                                          // For quantity-based products, show only bundles and spares
+                                          if (product.roll_config?.quantity_based) {
+                                            const bundles = batch.rolls.filter(r => r.roll_type?.startsWith('bundle_')).length;
+                                            const spareCount = batch.rolls.filter(r => r.roll_type === 'spare').length;
 
-                                          const parts = [];
-                                          if (standardRolls > 0) parts.push(`${standardRolls} Rolls`);
-                                          if (cutRolls > 0) parts.push(`${cutRolls} Cuts`);
-                                          if (bundles > 0) parts.push(`${bundles} Bundles`);
-                                          if (sparePipes > 0) parts.push(`${sparePipes} Spare`);
+                                            const parts = [];
+                                            if (bundles > 0) parts.push(`${bundles} Bundles`);
+                                            if (spareCount > 0) parts.push(`${spareCount} Spare`);
 
-                                          return parts.join(', ') || 'No items';
+                                            return parts.join(', ') || 'No items';
+                                          } else {
+                                            // For length-based products, show all types
+                                            const standardRolls = batch.rolls.filter(r => r.roll_type === 'standard' || (!r.roll_type && !r.is_cut_roll)).length;
+                                            const cutRolls = batch.rolls.filter(r => r.roll_type === 'cut' || r.is_cut_roll).length;
+                                            const bundles = batch.rolls.filter(r => r.roll_type?.startsWith('bundle_')).length;
+                                            const sparePipes = batch.rolls.filter(r => r.roll_type === 'spare').length;
+
+                                            const parts = [];
+                                            if (standardRolls > 0) parts.push(`${standardRolls} Rolls`);
+                                            if (cutRolls > 0) parts.push(`${cutRolls} Cuts`);
+                                            if (bundles > 0) parts.push(`${bundles} Bundles`);
+                                            if (sparePipes > 0) parts.push(`${sparePipes} Spare`);
+
+                                            return parts.join(', ') || 'No items';
+                                          }
                                         })()} |
                                         Produced: {new Date(batch.production_date).toLocaleDateString()}
                                       </div>
@@ -631,8 +743,8 @@ const Inventory = () => {
                               <CollapsibleContent>
                                 <CardContent className="pt-0">
                                   <div className="pl-4 border-l-2 border-secondary">
-                                    {/* Standard Rolls */}
-                                    {batch.rolls.some(r => r.roll_type === 'standard' || (!r.roll_type && !r.is_cut_roll)) && (
+                                    {/* Standard Rolls - Hide for quantity-based products */}
+                                    {!product.roll_config?.quantity_based && batch.rolls.some(r => r.roll_type === 'standard' || (!r.roll_type && !r.is_cut_roll)) && (
                                       <div className="mb-4">
                                         <div className="text-xs font-semibold text-muted-foreground mb-2">
                                           Standard Rolls ({batch.rolls.filter(r => r.roll_type === 'standard' || (!r.roll_type && !r.is_cut_roll)).length})
@@ -678,8 +790,8 @@ const Inventory = () => {
                                       </div>
                                     )}
 
-                                    {/* Cut Rolls */}
-                                    {batch.rolls.some(r => r.roll_type === 'cut' || r.is_cut_roll) && (
+                                    {/* Cut Rolls - Hide for quantity-based products */}
+                                    {!product.roll_config?.quantity_based && batch.rolls.some(r => r.roll_type === 'cut' || r.is_cut_roll) && (
                                       <div className="mb-4">
                                         <div className="text-xs font-semibold text-muted-foreground mb-2">
                                           Cut Rolls ({batch.rolls.filter(r => r.roll_type === 'cut' || r.is_cut_roll).length})
@@ -776,42 +888,59 @@ const Inventory = () => {
                                     {batch.rolls.some(r => r.roll_type === 'spare') && (
                                       <div className="mb-4">
                                         <div className="text-xs font-semibold text-muted-foreground mb-2">
-                                          Spare {product.roll_config?.quantity_based ? 'Pieces' : 'Pipes'} (Custom)
+                                          Spare {product.roll_config?.quantity_based ? 'Pieces' : 'Pipes'} ({batch.rolls.filter(r => r.roll_type === 'spare').length})
                                         </div>
-                                        <div className="p-3 bg-purple-50 dark:bg-purple-950 rounded-lg border border-purple-200 dark:border-purple-800">
-                                          <div className="flex items-center justify-between">
-                                            <div className="flex-1">
-                                              <div className="text-sm font-medium">
-                                                Total Spare {product.roll_config?.quantity_based ? 'Pieces' : 'Pipes'}: {product.roll_config?.quantity_based
-                                                  ? batch.rolls.filter(r => r.roll_type === 'spare').reduce((sum, r) => sum + (r.bundle_size || 1), 0)
-                                                  : batch.rolls.filter(r => r.roll_type === 'spare').length
-                                                }
+                                        {product.roll_config?.quantity_based ? (
+                                          // Quantity-based: Show as single consolidated card
+                                          <div className="p-3 bg-purple-50 dark:bg-purple-950 rounded-lg border border-purple-200 dark:border-purple-800">
+                                            <div className="flex items-center justify-between">
+                                              <div className="flex-1">
+                                                <div className="text-sm font-medium">Spare Pieces</div>
+                                                <div className="text-xs text-muted-foreground">
+                                                  Total: {batch.rolls.filter(r => r.roll_type === 'spare').reduce((sum, r) => sum + (r.bundle_size || 1), 0)} pieces
+                                                </div>
                                               </div>
-                                              <div className="text-xs text-muted-foreground">
-                                                {product.roll_config?.quantity_based
-                                                  ? `${batch.rolls.filter(r => r.roll_type === 'spare').reduce((sum, r) => sum + (r.bundle_size || 1), 0)} pieces`
-                                                  : `Total Length: ${batch.rolls.filter(r => r.roll_type === 'spare').reduce((sum, r) => sum + r.length_meters, 0).toFixed(2)} m`
-                                                }
-                                              </div>
+                                              <Badge variant="secondary">
+                                                SPARE
+                                              </Badge>
                                             </div>
-                                            <Badge variant="secondary">
-                                              SPARE
-                                            </Badge>
                                           </div>
-                                          {/* Individual spare pipes - only show for length-based products */}
-                                          {!product.roll_config?.quantity_based && (
-                                            <div className="mt-2 grid gap-1 text-xs">
-                                              {batch.rolls.filter(r => r.roll_type === 'spare').map((roll, idx) => (
-                                                <div key={roll.id} className="flex justify-between items-center py-1 px-2 bg-white/50 dark:bg-black/20 rounded">
-                                                  <span>Pipe #{idx + 1}: {roll.length_meters.toFixed(2)} m</span>
-                                                  <Badge variant="secondary" className={getRollStatusColor(roll.status)}>
+                                        ) : (
+                                          // Length-based: Show individual pipes
+                                          <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
+                                            {batch.rolls.filter(r => r.roll_type === 'spare').map((roll, rollIdx) => (
+                                              <div
+                                                key={roll.id}
+                                                className="p-3 bg-purple-50 dark:bg-purple-950 rounded-lg flex items-center justify-between border border-purple-200 dark:border-purple-800"
+                                              >
+                                                <div className="flex-1">
+                                                  <div className="text-sm font-medium">Spare #{rollIdx + 1}</div>
+                                                  <div className="text-xs text-muted-foreground">
+                                                    {roll.length_meters.toFixed(2)} m
+                                                  </div>
+                                                </div>
+                                                <div className="flex items-center gap-1">
+                                                  <Badge
+                                                    variant="secondary"
+                                                    className={getRollStatusColor(roll.status)}
+                                                  >
                                                     {roll.status}
                                                   </Badge>
+                                                  {isAdmin && (
+                                                    <Button
+                                                      size="icon"
+                                                      variant="ghost"
+                                                      className="h-6 w-6"
+                                                      onClick={() => setEditingRoll({...roll, originalStatus: roll.status})}
+                                                    >
+                                                      <Edit2 className="h-3 w-3" />
+                                                    </Button>
+                                                  )}
                                                 </div>
-                                              ))}
-                                            </div>
-                                          )}
-                                        </div>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        )}
                                       </div>
                                     )}
                                   </div>
@@ -854,7 +983,7 @@ const Inventory = () => {
                               </Badge>
                               {batch.attachment_url && (
                                 <a
-                                  href={batch.attachment_url}
+                                  href={`${import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5500'}${batch.attachment_url}`}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   onClick={(e) => e.stopPropagation()}

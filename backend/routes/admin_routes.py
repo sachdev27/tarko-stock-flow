@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify, make_response
 from flask_jwt_extended import jwt_required
 from database import execute_query, execute_insert, get_db_cursor
-from auth import jwt_required_with_role
+from auth import jwt_required_with_role, hash_password
 import json
 import csv
 import io
@@ -505,13 +505,16 @@ def create_user():
         return jsonify({'error': 'Invalid role'}), 400
 
     try:
+        # Hash password using Python bcrypt
+        password_hash = hash_password(password)
+
         # Create user with additional fields
         query = """
             INSERT INTO users (email, username, full_name, password_hash, is_active, created_by_user_id)
-            VALUES (%s, %s, %s, crypt(%s, gen_salt('bf')), true, %s)
+            VALUES (%s, %s, %s, %s, true, %s)
             RETURNING id, email, username, full_name
         """
-        user = execute_insert(query, (email, username, full_name, password, admin_id))
+        user = execute_insert(query, (email, username, full_name, password_hash, admin_id))
 
         # Assign role
         execute_query("""
@@ -560,8 +563,9 @@ def update_user(user_id):
     if 'password' in data and data['password']:
         if len(data['password']) < 6:
             return jsonify({'error': 'Password must be at least 6 characters'}), 400
-        updates.append("password_hash = crypt(%s, gen_salt('bf'))")
-        params.append(data['password'])
+        password_hash = hash_password(data['password'])
+        updates.append("password_hash = %s")
+        params.append(password_hash)
 
     if not updates:
         return jsonify({'error': 'No fields to update'}), 400
