@@ -102,24 +102,80 @@ def create_transaction():
 @transaction_bp.route('/', methods=['GET'])
 @jwt_required_with_role()
 def get_transactions():
-    """Get recent transactions with user details"""
+    """Get comprehensive transaction history with product details"""
     query = """
         SELECT
-            t.id, t.transaction_type, t.quantity_change, t.transaction_date,
-            t.invoice_no, t.notes, t.created_at,
+            t.id,
+            t.transaction_type,
+            t.quantity_change,
+            t.transaction_date,
+            t.invoice_no,
+            t.notes,
+            t.created_at,
             b.batch_code,
+            b.batch_no,
+            b.initial_quantity,
+            b.weight_per_meter,
+            b.total_weight,
+            b.created_at as production_date,
+            pv.product_type,
+            pv.brand,
+            pv.parameters,
+            ut.abbreviation as unit_abbreviation,
             c.name as customer_name,
             u.email as created_by_email,
             u.username as created_by_username,
             u.full_name as created_by_name
         FROM transactions t
         JOIN batches b ON t.batch_id = b.id
+        JOIN product_variants pv ON b.product_variant_id = pv.id
+        LEFT JOIN unit_types ut ON pv.unit_type_id = ut.id
         LEFT JOIN customers c ON t.customer_id = c.id
         LEFT JOIN users u ON t.created_by = u.id
         WHERE t.deleted_at IS NULL
         ORDER BY t.created_at DESC
-        LIMIT 100
+        LIMIT 500
     """
 
     transactions = execute_query(query)
-    return jsonify(transactions), 200
+
+    # Also fetch production batches (not just transactions)
+    production_query = """
+        SELECT
+            b.id,
+            'PRODUCTION' as transaction_type,
+            b.initial_quantity as quantity_change,
+            b.created_at as transaction_date,
+            NULL as invoice_no,
+            NULL as notes,
+            b.created_at,
+            b.batch_code,
+            b.batch_no,
+            b.initial_quantity,
+            b.weight_per_meter,
+            b.total_weight,
+            b.created_at as production_date,
+            pv.product_type,
+            pv.brand,
+            pv.parameters,
+            ut.abbreviation as unit_abbreviation,
+            NULL as customer_name,
+            u.email as created_by_email,
+            u.username as created_by_username,
+            u.full_name as created_by_name
+        FROM batches b
+        JOIN product_variants pv ON b.product_variant_id = pv.id
+        LEFT JOIN unit_types ut ON pv.unit_type_id = ut.id
+        LEFT JOIN users u ON b.created_by = u.id
+        WHERE b.deleted_at IS NULL
+        ORDER BY b.created_at DESC
+        LIMIT 500
+    """
+
+    production_batches = execute_query(production_query)
+
+    # Combine and sort all records
+    all_records = transactions + production_batches
+    all_records.sort(key=lambda x: x['created_at'], reverse=True)
+
+    return jsonify(all_records), 200

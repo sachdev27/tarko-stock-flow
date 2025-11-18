@@ -53,11 +53,8 @@ export const auth = {
 
 // Inventory endpoints
 export const inventory = {
-  getBatches: (locationId?: string) =>
-    api.get('/inventory/batches', { params: { location_id: locationId } }),
-
-  getLocations: () =>
-    api.get('/inventory/locations'),
+  getBatches: () =>
+    api.get('/inventory/batches'),
 
   getProductTypes: () =>
     api.get('/inventory/product-types'),
@@ -71,9 +68,6 @@ export const inventory = {
   // Batch management
   updateBatch: (batchId: string, data: any) =>
     api.put(`/inventory/batches/${batchId}`, data),
-
-  updateBatchQC: (batchId: string, data: { qc_status: string; notes?: string }) =>
-    api.put(`/inventory/batches/${batchId}/qc`, data),
 
   // Roll management
   updateRoll: (rollId: string, data: any) =>
@@ -106,18 +100,25 @@ export const stats = {
     api.get('/stats/dashboard'),
 };
 
+// Dispatch endpoints
+export const dispatch = {
+  getAvailableRolls: (data: { product_type_id: string; brand_id: string; parameters: Record<string, string> }) =>
+    api.post('/dispatch/available-rolls', data),
+
+  cutRoll: (data: { roll_id: string; cuts: { length: number }[] }) =>
+    api.post('/dispatch/cut-roll', data),
+
+  createDispatch: (data: {
+    customer_id: string;
+    invoice_number?: string;
+    notes?: string;
+    items: { type: string; roll_id: string; quantity: number }[];
+  }) =>
+    api.post('/dispatch/create', data),
+};
+
 // Admin endpoints
 export const admin = {
-  // Locations
-  getLocations: () =>
-    api.get('/admin/locations'),
-  createLocation: (data: any) =>
-    api.post('/admin/locations', data),
-  updateLocation: (id: string, data: any) =>
-    api.put(`/admin/locations/${id}`, data),
-  deleteLocation: (id: string) =>
-    api.delete(`/admin/locations/${id}`),
-
   // Brands
   getBrands: () =>
     api.get('/admin/brands'),
@@ -182,9 +183,6 @@ export const admin = {
 export const reports = {
   getTopSellingProducts: (days: number = 30) =>
     api.get('/reports/top-selling-products', { params: { days } }),
-
-  getLocationInventory: (brand?: string, product_type?: string) =>
-    api.get('/reports/location-inventory', { params: { brand, product_type } }),
 
   getCustomerSales: (days: number = 30, brand?: string, product_type?: string) =>
     api.get('/reports/customer-sales', { params: { days, brand, product_type } }),

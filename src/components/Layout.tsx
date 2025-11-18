@@ -12,7 +12,8 @@ import {
   Factory,
   Menu,
   X,
-  Clock
+  Clock,
+  TruckIcon
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -32,6 +33,7 @@ export const Layout = ({ children }: LayoutProps) => {
     { icon: Package, label: 'Production', path: '/production' },
     { icon: Package, label: 'Inventory', path: '/inventory' },
     { icon: ArrowRightLeft, label: 'Transactions', path: '/transactions' },
+    { icon: TruckIcon, label: 'Dispatch', path: '/dispatch' },
     { icon: FileText, label: 'Reports', path: '/reports' },
   ];
 

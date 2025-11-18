@@ -14,13 +14,11 @@ import { inventory, production, parameters } from '@/lib/api';
 const Production = () => {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
-  const [locations, setLocations] = useState<any[]>([]);
   const [productTypes, setProductTypes] = useState<any[]>([]);
   const [brands, setBrands] = useState<any[]>([]);
   const [parameterOptions, setParameterOptions] = useState<Record<string, any[]>>({});
 
   const [formData, setFormData] = useState({
-    locationId: '',
     productTypeId: '',
     brandId: '',
     productionDate: new Date().toISOString().slice(0, 16),
@@ -37,6 +35,9 @@ const Production = () => {
     numberOfBundles: '1',
     bundleSize: '10',
     sparePipes: [] as { length: string }[],
+    // Weight tracking
+    weightPerMeter: '',
+    totalWeight: '',
   });
 
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
@@ -102,18 +103,25 @@ const Production = () => {
     setFormData(prev => ({ ...prev, quantity: total > 0 ? total.toFixed(2) : '' }));
   }, [formData.numberOfRolls, formData.lengthPerRoll, formData.cutRolls, formData.numberOfBundles, formData.bundleSize, formData.sparePipes, formData.productTypeId, productTypes]);
 
+  // Auto-calculate total weight when quantity or weight per meter changes
+  useEffect(() => {
+    const qty = parseFloat(formData.quantity) || 0;
+    const weightPerM = parseFloat(formData.weightPerMeter) || 0;
+    if (qty > 0 && weightPerM > 0) {
+      const totalWeightGrams = qty * weightPerM;
+      setFormData(prev => ({ ...prev, totalWeight: totalWeightGrams.toFixed(2) }));
+    } else {
+      setFormData(prev => ({ ...prev, totalWeight: '' }));
+    }
+  }, [formData.quantity, formData.weightPerMeter]);
+
   const fetchMasterData = async () => {
     try {
-      const [locationsRes, productTypesRes, brandsRes, paramsRes] = await Promise.all([
-        inventory.getLocations(),
+      const [productTypesRes, brandsRes, paramsRes] = await Promise.all([
         inventory.getProductTypes(),
         inventory.getBrands(),
         parameters.getOptions(),
       ]);
-
-      if (locationsRes.data) {
-        setLocations(locationsRes.data);
-      }
 
       if (productTypesRes.data) {
         setProductTypes(productTypesRes.data);
@@ -159,7 +167,7 @@ const Production = () => {
     e.preventDefault();
     setSubmitAttempted(true);
 
-    if (!formData.locationId || !formData.productTypeId || !formData.brandId || !formData.quantity) {
+    if (!formData.productTypeId || !formData.brandId || !formData.quantity) {
       toast.error('Please fill in all required fields');
       return;
     }
@@ -191,7 +199,6 @@ const Production = () => {
 
       // Create FormData for multipart/form-data submission
       const formDataToSend = new FormData();
-      formDataToSend.append('location_id', formData.locationId);
       formDataToSend.append('product_type_id', formData.productTypeId);
       formDataToSend.append('brand_id', formData.brandId);
       formDataToSend.append('parameters', JSON.stringify(formData.parameters));
@@ -210,6 +217,14 @@ const Production = () => {
       formDataToSend.append('roll_config_type', rollConfig.type);
       formDataToSend.append('quantity_based', rollConfig.quantity_based ? 'true' : 'false');
 
+      // Add weight tracking if provided
+      if (formData.weightPerMeter) {
+        formDataToSend.append('weight_per_meter', formData.weightPerMeter);
+      }
+      if (formData.totalWeight) {
+        formDataToSend.append('total_weight', formData.totalWeight);
+      }
+
       // Add attachment file if present
       if (attachmentFile) {
         formDataToSend.append('attachment', attachmentFile);
@@ -222,7 +237,6 @@ const Production = () => {
 
       // Reset form
       setFormData({
-        locationId: '',
         productTypeId: '',
         brandId: '',
         productionDate: new Date().toISOString().slice(0, 10),
@@ -238,6 +252,8 @@ const Production = () => {
         numberOfBundles: '1',
         bundleSize: '10',
         sparePipes: [],
+        weightPerMeter: '',
+        totalWeight: '',
       });
       setAttachmentFile(null);
       setNewCutRollLength('');
@@ -287,21 +303,6 @@ const Production = () => {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Location */}
-              <div className="space-y-2">
-                <Label htmlFor="location">Location *</Label>
-                <Select value={formData.locationId} onValueChange={(value) => setFormData({...formData, locationId: value})}>
-                  <SelectTrigger id="location" className={`h-12 ${submitAttempted && !formData.locationId ? 'border-red-500 border-2' : ''}`}>
-                    <SelectValue placeholder="Select location" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {locations.map((loc) => (
-                      <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
               {/* Product Type */}
               <div className="space-y-2">
                 <Label htmlFor="productType">Product Type *</Label>
@@ -760,6 +761,50 @@ const Production = () => {
                   </p>
                 )}
               </div>
+
+              {/* Weight Tracking */}
+              <Card className="p-4 bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800">
+                <h3 className="font-medium mb-3 text-blue-900 dark:text-blue-100">Weight Tracking (Optional)</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="weightPerMeter">
+                      Weight per Meter (g/m)
+                    </Label>
+                    <Input
+                      id="weightPerMeter"
+                      type="number"
+                      step="0.001"
+                      min="0"
+                      placeholder="e.g., 450.5"
+                      value={formData.weightPerMeter}
+                      onChange={(e) => setFormData({...formData, weightPerMeter: e.target.value})}
+                      className="h-12"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      For HDPE pipes: weight in grams per meter
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="totalWeight">
+                      Total Weight (Auto-calculated)
+                    </Label>
+                    <Input
+                      id="totalWeight"
+                      type="number"
+                      step="0.001"
+                      placeholder="Auto-calculated"
+                      value={formData.totalWeight}
+                      readOnly
+                      className="h-12 bg-muted font-semibold"
+                    />
+                    {formData.totalWeight && (
+                      <p className="text-xs text-muted-foreground">
+                        = {(parseFloat(formData.totalWeight) / 1000).toFixed(2)} kg
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </Card>
 
               {/* Batch Number */}
               <div className="space-y-2">

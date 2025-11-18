@@ -11,8 +11,6 @@ const Dashboard = () => {
   const [statsData, setStatsData] = useState({
     totalBatches: 0,
     activeBatches: 0,
-    qcPending: 0,
-    qcPassed: 0,
   });
   const [loading, setLoading] = useState(true);
 
@@ -45,20 +43,6 @@ const Dashboard = () => {
       value: statsData.activeBatches,
       icon: TrendingUp,
       description: 'Batches with inventory',
-      color: 'text-success',
-    },
-    {
-      title: 'QC Pending',
-      value: statsData.qcPending,
-      icon: AlertTriangle,
-      description: 'Awaiting quality check',
-      color: 'text-warning',
-    },
-    {
-      title: 'QC Passed',
-      value: statsData.qcPassed,
-      icon: CheckCircle,
-      description: 'Quality approved',
       color: 'text-success',
     },
   ];
