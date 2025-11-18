@@ -67,6 +67,17 @@ export const inventory = {
 
   getCustomers: () =>
     api.get('/inventory/customers'),
+
+  // Batch management
+  updateBatch: (batchId: string, data: any) =>
+    api.put(`/inventory/batches/${batchId}`, data),
+
+  updateBatchQC: (batchId: string, data: { qc_status: string; notes?: string }) =>
+    api.put(`/inventory/batches/${batchId}/qc`, data),
+
+  // Roll management
+  updateRoll: (rollId: string, data: any) =>
+    api.put(`/inventory/rolls/${rollId}`, data),
 };
 
 // Production endpoints
@@ -144,6 +155,16 @@ export const admin = {
   // Audit Logs
   getAuditLogs: () =>
     api.get('/admin/audit-logs'),
+
+  // Users
+  getUsers: () =>
+    api.get('/admin/users'),
+  createUser: (data: any) =>
+    api.post('/admin/users', data),
+  updateUser: (id: string, data: any) =>
+    api.put(`/admin/users/${id}`, data),
+  deleteUser: (id: string) =>
+    api.delete(`/admin/users/${id}`),
 };
 
 // Reports endpoints

@@ -96,19 +96,23 @@ def create_transaction():
 @transaction_bp.route('/', methods=['GET'])
 @jwt_required_with_role()
 def get_transactions():
-    """Get recent transactions"""
+    """Get recent transactions with user details"""
     query = """
         SELECT
             t.id, t.transaction_type, t.quantity_change, t.transaction_date,
             t.invoice_no, t.notes, t.created_at,
             b.batch_code,
-            c.name as customer_name
+            c.name as customer_name,
+            u.email as created_by_email,
+            u.username as created_by_username,
+            u.full_name as created_by_name
         FROM transactions t
         JOIN batches b ON t.batch_id = b.id
         LEFT JOIN customers c ON t.customer_id = c.id
+        LEFT JOIN users u ON t.created_by = u.id
         WHERE t.deleted_at IS NULL
         ORDER BY t.created_at DESC
-        LIMIT 50
+        LIMIT 100
     """
 
     transactions = execute_query(query)

@@ -33,34 +33,58 @@ const Production = () => {
     numberOfRolls: '1',
     lengthPerRoll: '500',
     cutRolls: [] as { length: string }[],
+    // Bundle fields
+    numberOfBundles: '1',
+    bundleSize: '10',
+    sparePipes: [] as { length: string }[],
   });
 
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
   const [newCutRollLength, setNewCutRollLength] = useState('');
+  const [newSparePipeLength, setNewSparePipeLength] = useState('');
 
   useEffect(() => {
     fetchMasterData();
   }, []);
 
-  // Auto-calculate total quantity from both normal rolls and cut rolls
+  // Auto-calculate total quantity from rolls, bundles, cut rolls, and spare pipes
   useEffect(() => {
+    const selectedPT = productTypes.find(pt => pt.id === formData.productTypeId);
+    const config = selectedPT?.roll_configuration || { type: 'standard_rolls' };
+
     let total = 0;
 
-    // Calculate normal rolls
-    const rolls = parseInt(formData.numberOfRolls) || 0;
-    const lengthPerRoll = parseFloat(formData.lengthPerRoll) || 0;
-    if (rolls > 0 && lengthPerRoll > 0) {
-      total += rolls * lengthPerRoll;
+    if (config.type === 'standard_rolls') {
+      // Calculate normal rolls
+      const rolls = parseInt(formData.numberOfRolls) || 0;
+      const lengthPerRoll = parseFloat(formData.lengthPerRoll) || 0;
+      if (rolls > 0 && lengthPerRoll > 0) {
+        total += rolls * lengthPerRoll;
+      }
+
+      // Add cut rolls
+      formData.cutRolls.forEach(roll => {
+        const length = parseFloat(roll.length) || 0;
+        total += length;
+      });
+    } else if (config.type === 'bundles') {
+      // Calculate bundles (number of bundles * bundle size * length per pipe)
+      const bundles = parseInt(formData.numberOfBundles) || 0;
+      const bundleSize = parseInt(formData.bundleSize) || 0;
+      const lengthPerPipe = parseFloat(formData.lengthPerRoll) || 0; // Reusing lengthPerRoll for pipe length
+      if (bundles > 0 && bundleSize > 0 && lengthPerPipe > 0) {
+        total += bundles * bundleSize * lengthPerPipe;
+      }
+
+      // Add spare pipes
+      formData.sparePipes.forEach(pipe => {
+        const length = parseFloat(pipe.length) || 0;
+        total += length;
+      });
     }
 
-    // Add cut rolls
-    formData.cutRolls.forEach(roll => {
-      const length = parseFloat(roll.length) || 0;
-      total += length;
-    });
-
     setFormData(prev => ({ ...prev, quantity: total > 0 ? total.toFixed(2) : '' }));
-  }, [formData.numberOfRolls, formData.lengthPerRoll, formData.cutRolls]);
+  }, [formData.numberOfRolls, formData.lengthPerRoll, formData.cutRolls, formData.numberOfBundles, formData.bundleSize, formData.sparePipes, formData.productTypeId, productTypes]);
 
   const fetchMasterData = async () => {
     try {
@@ -160,6 +184,13 @@ const Production = () => {
       formDataToSend.append('batch_code', batchCode);
       formDataToSend.append('notes', formData.notes);
       formDataToSend.append('number_of_rolls', numberOfRolls.toString());
+      formDataToSend.append('cut_rolls', JSON.stringify(formData.cutRolls));
+
+      // Add bundle/spare pipe data
+      formDataToSend.append('number_of_bundles', formData.numberOfBundles);
+      formDataToSend.append('bundle_size', formData.bundleSize);
+      formDataToSend.append('spare_pipes', JSON.stringify(formData.sparePipes));
+      formDataToSend.append('roll_config_type', rollConfig.type);
 
       // Add attachment file if present
       if (attachmentFile) {
@@ -186,9 +217,13 @@ const Production = () => {
         numberOfRolls: '1',
         lengthPerRoll: '500',
         cutRolls: [],
+        numberOfBundles: '1',
+        bundleSize: '10',
+        sparePipes: [],
       });
       setAttachmentFile(null);
       setNewCutRollLength('');
+      setNewSparePipeLength('');
     } catch (error: any) {
       console.error('Error creating batch:', error);
       toast.error(error.response?.data?.error || 'Failed to create production batch');
@@ -199,6 +234,19 @@ const Production = () => {
 
   const selectedProductType = productTypes.find(pt => pt.id === formData.productTypeId);
   const paramSchema = selectedProductType?.parameter_schema || [];
+  const rollConfig = selectedProductType?.roll_configuration || {
+    type: 'standard_rolls',
+    options: [{ value: 500, label: '500m' }, { value: 300, label: '300m' }, { value: 200, label: '200m' }, { value: 100, label: '100m' }],
+    allow_cut_rolls: true,
+    bundle_sizes: [],
+    allow_spare: false,
+  };
+
+  // Debug logging
+  console.log('Selected Product Type:', selectedProductType?.name);
+  console.log('Roll Configuration:', rollConfig);
+  console.log('Allow Cut Rolls:', rollConfig.allow_cut_rolls);
+  console.log('Type check:', typeof rollConfig.allow_cut_rolls);
 
   return (
     <Layout>
@@ -312,6 +360,236 @@ const Production = () => {
                 </div>
               )}
 
+              {/* Roll/Bundle Information - Show only when product type is selected */}
+              {formData.productTypeId && (
+                <div className="space-y-4">
+                  <Label className="text-base font-semibold">
+                    {rollConfig.type === 'bundles' ? 'Bundle Information' : 'Roll Information'} *
+                  </Label>
+
+                  {rollConfig.type === 'standard_rolls' && (
+                    <>
+                      {/* Standard Rolls */}
+                      <Card className="p-4 bg-secondary/20">
+                        <h3 className="font-medium mb-3">Standard Rolls</h3>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="numberOfRolls">Number of Rolls</Label>
+                            <Input
+                              id="numberOfRolls"
+                              type="number"
+                              min="0"
+                              placeholder="0"
+                              value={formData.numberOfRolls}
+                              onChange={(e) => setFormData({...formData, numberOfRolls: e.target.value})}
+                              className="h-10"
+                            />
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label htmlFor="lengthPerRoll">
+                              Length per Roll {selectedProductType && `(${selectedProductType.units?.abbreviation || 'm'})`}
+                            </Label>
+                            <Select value={formData.lengthPerRoll} onValueChange={(value) => setFormData({...formData, lengthPerRoll: value})}>
+                              <SelectTrigger id="lengthPerRoll" className="h-10">
+                                <SelectValue placeholder="Select length" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {rollConfig.options.map((opt: any) => (
+                                  <SelectItem key={opt.value} value={opt.value.toString()}>
+                                    {opt.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                      </Card>
+
+                      {/* Cut Rolls */}
+                      {rollConfig.allow_cut_rolls && (
+                        <Card className="p-4 bg-secondary/20">
+                          <div className="flex items-center justify-between mb-3">
+                            <h3 className="font-medium">Cut Rolls (Custom Lengths)</h3>
+                            <div className="flex items-center gap-2">
+                              <Input
+                                type="number"
+                                step="0.001"
+                                placeholder="Enter length"
+                                value={newCutRollLength}
+                                onChange={(e) => setNewCutRollLength(e.target.value)}
+                                className="h-9 w-32"
+                              />
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={() => {
+                                  if (newCutRollLength && parseFloat(newCutRollLength) > 0) {
+                                    setFormData({
+                                      ...formData,
+                                      cutRolls: [...formData.cutRolls, { length: newCutRollLength }]
+                                    });
+                                    setNewCutRollLength('');
+                                  } else {
+                                    toast.error('Please enter a valid length');
+                                  }
+                                }}
+                              >
+                                <Plus className="h-4 w-4 mr-1" />
+                                Add
+                              </Button>
+                            </div>
+                          </div>
+
+                          {formData.cutRolls.length > 0 && (
+                            <div className="space-y-2 max-h-40 overflow-y-auto">
+                              {formData.cutRolls.map((roll, index) => (
+                                <div key={index} className="flex items-center justify-between p-2 bg-background rounded">
+                                  <span className="text-sm">
+                                    Roll {index + 1}: {roll.length} {selectedProductType?.units?.abbreviation || 'm'}
+                                  </span>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => {
+                                      const newCutRolls = formData.cutRolls.filter((_, i) => i !== index);
+                                      setFormData({...formData, cutRolls: newCutRolls});
+                                    }}
+                                  >
+                                    <Trash2 className="h-4 w-4 text-destructive" />
+                                  </Button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {formData.cutRolls.length === 0 && (
+                            <p className="text-sm text-muted-foreground italic">No cut rolls added</p>
+                          )}
+                        </Card>
+                      )}
+                    </>
+                  )}
+
+                  {rollConfig.type === 'bundles' && (
+                    <>
+                      {/* Bundles */}
+                      <Card className="p-4 bg-secondary/20">
+                        <h3 className="font-medium mb-3">Bundles</h3>
+                        <div className="grid grid-cols-3 gap-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="numberOfBundles">Number of Bundles</Label>
+                            <Input
+                              id="numberOfBundles"
+                              type="number"
+                              min="0"
+                              placeholder="0"
+                              value={formData.numberOfBundles}
+                              onChange={(e) => setFormData({...formData, numberOfBundles: e.target.value})}
+                              className="h-10"
+                            />
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label htmlFor="bundleSize">Pipes per Bundle</Label>
+                            <Select value={formData.bundleSize} onValueChange={(value) => setFormData({...formData, bundleSize: value})}>
+                              <SelectTrigger id="bundleSize" className="h-10">
+                                <SelectValue placeholder="Select size" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {rollConfig.bundle_sizes.map((size: number) => (
+                                  <SelectItem key={size} value={size.toString()}>
+                                    {size} pipes
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label htmlFor="lengthPerPipe">
+                              Length per Pipe {selectedProductType && `(${selectedProductType.units?.abbreviation || 'm'})`}
+                            </Label>
+                            <Input
+                              id="lengthPerPipe"
+                              type="number"
+                              step="0.001"
+                              placeholder="Enter length"
+                              value={formData.lengthPerRoll}
+                              onChange={(e) => setFormData({...formData, lengthPerRoll: e.target.value})}
+                              className="h-10"
+                            />
+                          </div>
+                        </div>
+                      </Card>
+
+                      {/* Spare Pipes */}
+                      {rollConfig.allow_spare && (
+                        <Card className="p-4 bg-secondary/20">
+                          <div className="flex items-center justify-between mb-3">
+                            <h3 className="font-medium">Spare Pipes (Not Bundled)</h3>
+                            <div className="flex items-center gap-2">
+                              <Input
+                                type="number"
+                                step="0.001"
+                                placeholder="Enter length"
+                                value={newSparePipeLength}
+                                onChange={(e) => setNewSparePipeLength(e.target.value)}
+                                className="h-9 w-32"
+                              />
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={() => {
+                                  if (newSparePipeLength && parseFloat(newSparePipeLength) > 0) {
+                                    setFormData({
+                                      ...formData,
+                                      sparePipes: [...formData.sparePipes, { length: newSparePipeLength }]
+                                    });
+                                    setNewSparePipeLength('');
+                                  } else {
+                                    toast.error('Please enter a valid length');
+                                  }
+                                }}
+                              >
+                                <Plus className="h-4 w-4 mr-1" />
+                                Add
+                              </Button>
+                            </div>
+                          </div>
+
+                          {formData.sparePipes.length > 0 && (
+                            <div className="space-y-2 max-h-40 overflow-y-auto">
+                              {formData.sparePipes.map((pipe, index) => (
+                                <div key={index} className="flex items-center justify-between p-2 bg-background rounded">
+                                  <span className="text-sm">
+                                    Pipe {index + 1}: {pipe.length} {selectedProductType?.units?.abbreviation || 'm'}
+                                  </span>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => {
+                                      const newSpares = formData.sparePipes.filter((_, i) => i !== index);
+                                      setFormData({...formData, sparePipes: newSpares});
+                                    }}
+                                  >
+                                    <Trash2 className="h-4 w-4 text-destructive" />
+                                  </Button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {formData.sparePipes.length === 0 && (
+                            <p className="text-sm text-muted-foreground italic">No spare pipes added</p>
+                          )}
+                        </Card>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
               {/* Production Date and Time */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -334,108 +612,6 @@ const Production = () => {
                     className="h-12"
                   />
                 </div>
-              </div>
-
-              {/* Roll Information */}
-              <div className="space-y-4">
-                <Label className="text-base font-semibold">Roll Information *</Label>
-
-                {/* Normal Rolls */}
-                <Card className="p-4 bg-secondary/20">
-                  <h3 className="font-medium mb-3">Standard Rolls</h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="numberOfRolls">Number of Rolls</Label>
-                      <Input
-                        id="numberOfRolls"
-                        type="number"
-                        min="0"
-                        placeholder="0"
-                        value={formData.numberOfRolls}
-                        onChange={(e) => setFormData({...formData, numberOfRolls: e.target.value})}
-                        className="h-10"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="lengthPerRoll">
-                        Length per Roll {selectedProductType && `(${selectedProductType.units?.abbreviation || 'm'})`}
-                      </Label>
-                      <Select value={formData.lengthPerRoll} onValueChange={(value) => setFormData({...formData, lengthPerRoll: value})}>
-                        <SelectTrigger id="lengthPerRoll" className="h-10">
-                          <SelectValue placeholder="Select length" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="500">500 m</SelectItem>
-                          <SelectItem value="300">300 m</SelectItem>
-                          <SelectItem value="200">200 m</SelectItem>
-                          <SelectItem value="100">100 m</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                </Card>
-
-                {/* Custom/Cut Rolls */}
-                <Card className="p-4 bg-secondary/20">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="font-medium">Cut Rolls (Custom Lengths)</h3>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        type="number"
-                        step="0.001"
-                        placeholder="Enter length"
-                        value={newCutRollLength}
-                        onChange={(e) => setNewCutRollLength(e.target.value)}
-                        className="h-9 w-32"
-                      />
-                      <Button
-                        type="button"
-                        size="sm"
-                        onClick={() => {
-                          if (newCutRollLength && parseFloat(newCutRollLength) > 0) {
-                            setFormData({
-                              ...formData,
-                              cutRolls: [...formData.cutRolls, { length: newCutRollLength }]
-                            });
-                            setNewCutRollLength('');
-                          } else {
-                            toast.error('Please enter a valid length');
-                          }
-                        }}
-                      >
-                        <Plus className="h-4 w-4 mr-1" />
-                        Add
-                      </Button>
-                    </div>
-                  </div>
-
-                  {formData.cutRolls.length > 0 && (
-                    <div className="space-y-2 max-h-40 overflow-y-auto">
-                      {formData.cutRolls.map((roll, index) => (
-                        <div key={index} className="flex items-center justify-between p-2 bg-background rounded">
-                          <span className="text-sm">
-                            Roll {index + 1}: {roll.length} {selectedProductType?.units?.abbreviation || 'm'}
-                          </span>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              const newCutRolls = formData.cutRolls.filter((_, i) => i !== index);
-                              setFormData({...formData, cutRolls: newCutRolls});
-                            }}
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {formData.cutRolls.length === 0 && (
-                    <p className="text-sm text-muted-foreground italic">No cut rolls added</p>
-                  )}
-                </Card>
               </div>
 
               {/* Quantity (Auto-calculated) */}
