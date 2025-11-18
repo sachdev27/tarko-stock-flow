@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
-import { Settings, Plus, Trash2, Edit, Building, Tag, Package, Users, Shield, Sliders } from 'lucide-react';
+import { Settings, Plus, Trash2, Edit, Building, Tag, Package, Users, Shield, Sliders, Upload, Download, FileText } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { admin, parameters } from '@/lib/api';
 
@@ -370,6 +370,72 @@ const Admin = () => {
       fetchAllData();
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Failed to delete item');
+    }
+  };
+
+  const handleDownloadTemplate = async () => {
+    try {
+      const response = await admin.downloadCustomerTemplate();
+
+      // Create a blob from the response
+      const blob = new Blob([response.data], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'customer_import_template.csv');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      toast.success('Template downloaded successfully');
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Failed to download template');
+    }
+  };
+
+  const handleExportCustomers = async () => {
+    try {
+      const response = await admin.exportCustomers();
+
+      // Create a blob from the response
+      const blob = new Blob([response.data], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'customers.csv');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      toast.success('Customers exported successfully');
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Failed to export customers');
+    }
+  };
+
+  const handleImportCustomers = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const response = await admin.importCustomers(file);
+      toast.success(response.data.message);
+
+      if (response.data.errors && response.data.errors.length > 0) {
+        const errorCount = response.data.errors.length - (response.data.skipped || 0);
+        if (errorCount > 0) {
+          toast.error(`${errorCount} rows had errors. Check console for details.`);
+        }
+        console.error('Import errors:', response.data.errors);
+      }
+
+      fetchAllData();
+      event.target.value = ''; // Reset input
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Failed to import customers');
+      event.target.value = ''; // Reset input
     }
   };
 
@@ -899,13 +965,45 @@ const Admin = () => {
                   <CardTitle>Customers</CardTitle>
                   <CardDescription>Manage customer information</CardDescription>
                 </div>
-                <Dialog open={customerDialog} onOpenChange={setCustomerDialog}>
-                  <DialogTrigger asChild>
-                    <Button>
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add Customer
-                    </Button>
-                  </DialogTrigger>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleDownloadTemplate}
+                  >
+                    <FileText className="h-4 w-4 mr-2" />
+                    Download Template
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleExportCustomers}
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Export CSV
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => document.getElementById('customer-csv-upload')?.click()}
+                  >
+                    <Upload className="h-4 w-4 mr-2" />
+                    Import CSV
+                  </Button>
+                  <input
+                    id="customer-csv-upload"
+                    type="file"
+                    accept=".csv"
+                    className="hidden"
+                    onChange={handleImportCustomers}
+                  />
+                  <Dialog open={customerDialog} onOpenChange={setCustomerDialog}>
+                    <DialogTrigger asChild>
+                      <Button>
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add Customer
+                      </Button>
+                    </DialogTrigger>
                   <DialogContent className="max-w-2xl">
                     <DialogHeader>
                       <DialogTitle>Add New Customer</DialogTitle>
@@ -982,6 +1080,7 @@ const Admin = () => {
                     </div>
                   </DialogContent>
                 </Dialog>
+                </div>
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">

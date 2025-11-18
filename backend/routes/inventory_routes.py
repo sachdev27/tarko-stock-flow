@@ -14,7 +14,7 @@ def get_batches():
     query = """
         SELECT
             b.id, b.batch_code, b.batch_no, b.current_quantity,
-            b.qc_status, b.production_date,
+            b.qc_status, b.production_date, b.attachment_url,
             l.name as location_name,
             pv.parameters,
             pt.id as product_type_id,
@@ -166,6 +166,22 @@ def update_roll(roll_id):
 
     length_meters = data.get('length_meters')
     status = data.get('status')
+    create_transaction = data.get('create_transaction', False)
+
+    # Get the current roll data before update
+    current_roll = execute_query("""
+        SELECT r.*, b.batch_code, b.batch_no
+        FROM rolls r
+        JOIN batches b ON r.batch_id = b.id
+        WHERE r.id = %s
+    """, (str(roll_id),))
+
+    if not current_roll:
+        return jsonify({'error': 'Roll not found'}), 404
+
+    current_roll = current_roll[0]
+    old_status = current_roll['status']
+    old_length = current_roll['length_meters']
 
     updates = []
     params = []
@@ -201,7 +217,33 @@ def update_roll(roll_id):
         )
     """, (str(roll_id),), fetch_all=False)
 
+    # Create transaction if status changed to SOLD_OUT
+    if create_transaction and status == 'SOLD_OUT' and old_status != 'SOLD_OUT':
+        quantity_change = -(float(length_meters) if length_meters is not None else old_length)
+
+        execute_query("""
+            INSERT INTO transactions (
+                batch_id, transaction_type, quantity_change,
+                transaction_date, notes, created_by, created_at, updated_at
+            ) VALUES (
+                %s, 'SALE', %s, NOW(), %s, %s, NOW(), NOW()
+            )
+        """, (
+            str(current_roll['batch_id']),
+            quantity_change,
+            f"Roll marked as SOLD_OUT by {actor['name']} ({actor['role']})",
+            user_id
+        ), fetch_all=False)
+
     # Audit log
+    log_description = f"{actor['name']} ({actor['role']}) updated roll"
+    if old_status != status:
+        log_description += f" (status: {old_status} → {status})"
+    if length_meters is not None and old_length != length_meters:
+        log_description += f" (length: {old_length} → {length_meters}m)"
+    if create_transaction and status == 'SOLD_OUT':
+        log_description += " [Transaction created]"
+
     execute_query("""
         INSERT INTO audit_logs (
             user_id, action_type, entity_type, entity_id,
@@ -210,7 +252,7 @@ def update_roll(roll_id):
     """, (
         user_id,
         str(roll_id),
-        f"{actor['name']} ({actor['role']}) updated roll: length={length_meters}, status={status}"
+        log_description
     ), fetch_all=False)
 
     return jsonify({'message': 'Roll updated successfully'}), 200

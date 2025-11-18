@@ -147,6 +147,17 @@ export const admin = {
     api.put(`/admin/customers/${id}`, data),
   deleteCustomer: (id: string) =>
     api.delete(`/admin/customers/${id}`),
+  exportCustomers: () =>
+    api.get('/admin/customers/export', { responseType: 'blob' }),
+  downloadCustomerTemplate: () =>
+    api.get('/admin/customers/template', { responseType: 'blob' }),
+  importCustomers: (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/admin/customers/import', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  },
 
   // Units
   getUnits: () =>

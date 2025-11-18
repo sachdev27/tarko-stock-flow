@@ -206,6 +206,7 @@ const Production = () => {
       formDataToSend.append('bundle_size', formData.bundleSize);
       formDataToSend.append('spare_pipes', JSON.stringify(formData.sparePipes));
       formDataToSend.append('roll_config_type', rollConfig.type);
+      formDataToSend.append('quantity_based', rollConfig.quantity_based ? 'true' : 'false');
 
       // Add attachment file if present
       if (attachmentFile) {

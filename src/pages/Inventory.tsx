@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { Package, Search, Filter, QrCode, ChevronDown, ChevronUp, MapPin, Edit2, CheckCircle, XCircle, Clock } from 'lucide-react';
+import { Package, Search, Filter, QrCode, ChevronDown, ChevronUp, MapPin, Edit2, CheckCircle, XCircle, Clock, Paperclip } from 'lucide-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { inventory as inventoryAPI } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
@@ -34,6 +34,7 @@ interface BatchInventory {
   current_quantity: number;
   qc_status: string;
   production_date: string;
+  attachment_url?: string;
   rolls: RollInventory[];
 }
 
@@ -164,6 +165,7 @@ const Inventory = () => {
           current_quantity: parseFloat(batch.current_quantity || 0),
           qc_status: batch.qc_status,
           production_date: batch.production_date,
+          attachment_url: batch.attachment_url,
           rolls: (batch.rolls || []).map((roll: any) => ({
             ...roll,
             length_meters: parseFloat(roll.length_meters || 0),
@@ -258,12 +260,19 @@ const Inventory = () => {
     if (!editingRoll) return;
 
     try {
+      // Check if status changed to SOLD_OUT
+      const statusChangedToSoldOut = editingRoll.originalStatus !== 'SOLD_OUT' && editingRoll.status === 'SOLD_OUT';
+
       await inventoryAPI.updateRoll(editingRoll.id, {
         length_meters: editingRoll.length_meters,
-        status: editingRoll.status
+        status: editingRoll.status,
+        create_transaction: statusChangedToSoldOut
       });
 
-      toast.success('Roll updated successfully');
+      toast.success(statusChangedToSoldOut
+        ? 'Roll marked as sold out and transaction created'
+        : 'Roll updated successfully'
+      );
       setEditingRoll(null);
       fetchInventory();
     } catch (error) {
@@ -323,14 +332,13 @@ const Inventory = () => {
 
               {/* Product Type Filter */}
               <Select value={selectedProductType} onValueChange={setSelectedProductType}>
-                <SelectTrigger className="h-12">
+                <SelectTrigger className={`h-12 ${selectedProductType === 'all' ? 'border-red-500 border-2' : ''}`}>
                   <div className="flex items-center">
                     <Package className="h-4 w-4 mr-2" />
-                    <SelectValue placeholder="All Product Types" />
+                    <SelectValue placeholder="Select Product Type *" />
                   </div>
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Product Types</SelectItem>
                   {productTypes.map((pt) => (
                     <SelectItem key={pt.id} value={pt.id}>{pt.name}</SelectItem>
                   ))}
@@ -400,12 +408,11 @@ const Inventory = () => {
               </Select>
 
               {/* Clear Filters Button */}
-              {(selectedLocation !== 'all' || selectedProductType !== 'all' || selectedBrand !== 'all' || Object.keys(parameterFilters).length > 0) && (
+              {(selectedLocation !== 'all' || selectedBrand !== 'all' || Object.keys(parameterFilters).length > 0) && (
                 <Button
                   variant="outline"
                   onClick={() => {
                     setSelectedLocation('all');
-                    setSelectedProductType('all');
                     setSelectedBrand('all');
                     setParameterFilters({});
                   }}
@@ -553,6 +560,19 @@ const Inventory = () => {
                                           <MapPin className="h-3 w-3 mr-1" />
                                           {batch.location}
                                         </span>
+                                        {batch.attachment_url && (
+                                          <a
+                                            href={batch.attachment_url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="text-sm text-primary hover:text-primary/80 flex items-center"
+                                            title="View attachment"
+                                          >
+                                            <Paperclip className="h-3 w-3 mr-1" />
+                                            Attachment
+                                          </a>
+                                        )}
                                       </div>
                                       <div className="mt-2 text-sm text-muted-foreground">
                                         Batch No: {batch.batch_no} |
@@ -646,7 +666,7 @@ const Inventory = () => {
                                                     size="icon"
                                                     variant="ghost"
                                                     className="h-6 w-6"
-                                                    onClick={() => setEditingRoll(roll)}
+                                                    onClick={() => setEditingRoll({...roll, originalStatus: roll.status})}
                                                   >
                                                     <Edit2 className="h-3 w-3" />
                                                   </Button>
@@ -693,7 +713,7 @@ const Inventory = () => {
                                                     size="icon"
                                                     variant="ghost"
                                                     className="h-6 w-6"
-                                                    onClick={() => setEditingRoll(roll)}
+                                                    onClick={() => setEditingRoll({...roll, originalStatus: roll.status})}
                                                   >
                                                     <Edit2 className="h-3 w-3" />
                                                   </Button>
@@ -740,7 +760,7 @@ const Inventory = () => {
                                                     size="icon"
                                                     variant="ghost"
                                                     className="h-6 w-6"
-                                                    onClick={() => setEditingRoll(roll)}
+                                                    onClick={() => setEditingRoll({...roll, originalStatus: roll.status})}
                                                   >
                                                     <Edit2 className="h-3 w-3" />
                                                   </Button>
@@ -762,11 +782,14 @@ const Inventory = () => {
                                           <div className="flex items-center justify-between">
                                             <div className="flex-1">
                                               <div className="text-sm font-medium">
-                                                Total Spare {product.roll_config?.quantity_based ? 'Pieces' : 'Pipes'}: {batch.rolls.filter(r => r.roll_type === 'spare').length}
+                                                Total Spare {product.roll_config?.quantity_based ? 'Pieces' : 'Pipes'}: {product.roll_config?.quantity_based
+                                                  ? batch.rolls.filter(r => r.roll_type === 'spare').reduce((sum, r) => sum + (r.bundle_size || 1), 0)
+                                                  : batch.rolls.filter(r => r.roll_type === 'spare').length
+                                                }
                                               </div>
                                               <div className="text-xs text-muted-foreground">
                                                 {product.roll_config?.quantity_based
-                                                  ? `${batch.rolls.filter(r => r.roll_type === 'spare').length} pieces`
+                                                  ? `${batch.rolls.filter(r => r.roll_type === 'spare').reduce((sum, r) => sum + (r.bundle_size || 1), 0)} pieces`
                                                   : `Total Length: ${batch.rolls.filter(r => r.roll_type === 'spare').reduce((sum, r) => sum + r.length_meters, 0).toFixed(2)} m`
                                                 }
                                               </div>
@@ -775,17 +798,19 @@ const Inventory = () => {
                                               SPARE
                                             </Badge>
                                           </div>
-                                          {/* Individual spare pipes */}
-                                          <div className="mt-2 grid gap-1 text-xs">
-                                            {batch.rolls.filter(r => r.roll_type === 'spare').map((roll, idx) => (
-                                              <div key={roll.id} className="flex justify-between items-center py-1 px-2 bg-white/50 dark:bg-black/20 rounded">
-                                                <span>Pipe #{idx + 1}: {roll.length_meters.toFixed(2)} m</span>
-                                                <Badge variant="secondary" className={getRollStatusColor(roll.status)}>
-                                                  {roll.status}
-                                                </Badge>
-                                              </div>
-                                            ))}
-                                          </div>
+                                          {/* Individual spare pipes - only show for length-based products */}
+                                          {!product.roll_config?.quantity_based && (
+                                            <div className="mt-2 grid gap-1 text-xs">
+                                              {batch.rolls.filter(r => r.roll_type === 'spare').map((roll, idx) => (
+                                                <div key={roll.id} className="flex justify-between items-center py-1 px-2 bg-white/50 dark:bg-black/20 rounded">
+                                                  <span>Pipe #{idx + 1}: {roll.length_meters.toFixed(2)} m</span>
+                                                  <Badge variant="secondary" className={getRollStatusColor(roll.status)}>
+                                                    {roll.status}
+                                                  </Badge>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          )}
                                         </div>
                                       </div>
                                     )}
@@ -827,6 +852,19 @@ const Inventory = () => {
                               <Badge className={getQCStatusColor(batch.qc_status)}>
                                 {batch.qc_status}
                               </Badge>
+                              {batch.attachment_url && (
+                                <a
+                                  href={batch.attachment_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="text-sm text-primary hover:text-primary/80 flex items-center"
+                                  title="View attachment"
+                                >
+                                  <Paperclip className="h-3 w-3 mr-1" />
+                                  Attachment
+                                </a>
+                              )}
                             </div>
                             <div className="mt-2 text-sm text-muted-foreground">
                               Location: {batch.location} |

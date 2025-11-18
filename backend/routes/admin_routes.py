@@ -1,8 +1,10 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, make_response
 from flask_jwt_extended import jwt_required
 from database import execute_query, execute_insert, get_db_cursor
 from auth import jwt_required_with_role
 import json
+import csv
+import io
 
 admin_bp = Blueprint('admin', __name__, url_prefix='/api/admin')
 
@@ -240,6 +242,16 @@ def create_customer():
     if not name:
         return jsonify({'error': 'Customer name is required'}), 400
 
+    # Check for duplicate customer by name
+    check_query = """
+        SELECT id, name FROM customers
+        WHERE LOWER(TRIM(name)) = LOWER(TRIM(%s))
+        AND deleted_at IS NULL
+    """
+    existing = execute_query(check_query, (name,))
+    if existing:
+        return jsonify({'error': f'Customer "{existing[0]["name"]}" already exists'}), 409
+
     query = """
         INSERT INTO customers (name, contact_person, phone, email, gstin, address)
         VALUES (%s, %s, %s, %s, %s, %s)
@@ -283,6 +295,143 @@ def delete_customer(customer_id):
     """
     execute_query(query, (str(customer_id),), fetch_all=False)
     return jsonify({'message': 'Customer deleted'}), 200
+
+@admin_bp.route('/customers/template', methods=['GET'])
+@jwt_required()
+def download_customer_template():
+    """Download CSV template for customer import"""
+    # Create CSV template with headers and example data
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    # Write header
+    writer.writerow(['Name', 'Contact Person', 'Phone', 'Email', 'GSTIN', 'Address'])
+
+    # Write example rows
+    writer.writerow(['ABC Corporation', 'John Doe', '+91-9876543210', 'john@abc.com', '29ABCDE1234F1Z5', '123 Main Street, City'])
+    writer.writerow(['XYZ Industries Ltd', 'Jane Smith', '+91-8765432109', 'jane@xyz.com', '27XYZAB5678G2Y4', '456 Park Avenue, Town'])
+
+    # Create response
+    output.seek(0)
+    response = make_response(output.getvalue())
+    response.headers['Content-Type'] = 'text/csv'
+    response.headers['Content-Disposition'] = 'attachment; filename=customer_import_template.csv'
+
+    return response
+
+@admin_bp.route('/customers/export', methods=['GET'])
+@jwt_required()
+def export_customers():
+    """Export all customers to CSV"""
+    query = """
+        SELECT name, contact_person, phone, email, gstin, address
+        FROM customers
+        WHERE deleted_at IS NULL
+        ORDER BY name
+    """
+    customers = execute_query(query)
+
+    # Create CSV in memory
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    # Write header
+    writer.writerow(['Name', 'Contact Person', 'Phone', 'Email', 'GSTIN', 'Address'])
+
+    # Write data
+    for customer in customers:
+        writer.writerow([
+            customer.get('name', ''),
+            customer.get('contact_person', ''),
+            customer.get('phone', ''),
+            customer.get('email', ''),
+            customer.get('gstin', ''),
+            customer.get('address', '')
+        ])
+
+    # Create response
+    output.seek(0)
+    response = make_response(output.getvalue())
+    response.headers['Content-Type'] = 'text/csv'
+    response.headers['Content-Disposition'] = 'attachment; filename=customers.csv'
+
+    return response
+
+@admin_bp.route('/customers/import', methods=['POST'])
+@jwt_required_with_role('admin')
+def import_customers():
+    """Import customers from CSV file"""
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file provided'}), 400
+
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No file selected'}), 400
+
+    if not file.filename.endswith('.csv'):
+        return jsonify({'error': 'File must be a CSV'}), 400
+
+    try:
+        # Read CSV file
+        stream = io.StringIO(file.stream.read().decode('utf-8'), newline=None)
+        csv_reader = csv.DictReader(stream)
+
+        imported = 0
+        skipped = 0
+        errors = []
+
+        with get_db_cursor() as cursor:
+            for row_num, row in enumerate(csv_reader, start=2):  # Start at 2 to account for header
+                try:
+                    # Get values from CSV (handle both cases)
+                    name = row.get('Name') or row.get('name', '').strip()
+                    contact_person = row.get('Contact Person') or row.get('contact_person', '').strip()
+                    phone = row.get('Phone') or row.get('phone', '').strip()
+                    email = row.get('Email') or row.get('email', '').strip()
+                    gstin = row.get('GSTIN') or row.get('gstin', '').strip()
+                    address = row.get('Address') or row.get('address', '').strip()
+
+                    if not name:
+                        errors.append(f"Row {row_num}: Customer name is required")
+                        continue
+
+                    # Check if customer already exists (case-insensitive)
+                    cursor.execute("""
+                        SELECT id, name FROM customers
+                        WHERE LOWER(TRIM(name)) = LOWER(TRIM(%s))
+                        AND deleted_at IS NULL
+                    """, (name,))
+                    existing = cursor.fetchone()
+
+                    if existing:
+                        errors.append(f"Row {row_num}: Customer '{name}' already exists (skipped)")
+                        skipped += 1
+                        continue
+
+                    # Insert customer
+                    cursor.execute("""
+                        INSERT INTO customers (name, contact_person, phone, email, gstin, address)
+                        VALUES (%s, %s, %s, %s, %s, %s)
+                    """, (name, contact_person, phone, email, gstin, address))
+
+                    imported += 1
+
+                except Exception as e:
+                    errors.append(f"Row {row_num}: {str(e)}")
+
+        message = f'Successfully imported {imported} customers'
+        if skipped > 0:
+            message += f', skipped {skipped} duplicates'
+
+        return jsonify({
+            'message': message,
+            'imported': imported,
+            'skipped': skipped,
+            'errors': errors
+        }), 200
+
+    except Exception as e:
+        return jsonify({'error': f'Failed to import CSV: {str(e)}'}), 400
 
 # Units
 @admin_bp.route('/units', methods=['GET'])

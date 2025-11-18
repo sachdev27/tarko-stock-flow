@@ -48,6 +48,7 @@ def create_batch():
 
     # Bundle/spare pipe data
     roll_config_type = data.get('roll_config_type', 'standard_rolls')
+    quantity_based = data.get('quantity_based', 'false').lower() == 'true'
     number_of_bundles = int(data.get('number_of_bundles', 0))
     bundle_size = int(data.get('bundle_size', 10))
     spare_pipes = json.loads(data.get('spare_pipes', '[]')) if isinstance(data.get('spare_pipes'), str) else data.get('spare_pipes', [])
@@ -153,12 +154,15 @@ def create_batch():
             for spare_pipe in spare_pipes:
                 pipe_length = float(spare_pipe.get('length', 0))
                 if pipe_length > 0:
+                    # For quantity-based products, each spare piece is 1 unit (quantity)
+                    # For length-based products, use the actual length in meters
+                    actual_length = 1.0 if quantity_based else pipe_length
                     cursor.execute("""
                         INSERT INTO rolls (
                             batch_id, product_variant_id, length_meters,
-                            initial_length_meters, status, is_cut_roll, roll_type, created_at, updated_at
-                        ) VALUES (%s, %s, %s, %s, 'AVAILABLE', TRUE, 'spare', NOW(), NOW())
-                    """, (batch_id, variant_id, pipe_length, pipe_length))
+                            initial_length_meters, status, is_cut_roll, roll_type, bundle_size, created_at, updated_at
+                        ) VALUES (%s, %s, %s, %s, 'AVAILABLE', TRUE, 'spare', %s, NOW(), NOW())
+                    """, (batch_id, variant_id, actual_length, actual_length, int(pipe_length) if quantity_based else None))
                     total_items += 1
 
         # Create production transaction
