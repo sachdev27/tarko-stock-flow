@@ -133,8 +133,21 @@ const Inventory = () => {
         const product = productMap.get(key)!;
 
         // Calculate quantity based on product type
-        if (product.roll_config?.type === 'bundles') {
-          // For bundles, count total pieces (pipes)
+        if (product.roll_config?.type === 'bundles' && product.roll_config?.quantity_based) {
+          // For quantity-based bundles (sprinkler), count pieces not meters
+          const bundleRolls = (batch.rolls || []).filter((r: any) => r.roll_type?.startsWith('bundle_'));
+          const spareRolls = (batch.rolls || []).filter((r: any) => r.roll_type === 'spare');
+
+          // Count total pieces from bundles
+          const bundlePieces = bundleRolls.reduce((sum, r) => {
+            const bundleSize = r.bundle_size || parseInt(r.roll_type?.split('_')[1] || '0');
+            return sum + bundleSize;
+          }, 0);
+
+          // Spare rolls are individual pieces for quantity-based products
+          product.total_quantity += bundlePieces + spareRolls.length;
+        } else if (product.roll_config?.type === 'bundles') {
+          // For length-based bundles, count pieces but still use meters
           const bundleRolls = (batch.rolls || []).filter((r: any) => r.roll_type?.startsWith('bundle_'));
           const spareRolls = (batch.rolls || []).filter((r: any) => r.roll_type === 'spare');
           product.total_quantity += bundleRolls.length + spareRolls.length;
@@ -427,7 +440,7 @@ const Inventory = () => {
           </Card>
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Total Rolls</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">Total Rolls/Bundles</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold">
@@ -543,7 +556,18 @@ const Inventory = () => {
                                       </div>
                                       <div className="mt-2 text-sm text-muted-foreground">
                                         Batch No: {batch.batch_no} |
-                                        Stock: {batch.current_quantity.toFixed(2)} m |
+                                        Stock: {product.roll_config?.quantity_based
+                                          ? (() => {
+                                              const bundleRolls = batch.rolls.filter((r: any) => r.roll_type?.startsWith('bundle_'));
+                                              const spareRolls = batch.rolls.filter((r: any) => r.roll_type === 'spare');
+                                              const bundlePieces = bundleRolls.reduce((sum, r) => {
+                                                const bundleSize = r.bundle_size || parseInt(r.roll_type?.split('_')[1] || '0');
+                                                return sum + bundleSize;
+                                              }, 0);
+                                              return `${bundlePieces + spareRolls.length} pcs`;
+                                            })()
+                                          : `${batch.current_quantity.toFixed(2)} m`
+                                        } |
                                         {(() => {
                                           const standardRolls = batch.rolls.filter(r => r.roll_type === 'standard' || (!r.roll_type && !r.is_cut_roll)).length;
                                           const cutRolls = batch.rolls.filter(r => r.roll_type === 'cut' || r.is_cut_roll).length;
@@ -695,10 +719,13 @@ const Inventory = () => {
                                             >
                                               <div className="flex-1">
                                                 <div className="text-sm font-medium">
-                                                  Bundle #{rollIdx + 1} ({roll.bundle_size || roll.roll_type?.split('_')[1]} pipes)
+                                                  Bundle #{rollIdx + 1} ({roll.bundle_size || roll.roll_type?.split('_')[1]} {product.roll_config?.quantity_based ? 'pieces' : 'pipes'})
                                                 </div>
                                                 <div className="text-xs text-muted-foreground">
-                                                  {roll.length_meters.toFixed(2)} m total
+                                                  {product.roll_config?.quantity_based
+                                                    ? `${roll.bundle_size || roll.roll_type?.split('_')[1]} pieces`
+                                                    : `${roll.length_meters.toFixed(2)} m total`
+                                                  }
                                                 </div>
                                               </div>
                                               <div className="flex items-center gap-1">
@@ -729,16 +756,19 @@ const Inventory = () => {
                                     {batch.rolls.some(r => r.roll_type === 'spare') && (
                                       <div className="mb-4">
                                         <div className="text-xs font-semibold text-muted-foreground mb-2">
-                                          Spare Pipes (Custom)
+                                          Spare {product.roll_config?.quantity_based ? 'Pieces' : 'Pipes'} (Custom)
                                         </div>
                                         <div className="p-3 bg-purple-50 dark:bg-purple-950 rounded-lg border border-purple-200 dark:border-purple-800">
                                           <div className="flex items-center justify-between">
                                             <div className="flex-1">
                                               <div className="text-sm font-medium">
-                                                Total Spare Pipes: {batch.rolls.filter(r => r.roll_type === 'spare').length}
+                                                Total Spare {product.roll_config?.quantity_based ? 'Pieces' : 'Pipes'}: {batch.rolls.filter(r => r.roll_type === 'spare').length}
                                               </div>
                                               <div className="text-xs text-muted-foreground">
-                                                Total Length: {batch.rolls.filter(r => r.roll_type === 'spare').reduce((sum, r) => sum + r.length_meters, 0).toFixed(2)} m
+                                                {product.roll_config?.quantity_based
+                                                  ? `${batch.rolls.filter(r => r.roll_type === 'spare').length} pieces`
+                                                  : `Total Length: ${batch.rolls.filter(r => r.roll_type === 'spare').reduce((sum, r) => sum + r.length_meters, 0).toFixed(2)} m`
+                                                }
                                               </div>
                                             </div>
                                             <Badge variant="secondary">

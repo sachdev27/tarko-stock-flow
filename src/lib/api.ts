@@ -193,6 +193,9 @@ export const parameters = {
   addOption: (data: { parameter_name: string; option_value: string }) =>
     api.post('/parameters/options', data),
 
+  updateOption: (optionId: string, data: { parameter_name: string; option_value: string }) =>
+    api.put(`/parameters/options/${optionId}`, data),
+
   deleteOption: (optionId: number) =>
     api.delete(`/parameters/options/${optionId}`),
 };

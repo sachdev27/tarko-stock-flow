@@ -68,19 +68,34 @@ const Production = () => {
         total += length;
       });
     } else if (config.type === 'bundles') {
-      // Calculate bundles (number of bundles * bundle size * length per pipe)
-      const bundles = parseInt(formData.numberOfBundles) || 0;
-      const bundleSize = parseInt(formData.bundleSize) || 0;
-      const lengthPerPipe = parseFloat(formData.lengthPerRoll) || 0; // Reusing lengthPerRoll for pipe length
-      if (bundles > 0 && bundleSize > 0 && lengthPerPipe > 0) {
-        total += bundles * bundleSize * lengthPerPipe;
-      }
+      if (config.quantity_based) {
+        // Quantity-based (e.g., Sprinkler): count pieces not length
+        const bundles = parseInt(formData.numberOfBundles) || 0;
+        const bundleSize = parseInt(formData.bundleSize) || 0;
+        if (bundles > 0 && bundleSize > 0) {
+          total += bundles * bundleSize;
+        }
 
-      // Add spare pipes
-      formData.sparePipes.forEach(pipe => {
-        const length = parseFloat(pipe.length) || 0;
-        total += length;
-      });
+        // Add spare pipes (as quantity)
+        formData.sparePipes.forEach(pipe => {
+          const qty = parseInt(pipe.length) || 0; // Reusing 'length' field for quantity
+          total += qty;
+        });
+      } else {
+        // Length-based: calculate bundles (number of bundles * bundle size * length per pipe)
+        const bundles = parseInt(formData.numberOfBundles) || 0;
+        const bundleSize = parseInt(formData.bundleSize) || 0;
+        const lengthPerPipe = parseFloat(formData.lengthPerRoll) || 0;
+        if (bundles > 0 && bundleSize > 0 && lengthPerPipe > 0) {
+          total += bundles * bundleSize * lengthPerPipe;
+        }
+
+        // Add spare pipes
+        formData.sparePipes.forEach(pipe => {
+          const length = parseFloat(pipe.length) || 0;
+          total += length;
+        });
+      }
     }
 
     setFormData(prev => ({ ...prev, quantity: total > 0 ? total.toFixed(2) : '' }));
@@ -272,7 +287,7 @@ const Production = () => {
               <div className="space-y-2">
                 <Label htmlFor="location">Location *</Label>
                 <Select value={formData.locationId} onValueChange={(value) => setFormData({...formData, locationId: value})}>
-                  <SelectTrigger id="location" className="h-12">
+                  <SelectTrigger id="location" className={`h-12 ${!formData.locationId ? 'border-red-500 border-2' : ''}`}>
                     <SelectValue placeholder="Select location" />
                   </SelectTrigger>
                   <SelectContent>
@@ -289,7 +304,7 @@ const Production = () => {
                 <Select value={formData.productTypeId} onValueChange={(value) => {
                   setFormData({...formData, productTypeId: value, parameters: {}});
                 }}>
-                  <SelectTrigger id="productType" className="h-12">
+                  <SelectTrigger id="productType" className={`h-12 ${!formData.productTypeId ? 'border-red-500 border-2' : ''}`}>
                     <SelectValue placeholder="Select product type" />
                   </SelectTrigger>
                   <SelectContent>
@@ -304,7 +319,7 @@ const Production = () => {
               <div className="space-y-2">
                 <Label htmlFor="brand">Brand *</Label>
                 <Select value={formData.brandId} onValueChange={(value) => setFormData({...formData, brandId: value})}>
-                  <SelectTrigger id="brand" className="h-12">
+                  <SelectTrigger id="brand" className={`h-12 ${!formData.brandId ? 'border-red-500 border-2' : ''}`}>
                     <SelectValue placeholder="Select brand" />
                   </SelectTrigger>
                   <SelectContent>
@@ -330,7 +345,10 @@ const Production = () => {
                             parameters: {...formData.parameters, [param.name]: value}
                           })}
                         >
-                          <SelectTrigger id={param.name} className="h-12">
+                          <SelectTrigger
+                            id={param.name}
+                            className={`h-12 ${param.required && !formData.parameters[param.name] ? 'border-red-500 border-2' : ''}`}
+                          >
                             <SelectValue placeholder={`Select ${param.name}`} />
                           </SelectTrigger>
                           <SelectContent>
@@ -352,7 +370,7 @@ const Production = () => {
                             ...formData,
                             parameters: {...formData.parameters, [param.name]: e.target.value}
                           })}
-                          className="h-12"
+                          className={`h-12 ${param.required && !formData.parameters[param.name] ? 'border-red-500 border-2' : ''}`}
                         />
                       )}
                     </div>
@@ -390,18 +408,44 @@ const Production = () => {
                             <Label htmlFor="lengthPerRoll">
                               Length per Roll {selectedProductType && `(${selectedProductType.units?.abbreviation || 'm'})`}
                             </Label>
-                            <Select value={formData.lengthPerRoll} onValueChange={(value) => setFormData({...formData, lengthPerRoll: value})}>
-                              <SelectTrigger id="lengthPerRoll" className="h-10">
-                                <SelectValue placeholder="Select length" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {rollConfig.options.map((opt: any) => (
-                                  <SelectItem key={opt.value} value={opt.value.toString()}>
-                                    {opt.label}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                            <div className="flex gap-2">
+                              <Select
+                                value={formData.lengthPerRoll === 'custom' || (formData.lengthPerRoll && !rollConfig.options.find((o: any) => o.value.toString() === formData.lengthPerRoll)) ? 'custom' : formData.lengthPerRoll}
+                                onValueChange={(value) => {
+                                  if (value === 'custom') {
+                                    setFormData({...formData, lengthPerRoll: ''});
+                                  } else {
+                                    setFormData({...formData, lengthPerRoll: value});
+                                  }
+                                }}
+                              >
+                                <SelectTrigger id="lengthPerRoll" className="h-10 flex-1">
+                                  <SelectValue placeholder="Select length" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {rollConfig.options.map((opt: any) => (
+                                    <SelectItem key={opt.value} value={opt.value.toString()}>
+                                      {opt.label}
+                                    </SelectItem>
+                                  ))}
+                                  <SelectItem value="custom">Custom</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              {(formData.lengthPerRoll === '' || formData.lengthPerRoll === 'custom' || (formData.lengthPerRoll && !rollConfig.options.find((o: any) => o.value.toString() === formData.lengthPerRoll))) && (
+                                <Input
+                                  type="number"
+                                  step="0.001"
+                                  min="0"
+                                  placeholder="Enter length"
+                                  value={formData.lengthPerRoll === 'custom' ? '' : formData.lengthPerRoll}
+                                  onChange={(e) => {
+                                    const value = e.target.value;
+                                    setFormData({...formData, lengthPerRoll: value});
+                                  }}
+                                  className="h-10 w-24"
+                                />
+                              )}
+                            </div>
                           </div>
                         </div>
                       </Card>
@@ -476,7 +520,7 @@ const Production = () => {
                       {/* Bundles */}
                       <Card className="p-4 bg-secondary/20">
                         <h3 className="font-medium mb-3">Bundles</h3>
-                        <div className="grid grid-cols-3 gap-4">
+                        <div className={`grid gap-4 ${rollConfig.quantity_based ? 'grid-cols-2' : 'grid-cols-3'}`}>
                           <div className="space-y-2">
                             <Label htmlFor="numberOfBundles">Number of Bundles</Label>
                             <Input
@@ -491,35 +535,62 @@ const Production = () => {
                           </div>
 
                           <div className="space-y-2">
-                            <Label htmlFor="bundleSize">Pipes per Bundle</Label>
-                            <Select value={formData.bundleSize} onValueChange={(value) => setFormData({...formData, bundleSize: value})}>
-                              <SelectTrigger id="bundleSize" className="h-10">
-                                <SelectValue placeholder="Select size" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {rollConfig.bundle_sizes.map((size: number) => (
-                                  <SelectItem key={size} value={size.toString()}>
-                                    {size} pipes
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                            <Label htmlFor="bundleSize">{rollConfig.quantity_based ? 'Pieces' : 'Pipes'} per Bundle</Label>
+                            <div className="flex gap-2">
+                              <Select
+                                value={formData.bundleSize === 'custom' || (formData.bundleSize && !rollConfig.bundle_sizes.includes(parseInt(formData.bundleSize))) ? 'custom' : formData.bundleSize}
+                                onValueChange={(value) => {
+                                  if (value === 'custom') {
+                                    setFormData({...formData, bundleSize: ''});
+                                  } else {
+                                    setFormData({...formData, bundleSize: value});
+                                  }
+                                }}
+                              >
+                                <SelectTrigger id="bundleSize" className="h-10 flex-1">
+                                  <SelectValue placeholder="Select size" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {rollConfig.bundle_sizes.map((size: number) => (
+                                    <SelectItem key={size} value={size.toString()}>
+                                      {size} {rollConfig.quantity_based ? 'pieces' : 'pipes'}
+                                    </SelectItem>
+                                  ))}
+                                  <SelectItem value="custom">Custom</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              {(formData.bundleSize === '' || formData.bundleSize === 'custom' || (formData.bundleSize && !rollConfig.bundle_sizes.includes(parseInt(formData.bundleSize)))) && (
+                                <Input
+                                  type="number"
+                                  min="1"
+                                  placeholder="Enter size"
+                                  value={formData.bundleSize === 'custom' ? '' : formData.bundleSize}
+                                  onChange={(e) => {
+                                    const value = e.target.value;
+                                    setFormData({...formData, bundleSize: value});
+                                  }}
+                                  className="h-10 w-24"
+                                />
+                              )}
+                            </div>
                           </div>
 
-                          <div className="space-y-2">
-                            <Label htmlFor="lengthPerPipe">
-                              Length per Pipe {selectedProductType && `(${selectedProductType.units?.abbreviation || 'm'})`}
-                            </Label>
-                            <Input
-                              id="lengthPerPipe"
-                              type="number"
-                              step="0.001"
-                              placeholder="Enter length"
-                              value={formData.lengthPerRoll}
-                              onChange={(e) => setFormData({...formData, lengthPerRoll: e.target.value})}
-                              className="h-10"
-                            />
-                          </div>
+                          {!rollConfig.quantity_based && (
+                            <div className="space-y-2">
+                              <Label htmlFor="lengthPerPipe">
+                                Length per Pipe {selectedProductType && `(${selectedProductType.units?.abbreviation || 'm'})`}
+                              </Label>
+                              <Input
+                                id="lengthPerPipe"
+                                type="number"
+                                step="0.001"
+                                placeholder="Enter length"
+                                value={formData.lengthPerRoll}
+                                onChange={(e) => setFormData({...formData, lengthPerRoll: e.target.value})}
+                                className="h-10"
+                              />
+                            </div>
+                          )}
                         </div>
                       </Card>
 
@@ -527,12 +598,12 @@ const Production = () => {
                       {rollConfig.allow_spare && (
                         <Card className="p-4 bg-secondary/20">
                           <div className="flex items-center justify-between mb-3">
-                            <h3 className="font-medium">Spare Pipes (Not Bundled)</h3>
+                            <h3 className="font-medium">Spare {rollConfig.quantity_based ? 'Pieces' : 'Pipes'} (Not Bundled)</h3>
                             <div className="flex items-center gap-2">
                               <Input
                                 type="number"
-                                step="0.001"
-                                placeholder="Enter length"
+                                step={rollConfig.quantity_based ? "1" : "0.001"}
+                                placeholder={rollConfig.quantity_based ? "Enter quantity" : "Enter length"}
                                 value={newSparePipeLength}
                                 onChange={(e) => setNewSparePipeLength(e.target.value)}
                                 className="h-9 w-32"
@@ -548,7 +619,7 @@ const Production = () => {
                                     });
                                     setNewSparePipeLength('');
                                   } else {
-                                    toast.error('Please enter a valid length');
+                                    toast.error(`Please enter a valid ${rollConfig.quantity_based ? 'quantity' : 'length'}`);
                                   }
                                 }}
                               >
@@ -563,7 +634,7 @@ const Production = () => {
                               {formData.sparePipes.map((pipe, index) => (
                                 <div key={index} className="flex items-center justify-between p-2 bg-background rounded">
                                   <span className="text-sm">
-                                    Pipe {index + 1}: {pipe.length} {selectedProductType?.units?.abbreviation || 'm'}
+                                    {rollConfig.quantity_based ? 'Piece' : 'Pipe'} {index + 1}: {pipe.length} {rollConfig.quantity_based ? 'pcs' : (selectedProductType?.units?.abbreviation || 'm')}
                                   </span>
                                   <Button
                                     type="button"
@@ -581,7 +652,7 @@ const Production = () => {
                             </div>
                           )}
                           {formData.sparePipes.length === 0 && (
-                            <p className="text-sm text-muted-foreground italic">No spare pipes added</p>
+                            <p className="text-sm text-muted-foreground italic">No spare {rollConfig.quantity_based ? 'pieces' : 'pipes'} added</p>
                           )}
                         </Card>
                       )}
@@ -616,7 +687,9 @@ const Production = () => {
 
               {/* Quantity (Auto-calculated) */}
               <div className="space-y-2">
-                <Label htmlFor="quantity">Total Quantity (Auto-calculated) {selectedProductType && `(${selectedProductType.units?.abbreviation || 'm'})`}</Label>
+                <Label htmlFor="quantity">
+                  Total Quantity (Auto-calculated) {selectedProductType && `(${rollConfig.quantity_based ? 'pcs' : (selectedProductType.units?.abbreviation || 'm')})`}
+                </Label>
                 <Input
                   id="quantity"
                   type="number"
@@ -626,12 +699,30 @@ const Production = () => {
                   readOnly
                   className="h-12 bg-muted font-semibold"
                 />
-                <p className="text-xs text-muted-foreground">
-                  Standard: {parseInt(formData.numberOfRolls) || 0} rolls × {parseFloat(formData.lengthPerRoll) || 0}m = {((parseInt(formData.numberOfRolls) || 0) * (parseFloat(formData.lengthPerRoll) || 0)).toFixed(2)}m
-                  {formData.cutRolls.length > 0 && (
-                    <> | Cut: {formData.cutRolls.length} roll(s) = {formData.cutRolls.reduce((sum, r) => sum + (parseFloat(r.length) || 0), 0).toFixed(2)}m</>
-                  )}
-                </p>
+                {rollConfig.type === 'standard_rolls' && (
+                  <p className="text-xs text-muted-foreground">
+                    Standard: {parseInt(formData.numberOfRolls) || 0} rolls × {parseFloat(formData.lengthPerRoll) || 0}m = {((parseInt(formData.numberOfRolls) || 0) * (parseFloat(formData.lengthPerRoll) || 0)).toFixed(2)}m
+                    {formData.cutRolls.length > 0 && (
+                      <> | Cut: {formData.cutRolls.length} roll(s) = {formData.cutRolls.reduce((sum, r) => sum + (parseFloat(r.length) || 0), 0).toFixed(2)}m</>
+                    )}
+                  </p>
+                )}
+                {rollConfig.type === 'bundles' && rollConfig.quantity_based && (
+                  <p className="text-xs text-muted-foreground">
+                    Bundles: {parseInt(formData.numberOfBundles) || 0} × {parseInt(formData.bundleSize) || 0} pcs = {((parseInt(formData.numberOfBundles) || 0) * (parseInt(formData.bundleSize) || 0))} pcs
+                    {formData.sparePipes.length > 0 && (
+                      <> | Spare: {formData.sparePipes.reduce((sum, p) => sum + (parseInt(p.length) || 0), 0)} pcs</>
+                    )}
+                  </p>
+                )}
+                {rollConfig.type === 'bundles' && !rollConfig.quantity_based && (
+                  <p className="text-xs text-muted-foreground">
+                    Bundles: {parseInt(formData.numberOfBundles) || 0} × {parseInt(formData.bundleSize) || 0} pipes × {parseFloat(formData.lengthPerRoll) || 0}m = {((parseInt(formData.numberOfBundles) || 0) * (parseInt(formData.bundleSize) || 0) * (parseFloat(formData.lengthPerRoll) || 0)).toFixed(2)}m
+                    {formData.sparePipes.length > 0 && (
+                      <> | Spare: {formData.sparePipes.reduce((sum, p) => sum + (parseFloat(p.length) || 0), 0).toFixed(2)}m</>
+                    )}
+                  </p>
+                )}
               </div>
 
               {/* Batch Number */}

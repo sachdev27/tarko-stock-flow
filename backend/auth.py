@@ -28,6 +28,32 @@ def get_user_role(user_id):
     result = execute_query(query, (user_id,), fetch_one=True)
     return result['role'] if result else 'reader'
 
+def get_user_identity_details(user_id):
+    """Get user identifying information for audit logs"""
+    query = """
+        SELECT u.email,
+               COALESCE(u.full_name, u.username, u.email) AS display_name,
+               COALESCE(ur.role, 'reader') AS role
+        FROM users u
+        LEFT JOIN user_roles ur ON ur.user_id = u.id
+        WHERE u.id = %s AND u.deleted_at IS NULL
+        ORDER BY ur.created_at DESC
+        LIMIT 1
+    """
+    result = execute_query(query, (user_id,), fetch_one=True)
+    if not result:
+        return {
+            'email': None,
+            'name': 'Unknown User',
+            'role': 'unknown'
+        }
+
+    return {
+        'email': result.get('email'),
+        'name': result.get('display_name') or result.get('email') or 'Unknown User',
+        'role': result.get('role') or 'reader'
+    }
+
 def create_user(email, password):
     """Create a new user"""
     hashed_password = hash_password(password)

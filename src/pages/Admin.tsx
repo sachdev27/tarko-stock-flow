@@ -39,6 +39,7 @@ const Admin = () => {
   // Edit mode states
   const [editingProductType, setEditingProductType] = useState<any>(null);
   const [editingUser, setEditingUser] = useState<any>(null);
+  const [editingParameter, setEditingParameter] = useState<any>(null);
 
   // Form data
   const [locationForm, setLocationForm] = useState({ name: '', address: '' });
@@ -75,6 +76,7 @@ const Admin = () => {
     address: '',
   });
   const [parameterForm, setParameterForm] = useState({
+    id: '',
     parameter_name: 'PE',
     option_value: '',
   });
@@ -256,20 +258,32 @@ const Admin = () => {
     }
 
     try {
-      await parameters.addOption({
-        parameter_name: parameterForm.parameter_name,
-        option_value: parameterForm.option_value.trim(),
-      });
+      if (editingParameter) {
+        // Update existing parameter
+        await parameters.updateOption(parameterForm.id, {
+          parameter_name: parameterForm.parameter_name,
+          option_value: parameterForm.option_value.trim(),
+        });
+        toast.success('Parameter option updated successfully');
+      } else {
+        // Add new parameter
+        await parameters.addOption({
+          parameter_name: parameterForm.parameter_name,
+          option_value: parameterForm.option_value.trim(),
+        });
+        toast.success('Parameter option added successfully');
+      }
 
-      toast.success('Parameter option added successfully');
       setParameterDialog(false);
+      setEditingParameter(null);
       setParameterForm({
+        id: '',
         parameter_name: 'PE',
         option_value: '',
       });
       fetchAllData();
     } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to add parameter option');
+      toast.error(error.response?.data?.error || `Failed to ${editingParameter ? 'update' : 'add'} parameter option`);
     }
   };
 
@@ -1180,9 +1194,19 @@ const Admin = () => {
                       <Sliders className="h-5 w-5 mr-2" />
                       Parameter Options
                     </CardTitle>
-                    <CardDescription>Manage PE, PN, and OD parameter values</CardDescription>
+                    <CardDescription>Manage PE, PN, OD, and Type parameter values</CardDescription>
                   </div>
-                  <Dialog open={parameterDialog} onOpenChange={setParameterDialog}>
+                  <Dialog open={parameterDialog} onOpenChange={(open) => {
+                    setParameterDialog(open);
+                    if (!open) {
+                      setEditingParameter(null);
+                      setParameterForm({
+                        id: '',
+                        parameter_name: 'PE',
+                        option_value: '',
+                      });
+                    }
+                  }}>
                     <DialogTrigger asChild>
                       <Button>
                         <Plus className="h-4 w-4 mr-2" />
@@ -1191,8 +1215,8 @@ const Admin = () => {
                     </DialogTrigger>
                     <DialogContent>
                       <DialogHeader>
-                        <DialogTitle>Add Parameter Option</DialogTitle>
-                        <DialogDescription>Add a new value for a parameter</DialogDescription>
+                        <DialogTitle>{editingParameter ? 'Edit' : 'Add'} Parameter Option</DialogTitle>
+                        <DialogDescription>{editingParameter ? 'Update' : 'Add a new'} value for a parameter</DialogDescription>
                       </DialogHeader>
                       <div className="space-y-4">
                         <div className="space-y-2">
@@ -1210,6 +1234,7 @@ const Admin = () => {
                               <SelectItem value="PE">PE (Polyethylene)</SelectItem>
                               <SelectItem value="PN">PN (Pressure Nominal)</SelectItem>
                               <SelectItem value="OD">OD (Outer Diameter)</SelectItem>
+                              <SelectItem value="Type">Type (Sprinkler Type)</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
@@ -1225,7 +1250,7 @@ const Admin = () => {
                           />
                         </div>
                         <Button onClick={handleAddParameter} className="w-full">
-                          Add Option
+                          {editingParameter ? 'Update' : 'Add'} Option
                         </Button>
                       </div>
                     </DialogContent>
@@ -1233,7 +1258,7 @@ const Admin = () => {
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                   {/* PE Options */}
                   <div>
                     <h3 className="font-semibold mb-3 text-sm">PE (Polyethylene)</h3>
@@ -1244,13 +1269,30 @@ const Admin = () => {
                           className="flex items-center justify-between p-2 bg-secondary/20 rounded"
                         >
                           <span className="text-sm">{option.value}</span>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDelete('parameters', option.id.toString())}
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
+                          <div className="flex gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setEditingParameter(option);
+                                setParameterForm({
+                                  id: option.id,
+                                  parameter_name: 'PE',
+                                  option_value: option.value,
+                                });
+                                setParameterDialog(true);
+                              }}
+                            >
+                              <Edit className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDelete('parameters', option.id.toString())}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
                         </div>
                       ))}
                       {(!parameterOptions['PE'] || parameterOptions['PE'].length === 0) && (
@@ -1269,13 +1311,30 @@ const Admin = () => {
                           className="flex items-center justify-between p-2 bg-secondary/20 rounded"
                         >
                           <span className="text-sm">{option.value}</span>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDelete('parameters', option.id.toString())}
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
+                          <div className="flex gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setEditingParameter(option);
+                                setParameterForm({
+                                  id: option.id,
+                                  parameter_name: 'PN',
+                                  option_value: option.value,
+                                });
+                                setParameterDialog(true);
+                              }}
+                            >
+                              <Edit className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDelete('parameters', option.id.toString())}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
                         </div>
                       ))}
                       {(!parameterOptions['PN'] || parameterOptions['PN'].length === 0) && (
@@ -1294,16 +1353,75 @@ const Admin = () => {
                           className="flex items-center justify-between p-2 bg-secondary/20 rounded"
                         >
                           <span className="text-sm">{option.value}</span>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDelete('parameters', option.id.toString())}
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
+                          <div className="flex gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setEditingParameter(option);
+                                setParameterForm({
+                                  id: option.id,
+                                  parameter_name: 'OD',
+                                  option_value: option.value,
+                                });
+                                setParameterDialog(true);
+                              }}
+                            >
+                              <Edit className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDelete('parameters', option.id.toString())}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
                         </div>
                       ))}
                       {(!parameterOptions['OD'] || parameterOptions['OD'].length === 0) && (
+                        <p className="text-sm text-muted-foreground italic">No options added</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Type Options */}
+                  <div>
+                    <h3 className="font-semibold mb-3 text-sm">Type (Sprinkler Type)</h3>
+                    <div className="space-y-2">
+                      {(parameterOptions['Type'] || []).map((option) => (
+                        <div
+                          key={option.id}
+                          className="flex items-center justify-between p-2 bg-secondary/20 rounded"
+                        >
+                          <span className="text-sm">{option.value}</span>
+                          <div className="flex gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setEditingParameter(option);
+                                setParameterForm({
+                                  id: option.id,
+                                  parameter_name: 'Type',
+                                  option_value: option.value,
+                                });
+                                setParameterDialog(true);
+                              }}
+                            >
+                              <Edit className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDelete('parameters', option.id.toString())}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                      {(!parameterOptions['Type'] || parameterOptions['Type'].length === 0) && (
                         <p className="text-sm text-muted-foreground italic">No options added</p>
                       )}
                     </div>

@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify, send_from_directory
 from flask_jwt_extended import get_jwt_identity
 from database import execute_insert, execute_query, get_db_cursor
-from auth import jwt_required_with_role
+from auth import jwt_required_with_role, get_user_identity_details
 from werkzeug.utils import secure_filename
 import json
 import os
@@ -44,6 +44,7 @@ def create_batch():
     notes = data.get('notes', '')
     number_of_rolls = int(data.get('number_of_rolls', 1))
     cut_rolls = json.loads(data.get('cut_rolls', '[]')) if isinstance(data.get('cut_rolls'), str) else data.get('cut_rolls', [])
+    length_per_roll_input = float(data.get('length_per_roll') or data.get('lengthPerRoll') or 0)
 
     # Bundle/spare pipe data
     roll_config_type = data.get('roll_config_type', 'standard_rolls')
@@ -59,6 +60,8 @@ def create_batch():
         filepath = os.path.join(UPLOAD_FOLDER, unique_filename)
         file.save(filepath)
         attachment_url = f"/api/production/attachment/{unique_filename}"
+
+    actor = get_user_identity_details(user_id)
 
     with get_db_cursor() as cursor:
         # Create or get product variant
@@ -126,22 +129,25 @@ def create_batch():
                     total_items += 1
 
         elif roll_config_type == 'bundles':
-            # Create bundles - each bundle creates multiple rolls (pipes)
+            # Create bundles - each bundle is a single inventory unit with bundle_size pieces
             if number_of_bundles > 0 and bundle_size > 0:
-                # Calculate total bundled items
                 total_spare_length = sum(float(pipe.get('length', 0)) for pipe in spare_pipes)
                 bundled_total = quantity - total_spare_length
-                length_per_pipe = bundled_total / (number_of_bundles * bundle_size) if (number_of_bundles * bundle_size) > 0 else 0
 
-                for bundle_num in range(number_of_bundles):
-                    for pipe_num in range(bundle_size):
-                        cursor.execute("""
-                            INSERT INTO rolls (
-                                batch_id, product_variant_id, length_meters,
-                                initial_length_meters, status, is_cut_roll, roll_type, bundle_size, created_at, updated_at
-                            ) VALUES (%s, %s, %s, %s, 'AVAILABLE', FALSE, %s, %s, NOW(), NOW())
-                        """, (batch_id, variant_id, length_per_pipe, length_per_pipe, f'bundle_{bundle_size}', bundle_size))
-                        total_items += 1
+                # Determine per-pipe length; prefer explicit input and fall back to equal split
+                length_per_pipe = length_per_roll_input
+                if length_per_pipe <= 0 and number_of_bundles * bundle_size > 0:
+                    length_per_pipe = bundled_total / (number_of_bundles * bundle_size)
+
+                for _ in range(number_of_bundles):
+                    bundle_length = length_per_pipe * bundle_size
+                    cursor.execute("""
+                        INSERT INTO rolls (
+                            batch_id, product_variant_id, length_meters,
+                            initial_length_meters, status, is_cut_roll, roll_type, bundle_size, created_at, updated_at
+                        ) VALUES (%s, %s, %s, %s, 'AVAILABLE', FALSE, %s, %s, NOW(), NOW())
+                    """, (batch_id, variant_id, bundle_length, bundle_length, f'bundle_{bundle_size}', bundle_size))
+                    total_items += 1
 
             # Create spare pipes (not bundled)
             for spare_pipe in spare_pipes:
@@ -164,10 +170,17 @@ def create_batch():
         """, (batch_id, quantity, production_date, notes, user_id))
 
         # Audit log
+        actor_label = f"{actor['name']} ({actor['role']})"
         if roll_config_type == 'standard_rolls':
-            log_msg = f"Created batch {batch_code} with {quantity} units ({number_of_rolls} standard rolls, {len(cut_rolls)} cut rolls)"
+            log_msg = (
+                f"{actor_label} created batch {batch_code} with {quantity} units "
+                f"({number_of_rolls} standard rolls, {len(cut_rolls)} cut rolls)"
+            )
         else:
-            log_msg = f"Created batch {batch_code} with {quantity} units ({number_of_bundles} bundles of {bundle_size}, {len(spare_pipes)} spare pipes)"
+            log_msg = (
+                f"{actor_label} created batch {batch_code} with {quantity} units "
+                f"({number_of_bundles} bundles of {bundle_size}, {len(spare_pipes)} spare pipes)"
+            )
 
         cursor.execute("""
             INSERT INTO audit_logs (

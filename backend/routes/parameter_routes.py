@@ -91,6 +91,58 @@ def add_parameter_option():
         print(f"Error adding parameter option: {e}")
         return jsonify({'error': str(e)}), 500
 
+@parameter_bp.route('/options/<int:option_id>', methods=['PUT'])
+@jwt_required_with_role(['admin'])
+def update_parameter_option(option_id):
+    """Update a parameter option"""
+    try:
+        data = request.get_json()
+        parameter_name = data.get('parameter_name')
+        option_value = data.get('option_value')
+
+        if not parameter_name or not option_value:
+            return jsonify({'error': 'Parameter name and value are required'}), 400
+
+        with get_db_cursor() as cursor:
+            # Check if option exists
+            cursor.execute("""
+                SELECT id FROM parameter_options WHERE id = %s
+            """, (option_id,))
+
+            if not cursor.fetchone():
+                return jsonify({'error': 'Parameter option not found'}), 404
+
+            # Check if updated value already exists for this parameter (excluding current id)
+            cursor.execute("""
+                SELECT id FROM parameter_options
+                WHERE parameter_name = %s AND option_value = %s AND id != %s
+            """, (parameter_name, option_value, option_id))
+
+            if cursor.fetchone():
+                return jsonify({'error': 'This option value already exists for this parameter'}), 400
+
+            # Update the option
+            cursor.execute("""
+                UPDATE parameter_options
+                SET parameter_name = %s, option_value = %s
+                WHERE id = %s
+                RETURNING id, parameter_name, option_value
+            """, (parameter_name, option_value, option_id))
+
+            updated = cursor.fetchone()
+
+            return jsonify({
+                'message': 'Parameter option updated successfully',
+                'option': {
+                    'id': updated['id'],
+                    'parameter_name': updated['parameter_name'],
+                    'value': updated['option_value']
+                }
+            }), 200
+    except Exception as e:
+        print(f"Error updating parameter option: {e}")
+        return jsonify({'error': str(e)}), 500
+
 @parameter_bp.route('/options/<int:option_id>', methods=['DELETE'])
 @jwt_required_with_role(['admin'])
 def delete_parameter_option(option_id):

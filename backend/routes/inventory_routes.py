@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from database import execute_query, execute_insert
-from auth import jwt_required_with_role
+from auth import jwt_required_with_role, get_user_identity_details
 
 inventory_bp = Blueprint('inventory', __name__, url_prefix='/api/inventory')
 
@@ -88,6 +88,7 @@ def update_batch(batch_id):
     """Update batch details (admin only)"""
     user_id = get_jwt_identity()
     data = request.get_json()
+    actor = get_user_identity_details(user_id)
 
     allowed_fields = ['batch_no', 'batch_code', 'notes', 'location_id']
     updates = []
@@ -113,7 +114,11 @@ def update_batch(batch_id):
             user_id, action_type, entity_type, entity_id,
             description, created_at
         ) VALUES (%s, 'UPDATE_BATCH', 'BATCH', %s, %s, NOW())
-    """, (user_id, str(batch_id), f"Updated batch: {', '.join(allowed_fields)}"), fetch_all=False)
+    """, (
+        user_id,
+        str(batch_id),
+        f"{actor['name']} ({actor['role']}) updated batch fields: {', '.join(allowed_fields)}"
+    ), fetch_all=False)
 
     return jsonify({'message': 'Batch updated successfully'}), 200
 
@@ -123,6 +128,7 @@ def update_batch_qc(batch_id):
     """Update QC status for a batch"""
     user_id = get_jwt_identity()
     data = request.get_json()
+    actor = get_user_identity_details(user_id)
 
     qc_status = data.get('qc_status')
     notes = data.get('notes', '')
@@ -142,7 +148,11 @@ def update_batch_qc(batch_id):
             user_id, action_type, entity_type, entity_id,
             description, created_at
         ) VALUES (%s, 'QC_CHECK', 'BATCH', %s, %s, NOW())
-    """, (user_id, str(batch_id), f"QC Status changed to {qc_status}: {notes}"), fetch_all=False)
+    """, (
+        user_id,
+        str(batch_id),
+        f"{actor['name']} ({actor['role']}) set QC status to {qc_status}: {notes}"
+    ), fetch_all=False)
 
     return jsonify({'message': 'QC status updated successfully'}), 200
 
@@ -152,6 +162,7 @@ def update_roll(roll_id):
     """Update roll details (admin only)"""
     user_id = get_jwt_identity()
     data = request.get_json()
+    actor = get_user_identity_details(user_id)
 
     length_meters = data.get('length_meters')
     status = data.get('status')
@@ -196,7 +207,11 @@ def update_roll(roll_id):
             user_id, action_type, entity_type, entity_id,
             description, created_at
         ) VALUES (%s, 'UPDATE_ROLL', 'ROLL', %s, %s, NOW())
-    """, (user_id, str(roll_id), f"Updated roll: length={length_meters}, status={status}"), fetch_all=False)
+    """, (
+        user_id,
+        str(roll_id),
+        f"{actor['name']} ({actor['role']}) updated roll: length={length_meters}, status={status}"
+    ), fetch_all=False)
 
     return jsonify({'message': 'Roll updated successfully'}), 200
 

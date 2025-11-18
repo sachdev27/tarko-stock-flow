@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import get_jwt_identity
 from database import get_db_cursor, execute_query
-from auth import jwt_required_with_role
+from auth import jwt_required_with_role, get_user_identity_details
 
 transaction_bp = Blueprint('transaction', __name__, url_prefix='/api/transactions')
 
@@ -34,6 +34,8 @@ def create_transaction():
 
     # For roll operations, we need the absolute quantity
     quantity = abs(quantity_change)
+
+    actor = get_user_identity_details(user_id)
 
     with get_db_cursor() as cursor:
         # Update roll if specified
@@ -88,8 +90,12 @@ def create_transaction():
                 user_id, action_type, entity_type, entity_id,
                 description, created_at
             ) VALUES (%s, %s, 'TRANSACTION', %s, %s, NOW())
-        """, (user_id, f'{transaction_type}_TRANSACTION', txn['id'],
-              f"{transaction_type} transaction: {quantity} units"))
+        """, (
+            user_id,
+            f'{transaction_type}_TRANSACTION',
+            txn['id'],
+            f"{actor['name']} ({actor['role']}) recorded {transaction_type.lower()} transaction: {quantity} units"
+        ))
 
     return jsonify({'id': txn['id'], 'message': 'Transaction recorded successfully'}), 201
 
