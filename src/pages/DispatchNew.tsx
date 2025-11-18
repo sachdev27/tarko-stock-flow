@@ -94,10 +94,15 @@ const Dispatch = () => {
 
     setLoading(true);
     try {
+      // Filter out "all" placeholder values before sending to backend
+      const filteredParameters = Object.fromEntries(
+        Object.entries(searchParameters).filter(([_, value]) => value !== 'all')
+      );
+
       const response = await dispatchAPI.getAvailableRolls({
         product_type_id: searchProductType,
         brand_id: searchBrand,
-        parameters: searchParameters,
+        parameters: filteredParameters,
       });
 
       setRolls(response.data?.standard_rolls || []);
@@ -314,7 +319,7 @@ const Dispatch = () => {
                               <SelectValue placeholder={`Select ${paramKey}`} />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="">All {paramKey}</SelectItem>
+                              <SelectItem value="all">All {paramKey}</SelectItem>
                               {(parameterOptions[paramKey] || []).map((option: any) => (
                                 <SelectItem key={option.id} value={option.value}>
                                   {option.value}

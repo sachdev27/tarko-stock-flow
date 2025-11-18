@@ -32,17 +32,31 @@ def get_available_rolls():
     variants = execute_query(variant_query, (product_type_id, brand_id))
 
     # Match parameters
-    matching_variant = None
-    for variant in variants:
-        if variant['parameters'] == parameters:
-            matching_variant = variant
-            break
+    matching_variants = []
 
-    if not matching_variant:
+    # If no parameters provided (empty dict), match ALL variants
+    if not parameters or parameters == {}:
+        matching_variants = variants
+    else:
+        # Match exact parameters or partial match
+        for variant in variants:
+            variant_params = variant['parameters'] or {}
+            # Check if all provided parameters match
+            matches = all(
+                variant_params.get(key) == value
+                for key, value in parameters.items()
+            )
+            if matches:
+                matching_variants.append(variant)
+
+    if not matching_variants:
         return jsonify({'rolls': [], 'cut_rolls': [], 'message': 'No matching product variant found'}), 200
 
-    # Get all available rolls for this variant
-    rolls_query = """
+    # Get all available rolls for matching variants
+    variant_ids = [v['id'] for v in matching_variants]
+    placeholders = ','.join(['%s'] * len(variant_ids))
+
+    rolls_query = f"""
         SELECT
             r.id,
             r.batch_id,
@@ -62,14 +76,14 @@ def get_available_rolls():
         JOIN product_variants pv ON r.product_variant_id = pv.id
         JOIN product_types pt ON pv.product_type_id = pt.id
         JOIN brands br ON pv.brand_id = br.id
-        WHERE r.product_variant_id = %s
+        WHERE r.product_variant_id IN ({placeholders})
         AND r.deleted_at IS NULL
         AND r.status IN ('AVAILABLE', 'PARTIAL')
         AND r.length_meters > 0
         ORDER BY b.batch_code, r.roll_type, r.created_at
     """
 
-    all_rolls = execute_query(rolls_query, (matching_variant['id'],))
+    all_rolls = execute_query(rolls_query, tuple(variant_ids))
 
     # Separate into standard rolls and cut rolls
     standard_rolls = []
