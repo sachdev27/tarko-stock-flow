@@ -66,11 +66,13 @@ def get_available_rolls():
             r.is_cut_roll,
             r.roll_type,
             r.bundle_size,
+            r.product_variant_id,
             b.batch_code,
             b.batch_no,
             pt.name as product_type,
             pt.roll_configuration,
-            br.name as brand
+            br.name as brand,
+            pv.parameters
         FROM rolls r
         JOIN batches b ON r.batch_id = b.id
         JOIN product_variants pv ON r.product_variant_id = pv.id
@@ -80,17 +82,39 @@ def get_available_rolls():
         AND r.deleted_at IS NULL
         AND r.status IN ('AVAILABLE', 'PARTIAL')
         AND r.length_meters > 0
-        ORDER BY b.batch_code, r.roll_type, r.created_at
+        ORDER BY pv.parameters, r.roll_type, r.created_at
     """
 
     all_rolls = execute_query(rolls_query, tuple(variant_ids))
 
-    # Separate into standard rolls and cut rolls
-    standard_rolls = []
-    cut_rolls = []
-    bundles = []
+    # Group by variant and separate into standard rolls and cut rolls
+    variant_groups = {}  # key: variant_id, value: {variant_info, standard_rolls, cut_rolls}
 
     for roll in all_rolls:
+        variant_id = roll['product_variant_id']
+
+        if variant_id not in variant_groups:
+            # Build product label: PRODUCT-PARAMS-BRAND-BATCHCODE
+            params_str = ''
+            if roll['parameters']:
+                params_list = [str(v) for v in roll['parameters'].values()]
+                params_str = '-'.join(params_list)
+
+            product_label = f"{roll['product_type']}"
+            if params_str:
+                product_label += f"-{params_str}"
+            product_label += f"-{roll['brand']}"
+
+            variant_groups[variant_id] = {
+                'product_label': product_label,
+                'product_type': roll['product_type'],
+                'brand': roll['brand'],
+                'parameters': roll['parameters'],
+                'standard_rolls': [],
+                'cut_rolls': [],
+                'total_length': 0
+            }
+
         roll_info = {
             'id': roll['id'],
             'batch_id': roll['batch_id'],
@@ -103,20 +127,27 @@ def get_available_rolls():
             'bundle_size': roll.get('bundle_size')
         }
 
-        if roll['roll_type'] in ['bundle_10', 'bundle_20']:
-            bundles.append(roll_info)
-        elif roll['is_cut_roll'] or roll['roll_type'] == 'cut':
-            cut_rolls.append(roll_info)
+        if roll['is_cut_roll'] or roll['roll_type'] == 'cut':
+            variant_groups[variant_id]['cut_rolls'].append(roll_info)
         else:
-            standard_rolls.append(roll_info)
+            variant_groups[variant_id]['standard_rolls'].append(roll_info)
+            variant_groups[variant_id]['total_length'] += float(roll['length_meters'])
+
+    # Convert to list format
+    products = []
+    for group in variant_groups.values():
+        products.append({
+            'product_label': group['product_label'],
+            'product_type': group['product_type'],
+            'brand': group['brand'],
+            'parameters': group['parameters'],
+            'standard_rolls': group['standard_rolls'],
+            'cut_rolls': group['cut_rolls'],
+            'total_available_meters': group['total_length']
+        })
 
     return jsonify({
-        'standard_rolls': standard_rolls,
-        'cut_rolls': cut_rolls,
-        'bundles': bundles,
-        'product_type': all_rolls[0]['product_type'] if all_rolls else '',
-        'brand': all_rolls[0]['brand'] if all_rolls else '',
-        'roll_configuration': all_rolls[0]['roll_configuration'] if all_rolls else {}
+        'products': products
     }), 200
 
 

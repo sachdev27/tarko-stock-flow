@@ -22,15 +22,25 @@ interface Roll {
   initial_length_meters: number;
   status: string;
   roll_type: string;
-  is_cut_roll: boolean;
+  is_cut_roll?: boolean;
   bundle_size?: number;
 }
 
+interface ProductVariant {
+  product_label: string;
+  product_type: string;
+  brand: string;
+  parameters: Record<string, any>;
+  standard_rolls: Roll[];
+  cut_rolls: Roll[];
+  total_available_meters: number;
+}
+
 interface CartItem {
-  roll_id: string;
-  roll: Roll;
-  quantity: number; // meters or pieces
-  type: 'full' | 'partial';
+  product_label: string;
+  product: ProductVariant;
+  standard_roll_count: number;  // Number of standard rolls to dispatch
+  cut_rolls: Roll[];  // Selected cut rolls
 }
 
 const Dispatch = () => {
@@ -46,6 +56,7 @@ const Dispatch = () => {
   const [searchParameters, setSearchParameters] = useState<Record<string, string>>({});
 
   // Available inventory
+  const [products, setProducts] = useState<ProductVariant[]>([]);
   const [rolls, setRolls] = useState<Roll[]>([]);
   const [cutRolls, setCutRolls] = useState<Roll[]>([]);
 
@@ -57,11 +68,13 @@ const Dispatch = () => {
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [notes, setNotes] = useState('');
 
-  // Cut dialog
+  // Dialogs
   const [cutDialogOpen, setCutDialogOpen] = useState(false);
   const [rollToCut, setRollToCut] = useState<Roll | null>(null);
   const [cutLengths, setCutLengths] = useState<string[]>(['']);
   const [isCuttingFromCart, setIsCuttingFromCart] = useState(false);
+  const [cutRollDialogOpen, setCutRollDialogOpen] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<ProductVariant | null>(null);
 
   useEffect(() => {
     fetchMasterData();
@@ -105,10 +118,9 @@ const Dispatch = () => {
         parameters: filteredParameters,
       });
 
-      setRolls(response.data?.standard_rolls || []);
-      setCutRolls(response.data?.cut_rolls || []);
-
-      if (!response.data?.standard_rolls?.length && !response.data?.cut_rolls?.length) {
+      setProducts(response.data?.products || []);
+      setRolls([]);
+      setCutRolls([]);      if (!response.data?.standard_rolls?.length && !response.data?.cut_rolls?.length) {
         toast.info('No rolls found for selected product');
       }
     } catch (error: any) {
@@ -121,32 +133,74 @@ const Dispatch = () => {
     }
   };
 
-  const addToCart = (roll: Roll, isFull: boolean = true) => {
-    const existingItem = cart.find(item => item.roll_id === roll.id);
+  const addProductToCart = (product: ProductVariant, rollCount: number = 1) => {
+    const existingItem = cart.find(item => item.product_label === product.product_label);
     if (existingItem) {
-      toast.info('Roll already in cart');
-      return;
+      // Update count
+      setCart(cart.map(item =>
+        item.product_label === product.product_label
+          ? { ...item, standard_roll_count: item.standard_roll_count + rollCount }
+          : item
+      ));
+      toast.success(`Updated quantity to ${existingItem.standard_roll_count + rollCount} rolls`);
+    } else {
+      const newItem: CartItem = {
+        product_label: product.product_label,
+        product: product,
+        standard_roll_count: rollCount,
+        cut_rolls: [],
+      };
+      setCart([...cart, newItem]);
+      toast.success(`Added ${product.product_label} to cart`);
     }
-
-    const newItem: CartItem = {
-      roll_id: roll.id,
-      roll: roll,
-      quantity: isFull ? roll.length_meters : 0,
-      type: isFull ? 'full' : 'partial',
-    };
-
-    setCart([...cart, newItem]);
-    toast.success(`Added ${roll.batch_code} to cart`);
   };
 
-  const updateCartQuantity = (roll_id: string, quantity: number) => {
+  const updateRollCount = (product_label: string, count: number) => {
+    if (count <= 0) {
+      setCart(cart.filter(item => item.product_label !== product_label));
+      return;
+    }
     setCart(cart.map(item =>
-      item.roll_id === roll_id ? { ...item, quantity } : item
+      item.product_label === product_label ? { ...item, standard_roll_count: count } : item
     ));
   };
 
-  const removeFromCart = (roll_id: string) => {
-    setCart(cart.filter(item => item.roll_id !== roll_id));
+  const addCutRollToCart = (product: ProductVariant, cutRoll: Roll) => {
+    const existingItem = cart.find(item => item.product_label === product.product_label);
+    if (existingItem) {
+      if (existingItem.cut_rolls.some(r => r.id === cutRoll.id)) {
+        toast.info('Cut roll already in cart');
+        return;
+      }
+      setCart(cart.map(item =>
+        item.product_label === product.product_label
+          ? { ...item, cut_rolls: [...item.cut_rolls, cutRoll] }
+          : item
+      ));
+    } else {
+      const newItem: CartItem = {
+        product_label: product.product_label,
+        product: product,
+        standard_roll_count: 0,
+        cut_rolls: [cutRoll],
+      };
+      setCart([...cart, newItem]);
+    }
+    toast.success(`Added cut roll to cart`);
+  };
+
+  const removeCutRollFromCart = (product_label: string, cutRollId: string) => {
+    setCart(cart.map(item => {
+      if (item.product_label === product_label) {
+        const newCutRolls = item.cut_rolls.filter(r => r.id !== cutRollId);
+        return { ...item, cut_rolls: newCutRolls };
+      }
+      return item;
+    }).filter(item => item.standard_roll_count > 0 || item.cut_rolls.length > 0));
+  };
+
+  const removeFromCart = (product_label: string) => {
+    setCart(cart.filter(item => item.product_label !== product_label));
     toast.success('Removed from cart');
   };
 
@@ -213,11 +267,24 @@ const Dispatch = () => {
 
     setLoading(true);
     try {
-      const items = cart.map(item => ({
-        roll_id: item.roll_id,
-        type: item.type === 'full' ? 'full_roll' : 'partial_roll',
-        quantity: item.quantity,
-      }));
+      // Flatten cart items into individual roll dispatches
+      const items = cart.flatMap(item => {
+        const standardRollItems = item.product.standard_rolls
+          .slice(0, item.standard_roll_count)
+          .map(roll => ({
+            roll_id: roll.id,
+            type: 'full_roll',
+            quantity: roll.length_meters,
+          }));
+
+        const cutRollItems = item.cut_rolls.map(roll => ({
+          roll_id: roll.id,
+          type: 'full_roll',
+          quantity: roll.length_meters,
+        }));
+
+        return [...standardRollItems, ...cutRollItems];
+      });
 
       await dispatchAPI.createDispatch({
         customer_id: selectedCustomerId,
@@ -233,6 +300,7 @@ const Dispatch = () => {
       setSelectedCustomerId('');
       setInvoiceNumber('');
       setNotes('');
+      setProducts([]);
       setRolls([]);
       setCutRolls([]);
       setSearchProductType('');
@@ -250,7 +318,13 @@ const Dispatch = () => {
   const parameterSchema = selectedProductTypeData?.parameter_schema || [];
   const paramOrder = ['PE', 'PN', 'OD', 'Type'];
 
-  const totalQuantity = cart.reduce((sum, item) => sum + item.quantity, 0);
+  const totalRolls = cart.reduce((sum, item) => sum + item.standard_roll_count + item.cut_rolls.length, 0);
+  const totalMeters = cart.reduce((sum, item) => {
+    const standardMeters = item.standard_roll_count > 0 ?
+      item.product.standard_rolls.slice(0, item.standard_roll_count).reduce((s, r) => s + r.length_meters, 0) : 0;
+    const cutMeters = item.cut_rolls.reduce((s, r) => s + r.length_meters, 0);
+    return sum + standardMeters + cutMeters;
+  }, 0);
 
   return (
     <Layout>
@@ -339,96 +413,128 @@ const Dispatch = () => {
               </CardContent>
             </Card>
 
-            {/* Available Rolls */}
-            {(rolls.length > 0 || cutRolls.length > 0) && (
+            {/* Available Products */}
+            {products.length > 0 && (
               <Card>
                 <CardHeader>
                   <CardTitle>Available Inventory</CardTitle>
                   <CardDescription>
-                    {rolls.length} standard rolls, {cutRolls.length} cut rolls
+                    {products.length} product variant{products.length !== 1 ? 's' : ''}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {/* Standard Rolls */}
-                  {rolls.length > 0 && (
-                    <div className="space-y-2">
-                      <h3 className="font-medium text-sm flex items-center gap-2">
-                        <PackageIcon className="h-4 w-4" />
-                        Standard Rolls
-                      </h3>
-                      <div className="space-y-2">
-                        {rolls.map(roll => (
-                          <div key={roll.id} className="flex items-center justify-between p-3 border rounded-lg">
-                            <div className="flex-1">
-                              <div className="font-medium">{roll.batch_code}</div>
-                              <div className="text-sm text-muted-foreground">
-                                {roll.length_meters}m available
-                                {roll.bundle_size && ` • Bundle of ${roll.bundle_size}`}
-                              </div>
-                            </div>
-                            <div className="flex gap-2">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => openCutDialog(roll, false)}
-                              >
-                                <ScissorsIcon className="h-4 w-4 mr-1" />
-                                Cut
-                              </Button>
-                              <Button
-                                size="sm"
-                                onClick={() => addToCart(roll, true)}
-                                disabled={cart.some(item => item.roll_id === roll.id)}
-                              >
-                                <PlusIcon className="h-4 w-4 mr-1" />
-                                Add Full
-                              </Button>
-                            </div>
-                          </div>
-                        ))}
+                  {products.map((product, idx) => (
+                    <div key={idx} className="border rounded-lg p-4 space-y-3 hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors">
+                      {/* Product Header */}
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <h3 className="font-semibold text-base">{product.product_label}</h3>
+                          <p className="text-sm text-muted-foreground mt-1">
+                            <span className="font-bold">{product.total_available_meters}m</span> available
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  )}
 
-                  {/* Cut Rolls */}
-                  {cutRolls.length > 0 && (
-                    <div className="space-y-2">
-                      <h3 className="font-medium text-sm flex items-center gap-2">
-                        <ScissorsIcon className="h-4 w-4" />
-                        Cut Rolls
-                      </h3>
-                      <div className="space-y-2">
-                        {cutRolls.map(roll => (
-                          <div key={roll.id} className="flex items-center justify-between p-3 border rounded-lg bg-amber-50 dark:bg-amber-950/20">
-                            <div className="flex-1">
-                              <div className="font-medium">{roll.batch_code}</div>
-                              <div className="text-sm text-muted-foreground">
-                                {roll.length_meters}m available
-                              </div>
-                            </div>
-                            <div className="flex gap-2">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => openCutDialog(roll, false)}
-                              >
-                                <ScissorsIcon className="h-4 w-4 mr-1" />
-                                Cut Further
-                              </Button>
-                              <Button
-                                size="sm"
-                                onClick={() => addToCart(roll, true)}
-                                disabled={cart.some(item => item.roll_id === roll.id)}
-                              >
-                                <PlusIcon className="h-4 w-4 mr-1" />
-                                Add
-                              </Button>
-                            </div>
+                      {/* Standard Rolls Summary */}
+                      {product.standard_rolls.length > 0 && (
+                        <div className="text-xs text-muted-foreground">
+                          Standard Rolls: {product.standard_rolls.length} rolls
+                        </div>
+                      )}
+
+                      {/* Cut Rolls - Open Format */}
+                      {product.cut_rolls.length > 0 && (
+                        <div className="space-y-2">
+                          <div className="text-xs font-medium text-muted-foreground">Cut Rolls Available:</div>
+                          <div className="space-y-1">
+                            {product.cut_rolls.map(roll => {
+                              const alreadyInCart = cart
+                                .find(item => item.product_label === product.product_label)
+                                ?.cut_rolls.some(r => r.id === roll.id);
+
+                              return (
+                                <div
+                                  key={roll.id}
+                                  className={`flex items-center justify-between p-2 rounded text-sm cursor-pointer transition-colors ${
+                                    alreadyInCart
+                                      ? 'bg-green-50 dark:bg-green-950/30 border border-green-200'
+                                      : 'bg-amber-50 dark:bg-amber-950/30 hover:bg-amber-100 dark:hover:bg-amber-950/50'
+                                  }`}
+                                  onClick={() => {
+                                    if (!alreadyInCart) {
+                                      addCutRollToCart(product, roll);
+                                    }
+                                  }}
+                                >
+                                  <div className="flex items-center gap-2 flex-1">
+                                    <span className="text-xs font-medium">{roll.batch_code}</span>
+                                    <div className="flex gap-1">
+                                      {Object.entries(product.parameters || {}).map(([key, value]) => (
+                                        <Badge key={key} variant="outline" className="text-xs px-1.5 py-0">
+                                          {value}
+                                        </Badge>
+                                      ))}
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-bold text-sm">{roll.length_meters}m</span>
+                                    {alreadyInCart && (
+                                      <Badge variant="default" className="text-xs">Added</Badge>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
                           </div>
-                        ))}
+                        </div>
+                      )}
+
+                      {/* Add to Cart Controls */}
+                      <div className="flex items-center gap-3 pt-2 border-t">
+                        {/* Standard Rolls */}
+                        {product.standard_rolls.length > 0 && (
+                          <div className="flex-1 flex items-center gap-2">
+                            <Label className="text-sm whitespace-nowrap">Standard Rolls:</Label>
+                            <div className="flex items-center gap-2">
+                              <Input
+                                type="number"
+                                min="0"
+                                max={product.standard_rolls.length}
+                                defaultValue="0"
+                                className="w-20 h-9"
+                                id={`roll-count-${idx}`}
+                              />
+                              <span className="text-xs text-muted-foreground">/ {product.standard_rolls.length}</span>
+                            </div>
+                            <Button
+                              size="sm"
+                              onClick={() => {
+                                const input = document.getElementById(`roll-count-${idx}`) as HTMLInputElement;
+                                let count = parseInt(input.value) || 0;
+                                const maxAvailable = product.standard_rolls.length;
+
+                                if (count > maxAvailable) {
+                                  toast.error(`Only ${maxAvailable} rolls available`);
+                                  input.value = maxAvailable.toString();
+                                  count = maxAvailable;
+                                }
+
+                                if (count > 0) {
+                                  addProductToCart(product, count);
+                                  input.value = '0';
+                                }
+                              }}
+                            >
+                              <PlusIcon className="h-4 w-4 mr-1" />
+                              Add
+                            </Button>
+                          </div>
+                        )}
+
+
                       </div>
                     </div>
-                  )}
+                  ))}
                 </CardContent>
               </Card>
             )}
@@ -439,59 +545,72 @@ const Dispatch = () => {
             {/* Cart */}
             <Card>
               <CardHeader>
-                <CardTitle>Cart ({cart.length})</CardTitle>
-                <CardDescription>Total: {totalQuantity.toFixed(2)}m</CardDescription>
+                <CardTitle>Cart ({totalRolls} rolls)</CardTitle>
+                <CardDescription>Total: <span className="font-bold">{totalMeters.toFixed(2)}m</span></CardDescription>
               </CardHeader>
               <CardContent>
                 {cart.length === 0 ? (
                   <div className="text-center py-8 text-muted-foreground">
                     <PackageIcon className="h-12 w-12 mx-auto mb-2 opacity-20" />
                     <p>Cart is empty</p>
-                    <p className="text-sm">Add rolls from inventory</p>
+                    <p className="text-sm">Select quantity from products</p>
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {cart.map(item => (
-                      <div key={item.roll_id} className="p-3 border rounded-lg space-y-2">
+                    {cart.map((item, idx) => (
+                      <div key={idx} className="p-3 border rounded-lg space-y-3">
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
-                            <div className="font-medium text-sm">{item.roll.batch_code}</div>
-                            <Badge variant="outline" className="text-xs mt-1">
-                              {item.roll.is_cut_roll ? 'Cut Roll' : 'Standard'}
-                            </Badge>
+                            <div className="font-semibold text-sm">{item.product_label}</div>
                           </div>
                           <Button
                             size="sm"
                             variant="ghost"
-                            onClick={() => removeFromCart(item.roll_id)}
+                            onClick={() => removeFromCart(item.product_label)}
                           >
                             <TrashIcon className="h-4 w-4 text-destructive" />
                           </Button>
                         </div>
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-2">
-                            <Input
-                              type="number"
-                              step="0.01"
-                              max={item.roll.length_meters}
-                              value={item.quantity}
-                              onChange={(e) => updateCartQuantity(item.roll_id, parseFloat(e.target.value) || 0)}
-                              className="h-8"
-                            />
-                            <span className="text-sm text-muted-foreground">
-                              / {item.roll.length_meters}m
-                            </span>
+
+                        {/* Standard Rolls */}
+                        {item.standard_roll_count > 0 && (
+                          <div className="flex items-center justify-between text-sm bg-slate-50 dark:bg-slate-800 p-2 rounded">
+                            <span className="text-muted-foreground">Standard Rolls:</span>
+                            <div className="flex items-center gap-2">
+                              <Input
+                                type="number"
+                                min="0"
+                                max={item.product.standard_rolls.length}
+                                value={item.standard_roll_count}
+                                onChange={(e) => updateRollCount(item.product_label, parseInt(e.target.value) || 0)}
+                                className="w-16 h-7 text-sm"
+                              />
+                              <span className="text-muted-foreground text-xs">
+                                (<span className="font-bold">{item.product.standard_rolls.slice(0, item.standard_roll_count).reduce((s, r) => s + r.length_meters, 0).toFixed(0)}m</span>)
+                              </span>
+                            </div>
                           </div>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="w-full"
-                            onClick={() => openCutDialog(item.roll, true)}
-                          >
-                            <ScissorsIcon className="h-3 w-3 mr-1" />
-                            Cut Roll
-                          </Button>
-                        </div>
+                        )}
+
+                        {/* Cut Rolls */}
+                        {item.cut_rolls.length > 0 && (
+                          <div className="space-y-1">
+                            <div className="text-xs font-medium text-muted-foreground">Cut Rolls:</div>
+                            {item.cut_rolls.map((roll, ridx) => (
+                              <div key={ridx} className="flex items-center justify-between text-sm bg-amber-50 dark:bg-amber-950/30 p-2 rounded">
+                                <span className="text-xs">{roll.batch_code} - <span className="font-bold">{roll.length_meters}m</span></span>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-6 w-6 p-0"
+                                  onClick={() => removeCutRollFromCart(item.product_label, roll.id)}
+                                >
+                                  <TrashIcon className="h-3 w-3 text-destructive" />
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -614,6 +733,52 @@ const Dispatch = () => {
               </Button>
               <Button onClick={handleCutRoll} disabled={loading}>
                 {loading ? 'Cutting...' : 'Cut Roll'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Cut Roll Selection Dialog */}
+        <Dialog open={cutRollDialogOpen} onOpenChange={setCutRollDialogOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Select Cut Rolls</DialogTitle>
+              <DialogDescription>
+                {selectedProduct && `Select cut rolls for ${selectedProduct.product_label}`}
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-2 max-h-96 overflow-y-auto">
+              {selectedProduct?.cut_rolls.map(roll => {
+                const alreadyInCart = cart
+                  .find(item => item.product_label === selectedProduct.product_label)
+                  ?.cut_rolls.some(r => r.id === roll.id);
+
+                return (
+                  <div key={roll.id} className="flex items-center justify-between p-3 border rounded-lg">
+                    <div>
+                      <div className="font-medium text-sm">{roll.batch_code}</div>
+                      <div className="text-xs text-muted-foreground">{roll.length_meters}m</div>
+                    </div>
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        if (selectedProduct) {
+                          addCutRollToCart(selectedProduct, roll);
+                        }
+                      }}
+                      disabled={alreadyInCart}
+                    >
+                      {alreadyInCart ? 'Added' : 'Add'}
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+
+            <DialogFooter>
+              <Button onClick={() => setCutRollDialogOpen(false)}>
+                Done
               </Button>
             </DialogFooter>
           </DialogContent>

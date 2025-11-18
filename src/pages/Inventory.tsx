@@ -57,9 +57,7 @@ const Inventory = () => {
   const [selectedBrand, setSelectedBrand] = useState<string>('all');
   const [parameterFilters, setParameterFilters] = useState<Record<string, string>>({});
   const [searchQuery, setSearchQuery] = useState('');
-  const [timeFilter, setTimeFilter] = useState<string>('all');
-  const [customStartDate, setCustomStartDate] = useState<string>('');
-  const [customEndDate, setCustomEndDate] = useState<string>('');
+  const [showOnlyCutRolls, setShowOnlyCutRolls] = useState(false);
 
   // Edit dialogs
   const [editingBatch, setEditingBatch] = useState<any>(null);
@@ -190,45 +188,12 @@ const Inventory = () => {
       }
     }
 
-    // Time range filter
-    if (timeFilter !== 'all' || (customStartDate && customEndDate)) {
-      const hasMatchingBatch = item.batches.some(batch => {
-        const productionDate = new Date(batch.production_date);
-        const now = new Date();
-
-        if (timeFilter !== 'all' && timeFilter !== 'custom') {
-          // Preset time filters
-          let startDate: Date;
-          switch (timeFilter) {
-            case '1day':
-              startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-              break;
-            case '2days':
-              startDate = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000);
-              break;
-            case '1week':
-              startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-              break;
-            case '2weeks':
-              startDate = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
-              break;
-            case '1month':
-              startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-              break;
-            default:
-              return true;
-          }
-          return productionDate >= startDate && productionDate <= now;
-        } else if (timeFilter === 'custom' && customStartDate && customEndDate) {
-          // Custom date range - convert from IST datetime-local to UTC
-          const startDate = fromISTDateTimeLocal(customStartDate);
-          const endDate = fromISTDateTimeLocal(customEndDate);
-          return productionDate >= startDate && productionDate <= endDate;
-        }
-        return true;
-      });
-
-      if (!hasMatchingBatch) {
+    // Cut rolls filter
+    if (showOnlyCutRolls) {
+      const hasCutRolls = item.batches.some(batch =>
+        batch.rolls.some(roll => roll.is_cut_roll || roll.roll_type === 'cut')
+      );
+      if (!hasCutRolls) {
         return false;
       }
     }
@@ -382,65 +347,28 @@ const Inventory = () => {
                 ));
               })()}
 
-              {/* Time Range Filter */}
-              <Select value={timeFilter} onValueChange={(value) => {
-                setTimeFilter(value);
-                if (value !== 'custom') {
-                  setCustomStartDate('');
-                  setCustomEndDate('');
-                }
-              }}>
-                <SelectTrigger className="h-12">
-                  <Calendar className="h-4 w-4 mr-2" />
-                  <SelectValue placeholder="Time Range" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Time</SelectItem>
-                  <SelectItem value="1day">Last 24 Hours</SelectItem>
-                  <SelectItem value="2days">Last 2 Days</SelectItem>
-                  <SelectItem value="1week">Last Week</SelectItem>
-                  <SelectItem value="2weeks">Last 2 Weeks</SelectItem>
-                  <SelectItem value="1month">Last Month</SelectItem>
-                  <SelectItem value="custom">Custom Range</SelectItem>
-                </SelectContent>
-              </Select>
-
-              {/* Custom Date Range Inputs */}
-              {timeFilter === 'custom' && (
-                <>
-                  <div className="space-y-1">
-                    <Input
-                      type="datetime-local"
-                      value={customStartDate}
-                      onChange={(e) => setCustomStartDate(e.target.value)}
-                      placeholder="Start Date & Time (IST)"
-                      className="h-12"
-                    />
-                    <p className="text-xs text-muted-foreground">Start Date & Time (IST)</p>
-                  </div>
-                  <div className="space-y-1">
-                    <Input
-                      type="datetime-local"
-                      value={customEndDate}
-                      onChange={(e) => setCustomEndDate(e.target.value)}
-                      placeholder="End Date & Time (IST)"
-                      className="h-12"
-                    />
-                    <p className="text-xs text-muted-foreground">End Date & Time (IST)</p>
-                  </div>
-                </>
-              )}
+              {/* Cut Rolls Filter */}
+              <div className="flex items-center space-x-2 border rounded-md px-3 h-12">
+                <input
+                  type="checkbox"
+                  id="cut-rolls-filter"
+                  checked={showOnlyCutRolls}
+                  onChange={(e) => setShowOnlyCutRolls(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300"
+                />
+                <Label htmlFor="cut-rolls-filter" className="text-sm font-medium cursor-pointer">
+                  Show Only Cut Rolls
+                </Label>
+              </div>
 
               {/* Clear Filters Button */}
-              {(selectedBrand !== 'all' || timeFilter !== 'all' || Object.keys(parameterFilters).length > 0) && (
+              {(selectedBrand !== 'all' || showOnlyCutRolls || Object.keys(parameterFilters).length > 0) && (
                 <Button
                   variant="outline"
                   onClick={() => {
                     setSelectedBrand('all');
                     setParameterFilters({});
-                    setTimeFilter('all');
-                    setCustomStartDate('');
-                    setCustomEndDate('');
+                    setShowOnlyCutRolls(false);
                   }}
                   className="h-12"
                 >
@@ -535,7 +463,12 @@ const Inventory = () => {
               const displayQty = isBundle ? product.total_quantity : product.total_quantity.toFixed(2);
 
               // Aggregate ALL rolls from ALL batches
-              const allRolls = product.batches.flatMap(batch => batch.rolls);
+              let allRolls = product.batches.flatMap(batch => batch.rolls);
+
+              // Apply cut rolls filter if active
+              if (showOnlyCutRolls) {
+                allRolls = allRolls.filter(r => r.is_cut_roll || r.roll_type === 'cut');
+              }
 
               // Standard rolls grouped by length
               const standardRolls = allRolls.filter(r => r.roll_type === 'standard' || (!r.roll_type && !r.is_cut_roll));
@@ -603,8 +536,8 @@ const Inventory = () => {
                             })()}
                           </div>
                           <div className="flex items-center gap-3">
-                            <span className="text-2xl font-bold whitespace-nowrap">
-                              {displayQty} {unit}
+                            <span className="text-2xl whitespace-nowrap">
+                              <span className="font-bold">{displayQty}</span> {unit}
                             </span>
                             <ChevronDown className="h-5 w-5 text-muted-foreground flex-shrink-0" />
                           </div>
@@ -633,14 +566,14 @@ const Inventory = () => {
                                     >
                                       <div className="flex-1">
                                         <div className="text-base font-semibold">
-                                          {parseFloat(length).toFixed(0)}m × {rolls.length}
+                                          <span className="font-bold">{parseFloat(length).toFixed(0)}m</span> × {rolls.length}
                                         </div>
                                         <div className="text-xs text-muted-foreground mt-1">
                                           {rolls.length} roll{rolls.length > 1 ? 's' : ''}
                                         </div>
                                       </div>
-                                      <div className="text-3xl font-bold text-primary">
-                                        {totalLength.toFixed(0)}m
+                                      <div className="text-3xl text-primary">
+                                        <span className="font-bold">{totalLength.toFixed(0)}m</span>
                                       </div>
                                     </div>
                                   );
@@ -667,14 +600,14 @@ const Inventory = () => {
                                     >
                                       <div className="flex-1">
                                         <div className="text-base font-semibold">
-                                          {parseFloat(length).toFixed(0)}m × {rolls.length}
+                                          <span className="font-bold">{parseFloat(length).toFixed(0)}m</span> × {rolls.length}
                                         </div>
                                         <div className="text-xs text-muted-foreground mt-1">
                                           {rolls.length} cut roll{rolls.length > 1 ? 's' : ''}
                                         </div>
                                       </div>
-                                      <div className="text-3xl font-bold text-amber-600">
-                                        {totalLength.toFixed(0)}m
+                                      <div className="text-3xl text-amber-600">
+                                        <span className="font-bold">{totalLength.toFixed(0)}m</span>
                                       </div>
                                     </div>
                                   );
