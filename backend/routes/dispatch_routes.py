@@ -176,9 +176,10 @@ def cut_roll():
         with get_db_cursor() as cursor:
             # Get the roll details
             cursor.execute("""
-                SELECT r.*, b.batch_id, b.product_variant_id
+                SELECT r.*, r.batch_id, pv.id as product_variant_id
                 FROM rolls r
                 JOIN batches b ON r.batch_id = b.id
+                JOIN product_variants pv ON b.product_variant_id = pv.id
                 WHERE r.id = %s AND r.deleted_at IS NULL
             """, (roll_id,))
 
@@ -303,9 +304,10 @@ def create_dispatch():
 
                 # Get roll details
                 cursor.execute("""
-                    SELECT r.*, b.batch_id, b.product_variant_id
+                    SELECT r.*, r.batch_id, pv.id as product_variant_id
                     FROM rolls r
                     JOIN batches b ON r.batch_id = b.id
+                    JOIN product_variants pv ON b.product_variant_id = pv.id
                     WHERE r.id = %s AND r.deleted_at IS NULL
                 """, (roll_id,))
 
@@ -367,12 +369,14 @@ def create_dispatch():
                 total_quantity += quantity_dispatched
 
             # Update batch quantities for all affected batches
-            cursor.execute("""
+            roll_ids = [item['roll_id'] for item in items]
+            placeholders = ','.join(['%s'] * len(roll_ids))
+            cursor.execute(f"""
                 SELECT DISTINCT b.id
                 FROM rolls r
                 JOIN batches b ON r.batch_id = b.id
-                WHERE r.id = ANY(%s)
-            """, ([item['roll_id'] for item in items],))
+                WHERE r.id IN ({placeholders})
+            """, tuple(roll_ids))
 
             batch_ids = [row['id'] for row in cursor.fetchall()]
 

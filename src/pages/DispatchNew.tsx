@@ -427,9 +427,21 @@ const Dispatch = () => {
                     <div key={idx} className="border rounded-lg p-4 space-y-3 hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors">
                       {/* Product Header */}
                       <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <h3 className="font-semibold text-base">{product.product_label}</h3>
-                          <p className="text-sm text-muted-foreground mt-1">
+                        <div className="flex-1 space-y-2">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h3 className="font-semibold text-base">{product.product_type}</h3>
+                            <Badge variant="secondary" className="text-sm">
+                              {product.brand}
+                            </Badge>
+                          </div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {Object.entries(product.parameters || {}).map(([key, value]) => (
+                              <Badge key={key} className="text-xs font-bold bg-primary/10 text-primary border-primary/20">
+                                {key}: {value}
+                              </Badge>
+                            ))}
+                          </div>
+                          <p className="text-sm text-muted-foreground">
                             <span className="font-bold">{product.total_available_meters}m</span> available
                           </p>
                         </div>
