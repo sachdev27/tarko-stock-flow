@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import { ReactNode, useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -11,10 +11,10 @@ import {
   LogOut,
   Factory,
   Menu,
-  X
+  X,
+  Clock
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useState } from 'react';
 
 interface LayoutProps {
   children: ReactNode;
@@ -25,6 +25,7 @@ export const Layout = ({ children }: LayoutProps) => {
   const location = useLocation();
   const { signOut, userRole, isAdmin } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [currentTime, setCurrentTime] = useState('');
 
   const menuItems = [
     { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
@@ -43,6 +44,22 @@ export const Layout = ({ children }: LayoutProps) => {
     navigate('/auth');
   };
 
+  useEffect(() => {
+    const updateClock = () => {
+      const now = new Date();
+      let hours = now.getHours();
+      const minutes = now.getMinutes().toString().padStart(2, '0');
+      const seconds = now.getSeconds().toString().padStart(2, '0');
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      hours = hours % 12 || 12; // Convert to 12-hour format
+      setCurrentTime(`${hours}:${minutes}:${seconds} ${ampm}`);
+    };
+
+    updateClock(); // Initial update
+    const interval = setInterval(updateClock, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
   return (
     <div className="min-h-screen bg-factory-bg">
       {/* Header */}
@@ -57,9 +74,13 @@ export const Layout = ({ children }: LayoutProps) => {
               <p className="text-xs text-muted-foreground">Inventory System</p>
             </div>
           </div>
-          
+
           <div className="flex items-center space-x-2">
-            <div className="hidden md:flex items-center space-x-2">
+            <div className="hidden md:flex items-center space-x-3">
+              <div className="flex items-center space-x-2 px-3 py-1 bg-secondary/50 rounded-lg">
+                <Clock className="h-4 w-4 text-primary" />
+                <span className="text-sm font-mono text-foreground">{currentTime}</span>
+              </div>
               <span className="text-sm text-muted-foreground px-3 py-1 bg-secondary rounded-full">
                 {userRole?.toUpperCase()}
               </span>
@@ -68,7 +89,7 @@ export const Layout = ({ children }: LayoutProps) => {
                 Sign Out
               </Button>
             </div>
-            
+
             <Button
               variant="ghost"
               size="sm"

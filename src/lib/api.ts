@@ -71,8 +71,13 @@ export const inventory = {
 
 // Production endpoints
 export const production = {
-  createBatch: (data: any) =>
-    api.post('/production/batch', data),
+  createBatch: (data: any) => {
+    // If data is FormData, let browser set Content-Type with boundary
+    const config = data instanceof FormData
+      ? { headers: { 'Content-Type': 'multipart/form-data' } }
+      : {};
+    return api.post('/production/batch', data, config);
+  },
 };
 
 // Transaction endpoints
@@ -117,6 +122,8 @@ export const admin = {
     api.get('/admin/product-types'),
   createProductType: (data: any) =>
     api.post('/admin/product-types', data),
+  updateProductType: (id: string, data: any) =>
+    api.put(`/admin/product-types/${id}`, data),
   deleteProductType: (id: string) =>
     api.delete(`/admin/product-types/${id}`),
 
@@ -152,6 +159,21 @@ export const reports = {
 
   getProductInventory: () =>
     api.get('/reports/product-inventory'),
+};
+
+// Parameter endpoints
+export const parameters = {
+  getOptions: () =>
+    api.get('/parameters/options'),
+
+  getOptionsByName: (parameterName: string) =>
+    api.get(`/parameters/options/${parameterName}`),
+
+  addOption: (data: { parameter_name: string; option_value: string }) =>
+    api.post('/parameters/options', data),
+
+  deleteOption: (optionId: number) =>
+    api.delete(`/parameters/options/${optionId}`),
 };
 
 export default api;

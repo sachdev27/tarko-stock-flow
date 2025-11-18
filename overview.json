@@ -1,24 +1,12 @@
 {
   "rootFolder": "/Users/sachdevs/Projects/Tarko-Inv/tarko-stock-flow",
-  "analyzedAt": "2025-11-17T21:16:46.691Z",
+  "analyzedAt": "2025-11-18T08:13:44.890Z",
   "rootStructure": [
     {
       "name": ".gitignore",
       "type": "file",
       "size": 824,
       "lines": 68
-    },
-    {
-      "name": "CLEANUP_SUMMARY.md",
-      "type": "file",
-      "size": 3814,
-      "lines": 114
-    },
-    {
-      "name": "MIGRATION_GUIDE.md",
-      "type": "file",
-      "size": 4994,
-      "lines": 238
     },
     {
       "name": "README.md",
@@ -57,6 +45,12 @@
     {
       "name": "node_modules",
       "type": "dir"
+    },
+    {
+      "name": "overview.json",
+      "type": "file",
+      "size": 18784,
+      "lines": 621
     },
     {
       "name": "package-lock.json",
@@ -116,30 +110,6 @@
     }
   ],
   "rootFileSnippets": {
-    "CLEANUP_SUMMARY.md": [
-      "# Cleanup Summary",
-      "",
-      "## ✅ Completed Tasks",
-      "",
-      "### 1. Enhanced .gitignore",
-      "- Added Python virtual environment exclusions (`backend/venv/`, `__pycache__/`, etc.)",
-      "- Added environment file patterns (`.env`, `.env.local`, etc.)",
-      "- Added database file exclusions",
-      "- Added comprehensive OS and editor exclusions",
-      ""
-    ],
-    "MIGRATION_GUIDE.md": [
-      "# Migration Guide: Supabase Cloud → Local PostgreSQL",
-      "",
-      "## Overview",
-      "",
-      "This guide walks you through migrating from Supabase cloud to a local PostgreSQL database with Flask backend.",
-      "",
-      "## What Changes",
-      "",
-      "### Before (Supabase)",
-      "- Frontend → Supabase Client SDK → Supabase Cloud"
-    ],
     "README.md": [
       "# Tarko Inventory Management System",
       "",
@@ -199,6 +169,18 @@
       "<meta name=\"author\" content=\"Tarko\" />",
       "",
       "<meta property=\"og:title\" content=\"Tarko Inventory - Manufacturing Management\" />"
+    ],
+    "overview.json": [
+      "{",
+      "\"rootFolder\": \"/Users/sachdevs/Projects/Tarko-Inv/tarko-stock-flow\",",
+      "\"analyzedAt\": \"2025-11-17T21:16:46.691Z\",",
+      "\"rootStructure\": [",
+      "{",
+      "\"name\": \".gitignore\",",
+      "\"type\": \"file\",",
+      "\"size\": 824,",
+      "\"lines\": 68",
+      "},"
     ],
     "package-lock.json": [
       "{",
@@ -298,13 +280,13 @@
     {
       "path": "backend",
       "category": "backend",
-      "fileCount": 14,
+      "fileCount": 17,
       "primaryLanguage": "Python"
     },
     {
       "path": "backend/routes",
       "category": "build",
-      "fileCount": 4,
+      "fileCount": 7,
       "primaryLanguage": "Python"
     },
     {
@@ -336,28 +318,28 @@
     "root": "# Tarko Inventory Management System"
   },
   "totals": {
-    "numFiles": 107,
+    "numFiles": 111,
     "numDirs": 13,
-    "totalSizeBytes": 779635,
-    "totalLinesOfCode": 8365
+    "totalSizeBytes": 800536,
+    "totalLinesOfCode": 8672
   },
   "fileCategories": {
-    "other": 13,
-    "documentation": 6,
-    "source": 82,
-    "config": 6
+    "other": 14,
+    "documentation": 4,
+    "source": 86,
+    "config": 7
   },
   "linesOfCodePerLanguage": {
-    "Python": 549,
+    "Python": 1012,
     "Shell": 70,
     "JavaScript": 34,
-    "TypeScript": 7712
+    "TypeScript": 7556
   },
   "filesPerLanguage": {
-    "Python": 8,
+    "Python": 11,
     "Shell": 1,
     "JavaScript": 2,
-    "TypeScript": 71
+    "TypeScript": 72
   },
   "projectTypes": [
     "Python (requirements)",
@@ -378,14 +360,14 @@
   "topLevelDirectories": [
     {
       "name": "src",
-      "numFiles": 71,
-      "totalLoc": 7597,
+      "numFiles": 72,
+      "totalLoc": 7441,
       "dominantLanguage": "TypeScript"
     },
     {
       "name": "backend",
-      "numFiles": 14,
-      "totalLoc": 619,
+      "numFiles": 17,
+      "totalLoc": 1082,
       "dominantLanguage": "Python"
     },
     {
@@ -399,11 +381,11 @@
       "path": "src",
       "name": "src",
       "level": 1,
-      "numFiles": 71,
-      "totalLoc": 7597,
+      "numFiles": 72,
+      "totalLoc": 7441,
       "dominantLanguage": "TypeScript",
       "category": "General",
-      "description": "General module with 71 files (TypeScript)",
+      "description": "General module with 72 files (TypeScript)",
       "subdirectories": [
         {
           "path": "src/components",
@@ -432,11 +414,11 @@
           "path": "src/pages",
           "name": "pages",
           "level": 2,
-          "numFiles": 9,
-          "totalLoc": 2843,
+          "numFiles": 10,
+          "totalLoc": 2606,
           "dominantLanguage": "TypeScript",
           "category": "General",
-          "description": "General module with 9 files (TypeScript)",
+          "description": "General module with 10 files (TypeScript)",
           "subdirectories": []
         },
         {
@@ -451,25 +433,25 @@
           "subdirectories": []
         },
         {
-          "path": "src/contexts",
-          "name": "contexts",
-          "level": 2,
-          "numFiles": 1,
-          "totalLoc": 126,
-          "dominantLanguage": "TypeScript",
-          "category": "General",
-          "description": "General module with 1 files (TypeScript)",
-          "subdirectories": []
-        },
-        {
           "path": "src/lib",
           "name": "lib",
           "level": 2,
           "numFiles": 2,
-          "totalLoc": 74,
+          "totalLoc": 165,
           "dominantLanguage": "TypeScript",
           "category": "Library",
           "description": "Library module with 2 files (TypeScript)",
+          "subdirectories": []
+        },
+        {
+          "path": "src/contexts",
+          "name": "contexts",
+          "level": 2,
+          "numFiles": 1,
+          "totalLoc": 116,
+          "dominantLanguage": "TypeScript",
+          "category": "General",
+          "description": "General module with 1 files (TypeScript)",
           "subdirectories": []
         }
       ]
@@ -478,8 +460,8 @@
       "path": "backend",
       "name": "backend",
       "level": 1,
-      "numFiles": 14,
-      "totalLoc": 619,
+      "numFiles": 17,
+      "totalLoc": 1082,
       "dominantLanguage": "Python",
       "category": "General",
       "description": "# Tarko Inventory - Backend API",
@@ -488,11 +470,11 @@
           "path": "backend/routes",
           "name": "routes",
           "level": 2,
-          "numFiles": 4,
-          "totalLoc": 375,
+          "numFiles": 7,
+          "totalLoc": 832,
           "dominantLanguage": "Python",
           "category": "General",
-          "description": "General module with 4 files (Python)",
+          "description": "General module with 7 files (Python)",
           "subdirectories": []
         }
       ]
@@ -604,16 +586,16 @@
     "total": 66
   },
   "complexity": {
-    "averageFileSize": 78.17757009345794,
+    "averageFileSize": 78.12612612612612,
     "maxFileSize": 0,
     "nestedDepth": 0,
     "estimatedComplexity": "high"
   },
   "gitRepo": {
-    "firstCommitDate": "2025-11-17",
-    "totalCommits": 5,
+    "firstCommitDate": "2025-11-18",
+    "totalCommits": 8,
     "numContributors": 0,
-    "currentBranch": "main",
+    "currentBranch": "sachdevs/update_admin_production_entry",
     "remoteUrls": [
       "https://github.com/sachdev27/tarko-stock-flow.git"
     ]

@@ -1,17 +1,36 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, send_from_directory
 from flask_jwt_extended import get_jwt_identity
 from database import execute_insert, execute_query, get_db_cursor
 from auth import jwt_required_with_role
+from werkzeug.utils import secure_filename
 import json
+import os
+import uuid
 
 production_bp = Blueprint('production', __name__, url_prefix='/api/production')
+
+UPLOAD_FOLDER = 'uploads/batches'
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'pdf'}
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 @production_bp.route('/batch', methods=['POST'])
 @jwt_required_with_role('user')
 def create_batch():
     """Create a new production batch with rolls"""
     user_id = get_jwt_identity()
-    data = request.get_json()
+
+    # Handle multipart/form-data for file upload
+    if request.content_type and 'multipart/form-data' in request.content_type:
+        data = request.form.to_dict()
+        # Parse JSON fields
+        if 'parameters' in data:
+            data['parameters'] = json.loads(data['parameters'])
+        file = request.files.get('attachment')
+    else:
+        data = request.get_json()
+        file = None
 
     # Extract data
     location_id = data.get('location_id')
@@ -24,6 +43,15 @@ def create_batch():
     batch_code = data.get('batch_code')
     notes = data.get('notes', '')
     number_of_rolls = int(data.get('number_of_rolls', 1))
+
+    # Handle file upload
+    attachment_url = None
+    if file and allowed_file(file.filename):
+        filename = secure_filename(file.filename)
+        unique_filename = f"{uuid.uuid4()}_{filename}"
+        filepath = os.path.join(UPLOAD_FOLDER, unique_filename)
+        file.save(filepath)
+        attachment_url = f"/api/production/attachment/{unique_filename}"
 
     with get_db_cursor() as cursor:
         # Create or get product variant
@@ -50,11 +78,11 @@ def create_batch():
             INSERT INTO batches (
                 batch_no, batch_code, product_variant_id, location_id,
                 production_date, initial_quantity, current_quantity,
-                qc_status, notes, created_by, created_at, updated_at
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, 'PENDING', %s, %s, NOW(), NOW())
+                qc_status, notes, attachment_url, created_by, created_at, updated_at
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, 'PENDING', %s, %s, %s, NOW(), NOW())
             RETURNING id, batch_code
         """, (batch_no, batch_code, variant_id, location_id, production_date,
-              quantity, quantity, notes, user_id))
+              quantity, quantity, notes, attachment_url, user_id))
 
         batch = cursor.fetchone()
         batch_id = batch['id']
@@ -90,3 +118,8 @@ def create_batch():
         'batch_code': batch['batch_code'],
         'message': 'Batch created successfully'
     }), 201
+
+@production_bp.route('/attachment/<filename>', methods=['GET'])
+def get_attachment(filename):
+    """Serve uploaded batch attachments"""
+    return send_from_directory(UPLOAD_FOLDER, filename)
