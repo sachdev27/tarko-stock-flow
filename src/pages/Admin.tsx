@@ -13,6 +13,7 @@ import { toast } from 'sonner';
 import { Settings, Plus, Trash2, Edit, Building, Tag, Package, Users, Shield, Sliders, Upload, Download, FileText } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { admin, parameters } from '@/lib/api';
+import { formatDate } from '@/lib/utils';
 
 const Admin = () => {
   const { user, isAdmin } = useAuth();
@@ -1152,7 +1153,10 @@ const Admin = () => {
                             </Badge>
                           </td>
                           <td className="p-3">
-                            {usr.last_login_at ? new Date(usr.last_login_at).toLocaleString() : 'Never'}
+                            {usr.last_login_at ? (() => {
+                              const date = new Date(usr.last_login_at);
+                              return `${formatDate(usr.last_login_at)} ${date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}`;
+                            })() : 'Never'}
                           </td>
                           <td className="p-3 text-right space-x-2">
                             <Button
@@ -1452,7 +1456,10 @@ const Admin = () => {
                           </span>
                         </div>
                         <span className="text-xs text-muted-foreground">
-                          {new Date(log.created_at).toLocaleString()}
+                          {(() => {
+                            const date = new Date(log.created_at);
+                            return `${formatDate(log.created_at)} ${date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}`;
+                          })()}
                         </span>
                       </div>
                     </div>

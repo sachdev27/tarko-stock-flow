@@ -14,6 +14,7 @@ import { Package, Search, Filter, QrCode, ChevronDown, ChevronUp, MapPin, Edit2,
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { inventory as inventoryAPI } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
+import { toISTDateTimeLocal, fromISTDateTimeLocal } from '@/lib/utils';
 
 interface ProductInventory {
   product_type: string;
@@ -219,10 +220,9 @@ const Inventory = () => {
           }
           return productionDate >= startDate && productionDate <= now;
         } else if (timeFilter === 'custom' && customStartDate && customEndDate) {
-          // Custom date range
-          const startDate = new Date(customStartDate);
-          const endDate = new Date(customEndDate);
-          endDate.setHours(23, 59, 59, 999); // Include entire end date
+          // Custom date range - convert from IST datetime-local to UTC
+          const startDate = fromISTDateTimeLocal(customStartDate);
+          const endDate = fromISTDateTimeLocal(customEndDate);
           return productionDate >= startDate && productionDate <= endDate;
         }
         return true;
@@ -408,20 +408,26 @@ const Inventory = () => {
               {/* Custom Date Range Inputs */}
               {timeFilter === 'custom' && (
                 <>
-                  <Input
-                    type="date"
-                    value={customStartDate}
-                    onChange={(e) => setCustomStartDate(e.target.value)}
-                    placeholder="Start Date"
-                    className="h-12"
-                  />
-                  <Input
-                    type="date"
-                    value={customEndDate}
-                    onChange={(e) => setCustomEndDate(e.target.value)}
-                    placeholder="End Date"
-                    className="h-12"
-                  />
+                  <div className="space-y-1">
+                    <Input
+                      type="datetime-local"
+                      value={customStartDate}
+                      onChange={(e) => setCustomStartDate(e.target.value)}
+                      placeholder="Start Date & Time (IST)"
+                      className="h-12"
+                    />
+                    <p className="text-xs text-muted-foreground">Start Date & Time (IST)</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Input
+                      type="datetime-local"
+                      value={customEndDate}
+                      onChange={(e) => setCustomEndDate(e.target.value)}
+                      placeholder="End Date & Time (IST)"
+                      className="h-12"
+                    />
+                    <p className="text-xs text-muted-foreground">End Date & Time (IST)</p>
+                  </div>
                 </>
               )}
 

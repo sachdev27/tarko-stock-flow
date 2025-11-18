@@ -103,7 +103,38 @@ def create_transaction():
 @jwt_required_with_role()
 def get_transactions():
     """Get comprehensive transaction history with product details"""
-    query = """
+    # Get optional date range parameters from query string (in IST)
+    start_date_ist = request.args.get('start_date')  # IST datetime string
+    end_date_ist = request.args.get('end_date')  # IST datetime string
+
+    # Build WHERE clause for date filtering
+    date_filter = ""
+    params = []
+
+    if start_date_ist and end_date_ist:
+        # Frontend sends IST datetime, database stores timezone-aware IST times
+        # Need to add timezone info to match database format
+        from datetime import datetime, timezone, timedelta
+
+        # Parse IST datetime and add IST timezone (+05:30)
+        ist_tz = timezone(timedelta(hours=5, minutes=30))
+        start_naive = datetime.fromisoformat(start_date_ist.replace('Z', ''))
+        end_naive = datetime.fromisoformat(end_date_ist.replace('Z', ''))
+
+        # Add IST timezone to make them timezone-aware
+        start_ist = start_naive.replace(tzinfo=ist_tz)
+        end_ist = end_naive.replace(tzinfo=ist_tz)
+
+        print(f"🔍 Backend Date Filter Debug:")
+        print(f"  Received start_date: {start_date_ist}")
+        print(f"  Received end_date: {end_date_ist}")
+        print(f"  Parsed start (with TZ): {start_ist}")
+        print(f"  Parsed end (with TZ): {end_ist}")
+
+        date_filter = " AND t.created_at >= %s AND t.created_at <= %s"
+        params = [start_ist, end_ist]
+
+    query = f"""
         SELECT
             t.id,
             t.transaction_type,
@@ -117,11 +148,12 @@ def get_transactions():
             b.initial_quantity,
             b.weight_per_meter,
             b.total_weight,
+            b.attachment_url,
             b.created_at as production_date,
-            pv.product_type,
-            pv.brand,
+            pt.name as product_type,
+            br.name as brand,
             pv.parameters,
-            ut.abbreviation as unit_abbreviation,
+            u_unit.abbreviation as unit_abbreviation,
             c.name as customer_name,
             u.email as created_by_email,
             u.username as created_by_username,
@@ -129,18 +161,24 @@ def get_transactions():
         FROM transactions t
         JOIN batches b ON t.batch_id = b.id
         JOIN product_variants pv ON b.product_variant_id = pv.id
-        LEFT JOIN unit_types ut ON pv.unit_type_id = ut.id
+        JOIN product_types pt ON pv.product_type_id = pt.id
+        JOIN brands br ON pv.brand_id = br.id
+        LEFT JOIN units u_unit ON pt.unit_id = u_unit.id
         LEFT JOIN customers c ON t.customer_id = c.id
         LEFT JOIN users u ON t.created_by = u.id
-        WHERE t.deleted_at IS NULL
+        WHERE t.deleted_at IS NULL{date_filter}
         ORDER BY t.created_at DESC
         LIMIT 500
     """
 
-    transactions = execute_query(query)
+    transactions = execute_query(query, tuple(params)) if params else execute_query(query)
 
-    # Also fetch production batches (not just transactions)
-    production_query = """
+    # Also fetch production batches (not just transactions) with same date filter
+    prod_date_filter = ""
+    if start_date_ist and end_date_ist:
+        prod_date_filter = " AND b.created_at >= %s AND b.created_at <= %s"
+
+    production_query = f"""
         SELECT
             b.id,
             'PRODUCTION' as transaction_type,
@@ -154,28 +192,42 @@ def get_transactions():
             b.initial_quantity,
             b.weight_per_meter,
             b.total_weight,
+            b.attachment_url,
             b.created_at as production_date,
-            pv.product_type,
-            pv.brand,
+            pt.name as product_type,
+            br.name as brand,
             pv.parameters,
-            ut.abbreviation as unit_abbreviation,
+            u_unit.abbreviation as unit_abbreviation,
             NULL as customer_name,
             u.email as created_by_email,
             u.username as created_by_username,
             u.full_name as created_by_name
         FROM batches b
         JOIN product_variants pv ON b.product_variant_id = pv.id
-        LEFT JOIN unit_types ut ON pv.unit_type_id = ut.id
+        JOIN product_types pt ON pv.product_type_id = pt.id
+        JOIN brands br ON pv.brand_id = br.id
+        LEFT JOIN units u_unit ON pt.unit_id = u_unit.id
         LEFT JOIN users u ON b.created_by = u.id
-        WHERE b.deleted_at IS NULL
+        WHERE b.deleted_at IS NULL{prod_date_filter}
         ORDER BY b.created_at DESC
         LIMIT 500
     """
 
-    production_batches = execute_query(production_query)
+    production_batches = execute_query(production_query, tuple(params)) if params else execute_query(production_query)
+
+    print(f"📊 Query Results:")
+    print(f"  Transactions found (filtered): {len(transactions)}")
+    print(f"  Production batches found (filtered): {len(production_batches)}")
+    print(f"  Date filter applied: {bool(params)}")
+
+    if production_batches:
+        print(f"  First production batch created_at: {production_batches[0].get('created_at')}")
+        print(f"  Last production batch created_at: {production_batches[-1].get('created_at')}")
 
     # Combine and sort all records
     all_records = transactions + production_batches
     all_records.sort(key=lambda x: x['created_at'], reverse=True)
+
+    print(f"  Total records returned: {len(all_records)}")
 
     return jsonify(all_records), 200

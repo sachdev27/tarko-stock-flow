@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import { FileText, Download, Filter, X, Calendar } from 'lucide-react';
 import { transactions as transactionsAPI, inventory, parameters as paramAPI } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
+import { formatDate, toISTDateTimeLocal, fromISTDateTimeLocal } from '@/lib/utils';
 
 interface Transaction {
   id: string;
@@ -29,6 +30,7 @@ interface Transaction {
   notes?: string;
   created_by_name: string;
   unit: string;
+  attachment_url?: string;
 }
 
 const Transactions = () => {
@@ -52,15 +54,70 @@ const Transactions = () => {
   const [filterDateTo, setFilterDateTo] = useState<string>('');
   const [filterParameters, setFilterParameters] = useState<Record<string, string>>({});
   const [searchTerm, setSearchTerm] = useState<string>('');
+  const [dateRangePreset, setDateRangePreset] = useState<string>('custom');
 
   useEffect(() => {
     fetchMasterData();
     fetchTransactions();
   }, []);
 
+  // Function to set date range based on preset
+  const applyDateRangePreset = (preset: string) => {
+    setDateRangePreset(preset);
+
+    if (preset === 'custom') {
+      return; // Don't change dates for custom
+    }
+
+    const now = new Date();
+    // Since DB stores IST and browser is in IST, use local time directly
+    // Format for datetime-local: YYYY-MM-DDTHH:MM
+    const formatForDateTimeLocal = (date: Date): string => {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const hours = String(date.getHours()).padStart(2, '0');
+      const minutes = String(date.getMinutes()).padStart(2, '0');
+      return `${year}-${month}-${day}T${hours}:${minutes}`;
+    };
+
+    const toDateTime = formatForDateTimeLocal(now);
+    let fromDateTime = '';
+
+    switch (preset) {
+      case 'last24h':
+        // For last 24h, go back exactly 24 hours from now
+        const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        fromDateTime = formatForDateTimeLocal(yesterday);
+        break;
+      case 'last3days':
+        fromDateTime = formatForDateTimeLocal(new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000));
+        break;
+      case 'last7days':
+        fromDateTime = formatForDateTimeLocal(new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000));
+        break;
+      case 'last2weeks':
+        fromDateTime = formatForDateTimeLocal(new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000));
+        break;
+      case 'last30days':
+        fromDateTime = formatForDateTimeLocal(new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000));
+        break;
+      default:
+        return;
+    }
+
+    setFilterDateFrom(fromDateTime);
+    setFilterDateTo(toDateTime);
+  };
+
   useEffect(() => {
     applyFilters();
-  }, [transactions, filterType, filterProductType, filterBrand, filterCustomer, filterDateFrom, filterDateTo, filterParameters, searchTerm]);
+  }, [transactions, filterType, filterProductType, filterBrand, filterCustomer, filterParameters, searchTerm]);
+
+  // Re-fetch when date filters change
+  useEffect(() => {
+    fetchTransactions();
+  }, [filterDateFrom, filterDateTo]);
 
   const fetchMasterData = async () => {
     try {
@@ -84,10 +141,40 @@ const Transactions = () => {
   const fetchTransactions = async () => {
     try {
       setLoading(true);
-      const response = await transactionsAPI.getAll();
 
-      // Transform transactions data
-      const transformedData = (response.data || []).map((txn: any) => ({
+      // Build query params for date filtering
+      const params: { start_date?: string; end_date?: string } = {};
+
+      if (filterDateFrom && filterDateTo) {
+        // Database stores IST times, so send datetime-local value directly
+        // datetime-local format: "2025-11-19T14:30" - append seconds for ISO format
+        params.start_date = filterDateFrom + ':00';  // Add seconds
+        params.end_date = filterDateTo + ':00';      // Add seconds
+
+        console.log('🔍 Date Filter Debug:');
+        console.log('  From (input):', filterDateFrom);
+        console.log('  To (input):', filterDateTo);
+        console.log('  From (sent):', params.start_date);
+        console.log('  To (sent):', params.end_date);
+      } else {
+        console.log('🔍 No date filter applied');
+      }
+
+      const paramsToSend = Object.keys(params).length > 0 ? params : undefined;
+      console.log('📤 Calling API with params:', paramsToSend);
+
+      const response = await transactionsAPI.getAll(paramsToSend);
+
+      console.log('📊 Received transactions:', response.data?.length || 0);
+
+      // Transform transactions data and remove duplicates
+      const seenIds = new Set();
+      const transformedData = (response.data || []).filter((txn: any) => {
+        // Remove duplicates based on id
+        if (seenIds.has(txn.id)) return false;
+        seenIds.add(txn.id);
+        return true;
+      }).map((txn: any) => ({
         id: txn.id,
         transaction_type: txn.transaction_type === 'SALE' ? 'SALE' : 'PRODUCTION',
         transaction_date: txn.transaction_date || txn.created_at,
@@ -103,8 +190,12 @@ const Transactions = () => {
         invoice_no: txn.invoice_no,
         notes: txn.notes,
         created_by_name: txn.created_by_name || 'System',
-        unit: txn.unit_abbreviation || 'm'
+        unit: txn.unit_abbreviation || 'm',
+        attachment_url: txn.attachment_url
       }));
+
+      // Sort by date, latest first
+      transformedData.sort((a, b) => new Date(b.transaction_date).getTime() - new Date(a.transaction_date).getTime());
 
       setTransactions(transformedData);
     } catch (error) {
@@ -138,13 +229,8 @@ const Transactions = () => {
       filtered = filtered.filter(t => t.customer_name === filterCustomer);
     }
 
-    // Filter by date range
-    if (filterDateFrom) {
-      filtered = filtered.filter(t => new Date(t.transaction_date) >= new Date(filterDateFrom));
-    }
-    if (filterDateTo) {
-      filtered = filtered.filter(t => new Date(t.transaction_date) <= new Date(filterDateTo));
-    }
+    // Date filtering is now handled by the backend, no need to filter client-side
+    // The backend already filters based on filterDateFrom and filterDateTo
 
     // Filter by parameters
     Object.entries(filterParameters).forEach(([key, value]) => {
@@ -177,13 +263,14 @@ const Transactions = () => {
     setFilterDateTo('');
     setFilterParameters({});
     setSearchTerm('');
+    setDateRangePreset('custom');
   };
 
   const exportToCSV = () => {
     const headers = ['Date', 'Type', 'Product Type', 'Brand', 'Parameters', 'Quantity', 'Unit', 'Weight/m (g)', 'Total Weight (g)', 'Customer', 'Batch Code', 'Invoice', 'Notes'];
 
     const rows = filteredTransactions.map(t => [
-      new Date(t.transaction_date).toLocaleDateString(),
+      formatDate(t.transaction_date),
       t.transaction_type,
       t.product_type,
       t.brand,
@@ -227,9 +314,9 @@ const Transactions = () => {
   };
 
   // Get available parameter keys from selected product type
-  const availableParams = filterProductType !== 'all'
-    ? productTypes.find(pt => pt.name === filterProductType)?.parameters || {}
-    : {};
+  const selectedProductType = productTypes.find(pt => pt.name === filterProductType);
+  const parameterSchema = selectedProductType?.parameter_schema || [];
+  const availableParamNames = parameterSchema.map((p: any) => p.name);
 
   const paramOrder = ['PE', 'PN', 'OD', 'Type'];
 
@@ -368,29 +455,56 @@ const Transactions = () => {
             </div>
 
             {/* Date Range */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-4 pt-2 border-t">
               <div className="space-y-2">
-                <Label>From Date</Label>
-                <Input
-                  type="date"
-                  value={filterDateFrom}
-                  onChange={(e) => setFilterDateFrom(e.target.value)}
-                />
+                <Label>Date Range Preset</Label>
+                <Select
+                  value={dateRangePreset}
+                  onValueChange={(value) => applyDateRangePreset(value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="custom">Custom Range</SelectItem>
+                    <SelectItem value="last24h">Last 24 Hours</SelectItem>
+                    <SelectItem value="last3days">Last 3 Days</SelectItem>
+                    <SelectItem value="last7days">Last 7 Days</SelectItem>
+                    <SelectItem value="last2weeks">Last 2 Weeks</SelectItem>
+                    <SelectItem value="last30days">Last 30 Days</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-              <div className="space-y-2">
-                <Label>To Date</Label>
-                <Input
-                  type="date"
-                  value={filterDateTo}
-                  onChange={(e) => setFilterDateTo(e.target.value)}
-                />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>From Date & Time</Label>
+                  <Input
+                    type="datetime-local"
+                    value={filterDateFrom}
+                    onChange={(e) => {
+                      setFilterDateFrom(e.target.value);
+                      setDateRangePreset('custom');
+                    }}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>To Date & Time</Label>
+                  <Input
+                    type="datetime-local"
+                    value={filterDateTo}
+                    onChange={(e) => {
+                      setFilterDateTo(e.target.value);
+                      setDateRangePreset('custom');
+                    }}
+                  />
+                </div>
               </div>
             </div>
 
             {/* Parameter Filters */}
-            {Object.keys(availableParams).length > 0 && (
+            {availableParamNames.length > 0 && (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 border-t">
-                {paramOrder.filter(key => availableParams[key]).map(paramKey => (
+                {paramOrder.filter(key => availableParamNames.includes(key)).map(paramKey => (
                   <div key={paramKey} className="space-y-2">
                     <Label>{paramKey}</Label>
                     <Select
@@ -444,7 +558,7 @@ const Transactions = () => {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Date</TableHead>
+                      <TableHead>Date & Time (IST)</TableHead>
                       <TableHead>Type</TableHead>
                       <TableHead>Product</TableHead>
                       <TableHead>Brand</TableHead>
@@ -452,18 +566,27 @@ const Transactions = () => {
                       <TableHead className="text-right">Quantity</TableHead>
                       <TableHead className="text-right">Weight/m</TableHead>
                       <TableHead className="text-right">Total Weight</TableHead>
-                      <TableHead>Customer/Batch</TableHead>
-                      <TableHead>Invoice/Code</TableHead>
+                      <TableHead>Attachment</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredTransactions.map((txn) => (
+                    {filteredTransactions.map((txn) => {
+                      // DB already stores IST time - format directly
+                      const date = new Date(txn.transaction_date);
+                      const timeStr = date.toLocaleTimeString('en-IN', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hour12: true
+                      });                      return (
                       <TableRow key={txn.id}>
                         <TableCell className="whitespace-nowrap">
-                          {new Date(txn.transaction_date).toLocaleDateString()}
+                          <div className="flex flex-col">
+                            <span>{formatDate(txn.transaction_date)}</span>
+                            <span className="text-xs text-muted-foreground">{timeStr}</span>
+                          </div>
                         </TableCell>
                         <TableCell>
-                          <Badge variant={txn.transaction_type === 'PRODUCTION' ? 'default' : 'secondary'}>
+                          <Badge variant={txn.transaction_type === 'PRODUCTION' ? 'default' : 'destructive'}>
                             {txn.transaction_type}
                           </Badge>
                         </TableCell>
@@ -488,19 +611,26 @@ const Transactions = () => {
                           {txn.quantity.toFixed(2)} {txn.unit}
                         </TableCell>
                         <TableCell className="text-right">
-                          {txn.weight_per_meter ? `${txn.weight_per_meter.toFixed(2)} g` : '-'}
+                          {txn.weight_per_meter ? `${parseFloat(txn.weight_per_meter.toString()).toFixed(2)} g` : '-'}
                         </TableCell>
                         <TableCell className="text-right">
-                          {txn.total_weight ? `${(txn.total_weight / 1000).toFixed(2)} kg` : '-'}
+                          {txn.total_weight ? `${(parseFloat(txn.total_weight.toString()) / 1000).toFixed(2)} kg` : '-'}
                         </TableCell>
                         <TableCell>
-                          {txn.transaction_type === 'SALE' ? txn.customer_name : txn.batch_code}
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {txn.transaction_type === 'SALE' ? txn.invoice_no : txn.batch_no}
+                          {txn.attachment_url ? (
+                            <a
+                              href={`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}${txn.attachment_url}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-600 hover:underline text-sm"
+                            >
+                              View
+                            </a>
+                          ) : '-'}
                         </TableCell>
                       </TableRow>
-                    ))}
+                    );
+                    })}
                   </TableBody>
                 </Table>
               </div>

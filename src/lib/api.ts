@@ -18,7 +18,7 @@ api.interceptors.request.use((config) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
-  console.log('API Request:', config.method?.toUpperCase(), config.url);
+  console.log('API Request:', config.method?.toUpperCase(), config.url, config.params ? 'Params:' : '', config.params);
   return config;
 });
 
@@ -90,8 +90,8 @@ export const transactions = {
   create: (data: any) =>
     api.post('/transactions/', data),
 
-  getAll: () =>
-    api.get('/transactions/'),
+  getAll: (params?: { start_date?: string; end_date?: string }) =>
+    api.get('/transactions/', { params }),
 };
 
 // Stats endpoints

@@ -10,6 +10,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { Factory, Plus, Upload, Trash2 } from 'lucide-react';
 import { inventory, production, parameters } from '@/lib/api';
+import { toISTDateTimeLocal } from '@/lib/utils';
 
 const Production = () => {
   const { user } = useAuth();
@@ -21,8 +22,8 @@ const Production = () => {
   const [formData, setFormData] = useState({
     productTypeId: '',
     brandId: '',
-    productionDate: new Date().toISOString().slice(0, 16),
-    productionTime: new Date().toLocaleTimeString('en-GB', { hour12: false }).slice(0, 5),
+    productionDate: toISTDateTimeLocal(new Date()),
+    productionTime: '',
     quantity: '',
     batchNo: '',
     autoBatchNo: true,
@@ -141,17 +142,23 @@ const Production = () => {
   };
 
   const generateBatchNo = () => {
-    const date = new Date();
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const now = new Date();
+    // Convert to IST for batch number
+    const istOffset = 5.5 * 60 * 60 * 1000;
+    const istDate = new Date(now.getTime() + istOffset);
+    const year = istDate.getUTCFullYear();
+    const month = String(istDate.getUTCMonth() + 1).padStart(2, '0');
     const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
     return `BATCH-${year}${month}-${random}`;
   };
 
   const generateBatchCode = (productType: any, params: Record<string, string>) => {
     const brand = brands.find(b => b.id === formData.brandId)?.name || 'BRAND';
-    const date = new Date();
-    const year = date.getFullYear();
+    const now = new Date();
+    // Convert to IST for batch code
+    const istOffset = 5.5 * 60 * 60 * 1000;
+    const istDate = new Date(now.getTime() + istOffset);
+    const year = istDate.getUTCFullYear();
     const seq = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
 
     if (productType.name === 'HDPE Pipe') {
@@ -239,8 +246,8 @@ const Production = () => {
       setFormData({
         productTypeId: '',
         brandId: '',
-        productionDate: new Date().toISOString().slice(0, 10),
-        productionTime: new Date().toLocaleTimeString('en-GB', { hour12: false }).slice(0, 5),
+        productionDate: toISTDateTimeLocal(new Date()),
+        productionTime: '',
         quantity: '',
         batchNo: '',
         autoBatchNo: true,
@@ -699,27 +706,18 @@ const Production = () => {
               )}
 
               {/* Production Date and Time */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="productionDate">Production Date *</Label>
-                  <Input
-                    id="productionDate"
-                    type="date"
-                    value={formData.productionDate.slice(0, 10)}
-                    onChange={(e) => setFormData({...formData, productionDate: e.target.value + 'T' + formData.productionTime})}
-                    className="h-12"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="productionTime">Production Time *</Label>
-                  <Input
-                    id="productionTime"
-                    type="time"
-                    value={formData.productionTime}
-                    onChange={(e) => setFormData({...formData, productionTime: e.target.value})}
-                    className="h-12"
-                  />
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor="productionDate">Production Date & Time (IST) *</Label>
+                <Input
+                  id="productionDate"
+                  type="datetime-local"
+                  value={formData.productionDate}
+                  onChange={(e) => setFormData({...formData, productionDate: e.target.value})}
+                  className="h-12"
+                />
+                <p className="text-xs text-muted-foreground">
+                  All times are in Indian Standard Time (IST)
+                </p>
               </div>
 
               {/* Quantity (Auto-calculated) */}

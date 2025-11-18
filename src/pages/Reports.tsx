@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { BarChart, Download, Filter, Package, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { reports, inventory } from '@/lib/api';
+import { formatDate } from '@/lib/utils';
 
 interface ProductSalesData {
   product_type: string;
@@ -222,7 +223,9 @@ const Reports = () => {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${filename}-${new Date().toISOString().split('T')[0]}.csv`;
+    // Use IST date in filename (DD-MM-YYYY format)
+    const istDate = formatDate(new Date().toISOString()).replace(/\//g, '-');
+    a.download = `${filename}-${istDate}.csv`;
     a.click();
     window.URL.revokeObjectURL(url);
     toast.success('Report exported successfully');
