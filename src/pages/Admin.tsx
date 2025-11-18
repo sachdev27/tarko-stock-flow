@@ -41,6 +41,14 @@ const Admin = () => {
   const [editingUser, setEditingUser] = useState<any>(null);
   const [editingParameter, setEditingParameter] = useState<any>(null);
 
+  // Validation attempt tracking
+  const [locationSubmitAttempted, setLocationSubmitAttempted] = useState(false);
+  const [brandSubmitAttempted, setBrandSubmitAttempted] = useState(false);
+  const [customerSubmitAttempted, setCustomerSubmitAttempted] = useState(false);
+  const [productTypeSubmitAttempted, setProductTypeSubmitAttempted] = useState(false);
+  const [parameterSubmitAttempted, setParameterSubmitAttempted] = useState(false);
+  const [userSubmitAttempted, setUserSubmitAttempted] = useState(false);
+
   // Form data
   const [locationForm, setLocationForm] = useState({ name: '', address: '' });
   const [brandForm, setBrandForm] = useState({ name: '' });
@@ -129,6 +137,8 @@ const Admin = () => {
   };
 
   const handleAddLocation = async () => {
+    setLocationSubmitAttempted(true);
+
     if (!locationForm.name) {
       toast.error('Location name is required');
       return;
@@ -139,6 +149,7 @@ const Admin = () => {
       toast.success('Location added successfully');
       setLocationDialog(false);
       setLocationForm({ name: '', address: '' });
+      setLocationSubmitAttempted(false);
       fetchAllData();
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Failed to add location');
@@ -146,6 +157,8 @@ const Admin = () => {
   };
 
   const handleAddBrand = async () => {
+    setBrandSubmitAttempted(true);
+
     if (!brandForm.name) {
       toast.error('Brand name is required');
       return;
@@ -156,6 +169,7 @@ const Admin = () => {
       toast.success('Brand added successfully');
       setBrandDialog(false);
       setBrandForm({ name: '' });
+      setBrandSubmitAttempted(false);
       fetchAllData();
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Failed to add brand');
@@ -163,6 +177,8 @@ const Admin = () => {
   };
 
   const handleAddCustomer = async () => {
+    setCustomerSubmitAttempted(true);
+
     if (!customerForm.name) {
       toast.error('Customer name is required');
       return;
@@ -180,6 +196,7 @@ const Admin = () => {
         gstin: '',
         address: '',
       });
+      setCustomerSubmitAttempted(false);
       fetchAllData();
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Failed to add customer');
@@ -187,6 +204,8 @@ const Admin = () => {
   };
 
   const handleAddProductType = async () => {
+    setProductTypeSubmitAttempted(true);
+
     if (!productTypeForm.name || !productTypeForm.unit_id) {
       toast.error('Product type name and unit are required');
       return;
@@ -222,6 +241,7 @@ const Admin = () => {
         },
       });
       setNewParameter({ name: '', type: 'text', required: false });
+      setProductTypeSubmitAttempted(false);
       fetchAllData();
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Failed to save product type');
@@ -252,6 +272,8 @@ const Admin = () => {
   };
 
   const handleAddParameter = async () => {
+    setParameterSubmitAttempted(true);
+
     if (!parameterForm.option_value.trim()) {
       toast.error('Please enter a value');
       return;
@@ -281,6 +303,7 @@ const Admin = () => {
         parameter_name: 'PE',
         option_value: '',
       });
+      setParameterSubmitAttempted(false);
       fetchAllData();
     } catch (error: any) {
       toast.error(error.response?.data?.error || `Failed to ${editingParameter ? 'update' : 'add'} parameter option`);
@@ -288,6 +311,8 @@ const Admin = () => {
   };
 
   const handleAddUser = async () => {
+    setUserSubmitAttempted(true);
+
     if (!userForm.email || !userForm.username || !userForm.full_name || !userForm.password) {
       toast.error('Email, username, full name, and password are required');
       return;
@@ -322,6 +347,7 @@ const Admin = () => {
         role: 'user',
         is_active: true,
       });
+      setUserSubmitAttempted(false);
       fetchAllData();
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Failed to save user');
