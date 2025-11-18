@@ -7,31 +7,43 @@ auth_bp = Blueprint('auth', __name__, url_prefix='/api/auth')
 @auth_bp.route('/signup', methods=['POST'])
 def signup():
     """Register a new user"""
-    data = request.get_json()
-    email = data.get('email')
-    password = data.get('password')
+    try:
+        data = request.get_json()
 
-    if not email or not password:
-        return jsonify({'error': 'Email and password required'}), 400
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
 
-    # Check if user exists
-    existing_user = get_user_by_email(email)
-    if existing_user:
-        return jsonify({'error': 'User already exists'}), 400
+        email = data.get('email')
+        password = data.get('password')
 
-    # Create user
-    user = create_user(email, password)
+        if not email or not password:
+            return jsonify({'error': 'Email and password required'}), 400
 
-    # Create token
-    access_token = create_access_token(identity=str(user['id']))
+        if len(password) < 6:
+            return jsonify({'error': 'Password must be at least 6 characters'}), 400
 
-    return jsonify({
-        'user': {
-            'id': user['id'],
-            'email': user['email']
-        },
-        'access_token': access_token
-    }), 201
+        # Check if user exists
+        existing_user = get_user_by_email(email)
+        if existing_user:
+            return jsonify({'error': 'User already exists'}), 400
+
+        # Create user
+        user = create_user(email, password)
+
+        # Create token
+        access_token = create_access_token(identity=str(user['id']))
+
+        return jsonify({
+            'user': {
+                'id': user['id'],
+                'email': user['email'],
+                'role': 'user'
+            },
+            'access_token': access_token
+        }), 201
+    except Exception as e:
+        print(f"Signup error: {str(e)}")
+        return jsonify({'error': f'Signup failed: {str(e)}'}), 500
 
 @auth_bp.route('/login', methods=['POST'])
 def login():

@@ -15,14 +15,8 @@ from routes.reports_routes import reports_bp
 app = Flask(__name__)
 app.config.from_object(Config)
 
-# Enable CORS for all frontend ports
-CORS(app, origins=[
-    "http://localhost:8080",
-    "http://localhost:5173",
-    "http://localhost:3000",
-    "http://192.168.29.217:8080",
-    "http://10.11.1.17:8080"
-], supports_credentials=True)
+# Enable CORS for all origins (for development)
+CORS(app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=True)
 
 # Setup JWT
 jwt = JWTManager(app)

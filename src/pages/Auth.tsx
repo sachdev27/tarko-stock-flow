@@ -24,18 +24,20 @@ const Auth = () => {
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!email || !password) {
       toast.error('Please fill in all fields');
       return;
     }
 
     setLoading(true);
+    console.log('Attempting sign in...');
     const { error } = await signIn(email, password);
     setLoading(false);
 
     if (error) {
-      toast.error(error.message || 'Failed to sign in');
+      console.error('Sign in error:', error);
+      toast.error(typeof error === 'string' ? error : (error.message || 'Failed to sign in'));
     } else {
       toast.success('Signed in successfully');
     }
@@ -43,7 +45,7 @@ const Auth = () => {
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!email || !password) {
       toast.error('Please fill in all fields');
       return;
@@ -55,14 +57,17 @@ const Auth = () => {
     }
 
     setLoading(true);
+    console.log('Attempting sign up...');
     const { error } = await signUp(email, password);
     setLoading(false);
 
     if (error) {
-      if (error.message.includes('already registered')) {
+      console.error('Sign up error:', error);
+      const errorMsg = typeof error === 'string' ? error : error.message;
+      if (errorMsg && errorMsg.includes('already')) {
         toast.error('This email is already registered. Please sign in instead.');
       } else {
-        toast.error(error.message || 'Failed to sign up');
+        toast.error(errorMsg || 'Failed to sign up');
       }
     } else {
       toast.success('Account created successfully! Please sign in.');
@@ -89,7 +94,7 @@ const Auth = () => {
               <TabsTrigger value="signin">Sign In</TabsTrigger>
               <TabsTrigger value="signup">Sign Up</TabsTrigger>
             </TabsList>
-            
+
             <TabsContent value="signin">
               <form onSubmit={handleSignIn} className="space-y-4">
                 <div className="space-y-2">
@@ -121,7 +126,7 @@ const Auth = () => {
                 </Button>
               </form>
             </TabsContent>
-            
+
             <TabsContent value="signup">
               <form onSubmit={handleSignUp} className="space-y-4">
                 <div className="space-y-2">

@@ -2,6 +2,8 @@ import axios from 'axios';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5500/api';
 
+console.log('API Base URL:', API_URL);
+
 const api = axios.create({
   baseURL: API_URL,
   headers: {
@@ -16,6 +18,7 @@ api.interceptors.request.use((config) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  console.log('API Request:', config.method?.toUpperCase(), config.url);
   return config;
 });
 
@@ -23,6 +26,7 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    console.error('API Error:', error.response?.status, error.response?.data || error.message);
     if (error.response?.status === 401) {
       // Token is invalid or expired
       localStorage.removeItem('token');
