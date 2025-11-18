@@ -50,7 +50,7 @@ def update_location(location_id):
         WHERE id = %s AND deleted_at IS NULL
         RETURNING id, name, address
     """
-    result = execute_insert(query, (name, address, location_id))
+    result = execute_insert(query, (name, address, str(location_id)))
     return jsonify(result), 200
 
 @admin_bp.route('/locations/<uuid:location_id>', methods=['DELETE'])
@@ -62,7 +62,7 @@ def delete_location(location_id):
         SET deleted_at = NOW()
         WHERE id = %s
     """
-    execute_query(query, (location_id,))
+    execute_query(query, (str(location_id),), fetch_all=False)
     return jsonify({'message': 'Location deleted'}), 200
 
 # Brands
@@ -108,7 +108,7 @@ def update_brand(brand_id):
         WHERE id = %s AND deleted_at IS NULL
         RETURNING id, name
     """
-    result = execute_insert(query, (name, brand_id))
+    result = execute_insert(query, (name, str(brand_id)))
     return jsonify(result), 200
 
 @admin_bp.route('/brands/<uuid:brand_id>', methods=['DELETE'])
@@ -120,7 +120,7 @@ def delete_brand(brand_id):
         SET deleted_at = NOW()
         WHERE id = %s
     """
-    execute_query(query, (brand_id,))
+    execute_query(query, (str(brand_id),), fetch_all=False)
     return jsonify({'message': 'Brand deleted'}), 200
 
 # Product Types
@@ -129,7 +129,7 @@ def delete_brand(brand_id):
 def get_product_types():
     """Get all product types with units"""
     query = """
-        SELECT pt.*, u.name as unit_name, u.symbol as unit_symbol
+        SELECT pt.*, u.name as unit_name, u.abbreviation as unit_symbol
         FROM product_types pt
         LEFT JOIN units u ON pt.unit_id = u.id
         WHERE pt.deleted_at IS NULL
@@ -145,17 +145,47 @@ def create_product_type():
     data = request.json
     name = data.get('name')
     unit_id = data.get('unit_id')
+    description = data.get('description', '')
+    parameter_schema = data.get('parameter_schema', [])
 
     if not name or not unit_id:
         return jsonify({'error': 'Product type name and unit are required'}), 400
 
     query = """
-        INSERT INTO product_types (name, unit_id)
-        VALUES (%s, %s)
-        RETURNING id, name, unit_id
+        INSERT INTO product_types (name, unit_id, description, parameter_schema)
+        VALUES (%s, %s, %s, %s)
+        RETURNING id, name, unit_id, description, parameter_schema
     """
-    result = execute_insert(query, (name, unit_id))
+    result = execute_insert(query, (name, unit_id, description, json.dumps(parameter_schema)))
     return jsonify(result), 201
+
+@admin_bp.route('/product-types/<uuid:product_type_id>', methods=['PUT'])
+@jwt_required_with_role('admin')
+def update_product_type(product_type_id):
+    """Update a product type"""
+    data = request.json
+    name = data.get('name')
+    unit_id = data.get('unit_id')
+    description = data.get('description', '')
+    parameter_schema = data.get('parameter_schema', [])
+
+    if not name or not unit_id:
+        return jsonify({'error': 'Product type name and unit are required'}), 400
+
+    query = """
+        UPDATE product_types
+        SET name = %s, unit_id = %s, description = %s, parameter_schema = %s
+        WHERE id = %s
+        RETURNING id, name, unit_id, description, parameter_schema
+    """
+    with get_db_cursor() as cursor:
+        cursor.execute(query, (name, unit_id, description, json.dumps(parameter_schema), str(product_type_id)))
+        result = cursor.fetchone()
+
+    if not result:
+        return jsonify({'error': 'Product type not found'}), 404
+
+    return jsonify(result), 200
 
 @admin_bp.route('/product-types/<uuid:product_type_id>', methods=['DELETE'])
 @jwt_required_with_role('admin')
@@ -166,7 +196,7 @@ def delete_product_type(product_type_id):
         SET deleted_at = NOW()
         WHERE id = %s
     """
-    execute_query(query, (product_type_id,))
+    execute_query(query, (str(product_type_id),), fetch_all=False)
     return jsonify({'message': 'Product type deleted'}), 200
 
 # Customers
@@ -222,7 +252,7 @@ def update_customer(customer_id):
         WHERE id = %s AND deleted_at IS NULL
         RETURNING id, name, contact_person, phone, email, gstin, address
     """
-    result = execute_insert(query, (name, contact_person, phone, email, gstin, address, customer_id))
+    result = execute_insert(query, (name, contact_person, phone, email, gstin, address, str(customer_id)))
     return jsonify(result), 200
 
 @admin_bp.route('/customers/<uuid:customer_id>', methods=['DELETE'])
@@ -234,7 +264,7 @@ def delete_customer(customer_id):
         SET deleted_at = NOW()
         WHERE id = %s
     """
-    execute_query(query, (customer_id,))
+    execute_query(query, (str(customer_id),), fetch_all=False)
     return jsonify({'message': 'Customer deleted'}), 200
 
 # Units

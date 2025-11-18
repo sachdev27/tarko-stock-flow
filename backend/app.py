@@ -11,6 +11,7 @@ from routes.transaction_routes import transaction_bp
 from routes.stats_routes import stats_bp
 from routes.admin_routes import admin_bp
 from routes.reports_routes import reports_bp
+from routes.parameter_routes import parameter_bp
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -29,6 +30,7 @@ app.register_blueprint(transaction_bp)
 app.register_blueprint(stats_bp)
 app.register_blueprint(admin_bp)
 app.register_blueprint(reports_bp)
+app.register_blueprint(parameter_bp)
 
 @app.route('/api/health', methods=['GET'])
 def health_check():

@@ -66,8 +66,7 @@ def get_customer_sales():
         SELECT
             c.name as customer_name,
             SUM(ABS(t.quantity_change)) as total_quantity,
-            COUNT(t.id) as transaction_count,
-            COALESCE(SUM(t.amount), 0) as total_amount
+            COUNT(t.id) as transaction_count
         FROM transactions t
         JOIN customers c ON t.customer_id = c.id
         WHERE t.transaction_type = 'SALE'
