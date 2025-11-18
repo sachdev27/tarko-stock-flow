@@ -183,11 +183,11 @@ export const reports = {
   getTopSellingProducts: (days: number = 30) =>
     api.get('/reports/top-selling-products', { params: { days } }),
 
-  getLocationInventory: () =>
-    api.get('/reports/location-inventory'),
+  getLocationInventory: (brand?: string, product_type?: string) =>
+    api.get('/reports/location-inventory', { params: { brand, product_type } }),
 
-  getCustomerSales: (days: number = 30) =>
-    api.get('/reports/customer-sales', { params: { days } }),
+  getCustomerSales: (days: number = 30, brand?: string, product_type?: string) =>
+    api.get('/reports/customer-sales', { params: { days, brand, product_type } }),
 
   getProductInventory: () =>
     api.get('/reports/product-inventory'),
