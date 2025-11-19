@@ -1684,16 +1684,45 @@ export default function TransactionsNew() {
                   )}
                 </div>
 
-                {/* Address */}
-                {selectedCustomer.address && (
+                {/* Address & Location */}
+                {(selectedCustomer.address || selectedCustomer.city || selectedCustomer.state || selectedCustomer.pincode) && (
                   <>
                     <Separator />
-                    <div className="space-y-2">
+                    <div className="space-y-4">
                       <Label className="text-muted-foreground flex items-center gap-2">
                         <MapPin className="h-4 w-4" />
-                        Address
+                        Location Details
                       </Label>
-                      <p className="text-base whitespace-pre-line">{selectedCustomer.address}</p>
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {selectedCustomer.city && (
+                          <div className="space-y-1">
+                            <Label className="text-xs text-muted-foreground">City</Label>
+                            <p className="text-base font-medium">{selectedCustomer.city}</p>
+                          </div>
+                        )}
+
+                        {selectedCustomer.state && (
+                          <div className="space-y-1">
+                            <Label className="text-xs text-muted-foreground">State</Label>
+                            <p className="text-base font-medium">{selectedCustomer.state}</p>
+                          </div>
+                        )}
+
+                        {selectedCustomer.pincode && (
+                          <div className="space-y-1">
+                            <Label className="text-xs text-muted-foreground">Pincode</Label>
+                            <p className="text-base font-medium font-mono">{selectedCustomer.pincode}</p>
+                          </div>
+                        )}
+                      </div>
+
+                      {selectedCustomer.address && (
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">Street Address</Label>
+                          <p className="text-base whitespace-pre-line">{selectedCustomer.address}</p>
+                        </div>
+                      )}
                     </div>
                   </>
                 )}
@@ -1704,14 +1733,6 @@ export default function TransactionsNew() {
                   <div>
                     <Label className="text-muted-foreground">Created</Label>
                     <p>{selectedCustomer.created_at ? format(new Date(selectedCustomer.created_at), 'PPP') : '-'}</p>
-                  </div>
-                  <div>
-                    <Label className="text-muted-foreground">Status</Label>
-                    <p>
-                      <Badge variant={selectedCustomer.is_active ? 'default' : 'secondary'}>
-                        {selectedCustomer.is_active ? 'Active' : 'Inactive'}
-                      </Badge>
-                    </p>
                   </div>
                 </div>
               </div>

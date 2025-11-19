@@ -53,6 +53,10 @@ const Admin = () => {
   const [editingProductType, setEditingProductType] = useState<any>(null);
   const [editingUser, setEditingUser] = useState<any>(null);
   const [editingParameter, setEditingParameter] = useState<any>(null);
+  const [editingCustomer, setEditingCustomer] = useState<any>(null);
+
+  // Search states
+  const [customerSearchTerm, setCustomerSearchTerm] = useState<string>('');
 
   // Form data
   const [brandForm, setBrandForm] = useState({ name: '' });
@@ -177,9 +181,15 @@ const Admin = () => {
     }
 
     try {
-      await admin.createCustomer(customerForm);
-      toast.success('Customer added successfully');
+      if (editingCustomer) {
+        await admin.updateCustomer(editingCustomer.id, customerForm);
+        toast.success('Customer updated successfully');
+      } else {
+        await admin.createCustomer(customerForm);
+        toast.success('Customer added successfully');
+      }
       setCustomerDialog(false);
+      setEditingCustomer(null);
       setCustomerForm({
         name: '',
         contact_person: '',
@@ -193,8 +203,24 @@ const Admin = () => {
       });
       fetchAllData();
     } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to add customer');
+      toast.error(error.response?.data?.error || `Failed to ${editingCustomer ? 'update' : 'add'} customer`);
     }
+  };
+
+  const handleEditCustomer = (customer: any) => {
+    setEditingCustomer(customer);
+    setCustomerForm({
+      name: customer.name || '',
+      contact_person: customer.contact_person || '',
+      phone: customer.phone || '',
+      email: customer.email || '',
+      gstin: customer.gstin || '',
+      address: customer.address || '',
+      city: customer.city || '',
+      state: customer.state || '',
+      pincode: customer.pincode || '',
+    });
+    setCustomerDialog(true);
   };
 
   const handleAddProductType = async () => {
@@ -1083,7 +1109,23 @@ const Admin = () => {
                     className="hidden"
                     onChange={handleImportCustomers}
                   />
-                  <Dialog open={customerDialog} onOpenChange={setCustomerDialog}>
+                  <Dialog open={customerDialog} onOpenChange={(open) => {
+                    setCustomerDialog(open);
+                    if (!open) {
+                      setEditingCustomer(null);
+                      setCustomerForm({
+                        name: '',
+                        contact_person: '',
+                        phone: '',
+                        email: '',
+                        gstin: '',
+                        address: '',
+                        city: '',
+                        state: '',
+                        pincode: '',
+                      });
+                    }
+                  }}>
                     <DialogTrigger asChild>
                       <Button>
                         <Plus className="h-4 w-4 mr-2" />
@@ -1092,8 +1134,10 @@ const Admin = () => {
                     </DialogTrigger>
                   <DialogContent className="max-w-2xl">
                     <DialogHeader>
-                      <DialogTitle>Add New Customer</DialogTitle>
-                      <DialogDescription>Create a new customer record</DialogDescription>
+                      <DialogTitle>{editingCustomer ? 'Edit Customer' : 'Add New Customer'}</DialogTitle>
+                      <DialogDescription>
+                        {editingCustomer ? 'Update customer information' : 'Create a new customer record'}
+                      </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4 max-h-[60vh] overflow-y-auto">
                       <div className="grid grid-cols-2 gap-4">
@@ -1194,7 +1238,7 @@ const Admin = () => {
                       </div>
 
                       <Button onClick={handleAddCustomer} className="w-full">
-                        Add Customer
+                        {editingCustomer ? 'Update Customer' : 'Add Customer'}
                       </Button>
                     </div>
                   </DialogContent>
@@ -1202,29 +1246,60 @@ const Admin = () => {
                 </div>
               </CardHeader>
               <CardContent>
+                <div className="mb-4">
+                  <Input
+                    placeholder="Search customers by name or phone..."
+                    value={customerSearchTerm}
+                    onChange={(e) => setCustomerSearchTerm(e.target.value)}
+                    className="max-w-md"
+                  />
+                </div>
                 <div className="space-y-2">
-                  {customers.map((customer) => (
+                  {customers
+                    .filter((customer) => {
+                      const searchLower = customerSearchTerm.toLowerCase();
+                      return (
+                        customer.name?.toLowerCase().includes(searchLower) ||
+                        customer.phone?.toLowerCase().includes(searchLower) ||
+                        customer.email?.toLowerCase().includes(searchLower)
+                      );
+                    })
+                    .map((customer) => (
                     <div
                       key={customer.id}
                       className="flex items-center justify-between p-4 bg-secondary/30 rounded-lg"
                     >
                       <div className="flex items-center space-x-3">
                         <Users className="h-5 w-5 text-muted-foreground" />
-                        <div>
+                        <div className="flex-1">
                           <div className="font-medium">{customer.name}</div>
                           <div className="text-sm text-muted-foreground">
                             {customer.phone && `${customer.phone} | `}
                             {customer.email}
                           </div>
+                          {(customer.city || customer.state) && (
+                            <div className="text-sm text-muted-foreground">
+                              {[customer.city, customer.state, customer.pincode].filter(Boolean).join(', ')}
+                            </div>
+                          )}
                         </div>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDelete('customers', customer.id)}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleEditCustomer(customer)}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDelete('customers', customer.id)}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
                     </div>
                   ))}
                 </div>

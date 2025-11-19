@@ -163,7 +163,7 @@ def delete_product_type(product_type_id):
 @jwt_required()
 def get_customers():
     """Get all customers"""
-    query = "SELECT id, name, contact_person, phone, email, gstin, address, city, state, pincode, created_at, is_active FROM customers WHERE deleted_at IS NULL ORDER BY name"
+    query = "SELECT id, name, contact_person, phone, email, gstin, address, city, state, pincode, created_at FROM customers WHERE deleted_at IS NULL ORDER BY name"
     customers = execute_query(query)
     return jsonify(customers), 200
 
