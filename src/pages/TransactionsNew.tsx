@@ -627,7 +627,9 @@ export default function TransactionsNew() {
                     {modalTransaction.roll_snapshot?.rolls && modalTransaction.roll_snapshot.rolls.length > 0 ? (
                       <div className="col-span-2">
                         <div className="bg-blue-50/50 dark:bg-blue-900/30 p-3 rounded-md border border-blue-300/50 dark:border-blue-700/50">
-                          <p className="text-sm text-muted-foreground mb-2">Dispatched Rolls</p>
+                          <p className="text-sm text-muted-foreground mb-2">
+                            {modalTransaction.product_type?.toLowerCase().includes('sprinkler') ? 'Dispatched Items' : 'Dispatched Rolls'}
+                          </p>
                           <div className="space-y-2">
                             {(() => {
                               // Group identical rolls together
@@ -648,29 +650,44 @@ export default function TransactionsNew() {
                                 return acc;
                               }, {});
 
-                              return Object.values(rollGroups).map((group: RollGroup, idx) => (
-                                <div key={idx} className="flex items-center justify-between text-sm bg-white dark:bg-slate-800 p-2 rounded">
-                                  <div className="flex items-center gap-2">
-                                    <Badge variant={group.is_cut_roll ? "secondary" : "default"} className="text-xs">
-                                      {group.roll_type === 'standard' ? 'Standard Roll' :
-                                       group.is_cut_roll ? 'Cut Roll' :
-                                       group.roll_type?.startsWith('bundle_') ? `Bundle (${group.bundle_size || 0} pcs)` :
-                                       'Spare'}
-                                    </Badge>
-                                    <span className="font-medium">
-                                      {group.quantity_dispatched.toFixed(2)} m {group.count > 1 && `× ${group.count}`}
+                              return Object.values(rollGroups).map((group: RollGroup, idx) => {
+                                const isBundle = group.roll_type?.startsWith('bundle_');
+                                const isSprinklerPipe = modalTransaction.product_type?.toLowerCase().includes('sprinkler');
+
+                                return (
+                                  <div key={idx} className="flex items-center justify-between text-sm bg-white dark:bg-slate-800 p-2 rounded">
+                                    <div className="flex items-center gap-2">
+                                      <Badge variant={group.is_cut_roll ? "secondary" : "default"} className="text-xs">
+                                        {group.roll_type === 'standard' ? 'Standard Roll' :
+                                         group.is_cut_roll ? 'Cut Roll' :
+                                         isBundle ? `Bundle (${group.bundle_size || 0} pcs)` :
+                                         'Spare'}
+                                      </Badge>
+                                      <span className="font-medium">
+                                        {isBundle && isSprinklerPipe ? (
+                                          // For Sprinkler Pipe bundles, just show the count
+                                          group.count > 1 ? `× ${group.count}` : ''
+                                        ) : (
+                                          // For other products, show meters
+                                          `${group.quantity_dispatched.toFixed(2)} m ${group.count > 1 ? `× ${group.count}` : ''}`
+                                        )}
+                                      </span>
+                                    </div>
+                                    <span className="text-muted-foreground text-xs">
+                                      {group.is_cut_roll && `from ${group.initial_length_meters}m roll`}
                                     </span>
                                   </div>
-                                  <span className="text-muted-foreground text-xs">
-                                    {group.is_cut_roll && `from ${group.initial_length_meters}m roll`}
-                                  </span>
-                                </div>
-                              ));
+                                );
+                              });
                             })()}
                           </div>
                           <div className="mt-2 pt-2 border-t border-blue-200 dark:border-blue-800 flex justify-between font-semibold">
-                            <span>{modalTransaction.roll_snapshot.total_rolls} roll(s) total</span>
-                            <span>{Math.abs(modalTransaction.quantity_change || 0).toFixed(2)} m</span>
+                            <span>
+                              {modalTransaction.roll_snapshot.total_rolls} {modalTransaction.product_type?.toLowerCase().includes('sprinkler') ? 'item(s)' : 'roll(s)'} total
+                            </span>
+                            {!modalTransaction.product_type?.toLowerCase().includes('sprinkler') && (
+                              <span>{Math.abs(modalTransaction.quantity_change || 0).toFixed(2)} m</span>
+                            )}
                           </div>
                         </div>
                       </div>
