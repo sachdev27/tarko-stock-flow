@@ -218,4 +218,34 @@ export const parameters = {
     api.delete(`/parameters/options/${optionId}`),
 };
 
+// Version Control endpoints
+export const versionControl = {
+  getSnapshots: () =>
+    api.get('/version-control/snapshots'),
+
+  createSnapshot: (data: { snapshot_name?: string; description?: string; tags?: string[] }) =>
+    api.post('/version-control/snapshots', data),
+
+  deleteSnapshot: (snapshotId: string) =>
+    api.delete(`/version-control/snapshots/${snapshotId}`),
+
+  rollbackToSnapshot: (snapshotId: string, confirm: boolean = false) =>
+    api.post(`/version-control/rollback/${snapshotId}`, { confirm }),
+
+  getRollbackHistory: () =>
+    api.get('/version-control/rollback-history'),
+
+  testDriveConnection: () =>
+    api.get('/version-control/drive/test'),
+
+  syncToDrive: (snapshotId: string) =>
+    api.post(`/version-control/drive/sync/${snapshotId}`),
+
+  syncAllToDrive: (data: { days?: number }) =>
+    api.post('/version-control/drive/sync-all', data),
+
+  configureDrive: (data: { credentials: string }) =>
+    api.post('/version-control/drive/configure', data),
+};
+
 export default api;
