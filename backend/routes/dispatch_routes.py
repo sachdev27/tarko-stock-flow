@@ -3,6 +3,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from database import execute_query, execute_insert, get_db_cursor
 from auth import get_user_identity_details
 from decimal import Decimal
+import json
 
 dispatch_bp = Blueprint('dispatch', __name__, url_prefix='/api/dispatch')
 
@@ -291,8 +292,14 @@ def create_dispatch():
 
     try:
         with get_db_cursor() as cursor:
+            # Generate a single dispatch_id for this dispatch
+            cursor.execute("SELECT gen_random_uuid() as dispatch_id")
+            dispatch_id = cursor.fetchone()['dispatch_id']
+
             total_quantity = 0
-            transactions = []
+            roll_snapshots = []  # Store all rolls in this dispatch
+            first_batch_id = None
+            first_roll_id = None
 
             for item in items:
                 roll_id = item.get('roll_id')
@@ -314,6 +321,11 @@ def create_dispatch():
                 roll = cursor.fetchone()
                 if not roll:
                     return jsonify({'error': f'Roll {roll_id} not found'}), 404
+
+                # Store first batch/roll for the transaction record
+                if first_batch_id is None:
+                    first_batch_id = roll['batch_id']
+                    first_roll_id = roll_id
 
                 available_length = float(roll['length_meters'])
 
@@ -354,27 +366,43 @@ def create_dispatch():
                 else:
                     return jsonify({'error': f'Invalid item type: {item_type}'}), 400
 
-                # Create transaction record
-                cursor.execute("""
-                    INSERT INTO transactions (
-                        batch_id, roll_id, transaction_type, quantity_change,
-                        customer_id, invoice_no, notes, created_by
-                    )
-                    VALUES (%s, %s, 'SALE', %s, %s, %s, %s, %s)
-                    RETURNING id
-                """, (
-                    roll['batch_id'],
-                    roll_id,
-                    -quantity_dispatched,  # Negative for outgoing
-                    customer_id,
-                    invoice_number,
-                    notes,
-                    user_id
-                ))
+                # Collect roll snapshot for this roll
+                roll_snapshots.append({
+                    'roll_id': str(roll_id),
+                    'batch_id': str(roll['batch_id']),
+                    'quantity_dispatched': quantity_dispatched,
+                    'length_meters': float(roll['length_meters']),
+                    'initial_length_meters': float(roll['initial_length_meters']),
+                    'is_cut_roll': roll.get('is_cut_roll', False),
+                    'roll_type': roll.get('roll_type'),
+                    'bundle_size': roll.get('bundle_size'),
+                    'status': roll.get('status')
+                })
 
-                transaction_id = cursor.fetchone()['id']
-                transactions.append(str(transaction_id))
                 total_quantity += quantity_dispatched
+
+            # Create ONE transaction for the entire dispatch
+            # Store all rolls in roll_snapshot as an array
+            cursor.execute("""
+                INSERT INTO transactions (
+                    batch_id, roll_id, transaction_type, quantity_change,
+                    customer_id, invoice_no, notes, roll_snapshot, dispatch_id, created_by
+                )
+                VALUES (%s, %s, 'SALE', %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+            """, (
+                first_batch_id,
+                first_roll_id,
+                -total_quantity,  # Negative for outgoing, total of all rolls
+                customer_id,
+                invoice_number,
+                notes,
+                json.dumps({'rolls': roll_snapshots, 'total_rolls': len(roll_snapshots)}),
+                dispatch_id,
+                user_id
+            ))
+
+            transaction_id = cursor.fetchone()['id']
 
             # Update batch quantities for all affected batches
             roll_ids = [item['roll_id'] for item in items]
@@ -409,14 +437,15 @@ def create_dispatch():
                 ) VALUES (%s, 'DISPATCH', 'TRANSACTION', %s, %s, NOW())
             """, (
                 user_id,
-                transactions[0] if transactions else None,
-                f"{actor['name']} dispatched {total_quantity}m to customer"
+                str(transaction_id),
+                f"{actor['name']} dispatched {len(roll_snapshots)} roll(s) totaling {total_quantity}m to customer"
             ))
 
         return jsonify({
             'message': 'Dispatch created successfully',
-            'transaction_ids': transactions,
-            'total_quantity': float(total_quantity)
+            'transaction_id': str(transaction_id),
+            'total_quantity': float(total_quantity),
+            'rolls_count': len(roll_snapshots)
         }), 201
 
     except Exception as e:

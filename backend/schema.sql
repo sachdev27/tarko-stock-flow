@@ -149,6 +149,8 @@ CREATE TABLE transactions (
   from_location_id UUID REFERENCES locations(id),
   to_location_id UUID REFERENCES locations(id),
   notes TEXT,
+  roll_snapshot JSONB,
+  dispatch_id UUID,
   created_by UUID REFERENCES users(id) NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -157,6 +159,7 @@ CREATE TABLE transactions (
 
 CREATE INDEX idx_transactions_batch ON transactions(batch_id) WHERE deleted_at IS NULL;
 CREATE INDEX idx_transactions_date ON transactions(transaction_date) WHERE deleted_at IS NULL;
+CREATE INDEX idx_transactions_dispatch ON transactions(dispatch_id) WHERE deleted_at IS NULL AND dispatch_id IS NOT NULL;
 
 -- Attached documents table
 CREATE TABLE attached_documents (

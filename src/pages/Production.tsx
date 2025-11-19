@@ -334,7 +334,16 @@ const Production = () => {
               <div className="space-y-2">
                 <Label htmlFor="productType">Product Type *</Label>
                 <Select value={formData.productTypeId} onValueChange={(value) => {
-                  setFormData({...formData, productTypeId: value, parameters: {}});
+                  const selectedPT = productTypes.find(pt => pt.id === value);
+                  const isQuantityBased = selectedPT?.roll_configuration?.quantity_based;
+                  const defaultLength = isQuantityBased ? '6' : '500';
+                  setFormData({
+                    ...formData,
+                    productTypeId: value,
+                    parameters: {},
+                    lengthPerRoll: defaultLength,
+                    lengthPerPiece: defaultLength
+                  });
                 }}>
                   <SelectTrigger id="productType" className={`h-12 ${submitAttempted && !formData.productTypeId ? 'border-red-500 border-2' : ''}`}>
                     <SelectValue placeholder="Select product type" />
@@ -607,22 +616,28 @@ const Production = () => {
                             </div>
                           </div>
 
-                          {!rollConfig.quantity_based && (
-                            <div className="space-y-2">
-                              <Label htmlFor="lengthPerPipe">
-                                Length per Pipe {selectedProductType && `(${selectedProductType.units?.abbreviation || 'm'})`}
-                              </Label>
-                              <Input
-                                id="lengthPerPipe"
-                                type="number"
-                                step="0.001"
-                                placeholder="Enter length"
-                                value={formData.lengthPerRoll}
-                                onChange={(e) => setFormData({...formData, lengthPerRoll: e.target.value})}
-                                className="h-10"
-                              />
-                            </div>
-                          )}
+                          <div className="space-y-2">
+                            <Label htmlFor="lengthPerPipe">
+                              Length per {rollConfig.quantity_based ? 'Piece' : 'Pipe'} {selectedProductType && `(${selectedProductType.units?.abbreviation || 'm'})`}
+                            </Label>
+                            <Input
+                              id="lengthPerPipe"
+                              type="number"
+                              step="0.001"
+                              placeholder="Enter length"
+                              value={formData.lengthPerRoll}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                // For quantity-based products (Sprinkler), also update lengthPerPiece for weight calculation
+                                if (rollConfig.quantity_based) {
+                                  setFormData({...formData, lengthPerRoll: value, lengthPerPiece: value});
+                                } else {
+                                  setFormData({...formData, lengthPerRoll: value});
+                                }
+                              }}
+                              className="h-10"
+                            />
+                          </div>
                         </div>
                       </Card>
 

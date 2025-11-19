@@ -145,12 +145,14 @@ def get_transactions():
     query = f"""
         SELECT
             CONCAT('txn_', t.id) as id,
+            t.dispatch_id,
             t.transaction_type,
             t.quantity_change,
             t.transaction_date,
             t.invoice_no,
             t.notes,
             t.created_at,
+            t.roll_snapshot,
             b.batch_code,
             b.batch_no,
             b.initial_quantity,
@@ -165,11 +167,32 @@ def get_transactions():
             pv.brand_id,
             br.name as brand,
             pv.parameters,
-            r.length_meters as roll_length_meters,
-            r.initial_length_meters as roll_initial_length_meters,
-            r.is_cut_roll as roll_is_cut,
-            r.roll_type as roll_type,
-            r.bundle_size as roll_bundle_size,
+            -- Handle both old single-roll and new multi-roll snapshot formats
+            COALESCE(
+                r.length_meters,
+                (t.roll_snapshot->>'length_meters')::numeric,
+                (t.roll_snapshot->'rolls'->0->>'length_meters')::numeric
+            ) as roll_length_meters,
+            COALESCE(
+                r.initial_length_meters,
+                (t.roll_snapshot->>'initial_length_meters')::numeric,
+                (t.roll_snapshot->'rolls'->0->>'initial_length_meters')::numeric
+            ) as roll_initial_length_meters,
+            COALESCE(
+                r.is_cut_roll,
+                (t.roll_snapshot->>'is_cut_roll')::boolean,
+                (t.roll_snapshot->'rolls'->0->>'is_cut_roll')::boolean
+            ) as roll_is_cut,
+            COALESCE(
+                r.roll_type,
+                t.roll_snapshot->>'roll_type',
+                t.roll_snapshot->'rolls'->0->>'roll_type'
+            ) as roll_type,
+            COALESCE(
+                r.bundle_size,
+                (t.roll_snapshot->>'bundle_size')::integer,
+                (t.roll_snapshot->'rolls'->0->>'bundle_size')::integer
+            ) as roll_bundle_size,
             CASE WHEN r.length_meters IS NOT NULL AND b.weight_per_meter IS NOT NULL THEN (r.length_meters * b.weight_per_meter) ELSE NULL END as roll_weight,
             u_unit.abbreviation as unit_abbreviation,
             c.name as customer_name,
@@ -189,7 +212,7 @@ def get_transactions():
         JOIN product_variants pv ON b.product_variant_id = pv.id
         JOIN product_types pt ON pv.product_type_id = pt.id
         JOIN brands br ON pv.brand_id = br.id
-        LEFT JOIN rolls r ON t.roll_id = r.id
+        LEFT JOIN rolls r ON t.roll_id = r.id  -- Include deleted rolls for historical transaction data
         LEFT JOIN units u_unit ON pt.unit_id = u_unit.id
         LEFT JOIN customers c ON t.customer_id = c.id
         LEFT JOIN users u ON t.created_by = u.id
