@@ -11,7 +11,7 @@ import Production from "./pages/Production";
 import Inventory from "./pages/Inventory";
 import Transactions from "./pages/TransactionsNew";
 import Dispatch from "./pages/DispatchNew";
-import Reports from "./pages/Reports";
+import Reports from "./pages/ReportsNew";
 import Admin from "./pages/Admin";
 import NotFound from "./pages/NotFound";
 

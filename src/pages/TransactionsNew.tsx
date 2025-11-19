@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Layout } from '../components/Layout';
-import { transactions as transactionsAPI, inventory as inventoryAPI } from '../lib/api';
+import { transactions as transactionsAPI, inventory as inventoryAPI, admin } from '../lib/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Badge } from '../components/ui/badge';
@@ -10,7 +10,7 @@ import { Separator } from '../components/ui/separator';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { Package, Weight, FileText, User, Calendar, Truck, Scale, Ruler, Info, Filter, X, Search, Download, Paperclip } from 'lucide-react';
+import { Package, Weight, FileText, User, Calendar, Truck, Scale, Ruler, Info, Filter, X, Search, Download, Paperclip, Mail, Phone, MapPin, Building } from 'lucide-react';
 import { format } from 'date-fns';
 
 interface TransactionRecord {
@@ -90,6 +90,8 @@ export default function TransactionsNew() {
   const [isLoading, setIsLoading] = useState(true);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [modalTransaction, setModalTransaction] = useState<TransactionRecord | null>(null);
+  const [customerModalOpen, setCustomerModalOpen] = useState(false);
+  const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
 
   // Filter states
   const [searchQuery, setSearchQuery] = useState('');
@@ -351,16 +353,21 @@ export default function TransactionsNew() {
       ...transaction,
       parameters: params || {}
     };
-    console.log('Opening modal with transaction:', parsedTransaction);
-    console.log('Product Type:', parsedTransaction.product_type);
-    console.log('Standard rolls:', parsedTransaction.standard_rolls_count, 'Avg length:', parsedTransaction.avg_standard_roll_length);
-    console.log('Cut rolls details:', parsedTransaction.cut_rolls_details);
-    console.log('Bundles count:', parsedTransaction.bundles_count);
-    console.log('Spare pieces count:', parsedTransaction.spare_pieces_count);
-    console.log('Spare pieces details:', parsedTransaction.spare_pieces_details);
-    console.log('Parameters type:', typeof parsedTransaction.parameters, parsedTransaction.parameters);
     setModalTransaction(parsedTransaction);
     setDetailModalOpen(true);
+  };
+
+  const openCustomerModal = async (customerName: string) => {
+    try {
+      const response = await admin.getCustomers();
+      const customer = response.data.find((c: any) => c.name === customerName);
+      if (customer) {
+        setSelectedCustomer(customer);
+        setCustomerModalOpen(true);
+      }
+    } catch (error) {
+      console.error('Failed to fetch customer details:', error);
+    }
   };
 
   const renderTransactionSummaryCards = (transaction: TransactionRecord) => {
@@ -1085,7 +1092,7 @@ export default function TransactionsNew() {
 
   return (
     <Layout>
-      <div className="container mx-auto py-6 space-y-6">
+      <div className="w-full px-6 py-6 space-y-6">
         <div>
           <h1 className="text-3xl font-bold mb-2">Transaction History</h1>
           <p className="text-muted-foreground">View all production and sales transactions</p>
@@ -1524,7 +1531,22 @@ export default function TransactionsNew() {
                   <TableCell>
                     {transaction.transaction_type === 'SALE' || transaction.transaction_type === 'CUT' ? '-' : formatWeight(transaction.total_weight || 0)}
                   </TableCell>
-                  <TableCell>{transaction.customer_name || '-'}</TableCell>
+                  <TableCell>
+                    {transaction.customer_name ? (
+                      <Button
+                        variant="link"
+                        className="h-auto p-0 text-blue-600 hover:text-blue-800 hover:underline"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openCustomerModal(transaction.customer_name!);
+                        }}
+                      >
+                        {transaction.customer_name}
+                      </Button>
+                    ) : (
+                      '-'
+                    )}
+                  </TableCell>
                   <TableCell>
                     {transaction.attachment_url ? (
                       <a
@@ -1592,6 +1614,110 @@ export default function TransactionsNew() {
 
         {/* Detail Modal */}
         {renderDetailModal()}
+
+        {/* Customer Information Modal */}
+        <Dialog open={customerModalOpen} onOpenChange={setCustomerModalOpen}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <User className="h-5 w-5" />
+                Customer Information
+              </DialogTitle>
+            </DialogHeader>
+            {selectedCustomer && (
+              <div className="space-y-6">
+                {/* Customer Name */}
+                <div>
+                  <h3 className="text-2xl font-bold">{selectedCustomer.name}</h3>
+                </div>
+
+                <Separator />
+
+                {/* Contact Information */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {selectedCustomer.contact_person && (
+                    <div className="space-y-1">
+                      <Label className="text-muted-foreground flex items-center gap-2">
+                        <User className="h-4 w-4" />
+                        Contact Person
+                      </Label>
+                      <p className="text-base font-medium">{selectedCustomer.contact_person}</p>
+                    </div>
+                  )}
+
+                  {selectedCustomer.phone && (
+                    <div className="space-y-1">
+                      <Label className="text-muted-foreground flex items-center gap-2">
+                        <Phone className="h-4 w-4" />
+                        Phone
+                      </Label>
+                      <p className="text-base font-medium">
+                        <a href={`tel:${selectedCustomer.phone}`} className="text-blue-600 hover:underline">
+                          {selectedCustomer.phone}
+                        </a>
+                      </p>
+                    </div>
+                  )}
+
+                  {selectedCustomer.email && (
+                    <div className="space-y-1">
+                      <Label className="text-muted-foreground flex items-center gap-2">
+                        <Mail className="h-4 w-4" />
+                        Email
+                      </Label>
+                      <p className="text-base font-medium">
+                        <a href={`mailto:${selectedCustomer.email}`} className="text-blue-600 hover:underline">
+                          {selectedCustomer.email}
+                        </a>
+                      </p>
+                    </div>
+                  )}
+
+                  {selectedCustomer.gstin && (
+                    <div className="space-y-1">
+                      <Label className="text-muted-foreground flex items-center gap-2">
+                        <FileText className="h-4 w-4" />
+                        GSTIN
+                      </Label>
+                      <p className="text-base font-medium font-mono">{selectedCustomer.gstin}</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Address */}
+                {selectedCustomer.address && (
+                  <>
+                    <Separator />
+                    <div className="space-y-2">
+                      <Label className="text-muted-foreground flex items-center gap-2">
+                        <MapPin className="h-4 w-4" />
+                        Address
+                      </Label>
+                      <p className="text-base whitespace-pre-line">{selectedCustomer.address}</p>
+                    </div>
+                  </>
+                )}
+
+                {/* Additional Info */}
+                <Separator />
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <Label className="text-muted-foreground">Created</Label>
+                    <p>{selectedCustomer.created_at ? format(new Date(selectedCustomer.created_at), 'PPP') : '-'}</p>
+                  </div>
+                  <div>
+                    <Label className="text-muted-foreground">Status</Label>
+                    <p>
+                      <Badge variant={selectedCustomer.is_active ? 'default' : 'secondary'}>
+                        {selectedCustomer.is_active ? 'Active' : 'Inactive'}
+                      </Badge>
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
     </Layout>
   );

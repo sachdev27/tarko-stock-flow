@@ -185,3 +185,198 @@ def get_product_inventory():
     products = [p for p in products if p.get('total_quantity', 0) > 0]
 
     return jsonify(products), 200
+
+@reports_bp.route('/analytics/overview', methods=['GET'])
+@jwt_required()
+def get_analytics_overview():
+    """Get comprehensive business analytics overview"""
+    days = int(request.args.get('days', 30))
+    start_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
+
+    # Top selling products with complete details
+    top_products_query = """
+        SELECT
+            pt.name as product_type,
+            br.name as brand,
+            pv.parameters,
+            SUM(ABS(t.quantity_change)) as total_sold,
+            COUNT(DISTINCT t.id) as sales_count,
+            COUNT(DISTINCT t.customer_id) as unique_customers,
+            SUM(ABS(t.quantity_change) * b.weight_per_meter) as total_weight
+        FROM transactions t
+        JOIN batches b ON t.batch_id = b.id
+        JOIN product_variants pv ON b.product_variant_id = pv.id
+        JOIN product_types pt ON pv.product_type_id = pt.id
+        JOIN brands br ON pv.brand_id = br.id
+        WHERE t.transaction_type = 'SALE'
+        AND t.transaction_date >= %s
+        AND t.deleted_at IS NULL
+        GROUP BY pt.name, br.name, pv.parameters
+        ORDER BY total_sold DESC
+        LIMIT 10
+    """
+    top_products = execute_query(top_products_query, (start_date,))
+
+    # Top customers with order details
+    top_customers_query = """
+        SELECT
+            c.name as customer_name,
+            c.city,
+            c.state,
+            c.pincode,
+            SUM(ABS(t.quantity_change)) as total_quantity,
+            COUNT(DISTINCT t.id) as order_count,
+            COUNT(DISTINCT pt.id) as product_types_count,
+            STRING_AGG(DISTINCT pt.name, ', ') as products_ordered
+        FROM transactions t
+        JOIN customers c ON t.customer_id = c.id
+        JOIN batches b ON t.batch_id = b.id
+        JOIN product_variants pv ON b.product_variant_id = pv.id
+        JOIN product_types pt ON pv.product_type_id = pt.id
+        WHERE t.transaction_type = 'SALE'
+        AND t.transaction_date >= %s
+        AND t.deleted_at IS NULL
+        GROUP BY c.id, c.name, c.city, c.state, c.pincode
+        ORDER BY total_quantity DESC
+        LIMIT 10
+    """
+    top_customers = execute_query(top_customers_query, (start_date,))
+
+    # Regional analysis - products by region
+    regional_analysis_query = """
+        SELECT
+            COALESCE(c.state, 'Unknown') as region,
+            pt.name as product_type,
+            br.name as brand,
+            SUM(ABS(t.quantity_change)) as total_quantity,
+            COUNT(DISTINCT c.id) as customer_count,
+            COUNT(DISTINCT t.id) as order_count
+        FROM transactions t
+        JOIN customers c ON t.customer_id = c.id
+        JOIN batches b ON t.batch_id = b.id
+        JOIN product_variants pv ON b.product_variant_id = pv.id
+        JOIN product_types pt ON pv.product_type_id = pt.id
+        JOIN brands br ON pv.brand_id = br.id
+        WHERE t.transaction_type = 'SALE'
+        AND t.transaction_date >= %s
+        AND t.deleted_at IS NULL
+        GROUP BY c.state, pt.name, br.name
+        ORDER BY region, total_quantity DESC
+    """
+    regional_analysis = execute_query(regional_analysis_query, (start_date,))
+
+    # Customer product preferences
+    customer_preferences_query = """
+        SELECT
+            c.name as customer_name,
+            pt.name as preferred_product,
+            br.name as preferred_brand,
+            SUM(ABS(t.quantity_change)) as total_quantity,
+            COUNT(t.id) as order_frequency
+        FROM transactions t
+        JOIN customers c ON t.customer_id = c.id
+        JOIN batches b ON t.batch_id = b.id
+        JOIN product_variants pv ON b.product_variant_id = pv.id
+        JOIN product_types pt ON pv.product_type_id = pt.id
+        JOIN brands br ON pv.brand_id = br.id
+        WHERE t.transaction_type = 'SALE'
+        AND t.transaction_date >= %s
+        AND t.deleted_at IS NULL
+        GROUP BY c.name, pt.name, br.name
+        ORDER BY total_quantity DESC
+        LIMIT 20
+    """
+    customer_preferences = execute_query(customer_preferences_query, (start_date,))
+
+    # Sales trends - daily/weekly aggregation
+    sales_trends_query = """
+        SELECT
+            DATE(t.transaction_date) as sale_date,
+            COUNT(DISTINCT t.id) as order_count,
+            SUM(ABS(t.quantity_change)) as total_quantity,
+            COUNT(DISTINCT t.customer_id) as unique_customers
+        FROM transactions t
+        WHERE t.transaction_type = 'SALE'
+        AND t.transaction_date >= %s
+        AND t.deleted_at IS NULL
+        GROUP BY DATE(t.transaction_date)
+        ORDER BY sale_date DESC
+    """
+    sales_trends = execute_query(sales_trends_query, (start_date,))
+
+    # Product performance metrics
+    product_performance_query = """
+        SELECT
+            pt.name as product_type,
+            COUNT(DISTINCT b.id) as batches_produced,
+            COUNT(DISTINCT t.id) as times_sold,
+            SUM(CASE WHEN t.transaction_type = 'PRODUCTION' THEN t.quantity_change ELSE 0 END) as total_produced,
+            SUM(CASE WHEN t.transaction_type = 'SALE' THEN ABS(t.quantity_change) ELSE 0 END) as total_sold,
+            ROUND(
+                CAST(SUM(CASE WHEN t.transaction_type = 'SALE' THEN ABS(t.quantity_change) ELSE 0 END) AS DECIMAL) /
+                NULLIF(SUM(CASE WHEN t.transaction_type = 'PRODUCTION' THEN t.quantity_change ELSE 0 END), 0) * 100,
+                2
+            ) as sales_percentage
+        FROM transactions t
+        JOIN batches b ON t.batch_id = b.id
+        JOIN product_variants pv ON b.product_variant_id = pv.id
+        JOIN product_types pt ON pv.product_type_id = pt.id
+        WHERE t.transaction_date >= %s
+        AND t.deleted_at IS NULL
+        GROUP BY pt.name
+        ORDER BY total_sold DESC
+    """
+    product_performance = execute_query(product_performance_query, (start_date,))
+
+    # Summary statistics
+    summary_stats_query = """
+        SELECT
+            COUNT(DISTINCT CASE WHEN t.transaction_type = 'SALE' THEN t.customer_id END) as total_customers,
+            COUNT(DISTINCT CASE WHEN t.transaction_type = 'SALE' THEN t.id END) as total_orders,
+            COUNT(DISTINCT pt.id) as products_sold_count,
+            SUM(CASE WHEN t.transaction_type = 'SALE' THEN ABS(t.quantity_change) ELSE 0 END) as total_quantity_sold,
+            SUM(CASE WHEN t.transaction_type = 'PRODUCTION' THEN t.quantity_change ELSE 0 END) as total_quantity_produced
+        FROM transactions t
+        JOIN batches b ON t.batch_id = b.id
+        JOIN product_variants pv ON b.product_variant_id = pv.id
+        JOIN product_types pt ON pv.product_type_id = pt.id
+        WHERE t.transaction_date >= %s
+        AND t.deleted_at IS NULL
+    """
+    summary_stats = execute_query(summary_stats_query, (start_date,))
+
+    return jsonify({
+        'summary': summary_stats[0] if summary_stats else {},
+        'top_products': top_products,
+        'top_customers': top_customers,
+        'regional_analysis': regional_analysis,
+        'customer_preferences': customer_preferences,
+        'sales_trends': sales_trends,
+        'product_performance': product_performance
+    }), 200
+
+@reports_bp.route('/analytics/customer-regions', methods=['GET'])
+@jwt_required()
+def get_customer_regions():
+    """Get customer distribution and sales by region"""
+    days = int(request.args.get('days', 30))
+    start_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
+
+    query = """
+        SELECT
+            COALESCE(c.state, 'Unknown') as region,
+            COALESCE(c.city, 'Unknown') as city,
+            COUNT(DISTINCT c.id) as customer_count,
+            COUNT(DISTINCT t.id) as order_count,
+            SUM(ABS(t.quantity_change)) as total_quantity
+        FROM customers c
+        LEFT JOIN transactions t ON c.id = t.customer_id
+            AND t.transaction_type = 'SALE'
+            AND t.transaction_date >= %s
+            AND t.deleted_at IS NULL
+        WHERE c.deleted_at IS NULL
+        GROUP BY c.state, c.city
+        ORDER BY order_count DESC NULLS LAST
+    """
+
+    return jsonify(execute_query(query, (start_date,))), 200

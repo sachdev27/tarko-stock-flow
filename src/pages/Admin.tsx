@@ -86,6 +86,9 @@ const Admin = () => {
     email: '',
     gstin: '',
     address: '',
+    city: '',
+    state: '',
+    pincode: '',
   });
   const [parameterForm, setParameterForm] = useState({
     id: '',
@@ -184,6 +187,9 @@ const Admin = () => {
         email: '',
         gstin: '',
         address: '',
+        city: '',
+        state: '',
+        pincode: '',
       });
       fetchAllData();
     } catch (error: any) {
@@ -1143,15 +1149,48 @@ const Admin = () => {
                         />
                       </div>
 
-                      <div className="space-y-2">
-                        <Label htmlFor="custAddress">Address</Label>
-                        <Textarea
-                          id="custAddress"
-                          value={customerForm.address}
-                          onChange={(e) => setCustomerForm({ ...customerForm, address: e.target.value })}
-                          placeholder="Full Address"
-                          rows={3}
-                        />
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="custCity">City</Label>
+                          <Input
+                            id="custCity"
+                            value={customerForm.city}
+                            onChange={(e) => setCustomerForm({ ...customerForm, city: e.target.value })}
+                            placeholder="City"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="custState">State</Label>
+                          <Input
+                            id="custState"
+                            value={customerForm.state}
+                            onChange={(e) => setCustomerForm({ ...customerForm, state: e.target.value })}
+                            placeholder="State"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="custPincode">Pincode</Label>
+                          <Input
+                            id="custPincode"
+                            value={customerForm.pincode}
+                            onChange={(e) => setCustomerForm({ ...customerForm, pincode: e.target.value })}
+                            placeholder="Pincode"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="custAddress">Address</Label>
+                          <Input
+                            id="custAddress"
+                            value={customerForm.address}
+                            onChange={(e) => setCustomerForm({ ...customerForm, address: e.target.value })}
+                            placeholder="Street Address"
+                          />
+                        </div>
                       </div>
 
                       <Button onClick={handleAddCustomer} className="w-full">

@@ -198,6 +198,12 @@ export const reports = {
 
   getProductInventory: () =>
     api.get('/reports/product-inventory'),
+
+  getAnalyticsOverview: (days: number = 30) =>
+    api.get('/reports/analytics/overview', { params: { days } }),
+
+  getCustomerRegions: (days: number = 30) =>
+    api.get('/reports/analytics/customer-regions', { params: { days } }),
 };
 
 // Parameter endpoints

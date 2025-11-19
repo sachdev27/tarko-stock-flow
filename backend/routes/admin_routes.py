@@ -163,7 +163,7 @@ def delete_product_type(product_type_id):
 @jwt_required()
 def get_customers():
     """Get all customers"""
-    query = "SELECT * FROM customers WHERE deleted_at IS NULL ORDER BY name"
+    query = "SELECT id, name, contact_person, phone, email, gstin, address, city, state, pincode, created_at, is_active FROM customers WHERE deleted_at IS NULL ORDER BY name"
     customers = execute_query(query)
     return jsonify(customers), 200
 
@@ -178,6 +178,9 @@ def create_customer():
     email = data.get('email', '')
     gstin = data.get('gstin', '')
     address = data.get('address', '')
+    city = data.get('city', '')
+    state = data.get('state', '')
+    pincode = data.get('pincode', '')
 
     if not name:
         return jsonify({'error': 'Customer name is required'}), 400
@@ -193,11 +196,11 @@ def create_customer():
         return jsonify({'error': f'Customer "{existing[0]["name"]}" already exists'}), 409
 
     query = """
-        INSERT INTO customers (name, contact_person, phone, email, gstin, address)
-        VALUES (%s, %s, %s, %s, %s, %s)
-        RETURNING id, name, contact_person, phone, email, gstin, address
+        INSERT INTO customers (name, contact_person, phone, email, gstin, address, city, state, pincode)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        RETURNING id, name, contact_person, phone, email, gstin, address, city, state, pincode
     """
-    result = execute_insert(query, (name, contact_person, phone, email, gstin, address))
+    result = execute_insert(query, (name, contact_person, phone, email, gstin, address, city, state, pincode))
     return jsonify(result), 201
 
 @admin_bp.route('/customers/<uuid:customer_id>', methods=['PUT'])
@@ -211,17 +214,21 @@ def update_customer(customer_id):
     email = data.get('email', '')
     gstin = data.get('gstin', '')
     address = data.get('address', '')
+    city = data.get('city', '')
+    state = data.get('state', '')
+    pincode = data.get('pincode', '')
 
     if not name:
         return jsonify({'error': 'Customer name is required'}), 400
 
     query = """
         UPDATE customers
-        SET name = %s, contact_person = %s, phone = %s, email = %s, gstin = %s, address = %s
+        SET name = %s, contact_person = %s, phone = %s, email = %s, gstin = %s, address = %s,
+            city = %s, state = %s, pincode = %s
         WHERE id = %s AND deleted_at IS NULL
-        RETURNING id, name, contact_person, phone, email, gstin, address
+        RETURNING id, name, contact_person, phone, email, gstin, address, city, state, pincode
     """
-    result = execute_insert(query, (name, contact_person, phone, email, gstin, address, str(customer_id)))
+    result = execute_insert(query, (name, contact_person, phone, email, gstin, address, city, state, pincode, str(customer_id)))
     return jsonify(result), 200
 
 @admin_bp.route('/customers/<uuid:customer_id>', methods=['DELETE'])
