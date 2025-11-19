@@ -216,3 +216,46 @@ def get_customers():
     query = "SELECT * FROM customers WHERE deleted_at IS NULL ORDER BY name"
     customers = execute_query(query)
     return jsonify(customers), 200
+
+@inventory_bp.route('/product-variants/search', methods=['GET'])
+@jwt_required()
+def search_product_variants():
+    """Search product variants by batch code or parameters"""
+    product_type_id = request.args.get('product_type_id')
+    brand_id = request.args.get('brand_id')
+    search = request.args.get('search', '').strip()
+
+    if not product_type_id or not brand_id:
+        return jsonify({'error': 'product_type_id and brand_id are required'}), 400
+
+    if len(search) < 2:
+        return jsonify([]), 200
+
+    # Search in batches with matching product variants
+    query = """
+        SELECT DISTINCT
+            pv.id as variant_id,
+            pv.parameters,
+            pt.name as product_type,
+            br.name as brand,
+            b.batch_code,
+            b.current_quantity
+        FROM product_variants pv
+        JOIN product_types pt ON pv.product_type_id = pt.id
+        JOIN brands br ON pv.brand_id = br.id
+        LEFT JOIN batches b ON b.product_variant_id = pv.id AND b.deleted_at IS NULL
+        WHERE pv.product_type_id = %s
+        AND pv.brand_id = %s
+        AND b.current_quantity > 0
+        AND (
+            b.batch_code ILIKE %s
+            OR CAST(pv.parameters AS TEXT) ILIKE %s
+        )
+        ORDER BY b.batch_code
+        LIMIT 10
+    """
+
+    search_pattern = f'%{search}%'
+    variants = execute_query(query, (product_type_id, brand_id, search_pattern, search_pattern))
+
+    return jsonify(variants), 200

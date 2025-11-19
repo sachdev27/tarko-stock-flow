@@ -231,6 +231,11 @@ const Production = () => {
       formDataToSend.append('number_of_rolls', numberOfRolls.toString());
       formDataToSend.append('cut_rolls', JSON.stringify(formData.cutRolls));
 
+      // Add length per roll/pipe (important for quantity-based products like Sprinkler Pipe)
+      if (formData.lengthPerRoll) {
+        formDataToSend.append('length_per_roll', formData.lengthPerRoll);
+      }
+
       // Add bundle/spare pipe data
       formDataToSend.append('number_of_bundles', formData.numberOfBundles);
       formDataToSend.append('bundle_size', formData.bundleSize);

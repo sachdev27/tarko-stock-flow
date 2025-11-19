@@ -156,6 +156,7 @@ def get_transactions():
             b.initial_quantity,
             b.weight_per_meter,
             b.total_weight,
+            b.piece_length,
             b.attachment_url,
             b.created_at as production_date,
             pt.name as product_type,
@@ -180,7 +181,9 @@ def get_transactions():
             rc.bundles_count,
             rc.spare_pieces_count,
             rc.avg_standard_roll_length,
-            rc.cut_rolls_details
+            rc.bundle_size,
+            rc.cut_rolls_details,
+            rc.spare_pieces_details
         FROM transactions t
         JOIN batches b ON t.batch_id = b.id
         JOIN product_variants pv ON b.product_variant_id = pv.id
@@ -197,7 +200,14 @@ def get_transactions():
                 COUNT(*) FILTER (WHERE roll_type LIKE 'bundle_%%') as bundles_count,
                 COUNT(*) FILTER (WHERE roll_type = 'spare') as spare_pieces_count,
                 AVG(length_meters) FILTER (WHERE is_cut_roll = FALSE AND (roll_type IS NULL OR roll_type = 'standard')) as avg_standard_roll_length,
-                array_agg(length_meters ORDER BY length_meters DESC) FILTER (WHERE is_cut_roll = TRUE OR roll_type = 'cut') as cut_rolls_details
+                MAX(bundle_size) FILTER (WHERE roll_type LIKE 'bundle_%%') as bundle_size,
+                array_agg(length_meters ORDER BY length_meters DESC) FILTER (WHERE (is_cut_roll = TRUE OR roll_type = 'cut') AND roll_type != 'spare') as cut_rolls_details,
+                array_agg(
+                    CASE
+                        WHEN bundle_size IS NOT NULL THEN bundle_size::numeric
+                        ELSE length_meters
+                    END ORDER BY created_at
+                ) FILTER (WHERE roll_type = 'spare') as spare_pieces_details
             FROM rolls
             WHERE batch_id = b.id AND deleted_at IS NULL
         ) rc ON true
@@ -224,6 +234,13 @@ def get_transactions():
             print(f"  Sample parameters type: {type(sample.get('parameters'))}")
             print(f"  Sample parameters value: {sample.get('parameters')}")
             print(f"  Sample batch_code: {sample.get('batch_code')}")
+            print(f"  Sample product_type: {sample.get('product_type')}")
+            print(f"  Sample spare_pieces_count: {sample.get('spare_pieces_count')}")
+            print(f"  Sample spare_pieces_details: {sample.get('spare_pieces_details')}")
+            print(f"  Sample bundles_count: {sample.get('bundles_count')}")
+            print(f"  Sample piece_length (from batches): {sample.get('piece_length')}")
+            print(f"  Sample bundle_size: {sample.get('bundle_size')}")
+            print(f"  Sample total_weight: {sample.get('total_weight')}")
 
     print(f"  Total records returned: {len(all_records)}")
 

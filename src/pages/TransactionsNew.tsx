@@ -56,9 +56,12 @@ interface TransactionRecord {
   cut_rolls_count?: number;
   bundles_count?: number;
   spare_pieces_count?: number;
+  bundle_size?: number; // Pieces per bundle from batch rolls
+  piece_length?: number; // Length of each piece in meters (for Sprinkler Pipe)
   // Average roll lengths
   avg_standard_roll_length?: number;
   cut_rolls_details?: number[]; // Array of individual cut roll lengths
+  spare_pieces_details?: number[]; // Array of individual spare piece lengths
 }
 
 export default function TransactionsNew() {
@@ -74,6 +77,7 @@ export default function TransactionsNew() {
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [productTypeFilter, setProductTypeFilter] = useState<string>('all');
   const [brandFilter, setBrandFilter] = useState<string>('all');
+  const [parameterFilter, setParameterFilter] = useState<string>('all');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [showFilters, setShowFilters] = useState(false);
@@ -81,6 +85,10 @@ export default function TransactionsNew() {
   // Master data for filters
   const [productTypes, setProductTypes] = useState<Array<{ id: number; name: string }>>([]);
   const [brands, setBrands] = useState<Array<{ id: number; name: string }>>([]);
+
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(50);
 
   useEffect(() => {
     loadTransactions();
@@ -119,6 +127,15 @@ export default function TransactionsNew() {
         filtered = filtered.filter(t => t.brand === brandFilter);
       }
 
+      // Parameter filter
+      if (parameterFilter !== 'all') {
+        filtered = filtered.filter(t => {
+          const params = t.parameters || {};
+          const paramStr = JSON.stringify(params).toLowerCase();
+          return paramStr.includes(parameterFilter.toLowerCase());
+        });
+      }
+
       // Date range filter
       if (startDate) {
         filtered = filtered.filter(t => new Date(t.created_at) >= new Date(startDate));
@@ -130,10 +147,11 @@ export default function TransactionsNew() {
       }
 
       setFilteredTransactions(filtered);
+      setCurrentPage(1); // Reset to first page when filters change
     };
 
     applyFilters();
-  }, [transactions, searchQuery, typeFilter, productTypeFilter, brandFilter, startDate, endDate]);
+  }, [transactions, searchQuery, typeFilter, productTypeFilter, brandFilter, parameterFilter, startDate, endDate]);
 
   const loadTransactions = async () => {
     try {
@@ -181,16 +199,21 @@ export default function TransactionsNew() {
     setTypeFilter('all');
     setProductTypeFilter('all');
     setBrandFilter('all');
+    setParameterFilter('all');
     setStartDate('');
     setEndDate('');
   };
 
-  const hasActiveFilters = searchQuery || typeFilter !== 'all' || productTypeFilter !== 'all' || brandFilter !== 'all' || startDate || endDate;
+  const hasActiveFilters = searchQuery || typeFilter !== 'all' || productTypeFilter !== 'all' ||
+    brandFilter !== 'all' || parameterFilter !== 'all' || startDate || endDate;
 
   const getTotalProductionWeight = () => {
     return filteredTransactions
       .filter(t => t.transaction_type === 'PRODUCTION')
-      .reduce((sum, t) => sum + (t.total_weight || 0), 0);
+      .reduce((sum, t) => {
+        const weight = Number(t.total_weight) || 0;
+        return sum + (isNaN(weight) ? 0 : weight);
+      }, 0);
   };
 
   const getProductCode = (transaction: TransactionRecord) => {
@@ -207,7 +230,10 @@ export default function TransactionsNew() {
     return parts.filter(Boolean).join(' - ');
   };
 
-  const formatWeight = (grams: number) => {
+  const formatWeight = (grams: number | null | undefined, unitAbbreviation?: string) => {
+    // For sprinkler pipes (counted in pieces), weight is already total weight
+    // For pipes (counted in meters), weight might need conversion
+    if (!grams || isNaN(grams) || grams === 0) return '0 kg';
     return `${(grams / 1000).toFixed(2)} kg`;
   };
 
@@ -227,24 +253,41 @@ export default function TransactionsNew() {
       parameters: params || {}
     };
     console.log('Opening modal with transaction:', parsedTransaction);
+    console.log('Product Type:', parsedTransaction.product_type);
     console.log('Standard rolls:', parsedTransaction.standard_rolls_count, 'Avg length:', parsedTransaction.avg_standard_roll_length);
     console.log('Cut rolls details:', parsedTransaction.cut_rolls_details);
+    console.log('Bundles count:', parsedTransaction.bundles_count);
+    console.log('Spare pieces count:', parsedTransaction.spare_pieces_count);
+    console.log('Spare pieces details:', parsedTransaction.spare_pieces_details);
     console.log('Parameters type:', typeof parsedTransaction.parameters, parsedTransaction.parameters);
     setModalTransaction(parsedTransaction);
     setDetailModalOpen(true);
   };
 
   const renderTransactionSummaryCards = (transaction: TransactionRecord) => {
-    // For production batches, sum up the actual roll counts from breakdown
-    // For sales, use quantity_change which could be rolls or meters depending on context
-    const rollCount = transaction.transaction_type === 'PRODUCTION'
-      ? (
+    // For production batches, calculate based on product type
+    let rollCount = 0;
+    if (transaction.transaction_type === 'PRODUCTION') {
+      if (transaction.product_type === 'Sprinkler Pipe') {
+        // For Sprinkler Pipe: show total pieces (bundles × bundle_size + spare pieces)
+        const bundlePieces = (transaction.bundles_count || 0) * (transaction.bundle_size || 0);
+        const sparePiecesTotal = transaction.spare_pieces_details
+          ? transaction.spare_pieces_details.reduce((sum, count) => sum + Number(count), 0)
+          : 0;
+        rollCount = bundlePieces + sparePiecesTotal;
+      } else {
+        // For HDPE: show number of roll items
+        rollCount = (
           (transaction.standard_rolls_count || 0) +
           (transaction.cut_rolls_count || 0) +
           (transaction.bundles_count || 0) +
           (transaction.spare_pieces_count || 0)
-        )
-      : (transaction.roll_length_meters ? 1 : Math.abs(transaction.quantity_change || 0));
+        );
+      }
+    } else {
+      // For sales
+      rollCount = transaction.roll_length_meters ? 1 : Math.abs(transaction.quantity_change || 0);
+    }
 
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -337,9 +380,9 @@ export default function TransactionsNew() {
 
           <div className="space-y-6">
             {/* Product Information */}
-            <div>
+            <div className="bg-blue-50/50 dark:bg-blue-950/30 p-4 rounded-lg border border-blue-200/50 dark:border-blue-800/50">
               <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
-                <Package className="h-5 w-5" />
+                <Package className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                 Product Information
               </h3>
               <div className="flex items-center gap-2 flex-wrap">
@@ -394,29 +437,32 @@ export default function TransactionsNew() {
             <Separator />
 
             {/* Quantity and Weight Information */}
-            <div>
+            <div className="bg-green-50/50 dark:bg-green-950/30 p-4 rounded-lg border border-green-200/50 dark:border-green-800/50">
               <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
-                <Weight className="h-5 w-5" />
+                <Weight className="h-5 w-5 text-green-600 dark:text-green-400" />
                 Quantity & Weight
               </h3>
               <div className="grid grid-cols-2 gap-4">
                 {/* For production, show number of rolls from breakdown counts */}
                 {modalTransaction.transaction_type === 'PRODUCTION' ? (
                   <>
-                    <div>
+                    <div className="bg-green-100/50 dark:bg-green-900/30 p-3 rounded-md border border-green-300/50 dark:border-green-700/50">
                       <p className="text-sm text-muted-foreground">Total Rolls/Items</p>
-                      <p className="font-medium text-lg">
-                        {(
-                          (modalTransaction.standard_rolls_count || 0) +
-                          (modalTransaction.cut_rolls_count || 0) +
-                          (modalTransaction.bundles_count || 0) +
-                          (modalTransaction.spare_pieces_count || 0)
-                        )} items
+                      <p className="font-semibold text-lg text-green-700 dark:text-green-300">
+                        {modalTransaction.product_type === 'Sprinkler Pipe'
+                          ? ((modalTransaction.bundles_count || 0) + (modalTransaction.spare_pieces_count || 0))
+                          : (
+                            (modalTransaction.standard_rolls_count || 0) +
+                            (modalTransaction.cut_rolls_count || 0) +
+                            (modalTransaction.bundles_count || 0) +
+                            (modalTransaction.spare_pieces_count || 0)
+                          )
+                        } items
                       </p>
                     </div>
-                    <div>
+                    <div className="bg-green-100/50 dark:bg-green-900/30 p-3 rounded-md border border-green-300/50 dark:border-green-700/50">
                       <p className="text-sm text-muted-foreground">Total Length/Quantity</p>
-                      <p className="font-medium text-lg">
+                      <p className="font-semibold text-lg text-green-700 dark:text-green-300">
                         {Math.abs(modalTransaction.quantity_change || 0).toFixed(2)} {modalTransaction.unit_abbreviation || 'm'}
                       </p>
                     </div>
@@ -440,9 +486,9 @@ export default function TransactionsNew() {
                     )}
                   </>
                 )}
-                <div>
+                <div className="bg-emerald-100/50 dark:bg-emerald-900/30 p-3 rounded-md border border-emerald-300/50 dark:border-emerald-700/50">
                   <p className="text-sm text-muted-foreground">Total Weight</p>
-                  <p className="font-medium text-lg">{formatWeight(modalTransaction.total_weight || 0)}</p>
+                  <p className="font-semibold text-lg text-emerald-700 dark:text-emerald-300">{formatWeight(modalTransaction.total_weight || 0)}</p>
                 </div>
                 {modalTransaction.roll_is_cut && (
                   <div>
@@ -475,9 +521,9 @@ export default function TransactionsNew() {
                   </h3>
                   <div className="grid grid-cols-2 gap-4">
                     {modalTransaction.batch_code && (
-                      <div>
+                      <div className="bg-slate-50/50 dark:bg-slate-950/30 p-3 rounded-md border border-slate-200/50 dark:border-slate-800/50">
                         <p className="text-sm text-muted-foreground">Batch Code</p>
-                        <p className="font-medium">{modalTransaction.batch_code}</p>
+                        <p className="font-medium text-slate-700 dark:text-slate-300">{modalTransaction.batch_code}</p>
                       </div>
                     )}
                     {modalTransaction.batch_no && (
@@ -490,11 +536,11 @@ export default function TransactionsNew() {
                       <>
                         {modalTransaction.standard_rolls_count > 0 && (
                           <>
-                            <div>
+                            <div className="bg-blue-50/50 dark:bg-blue-950/30 p-3 rounded-md border border-blue-200/50 dark:border-blue-800/50">
                               <p className="text-sm text-muted-foreground">Standard Rolls</p>
-                              <div className="font-medium">
+                              <div className="font-medium text-blue-700 dark:text-blue-300">
                                 {modalTransaction.standard_rolls_count} rolls
-                                <Badge variant="outline" className="ml-2">Standard</Badge>
+                                <Badge variant="outline" className="ml-2 border-blue-300 dark:border-blue-700">Standard</Badge>
                               </div>
                             </div>
                             {modalTransaction.avg_standard_roll_length && (
@@ -506,24 +552,57 @@ export default function TransactionsNew() {
                               </div>
                             )}
                             {modalTransaction.avg_standard_roll_length && modalTransaction.standard_rolls_count && (
-                              <div>
+                              <div className="bg-cyan-50/50 dark:bg-cyan-950/30 p-3 rounded-md border border-cyan-200/50 dark:border-cyan-800/50">
                                 <p className="text-sm text-muted-foreground">Total Standard Roll Length</p>
-                                <p className="font-medium text-lg">
+                                <p className="font-semibold text-lg text-cyan-700 dark:text-cyan-300">
                                   {(Number(modalTransaction.avg_standard_roll_length) * modalTransaction.standard_rolls_count).toFixed(2)} m
                                 </p>
                               </div>
                             )}
                           </>
                         )}
-                        {modalTransaction.cut_rolls_details && modalTransaction.cut_rolls_details.length > 0 && (
+                        {modalTransaction.cut_rolls_details && modalTransaction.cut_rolls_details.length > 0 && modalTransaction.product_type !== 'Sprinkler Pipe' && (
                           <>
-                            <div className="col-span-2">
-                              <p className="text-sm text-muted-foreground mb-2">Cut Rolls ({modalTransaction.cut_rolls_details.length} rolls)</p>
+                            <div className="col-span-2 bg-orange-50/50 dark:bg-orange-950/30 p-3 rounded-md border border-orange-200/50 dark:border-orange-800/50">
+                              <p className="text-sm text-muted-foreground mb-2">
+                                Cut Rolls ({modalTransaction.cut_rolls_details.length} rolls)
+                              </p>
                               <div className="grid grid-cols-3 gap-3">
                                 {modalTransaction.cut_rolls_details.map((length, index) => (
                                   <div key={index} className="border rounded-lg p-3">
                                     <p className="text-xs text-muted-foreground">Cut Roll {index + 1}</p>
-                                    <p className="font-medium text-lg">{Number(length).toFixed(2)} m</p>
+                                    <p className="font-medium text-lg">{Number(length).toFixed(2)} {modalTransaction.unit_abbreviation || 'm'}</p>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </>
+                        )}
+                        {modalTransaction.spare_pieces_details && modalTransaction.spare_pieces_details.length > 0 && modalTransaction.product_type === 'Sprinkler Pipe' && (
+                          <>
+                            <div className="col-span-2 bg-amber-50/50 dark:bg-amber-950/30 p-3 rounded-md border border-amber-200/50 dark:border-amber-800/50">
+                              <div className="flex items-center justify-between mb-2">
+                                <p className="text-sm text-muted-foreground">
+                                  Spare Pieces ({modalTransaction.spare_pieces_details.length} pieces)
+                                </p>
+                                {modalTransaction.piece_length && modalTransaction.piece_length > 0 && (
+                                  <Badge variant="secondary" className="text-xs">
+                                    {modalTransaction.piece_length}m per piece
+                                  </Badge>
+                                )}
+                              </div>
+                              <div className="grid grid-cols-3 gap-3">
+                                {modalTransaction.spare_pieces_details.map((length, index) => (
+                                  <div key={index} className="border rounded-lg p-3">
+                                    <p className="text-xs text-muted-foreground">Spare Piece {index + 1}</p>
+                                    <p className="font-medium text-lg">
+                                      {Number(length).toFixed(0)} pcs
+                                      {modalTransaction.piece_length && modalTransaction.piece_length > 0 && (
+                                        <span className="text-sm text-muted-foreground ml-1">
+                                          ({(Number(length) * modalTransaction.piece_length).toFixed(2)}m)
+                                        </span>
+                                      )}
+                                    </p>
                                   </div>
                                 ))}
                               </div>
@@ -531,24 +610,37 @@ export default function TransactionsNew() {
                           </>
                         )}
                         {modalTransaction.bundles_count > 0 && (
-                          <div>
-                            <p className="text-sm text-muted-foreground">Bundles</p>
-                            <div className="font-medium">
-                              {modalTransaction.bundles_count} bundles
-                              {modalTransaction.roll_bundle_size && (
-                                <Badge variant="outline" className="ml-2">
-                                  {modalTransaction.roll_bundle_size} pcs each
-                                </Badge>
+                          <div className="col-span-2 bg-purple-50/50 dark:bg-purple-950/30 p-3 rounded-md border border-purple-200/50 dark:border-purple-800/50">
+                            <p className="text-sm text-muted-foreground">Bundles (Sprinkler Pipe)</p>
+                            <div className="flex items-center gap-2 mt-1 flex-wrap">
+                              <div className="font-medium text-lg text-purple-700 dark:text-purple-300">
+                                {modalTransaction.bundles_count} {modalTransaction.bundles_count === 1 ? 'bundle' : 'bundles'}
+                              </div>
+                              {modalTransaction.bundle_size && (
+                                <>
+                                  <span className="text-muted-foreground">×</span>
+                                  <Badge variant="outline" className="text-sm border-purple-300 dark:border-purple-700">
+                                    {modalTransaction.bundle_size} pcs each
+                                  </Badge>
+                                  {modalTransaction.piece_length && modalTransaction.piece_length > 0 && (
+                                    <>
+                                      <span className="text-muted-foreground">×</span>
+                                      <Badge variant="outline" className="text-sm border-purple-300 dark:border-purple-700">
+                                        {modalTransaction.piece_length}m per piece
+                                      </Badge>
+                                    </>
+                                  )}
+                                  <span className="text-muted-foreground">=</span>
+                                  <div className="font-semibold text-lg text-purple-700 dark:text-purple-300">
+                                    {modalTransaction.bundles_count * modalTransaction.bundle_size} total pieces
+                                    {modalTransaction.piece_length && modalTransaction.piece_length > 0 && (
+                                      <span className="text-sm ml-2">(
+                                        {(modalTransaction.bundles_count * modalTransaction.bundle_size * modalTransaction.piece_length).toFixed(2)}m
+                                      )</span>
+                                    )}
+                                  </div>
+                                </>
                               )}
-                            </div>
-                          </div>
-                        )}
-                        {modalTransaction.spare_pieces_count > 0 && (
-                          <div>
-                            <p className="text-sm text-muted-foreground">Spare Pieces</p>
-                            <div className="font-medium">
-                              {modalTransaction.spare_pieces_count} pieces
-                              <Badge variant="secondary" className="ml-2">Spare</Badge>
                             </div>
                           </div>
                         )}
@@ -776,6 +868,21 @@ export default function TransactionsNew() {
                   </Select>
                 </div>
 
+                {/* Parameter Filter - Show when product type is selected */}
+                {productTypeFilter !== 'all' && (
+                  <div className="space-y-2">
+                    <Label>Parameters</Label>
+                    <div className="relative">
+                      <Input
+                        placeholder="Search parameters (OD, PN, etc.)..."
+                        value={parameterFilter === 'all' ? '' : parameterFilter}
+                        onChange={(e) => setParameterFilter(e.target.value || 'all')}
+                        className="pl-3"
+                      />
+                    </div>
+                  </div>
+                )}
+
                 {/* Start Date */}
                 <div className="space-y-2">
                   <Label>Start Date</Label>
@@ -799,7 +906,7 @@ export default function TransactionsNew() {
 
               {/* Results count */}
               <div className="mt-4 text-sm text-muted-foreground">
-                Showing {filteredTransactions.length} of {transactions.length} transactions
+                Showing {Math.min((currentPage - 1) * itemsPerPage + 1, filteredTransactions.length)}-{Math.min(currentPage * itemsPerPage, filteredTransactions.length)} of {filteredTransactions.length} transactions
               </div>
             </CardContent>
           )}
@@ -837,7 +944,9 @@ export default function TransactionsNew() {
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredTransactions.map((transaction) => (
+                filteredTransactions
+                  .slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
+                  .map((transaction) => (
                 <TableRow
                   key={transaction.id}
                   className={`cursor-pointer transition-colors ${
@@ -906,18 +1015,52 @@ export default function TransactionsNew() {
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    {/* For production: show total meters from quantity_change */}
-                    {/* For sales with specific roll: show roll length */}
-                    {/* Otherwise: show quantity change as meters or pieces */}
-                    {transaction.transaction_type === 'PRODUCTION' ? (
+                    {/* Calculate proper length in meters for all product types */}
+                    {transaction.product_type === 'Sprinkler Pipe' ? (
+                      // Sprinkler Pipe: Calculate total meters (pieces × piece_length)
+                      <span className={transaction.quantity_change > 0 ? 'text-green-600' : 'text-red-600'}>
+                        {(() => {
+                          const pieces = Math.abs(transaction.quantity_change || 0);
+                          const pieceLength = transaction.piece_length || 0;
+
+                          // Fallback: try to get from spare_pieces_details if piece_length is 0
+                          if (pieceLength === 0 && transaction.spare_pieces_details && transaction.spare_pieces_details.length > 0) {
+                            // spare_pieces_details contains the actual piece count (stored in bundle_size)
+                            // We need a different approach - just show pieces for now
+                            console.log('Sprinkler Pipe - showing pieces (piece_length unavailable):', {
+                              batch_code: transaction.batch_code,
+                              pieces,
+                              spare_pieces_details: transaction.spare_pieces_details
+                            });
+                          }
+
+                          const totalMeters = pieces * pieceLength;
+                          return totalMeters > 0 ? `${totalMeters.toFixed(2)} m` : `${pieces.toFixed(0)} pcs`;
+                        })()}
+                      </span>
+                    ) : transaction.transaction_type === 'PRODUCTION' ? (
+                      // HDPE Production: Calculate from roll details
                       <span className="text-green-600">
-                        {Math.abs(transaction.quantity_change || 0).toFixed(2)} m
+                        {(() => {
+                          let totalLength = 0;
+                          // Add standard rolls length
+                          if (transaction.avg_standard_roll_length && transaction.standard_rolls_count) {
+                            totalLength += Number(transaction.avg_standard_roll_length) * transaction.standard_rolls_count;
+                          }
+                          // Add cut rolls length
+                          if (transaction.cut_rolls_details && transaction.cut_rolls_details.length > 0) {
+                            totalLength += transaction.cut_rolls_details.reduce((sum, length) => sum + Number(length), 0);
+                          }
+                          return totalLength.toFixed(2);
+                        })()} m
                       </span>
                     ) : transaction.roll_length_meters ? (
+                      // HDPE Sale: Show specific roll length
                       <span className="text-red-600">
                         {Number(transaction.roll_length_meters).toFixed(2)} m
                       </span>
                     ) : (
+                      // Fallback
                       <span className={transaction.quantity_change > 0 ? 'text-green-600' : 'text-red-600'}>
                         {Math.abs(transaction.quantity_change || 0).toFixed(2)} {transaction.unit_abbreviation || 'm'}
                       </span>
@@ -960,6 +1103,33 @@ export default function TransactionsNew() {
             )}
             </TableBody>
           </Table>
+
+          {/* Pagination Controls */}
+          {filteredTransactions.length > itemsPerPage && (
+            <div className="flex items-center justify-between mt-4 pt-4 border-t">
+              <div className="text-sm text-muted-foreground">
+                Page {currentPage} of {Math.ceil(filteredTransactions.length / itemsPerPage)}
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                >
+                  Previous
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(prev => Math.min(Math.ceil(filteredTransactions.length / itemsPerPage), prev + 1))}
+                  disabled={currentPage === Math.ceil(filteredTransactions.length / itemsPerPage)}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 

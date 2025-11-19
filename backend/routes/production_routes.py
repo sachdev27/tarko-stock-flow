@@ -56,6 +56,18 @@ def create_batch():
     weight_per_meter = float(data.get('weight_per_meter')) if data.get('weight_per_meter') else None
     total_weight = float(data.get('total_weight')) if data.get('total_weight') else None
 
+    # Calculate piece_length for quantity-based products (Sprinkler Pipe)
+    piece_length_value = None
+    if quantity_based and length_per_roll_input > 0:
+        piece_length_value = length_per_roll_input
+        print(f"📏 Sprinkler Pipe piece_length: {piece_length_value}m")
+    elif quantity_based:
+        print(f"⚠️  WARNING: Sprinkler Pipe missing piece length!")
+        print(f"   - length_per_roll_input: {length_per_roll_input}")
+        print(f"   - Received data keys: {list(data.keys())}")
+
+
+
     # Handle file upload
     attachment_url = None
     if file and allowed_file(file.filename):
@@ -92,12 +104,13 @@ def create_batch():
             INSERT INTO batches (
                 batch_no, batch_code, product_variant_id,
                 production_date, initial_quantity, current_quantity,
-                notes, attachment_url, weight_per_meter, total_weight,
+                notes, attachment_url, weight_per_meter, total_weight, piece_length,
                 created_by, created_at, updated_at
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
             RETURNING id, batch_code
         """, (batch_no, batch_code, variant_id, production_date,
-              quantity, quantity, notes, attachment_url, weight_per_meter, total_weight, user_id))
+              quantity, quantity, notes, attachment_url, weight_per_meter, total_weight,
+              piece_length_value, user_id))
 
         batch = cursor.fetchone()
         batch_id = batch['id']
@@ -161,12 +174,14 @@ def create_batch():
                     # For quantity-based products, each spare piece is 1 unit (quantity)
                     # For length-based products, use the actual length in meters
                     actual_length = 1.0 if quantity_based else pipe_length
+                    # Store the actual pipe count in bundle_size for quantity-based products
+                    spare_count = int(pipe_length) if quantity_based else None
                     cursor.execute("""
                         INSERT INTO rolls (
                             batch_id, product_variant_id, length_meters,
                             initial_length_meters, status, is_cut_roll, roll_type, bundle_size, created_at, updated_at
                         ) VALUES (%s, %s, %s, %s, 'AVAILABLE', TRUE, 'spare', %s, NOW(), NOW())
-                    """, (batch_id, variant_id, actual_length, actual_length, int(pipe_length) if quantity_based else None))
+                    """, (batch_id, variant_id, actual_length, actual_length, spare_count))
                     total_items += 1
 
         # Note: We don't create a transaction record for production

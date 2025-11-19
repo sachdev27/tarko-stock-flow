@@ -72,6 +72,9 @@ export const inventory = {
   // Roll management
   updateRoll: (rollId: string, data: any) =>
     api.put(`/inventory/rolls/${rollId}`, data),
+
+  searchProductVariants: (params: any) =>
+    api.get('/inventory/product-variants/search', { params }),
 };
 
 // Production endpoints

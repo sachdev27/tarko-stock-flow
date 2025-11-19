@@ -3,7 +3,6 @@
 
 -- Create enum types
 CREATE TYPE app_role AS ENUM ('admin', 'user', 'reader');
-CREATE TYPE qc_status AS ENUM ('PENDING', 'PASSED', 'FAILED');
 CREATE TYPE transaction_type AS ENUM (
   'PRODUCTION', 'SALE', 'CUT_ROLL', 'ADJUSTMENT',
   'RETURN', 'TRANSFER_OUT', 'TRANSFER_IN', 'INTERNAL_USE'
@@ -107,10 +106,10 @@ CREATE TABLE batches (
   production_date TIMESTAMPTZ NOT NULL,
   initial_quantity DECIMAL(15, 3) NOT NULL CHECK (initial_quantity > 0),
   current_quantity DECIMAL(15, 3) NOT NULL CHECK (current_quantity >= 0),
-  qc_status qc_status NOT NULL DEFAULT 'PENDING',
-  qc_date TIMESTAMPTZ,
-  qc_notes TEXT,
   notes TEXT,
+  weight_per_meter NUMERIC,
+  total_weight NUMERIC,
+  piece_length NUMERIC,
   attachment_url TEXT,
   created_by UUID REFERENCES users(id) NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),

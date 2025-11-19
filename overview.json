@@ -1,6 +1,6 @@
 {
   "rootFolder": "/Users/sachdevs/Projects/Tarko-Inv/tarko-stock-flow",
-  "analyzedAt": "2025-11-19T12:00:53.744Z",
+  "analyzedAt": "2025-11-19T17:51:41.714Z",
   "rootStructure": [
     {
       "name": ".gitignore",
@@ -49,7 +49,7 @@
     {
       "name": "overview.json",
       "type": "file",
-      "size": 19123,
+      "size": 19106,
       "lines": 634
     },
     {
@@ -173,7 +173,7 @@
     "overview.json": [
       "{",
       "\"rootFolder\": \"/Users/sachdevs/Projects/Tarko-Inv/tarko-stock-flow\",",
-      "\"analyzedAt\": \"2025-11-19T11:21:20.139Z\",",
+      "\"analyzedAt\": \"2025-11-19T17:51:19.289Z\",",
       "\"rootStructure\": [",
       "{",
       "\"name\": \".gitignore\",",
@@ -320,8 +320,8 @@
   "totals": {
     "numFiles": 136,
     "numDirs": 16,
-    "totalSizeBytes": 1258668,
-    "totalLinesOfCode": 14977
+    "totalSizeBytes": 1274152,
+    "totalLinesOfCode": 15256
   },
   "fileCategories": {
     "other": 32,
@@ -330,10 +330,10 @@
     "config": 7
   },
   "linesOfCodePerLanguage": {
-    "Python": 2517,
+    "Python": 2540,
     "Shell": 104,
     "JavaScript": 34,
-    "TypeScript": 12322
+    "TypeScript": 12578
   },
   "filesPerLanguage": {
     "Python": 14,
@@ -362,13 +362,13 @@
     {
       "name": "src",
       "numFiles": 78,
-      "totalLoc": 12207,
+      "totalLoc": 12463,
       "dominantLanguage": "TypeScript"
     },
     {
       "name": "backend",
       "numFiles": 36,
-      "totalLoc": 2621,
+      "totalLoc": 2644,
       "dominantLanguage": "Python"
     },
     {
@@ -383,7 +383,7 @@
       "name": "src",
       "level": 1,
       "numFiles": 78,
-      "totalLoc": 12207,
+      "totalLoc": 12463,
       "dominantLanguage": "TypeScript",
       "category": "General",
       "description": "General module with 78 files (TypeScript)",
@@ -393,7 +393,7 @@
           "name": "pages",
           "level": 2,
           "numFiles": 16,
-          "totalLoc": 7250,
+          "totalLoc": 7506,
           "dominantLanguage": "TypeScript",
           "category": "General",
           "description": "General module with 16 files (TypeScript)",
@@ -462,7 +462,7 @@
       "name": "backend",
       "level": 1,
       "numFiles": 36,
-      "totalLoc": 2621,
+      "totalLoc": 2644,
       "dominantLanguage": "Python",
       "category": "General",
       "description": "# Tarko Inventory - Backend API",
@@ -472,7 +472,7 @@
           "name": "routes",
           "level": 2,
           "numFiles": 9,
-          "totalLoc": 2133,
+          "totalLoc": 2156,
           "dominantLanguage": "Python",
           "category": "General",
           "description": "General module with 9 files (Python)",
@@ -623,16 +623,16 @@
     "total": 66
   },
   "complexity": {
-    "averageFileSize": 110.125,
+    "averageFileSize": 112.17647058823529,
     "maxFileSize": 0,
     "nestedDepth": 0,
     "estimatedComplexity": "high"
   },
   "gitRepo": {
     "firstCommitDate": "2025-11-19",
-    "totalCommits": 23,
+    "totalCommits": 17,
     "numContributors": 0,
-    "currentBranch": "sachdevs/transactions",
+    "currentBranch": "sachdevs/new_ui",
     "remoteUrls": [
       "https://github.com/sachdev27/tarko-stock-flow.git"
     ]
