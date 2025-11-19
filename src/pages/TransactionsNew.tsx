@@ -509,11 +509,36 @@ export default function TransactionsNew() {
             <div className="bg-green-50/50 dark:bg-green-950/30 p-4 rounded-lg border border-green-200/50 dark:border-green-800/50">
               <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
                 <Weight className="h-5 w-5 text-green-600 dark:text-green-400" />
-                Quantity & Weight
+                {modalTransaction.transaction_type === 'CUT' ? 'Cut Roll Details' : 'Quantity & Weight'}
               </h3>
               <div className="grid grid-cols-2 gap-4">
-                {/* For production, show number of rolls from roll_snapshot (original state) */}
-                {modalTransaction.transaction_type === 'PRODUCTION' ? (
+                {/* CUT Transaction - Show original roll and resulting pieces */}
+                {modalTransaction.transaction_type === 'CUT' ? (
+                  <>
+                    <div className="bg-orange-100/50 dark:bg-orange-900/30 p-3 rounded-md border border-orange-300/50 dark:border-orange-700/50">
+                      <p className="text-sm text-muted-foreground">Original Roll Length</p>
+                      <p className="font-semibold text-lg text-orange-700 dark:text-orange-300">
+                        {modalTransaction.roll_initial_length_meters
+                          ? `${Number(modalTransaction.roll_initial_length_meters).toFixed(2)} m`
+                          : 'N/A'}
+                      </p>
+                    </div>
+                    <div className="bg-orange-100/50 dark:bg-orange-900/30 p-3 rounded-md border border-orange-300/50 dark:border-orange-700/50">
+                      <p className="text-sm text-muted-foreground">Amount Cut</p>
+                      <p className="font-semibold text-lg text-orange-700 dark:text-orange-300">
+                        {Math.abs(modalTransaction.quantity_change || 0).toFixed(2)} m
+                      </p>
+                    </div>
+                    {modalTransaction.notes && (
+                      <div className="col-span-2 bg-orange-50/50 dark:bg-orange-900/20 p-3 rounded-md border border-orange-200/50 dark:border-orange-800/50">
+                        <p className="text-sm text-muted-foreground mb-1">Cut Details</p>
+                        <p className="text-sm font-medium text-orange-800 dark:text-orange-200">
+                          {modalTransaction.notes}
+                        </p>
+                      </div>
+                    )}
+                  </>
+                ) : modalTransaction.transaction_type === 'PRODUCTION' ? (
                   <>
                     {modalTransaction.roll_snapshot?.rolls && modalTransaction.roll_snapshot.rolls.length > 0 ? (
                       <>
@@ -629,7 +654,7 @@ export default function TransactionsNew() {
                     )}
                   </>
                 )}
-                {modalTransaction.transaction_type !== 'SALE' && (
+                {modalTransaction.transaction_type !== 'SALE' && modalTransaction.transaction_type !== 'CUT' && (
                   <div className="bg-emerald-100/50 dark:bg-emerald-900/30 p-3 rounded-md border border-emerald-300/50 dark:border-emerald-700/50">
                     <p className="text-sm text-muted-foreground">
                       {modalTransaction.transaction_type === 'PRODUCTION' ? 'Batch Total Weight' : 'Weight'}

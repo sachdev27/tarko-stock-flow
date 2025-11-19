@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { Package, Search, Filter, QrCode, ChevronDown, ChevronUp, MapPin, Edit2, CheckCircle, XCircle, Clock, Paperclip, Calendar, FileText, Download } from 'lucide-react';
+import { Package, Search, Filter, QrCode, ChevronDown, ChevronUp, MapPin, Edit2, CheckCircle, XCircle, Clock, Paperclip, Calendar, FileText, Download, ScissorsIcon, PlusIcon, TrashIcon } from 'lucide-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { inventory as inventoryAPI, transactions as transactionsAPI } from '@/lib/api';
@@ -113,6 +113,12 @@ const Inventory = () => {
   const [productHistory, setProductHistory] = useState<TransactionRecord[]>([]);
   const [productHistoryDiagnostics, setProductHistoryDiagnostics] = useState<TransactionDiagnostic[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+
+  // Cut roll dialog
+  const [cutDialogOpen, setCutDialogOpen] = useState(false);
+  const [rollToCut, setRollToCut] = useState<RollInventory | null>(null);
+  const [cutLength, setCutLength] = useState<string>('');
+  const [cuttingLoading, setCuttingLoading] = useState(false);
 
   useEffect(() => {
     fetchProductTypes();
@@ -277,6 +283,50 @@ const Inventory = () => {
     setSelectedProductForHistory(product);
     setProductHistoryDialogOpen(true);
     fetchProductHistory(product);
+  };
+
+  const openCutDialog = (roll: RollInventory) => {
+    setRollToCut(roll);
+    setCutLength('');
+    setCutDialogOpen(true);
+  };
+
+  const handleCutRoll = async () => {
+    if (!rollToCut) return;
+
+    const cutLengthValue = parseFloat(cutLength);
+    if (isNaN(cutLengthValue) || cutLengthValue <= 0) {
+      toast.error('Please enter a valid cut length');
+      return;
+    }
+
+    if (cutLengthValue >= rollToCut.length_meters) {
+      toast.error(`Cut length must be less than roll length (${rollToCut.length_meters}m)`);
+      return;
+    }
+
+    const remainingLength = rollToCut.length_meters - cutLengthValue;
+
+    setCuttingLoading(true);
+    try {
+      const { dispatch } = await import('@/lib/api');
+      await dispatch.cutRoll({
+        roll_id: rollToCut.id,
+        cuts: [{ length: cutLengthValue }, { length: remainingLength }],
+      });
+
+      toast.success(`Roll cut into 2 pieces: ${cutLengthValue}m and ${remainingLength.toFixed(2)}m`);
+      setCutDialogOpen(false);
+      setRollToCut(null);
+
+      // Refresh inventory
+      await fetchInventory();
+    } catch (error: any) {
+      console.error('Error cutting roll:', error);
+      toast.error(error.response?.data?.error || 'Failed to cut roll');
+    } finally {
+      setCuttingLoading(false);
+    }
   };
 
   const formatWeight = (weightInGrams: number | null | undefined): string => {
@@ -724,22 +774,56 @@ const Inventory = () => {
                                 .map(([length, rolls]) => {
                                   const totalLength = rolls.reduce((sum, r) => sum + r.length_meters, 0);
                                   return (
-                                    <div
-                                      key={length}
-                                      className="p-4 bg-secondary/50 rounded-lg flex items-center justify-between"
-                                    >
-                                      <div className="flex-1">
-                                        <div className="text-base font-semibold">
-                                          <span className="font-bold">{parseFloat(length).toFixed(0)}m</span> × {rolls.length}
+                                    <Collapsible key={length}>
+                                      <div className="p-4 bg-secondary/50 rounded-lg">
+                                        <div className="flex items-center justify-between">
+                                          <div className="flex-1">
+                                            <div className="text-base font-semibold">
+                                              <span className="font-bold">{parseFloat(length).toFixed(0)}m</span> × {rolls.length}
+                                            </div>
+                                            <div className="text-xs text-muted-foreground mt-1">
+                                              {rolls.length} roll{rolls.length > 1 ? 's' : ''}
+                                            </div>
+                                          </div>
+                                          <div className="text-3xl text-primary mr-2">
+                                            <span className="font-bold">{totalLength.toFixed(0)}m</span>
+                                          </div>
+                                          <CollapsibleTrigger asChild>
+                                            <Button variant="ghost" size="sm">
+                                              <ChevronDown className="h-4 w-4" />
+                                            </Button>
+                                          </CollapsibleTrigger>
                                         </div>
-                                        <div className="text-xs text-muted-foreground mt-1">
-                                          {rolls.length} roll{rolls.length > 1 ? 's' : ''}
-                                        </div>
+                                        <CollapsibleContent>
+                                          <div className="mt-3 space-y-2 border-t pt-3">
+                                            {rolls.map((roll) => (
+                                              <div
+                                                key={roll.id}
+                                                className="flex items-center justify-between p-2 bg-background rounded border"
+                                              >
+                                                <div className="flex-1">
+                                                  <div className="text-sm font-medium">
+                                                    {roll.length_meters.toFixed(2)}m
+                                                  </div>
+                                                  <div className="text-xs text-muted-foreground">
+                                                    ID: {roll.id.slice(0, 8)}...
+                                                  </div>
+                                                </div>
+                                                <Button
+                                                  size="sm"
+                                                  variant="outline"
+                                                  onClick={() => openCutDialog(roll)}
+                                                  className="ml-2"
+                                                >
+                                                  <ScissorsIcon className="h-4 w-4 mr-1" />
+                                                  Cut
+                                                </Button>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </CollapsibleContent>
                                       </div>
-                                      <div className="text-3xl text-primary">
-                                        <span className="font-bold">{totalLength.toFixed(0)}m</span>
-                                      </div>
-                                    </div>
+                                    </Collapsible>
                                   );
                                 })}
                             </div>
@@ -758,22 +842,56 @@ const Inventory = () => {
                                 .map(([length, rolls]) => {
                                   const totalLength = rolls.reduce((sum, r) => sum + r.length_meters, 0);
                                   return (
-                                    <div
-                                      key={length}
-                                      className="p-4 bg-amber-50 dark:bg-amber-950 rounded-lg flex items-center justify-between border border-amber-200 dark:border-amber-800"
-                                    >
-                                      <div className="flex-1">
-                                        <div className="text-base font-semibold">
-                                          <span className="font-bold">{parseFloat(length).toFixed(0)}m</span> × {rolls.length}
+                                    <Collapsible key={length}>
+                                      <div className="p-4 bg-amber-50 dark:bg-amber-950 rounded-lg border border-amber-200 dark:border-amber-800">
+                                        <div className="flex items-center justify-between">
+                                          <div className="flex-1">
+                                            <div className="text-base font-semibold">
+                                              <span className="font-bold">{parseFloat(length).toFixed(0)}m</span> × {rolls.length}
+                                            </div>
+                                            <div className="text-xs text-muted-foreground mt-1">
+                                              {rolls.length} cut roll{rolls.length > 1 ? 's' : ''}
+                                            </div>
+                                          </div>
+                                          <div className="text-3xl text-amber-600 mr-2">
+                                            <span className="font-bold">{totalLength.toFixed(0)}m</span>
+                                          </div>
+                                          <CollapsibleTrigger asChild>
+                                            <Button variant="ghost" size="sm">
+                                              <ChevronDown className="h-4 w-4" />
+                                            </Button>
+                                          </CollapsibleTrigger>
                                         </div>
-                                        <div className="text-xs text-muted-foreground mt-1">
-                                          {rolls.length} cut roll{rolls.length > 1 ? 's' : ''}
-                                        </div>
+                                        <CollapsibleContent>
+                                          <div className="mt-3 space-y-2 border-t pt-3">
+                                            {rolls.map((roll) => (
+                                              <div
+                                                key={roll.id}
+                                                className="flex items-center justify-between p-2 bg-background rounded border border-amber-300 dark:border-amber-700"
+                                              >
+                                                <div className="flex-1">
+                                                  <div className="text-sm font-medium">
+                                                    {roll.length_meters.toFixed(2)}m
+                                                  </div>
+                                                  <div className="text-xs text-muted-foreground">
+                                                    ID: {roll.id.slice(0, 8)}...
+                                                  </div>
+                                                </div>
+                                                <Button
+                                                  size="sm"
+                                                  variant="outline"
+                                                  onClick={() => openCutDialog(roll)}
+                                                  className="ml-2"
+                                                >
+                                                  <ScissorsIcon className="h-4 w-4 mr-1" />
+                                                  Cut
+                                                </Button>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </CollapsibleContent>
                                       </div>
-                                      <div className="text-3xl text-amber-600">
-                                        <span className="font-bold">{totalLength.toFixed(0)}m</span>
-                                      </div>
-                                    </div>
+                                    </Collapsible>
                                   );
                                 })}
                             </div>
@@ -1052,6 +1170,101 @@ const Inventory = () => {
             <Button onClick={exportProductHistoryCSV} disabled={productHistory.length === 0}>
               <Download className="h-4 w-4 mr-2" />
               Export CSV
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Cut Roll Dialog */}
+      <Dialog open={cutDialogOpen} onOpenChange={setCutDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-orange-600 flex items-center gap-2">
+              <ScissorsIcon className="h-5 w-5" />
+              Cut Roll
+            </DialogTitle>
+            <DialogDescription>
+              Split this roll into two pieces
+            </DialogDescription>
+          </DialogHeader>
+
+          {rollToCut && (
+            <div className="space-y-4">
+              {/* Original Roll Info */}
+              <div className="p-3 bg-secondary/50 rounded-lg">
+                <div className="text-sm text-muted-foreground">Original Roll</div>
+                <div className="text-2xl font-bold">{rollToCut.length_meters.toFixed(2)}m</div>
+              </div>
+
+              {/* Cut Length Input */}
+              <div className="space-y-2">
+                <Label htmlFor="cut-length">Cut Length (meters)</Label>
+                <Input
+                  id="cut-length"
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  max={rollToCut.length_meters - 0.01}
+                  value={cutLength}
+                  onChange={(e) => setCutLength(e.target.value)}
+                  placeholder="Enter length to cut"
+                  autoFocus
+                />
+              </div>
+
+              {/* Preview */}
+              {cutLength && parseFloat(cutLength) > 0 && parseFloat(cutLength) < rollToCut.length_meters && (
+                <div className="space-y-2">
+                  <div className="text-sm font-medium text-muted-foreground">Result Preview:</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="p-3 bg-orange-50 dark:bg-orange-950 rounded-lg border border-orange-200 dark:border-orange-800">
+                      <div className="text-xs text-muted-foreground">Cut Piece</div>
+                      <div className="text-xl font-bold text-orange-600">
+                        {parseFloat(cutLength).toFixed(2)}m
+                      </div>
+                    </div>
+                    <div className="p-3 bg-orange-50 dark:bg-orange-950 rounded-lg border border-orange-200 dark:border-orange-800">
+                      <div className="text-xs text-muted-foreground">Remaining</div>
+                      <div className="text-xl font-bold text-orange-600">
+                        {(rollToCut.length_meters - parseFloat(cutLength)).toFixed(2)}m
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setCutDialogOpen(false);
+                setRollToCut(null);
+                setCutLength('');
+              }}
+              disabled={cuttingLoading}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCutRoll}
+              disabled={
+                cuttingLoading ||
+                !cutLength ||
+                parseFloat(cutLength) <= 0 ||
+                (rollToCut && parseFloat(cutLength) >= rollToCut.length_meters)
+              }
+              className="bg-orange-600 hover:bg-orange-700"
+            >
+              {cuttingLoading ? (
+                <>Processing...</>
+              ) : (
+                <>
+                  <ScissorsIcon className="h-4 w-4 mr-2" />
+                  Cut Roll
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
