@@ -10,9 +10,10 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { Package, Search, Filter, QrCode, ChevronDown, ChevronUp, MapPin, Edit2, CheckCircle, XCircle, Clock, Paperclip, Calendar } from 'lucide-react';
+import { Package, Search, Filter, QrCode, ChevronDown, ChevronUp, MapPin, Edit2, CheckCircle, XCircle, Clock, Paperclip, Calendar, FileText, Download } from 'lucide-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { inventory as inventoryAPI } from '@/lib/api';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { inventory as inventoryAPI, transactions as transactionsAPI } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { toISTDateTimeLocal, fromISTDateTimeLocal } from '@/lib/utils';
 
@@ -21,6 +22,7 @@ interface ProductInventory {
   product_type_id: string;
   brand: string;
   brand_id: string;
+  product_variant_id: string;  // THE KEY - used for exact matching
   parameters: any;
   total_quantity: number;
   batches: BatchInventory[];
@@ -47,6 +49,48 @@ interface RollInventory {
   bundle_size?: number; // 10 or 20 for bundles
 }
 
+interface TransactionRecord {
+  id: string;
+  transaction_type: string;
+  quantity_change: number;
+  transaction_date: string;
+  invoice_no?: string;
+  notes?: string;
+  created_at: string;
+  batch_code: string;
+  batch_no: string;
+  initial_quantity: number;
+  weight_per_meter?: number;
+  total_weight?: number;
+  attachment_url?: string;
+  production_date: string;
+  product_type: string;
+  product_type_id: string;
+  brand_id: string;
+  product_variant_id: string | number;
+  brand: string;
+  parameters: Record<string, string>;
+  roll_length_meters?: number;
+  roll_initial_length_meters?: number;
+  roll_is_cut?: boolean;
+  roll_type?: string;
+  roll_bundle_size?: number;
+  roll_weight?: number;
+  unit_abbreviation?: string;
+  customer_name?: string;
+  created_by_email?: string;
+  created_by_username?: string;
+  created_by_name?: string;
+}
+
+interface TransactionDiagnostic {
+  id: string;
+  matchType: boolean;
+  matchBrand: boolean;
+  matchParams: boolean;
+  txnParams: Record<string, string>;
+}
+
 const Inventory = () => {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -62,6 +106,13 @@ const Inventory = () => {
   // Edit dialogs
   const [editingBatch, setEditingBatch] = useState<any>(null);
   const [editingRoll, setEditingRoll] = useState<any>(null);
+
+  // Product history dialog
+  const [productHistoryDialogOpen, setProductHistoryDialogOpen] = useState(false);
+  const [selectedProductForHistory, setSelectedProductForHistory] = useState<ProductInventory | null>(null);
+  const [productHistory, setProductHistory] = useState<TransactionRecord[]>([]);
+  const [productHistoryDiagnostics, setProductHistoryDiagnostics] = useState<TransactionDiagnostic[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   useEffect(() => {
     fetchProductTypes();
@@ -100,7 +151,7 @@ const Inventory = () => {
       const productMap = new Map<string, ProductInventory>();
 
       (data || []).forEach((batch: any) => {
-        const key = `${batch.product_type_name}-${batch.brand_name}-${JSON.stringify(batch.parameters)}`;
+        const key = `${batch.product_type_name}-${batch.brand_name}-${batch.product_variant_id}`;
 
         if (!productMap.has(key)) {
           // Get product type config to determine unit
@@ -112,6 +163,7 @@ const Inventory = () => {
             product_type_id: batch.product_type_id,
             brand: batch.brand_name,
             brand_id: batch.brand_id,
+            product_variant_id: batch.product_variant_id, // Store for exact matching
             parameters: batch.parameters,
             total_quantity: 0,
             batches: [],
@@ -168,6 +220,104 @@ const Inventory = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const fetchProductHistory = async (product: ProductInventory) => {
+    setLoadingHistory(true);
+    try {
+      // Fetch all transactions
+      const { data } = await transactionsAPI.getAll();
+
+      // Diagnostic log to see raw transactions returned by the API
+      console.log('fetchProductHistory - raw transactions:', data);
+
+      const normalizeVariantId = (value: string | number | null | undefined) =>
+        value === null || value === undefined ? '' : String(value);
+
+      const targetVariantId = normalizeVariantId(product.product_variant_id);
+      console.log('Target product_variant_id:', targetVariantId);
+
+      // EXACT MATCH ONLY using product_variant_id - no complex comparisons needed!
+      const allTxns = (data || []) as TransactionRecord[];
+      const diagnostics: TransactionDiagnostic[] = [];
+      const filtered: TransactionRecord[] = [];
+
+      for (const txn of allTxns) {
+        // Simple exact match on product_variant_id
+        const txnVariantId = normalizeVariantId(txn.product_variant_id);
+        const isExactMatch = txnVariantId === targetVariantId;
+        console.log('Comparing:', { txnVariantId, targetVariantId, isExactMatch, txnId: txn.id });
+
+        diagnostics.push({
+          id: txn.id,
+          matchType: true,  // Not needed with product_variant_id
+          matchBrand: true, // Not needed with product_variant_id
+          matchParams: isExactMatch,
+          txnParams: txn.parameters
+        });
+
+        if (isExactMatch) {
+          filtered.push(txn);
+        }
+      }
+
+      console.log('fetchProductHistory - per-transaction diagnostics:', diagnostics);
+      console.log('fetchProductHistory - filtered transactions:', filtered);
+      setProductHistoryDiagnostics(diagnostics);
+      setProductHistory(filtered);
+    } catch (error) {
+      console.error('Error fetching product history:', error);
+      toast.error('Failed to load product history');
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+  const openProductHistory = (product: ProductInventory) => {
+    setSelectedProductForHistory(product);
+    setProductHistoryDialogOpen(true);
+    fetchProductHistory(product);
+  };
+
+  const formatWeight = (weightInGrams: number | null | undefined): string => {
+    if (weightInGrams == null) return '-';
+    if (weightInGrams >= 1000) {
+      return `${(weightInGrams / 1000).toFixed(2)} kg`;
+    }
+    return `${weightInGrams.toFixed(0)} g`;
+  };
+
+  const exportProductHistoryCSV = () => {
+    if (!selectedProductForHistory || productHistory.length === 0) return;
+
+    const headers = ['Date', 'Type', 'Batch Code', 'Quantity', 'Customer', 'Invoice', 'Notes'];
+    const headersWithRoll = [...headers, 'Roll Length (m)', 'Roll Weight', 'Roll Type', 'Is Cut'];
+    const rows = productHistory.map((txn) => [
+      new Date(txn.transaction_date).toLocaleString('en-IN'),
+      txn.transaction_type,
+      txn.batch_code || '-',
+      `${txn.quantity_change} m`,
+      txn.customer_name || '-',
+      txn.invoice_no || '-',
+      txn.notes || '-',
+      txn.roll_length_meters != null ? txn.roll_length_meters : '-',
+      formatWeight(txn.roll_weight),
+      txn.roll_type || '-',
+      txn.roll_is_cut ? 'Yes' : 'No'
+    ]);
+
+    const csvContent = [
+      headersWithRoll.join(','),
+      ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${selectedProductForHistory.product_type}-${selectedProductForHistory.brand}-history.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const filteredInventory = inventory.filter((item) => {
@@ -509,40 +659,54 @@ const Inventory = () => {
               return (
                 <Card key={idx}>
                   <Collapsible>
-                    <CardHeader className="cursor-pointer">
-                      <CollapsibleTrigger asChild>
-                        <div className="flex items-center justify-between w-full gap-4">
-                          <div className="flex items-center gap-2 flex-wrap flex-1">
-                            <Badge variant="secondary" className="text-base px-3 py-1">
-                              {product.brand}
-                            </Badge>
-                            {(() => {
-                              // Sort parameters in order: PE, PN, OD
-                              const paramOrder = ['PE', 'PN', 'OD'];
-                              const sortedParams = Object.entries(product.parameters).sort(([keyA], [keyB]) => {
-                                const indexA = paramOrder.indexOf(keyA);
-                                const indexB = paramOrder.indexOf(keyB);
-                                if (indexA === -1 && indexB === -1) return 0;
-                                if (indexA === -1) return 1;
-                                if (indexB === -1) return -1;
-                                return indexA - indexB;
-                              });
+                    <CardHeader>
+                      <div className="flex items-center justify-between w-full gap-4">
+                        <CollapsibleTrigger asChild>
+                          <div className="flex items-center justify-between flex-1 gap-3 cursor-pointer">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <Badge variant="secondary" className="text-base px-3 py-1">
+                                {product.brand}
+                              </Badge>
+                              {(() => {
+                                // Sort parameters in order: PE, PN, OD
+                                const paramOrder = ['PE', 'PN', 'OD'];
+                                const sortedParams = Object.entries(product.parameters).sort(([keyA], [keyB]) => {
+                                  const indexA = paramOrder.indexOf(keyA);
+                                  const indexB = paramOrder.indexOf(keyB);
+                                  if (indexA === -1 && indexB === -1) return 0;
+                                  if (indexA === -1) return 1;
+                                  if (indexB === -1) return -1;
+                                  return indexA - indexB;
+                                });
 
-                              return sortedParams.map(([key, value]) => (
-                                <Badge key={key} variant="outline" className="text-base px-3 py-1">
-                                  {key}: {String(value)}
-                                </Badge>
-                              ));
-                            })()}
+                                return sortedParams.map(([key, value]) => (
+                                  <Badge key={key} variant="outline" className="text-base px-3 py-1">
+                                    {key}: {String(value)}
+                                  </Badge>
+                                ));
+                              })()}
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <span className="text-2xl whitespace-nowrap">
+                                <span className="font-bold">{displayQty}</span> {unit}
+                              </span>
+                              <ChevronDown className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+                            </div>
                           </div>
-                          <div className="flex items-center gap-3">
-                            <span className="text-2xl whitespace-nowrap">
-                              <span className="font-bold">{displayQty}</span> {unit}
-                            </span>
-                            <ChevronDown className="h-5 w-5 text-muted-foreground flex-shrink-0" />
-                          </div>
-                        </div>
-                      </CollapsibleTrigger>
+                        </CollapsibleTrigger>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openProductHistory(product);
+                          }}
+                          className="ml-2"
+                        >
+                          <FileText className="h-4 w-4 mr-1" />
+                          History
+                        </Button>
+                      </div>
                     </CardHeader>
 
                     <CollapsibleContent>
@@ -729,6 +893,166 @@ const Inventory = () => {
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditingRoll(null)}>Cancel</Button>
             <Button onClick={handleRollUpdate}>Save Changes</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Product History Dialog */}
+      <Dialog open={productHistoryDialogOpen} onOpenChange={setProductHistoryDialogOpen}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 flex-wrap">
+              Product History - {selectedProductForHistory?.product_type} ({selectedProductForHistory?.brand})
+              {selectedProductForHistory?.parameters && (() => {
+                const paramOrder = ['PE', 'PN', 'OD'];
+                const sortedParams = Object.entries(selectedProductForHistory.parameters).sort(([keyA], [keyB]) => {
+                  const indexA = paramOrder.indexOf(keyA);
+                  const indexB = paramOrder.indexOf(keyB);
+                  if (indexA === -1 && indexB === -1) return 0;
+                  if (indexA === -1) return 1;
+                  if (indexB === -1) return -1;
+                  return indexA - indexB;
+                });
+                return sortedParams.map(([key, value]) => (
+                  <Badge key={key} variant="secondary" className="text-sm px-3 py-1 bg-primary/10 text-primary border-primary/20">
+                    {key}: {String(value)}
+                  </Badge>
+                ));
+              })()}
+            </DialogTitle>
+            <DialogDescription>
+              Complete transaction history and current outstanding inventory
+            </DialogDescription>
+          </DialogHeader>
+
+          {loadingHistory ? (
+            <div className="text-center py-8">Loading history...</div>
+          ) : (
+            <div className="space-y-6">
+              {/* Summary Cards */}
+              <div className="grid grid-cols-3 gap-4">
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="text-sm text-muted-foreground">Total Produced</div>
+                    <div className="text-2xl font-bold text-green-600">
+                      {productHistory
+                        .filter((txn) => txn.transaction_type === 'PRODUCTION')
+                        .reduce((sum, txn) => sum + Math.abs(txn.quantity_change || 0), 0)
+                        .toFixed(2)} m
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="text-sm text-muted-foreground">Total Sold</div>
+                    <div className="text-2xl font-bold text-red-600">
+                      {productHistory
+                        .filter((txn) => txn.transaction_type === 'SALE')
+                        .reduce((sum, txn) => sum + Math.abs(txn.quantity_change || 0), 0)
+                        .toFixed(2)} m
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="text-sm text-muted-foreground">Current Outstanding</div>
+                    <div className="text-2xl font-bold text-primary">
+                      {selectedProductForHistory?.total_quantity.toFixed(2)} {selectedProductForHistory?.roll_config?.type === 'bundles' ? 'pcs' : 'm'}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Diagnostics when no exact matches */}
+              {productHistory.length === 0 && productHistoryDiagnostics.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm font-medium text-muted-foreground">Potential Matches (no exact matches)</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {productHistoryDiagnostics.map((d) => (
+                        <div key={d.id} className="p-2 border rounded flex items-start justify-between">
+                          <div className="flex-1 mr-4">
+                            <div className="text-sm font-medium break-words">{d.id}</div>
+                            <div className="text-xs text-muted-foreground mt-1 truncate">params: {JSON.stringify(d.txnParams)}</div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge variant={d.matchType ? 'secondary' : 'outline'} className="text-xs">{d.matchType ? 'Type' : 'Type ✗'}</Badge>
+                            <Badge variant={d.matchBrand ? 'secondary' : 'outline'} className="text-xs">{d.matchBrand ? 'Brand' : 'Brand ✗'}</Badge>
+                            <Badge variant={d.matchParams ? 'secondary' : 'outline'} className="text-xs">{d.matchParams ? 'Params' : 'Params ✗'}</Badge>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Transaction Table */}
+              <div className="border rounded-lg">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date & Time</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Batch Code</TableHead>
+                      <TableHead>Roll</TableHead>
+                      <TableHead className="text-right">Quantity</TableHead>
+                      <TableHead>Customer</TableHead>
+                      <TableHead>Invoice</TableHead>
+                      <TableHead>Notes</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {productHistory.map((txn) => (
+                      <TableRow key={txn.id}>
+                        <TableCell className="whitespace-nowrap">
+                          {new Date(txn.transaction_date).toLocaleString('en-IN', {
+                            dateStyle: 'short',
+                            timeStyle: 'short'
+                          })}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={txn.transaction_type === 'PRODUCTION' ? 'default' : 'destructive'}>
+                            {txn.transaction_type}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>{txn.batch_code || '-'}</TableCell>
+                        <TableCell>
+                          {txn.roll_length_meters != null ? (
+                            <div className="text-sm">
+                              <div>{txn.roll_length_meters} m</div>
+                              <div className="text-xs text-muted-foreground">{formatWeight(txn.roll_weight)}</div>
+                              <div className="text-xs text-muted-foreground">{txn.roll_type || ''}{txn.roll_is_cut ? ' • Cut' : ''}</div>
+                            </div>
+                          ) : (
+                            <div className="text-sm text-muted-foreground">-</div>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right font-medium">
+                          {txn.transaction_type === 'PRODUCTION' ? '+' : '-'}
+                          {Math.abs(txn.quantity_change || 0).toFixed(2)} m
+                        </TableCell>
+                        <TableCell>{txn.customer_name || '-'}</TableCell>
+                        <TableCell>{txn.invoice_no || '-'}</TableCell>
+                        <TableCell className="max-w-xs truncate">{txn.notes || '-'}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setProductHistoryDialogOpen(false)}>
+              Close
+            </Button>
+            <Button onClick={exportProductHistoryCSV} disabled={productHistory.length === 0}>
+              <Download className="h-4 w-4 mr-2" />
+              Export CSV
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

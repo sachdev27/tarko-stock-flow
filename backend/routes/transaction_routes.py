@@ -71,6 +71,12 @@ def create_transaction():
         if new_batch_qty['current_quantity'] < 0:
             return jsonify({'error': 'Insufficient batch quantity'}), 400
 
+        # Get product_variant_id from batch
+        cursor.execute("SELECT product_variant_id FROM batches WHERE id = %s", (batch_id,))
+        batch_data = cursor.fetchone()
+        if not batch_data:
+            return jsonify({'error': 'Batch not found'}), 404
+
         # Create transaction
         cursor.execute("""
             INSERT INTO transactions (
@@ -83,6 +89,8 @@ def create_transaction():
               customer_id, invoice_no, notes, user_id))
 
         txn = cursor.fetchone()
+        if not txn:
+            return jsonify({'error': 'Failed to create transaction'}), 500
 
         # Audit log
         cursor.execute("""
@@ -151,8 +159,17 @@ def get_transactions():
             b.attachment_url,
             b.created_at as production_date,
             pt.name as product_type,
+            pv.id as product_variant_id,
+            pv.product_type_id,
+            pv.brand_id,
             br.name as brand,
             pv.parameters,
+            r.length_meters as roll_length_meters,
+            r.initial_length_meters as roll_initial_length_meters,
+            r.is_cut_roll as roll_is_cut,
+            r.roll_type as roll_type,
+            r.bundle_size as roll_bundle_size,
+            CASE WHEN r.length_meters IS NOT NULL AND b.weight_per_meter IS NOT NULL THEN (r.length_meters * b.weight_per_meter) ELSE NULL END as roll_weight,
             u_unit.abbreviation as unit_abbreviation,
             c.name as customer_name,
             u.email as created_by_email,
@@ -163,82 +180,28 @@ def get_transactions():
         JOIN product_variants pv ON b.product_variant_id = pv.id
         JOIN product_types pt ON pv.product_type_id = pt.id
         JOIN brands br ON pv.brand_id = br.id
+        LEFT JOIN rolls r ON t.roll_id = r.id
         LEFT JOIN units u_unit ON pt.unit_id = u_unit.id
         LEFT JOIN customers c ON t.customer_id = c.id
         LEFT JOIN users u ON t.created_by = u.id
         WHERE t.deleted_at IS NULL{date_filter}
         ORDER BY t.created_at DESC
-        LIMIT 500
+        LIMIT 1000
     """
 
     transactions = execute_query(query, tuple(params)) if params else execute_query(query)
 
-    # Also fetch production batches (not just transactions) with same date filter
-    prod_date_filter = ""
-    if start_date_ist and end_date_ist:
-        prod_date_filter = " AND b.created_at >= %s AND b.created_at <= %s"
-
-    production_query = f"""
-        SELECT
-            CONCAT('batch_', b.id) as id,
-            'PRODUCTION' as transaction_type,
-            b.initial_quantity as quantity_change,
-            b.created_at as transaction_date,
-            NULL as invoice_no,
-            NULL as notes,
-            b.created_at,
-            b.batch_code,
-            b.batch_no,
-            b.initial_quantity,
-            b.weight_per_meter,
-            b.total_weight,
-            b.attachment_url,
-            b.created_at as production_date,
-            pt.name as product_type,
-            br.name as brand,
-            pv.parameters,
-            u_unit.abbreviation as unit_abbreviation,
-            NULL as customer_name,
-            u.email as created_by_email,
-            u.username as created_by_username,
-            u.full_name as created_by_name
-        FROM batches b
-        JOIN product_variants pv ON b.product_variant_id = pv.id
-        JOIN product_types pt ON pv.product_type_id = pt.id
-        JOIN brands br ON pv.brand_id = br.id
-        LEFT JOIN units u_unit ON pt.unit_id = u_unit.id
-        LEFT JOIN users u ON b.created_by = u.id
-        WHERE b.deleted_at IS NULL{prod_date_filter}
-        ORDER BY b.created_at DESC
-        LIMIT 500
-    """
-
-    production_batches = execute_query(production_query, tuple(params)) if params else execute_query(production_query)
-
     print(f"📊 Query Results:")
-    print(f"  Transactions found (filtered): {len(transactions)}")
-    print(f"  Production batches found (filtered): {len(production_batches)}")
+    print(f"  Transactions found (filtered): {len(transactions) if transactions else 0}")
     print(f"  Date filter applied: {bool(params)}")
 
-    if production_batches:
-        print(f"  First production batch created_at: {production_batches[0].get('created_at')}")
-        print(f"  Last production batch created_at: {production_batches[-1].get('created_at')}")
-
-    # Combine and sort all records
-    all_records = transactions + production_batches
-    all_records.sort(key=lambda x: x['created_at'], reverse=True)
-
-    print(f"  Total records returned: {len(all_records)}")
-
-    # Check for duplicate IDs
-    all_ids = [r['id'] for r in all_records]
-    duplicate_ids = [id for id in all_ids if all_ids.count(id) > 1]
-    if duplicate_ids:
-        print(f"  ⚠️ WARNING: Duplicate IDs found: {set(duplicate_ids)}")
-
-    # Show sample IDs
+    # Sort all records by creation date
+    all_records = list(transactions) if transactions else []
     if all_records:
+        all_records.sort(key=lambda x: x['created_at'], reverse=True)
         sample_ids = [r['id'] for r in all_records[:3]]
         print(f"  Sample IDs: {sample_ids}")
+
+    print(f"  Total records returned: {len(all_records)}")
 
     return jsonify(all_records), 200

@@ -581,6 +581,7 @@ const Transactions = () => {
                       <TableHead>Product</TableHead>
                       <TableHead>Brand</TableHead>
                       <TableHead>Parameters</TableHead>
+                      <TableHead>Customer</TableHead>
                       <TableHead className="text-right">Quantity</TableHead>
                       <TableHead className="text-right">Weight/m</TableHead>
                       <TableHead className="text-right">Total Weight</TableHead>
@@ -624,6 +625,13 @@ const Transactions = () => {
                                 </Badge>
                               ))}
                           </div>
+                        </TableCell>
+                        <TableCell>
+                          {txn.transaction_type === 'SALE' && txn.customer_name ? (
+                            <span className="text-sm">{txn.customer_name}</span>
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
+                          )}
                         </TableCell>
                         <TableCell className="text-right font-medium">
                           {txn.quantity.toFixed(2)} {txn.unit}

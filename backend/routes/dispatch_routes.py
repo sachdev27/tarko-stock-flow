@@ -321,10 +321,10 @@ def create_dispatch():
                     # Dispatch entire roll
                     quantity_dispatched = available_length
 
-                    # Mark roll as sold out
+                    # Soft delete roll (set deleted_at timestamp)
                     cursor.execute("""
                         UPDATE rolls
-                        SET length_meters = 0, status = 'SOLD_OUT', updated_at = NOW()
+                        SET length_meters = 0, status = 'SOLD_OUT', deleted_at = NOW(), updated_at = NOW()
                         WHERE id = %s
                     """, (roll_id,))
 
@@ -335,13 +335,21 @@ def create_dispatch():
 
                     quantity_dispatched = dispatch_quantity
                     remaining = available_length - dispatch_quantity
-                    new_status = 'SOLD_OUT' if remaining == 0 else 'PARTIAL'
 
-                    cursor.execute("""
-                        UPDATE rolls
-                        SET length_meters = %s, status = %s, updated_at = NOW()
-                        WHERE id = %s
-                    """, (remaining, new_status, roll_id))
+                    if remaining == 0:
+                        # Soft delete roll when length reaches 0
+                        cursor.execute("""
+                            UPDATE rolls
+                            SET length_meters = 0, status = 'SOLD_OUT', deleted_at = NOW(), updated_at = NOW()
+                            WHERE id = %s
+                        """, (roll_id,))
+                    else:
+                        # Update roll with remaining length
+                        cursor.execute("""
+                            UPDATE rolls
+                            SET length_meters = %s, status = 'PARTIAL', updated_at = NOW()
+                            WHERE id = %s
+                        """, (remaining, roll_id))
 
                 else:
                     return jsonify({'error': f'Invalid item type: {item_type}'}), 400

@@ -193,6 +193,16 @@ def create_batch():
             ) VALUES (%s, 'CREATE_BATCH', 'BATCH', %s, %s, NOW())
         """, (user_id, batch_id, log_msg))
 
+        # Create single batch-level production transaction
+        cursor.execute("""
+            INSERT INTO transactions (
+                batch_id, roll_id, transaction_type, quantity_change,
+                transaction_date, customer_id, invoice_no, notes,
+                created_by, created_at, updated_at
+            ) VALUES (%s, NULL, %s, %s, %s, NULL, NULL, %s, %s, NOW(), NOW())
+        """, (batch_id, 'PRODUCTION', float(quantity),
+              production_date or None, notes, user_id))
+
     return jsonify({
         'id': batch_id,
         'batch_code': batch['batch_code'],
