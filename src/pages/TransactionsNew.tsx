@@ -87,7 +87,6 @@ interface TransactionRecord {
 export default function TransactionsNew() {
   const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
   const [filteredTransactions, setFilteredTransactions] = useState<TransactionRecord[]>([]);
-  const [selectedTransaction, setSelectedTransaction] = useState<TransactionRecord | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [modalTransaction, setModalTransaction] = useState<TransactionRecord | null>(null);
@@ -103,6 +102,7 @@ export default function TransactionsNew() {
   const [pnFilter, setPnFilter] = useState<string>('all');
   const [peFilter, setPeFilter] = useState<string>('all');
   const [typeParamFilter, setTypeParamFilter] = useState<string>('all'); // For Sprinkler Pipe Type (A/B/C)
+  const [timePreset, setTimePreset] = useState<string>('all');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [showFilters, setShowFilters] = useState(false);
@@ -180,14 +180,42 @@ export default function TransactionsNew() {
         filtered = filtered.filter(t => t.parameters?.Type === typeParamFilter);
       }
 
-      // Date range filter
-      if (startDate) {
-        filtered = filtered.filter(t => new Date(t.created_at) >= new Date(startDate));
-      }
-      if (endDate) {
-        const endDateTime = new Date(endDate);
-        endDateTime.setHours(23, 59, 59, 999);
-        filtered = filtered.filter(t => new Date(t.created_at) <= endDateTime);
+      // Time preset filter
+      const now = new Date();
+      if (timePreset === 'today') {
+        const todayStart = new Date(now.setHours(0, 0, 0, 0));
+        filtered = filtered.filter(t => new Date(t.created_at) >= todayStart);
+      } else if (timePreset === 'yesterday') {
+        const yesterdayStart = new Date(now.setHours(0, 0, 0, 0));
+        yesterdayStart.setDate(yesterdayStart.getDate() - 1);
+        const yesterdayEnd = new Date(yesterdayStart);
+        yesterdayEnd.setDate(yesterdayEnd.getDate() + 1);
+        filtered = filtered.filter(t => new Date(t.created_at) >= yesterdayStart && new Date(t.created_at) < yesterdayEnd);
+      } else if (timePreset === 'last7days') {
+        const sevenDaysAgo = new Date(now);
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        filtered = filtered.filter(t => new Date(t.created_at) >= sevenDaysAgo);
+      } else if (timePreset === 'last30days') {
+        const thirtyDaysAgo = new Date(now);
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        filtered = filtered.filter(t => new Date(t.created_at) >= thirtyDaysAgo);
+      } else if (timePreset === 'thisMonth') {
+        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        filtered = filtered.filter(t => new Date(t.created_at) >= monthStart);
+      } else if (timePreset === 'lastMonth') {
+        const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 1);
+        filtered = filtered.filter(t => new Date(t.created_at) >= lastMonthStart && new Date(t.created_at) < lastMonthEnd);
+      } else if (timePreset === 'custom') {
+        // Date range filter
+        if (startDate) {
+          filtered = filtered.filter(t => new Date(t.created_at) >= new Date(startDate));
+        }
+        if (endDate) {
+          const endDateTime = new Date(endDate);
+          endDateTime.setHours(23, 59, 59, 999);
+          filtered = filtered.filter(t => new Date(t.created_at) <= endDateTime);
+        }
       }
 
       setFilteredTransactions(filtered);
@@ -195,7 +223,7 @@ export default function TransactionsNew() {
     };
 
     applyFilters();
-  }, [transactions, searchQuery, typeFilter, productTypeFilter, brandFilter, parameterFilter, odFilter, pnFilter, peFilter, typeParamFilter, startDate, endDate]);
+  }, [transactions, searchQuery, typeFilter, productTypeFilter, brandFilter, parameterFilter, odFilter, pnFilter, peFilter, typeParamFilter, timePreset, startDate, endDate]);
 
   const loadTransactions = async () => {
     try {
@@ -302,8 +330,10 @@ export default function TransactionsNew() {
   const formatWeight = (grams: number | null | undefined, unitAbbreviation?: string) => {
     // For sprinkler pipes (counted in pieces), weight is already total weight
     // For pipes (counted in meters), weight might need conversion
-    if (!grams || isNaN(grams) || grams === 0) return '0 kg';
-    return `${(grams / 1000).toFixed(2)} kg`;
+    if (!grams || isNaN(grams) || grams === 0) return '0 kg (0 ton)';
+    const kg = grams / 1000;
+    const tons = kg / 1000;
+    return `${kg.toFixed(2)} kg (${tons.toFixed(3)} ton)`;
   };
 
   const openDetailModal = (transaction: TransactionRecord) => {
@@ -336,6 +366,8 @@ export default function TransactionsNew() {
   const renderTransactionSummaryCards = (transaction: TransactionRecord) => {
     // For production batches, calculate based on product type
     let rollCount = 0;
+    let displayLabel = 'Total Rolls/Items';
+
     if (transaction.transaction_type === 'PRODUCTION') {
       if (transaction.product_type === 'Sprinkler Pipe') {
         // For Sprinkler Pipe: show total pieces (bundles × bundle_size + spare pieces)
@@ -344,6 +376,7 @@ export default function TransactionsNew() {
           ? transaction.spare_pieces_details.reduce((sum, count) => sum + Number(count), 0)
           : 0;
         rollCount = bundlePieces + sparePiecesTotal;
+        displayLabel = 'Total Pieces';
       } else {
         // For HDPE: show number of roll items
         rollCount = (
@@ -352,10 +385,18 @@ export default function TransactionsNew() {
           (transaction.bundles_count || 0) +
           (transaction.spare_pieces_count || 0)
         );
+        displayLabel = 'Total Rolls';
       }
+    } else if (transaction.transaction_type === 'SALE') {
+      // For sales: use roll_snapshot if available
+      if (transaction.roll_snapshot && transaction.roll_snapshot.total_rolls) {
+        rollCount = transaction.roll_snapshot.total_rolls;
+      } else {
+        rollCount = 1;
+      }
+      displayLabel = 'Rolls Sold';
     } else {
-      // For sales
-      rollCount = transaction.roll_length_meters ? 1 : Math.abs(transaction.quantity_change || 0);
+      rollCount = 1;
     }
 
     return (
@@ -364,13 +405,13 @@ export default function TransactionsNew() {
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
               <Package className="h-4 w-4" />
-              {transaction.transaction_type === 'PRODUCTION' ? 'Total Rolls/Items' : 'Quantity'}
+              {displayLabel}
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{rollCount}</div>
             <p className="text-xs text-muted-foreground mt-1">
-              {transaction.transaction_type === 'SALE' ? 'Items sold' : 'Items produced'}
+              {transaction.transaction_type === 'SALE' ? 'Items sold' : transaction.transaction_type === 'PRODUCTION' ? 'Items produced' : 'Items'}
             </p>
           </CardContent>
         </Card>
@@ -681,6 +722,14 @@ export default function TransactionsNew() {
                     <p className="text-sm text-muted-foreground">Bundle Size</p>
                     <p className="font-medium text-lg">
                       <Badge variant="secondary">{modalTransaction.roll_bundle_size} pieces</Badge>
+                    </p>
+                  </div>
+                )}
+                {modalTransaction.product_type === 'Sprinkler Pipe' && modalTransaction.piece_length && Number(modalTransaction.piece_length) > 0 && (
+                  <div className="bg-purple-50/50 dark:bg-purple-900/30 p-3 rounded-md border border-purple-300/50 dark:border-purple-700/50">
+                    <p className="text-sm text-muted-foreground">Length per Piece</p>
+                    <p className="font-semibold text-lg text-purple-700 dark:text-purple-300">
+                      {Number(modalTransaction.piece_length).toFixed(2)} m
                     </p>
                   </div>
                 )}
@@ -1025,24 +1074,19 @@ export default function TransactionsNew() {
           <p className="text-muted-foreground">View all production and sales transactions</p>
         </div>
 
-        {/* Show Total Production Weight when no transaction is selected */}
-        {!selectedTransaction && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Weight className="h-5 w-5" />
-                Total Production Weight
-              </CardTitle>
-              <CardDescription>Cumulative weight of all production transactions</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="text-4xl font-bold">{formatWeight(getTotalProductionWeight())}</div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Show transaction summary cards when a transaction is selected */}
-        {selectedTransaction && renderTransactionSummaryCards(selectedTransaction)}
+        {/* Total Production Weight */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Weight className="h-5 w-5" />
+              Total Production Weight
+            </CardTitle>
+            <CardDescription>Cumulative weight of all production transactions</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="text-4xl font-bold">{formatWeight(getTotalProductionWeight())}</div>
+          </CardContent>
+        </Card>
 
         {/* Filters Section */}
         <Card>
@@ -1228,23 +1272,58 @@ export default function TransactionsNew() {
                   </>
                 )}
 
-                {/* Start Date */}
+                {/* Time Period */}
+                <div className="space-y-2">
+                  <Label>Time Period</Label>
+                  <Select
+                    value={timePreset}
+                    onValueChange={(value) => {
+                      setTimePreset(value);
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Time</SelectItem>
+                      <SelectItem value="today">Today</SelectItem>
+                      <SelectItem value="yesterday">Yesterday</SelectItem>
+                      <SelectItem value="last7days">Last 7 Days</SelectItem>
+                      <SelectItem value="last30days">Last 30 Days</SelectItem>
+                      <SelectItem value="thisMonth">This Month</SelectItem>
+                      <SelectItem value="lastMonth">Last Month</SelectItem>
+                      <SelectItem value="custom">Custom Range</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Start Date - Always visible */}
                 <div className="space-y-2">
                   <Label>Start Date</Label>
                   <Input
                     type="date"
                     value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
+                    onChange={(e) => {
+                      setStartDate(e.target.value);
+                      if (e.target.value || endDate) {
+                        setTimePreset('custom');
+                      }
+                    }}
                   />
                 </div>
 
-                {/* End Date */}
+                {/* End Date - Always visible */}
                 <div className="space-y-2">
                   <Label>End Date</Label>
                   <Input
                     type="date"
                     value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
+                    onChange={(e) => {
+                      setEndDate(e.target.value);
+                      if (e.target.value || startDate) {
+                        setTimePreset('custom');
+                      }
+                    }}
                   />
                 </div>
               </div>
@@ -1262,7 +1341,7 @@ export default function TransactionsNew() {
         <CardHeader>
           <CardTitle>All Transactions</CardTitle>
           <CardDescription>
-            Click on a row to view summary cards, or use the detail button for complete information
+            View all transactions or click the detail button for complete information
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -1270,6 +1349,7 @@ export default function TransactionsNew() {
             <TableHeader>
               <TableRow>
                 <TableHead>Date & Time</TableHead>
+                <TableHead>Batch</TableHead>
                 <TableHead>Product Type & Brand</TableHead>
                 <TableHead>Parameters</TableHead>
                 <TableHead>Type</TableHead>
@@ -1284,7 +1364,7 @@ export default function TransactionsNew() {
             <TableBody>
               {filteredTransactions.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={11} className="text-center text-muted-foreground py-8">
                     No transactions found
                   </TableCell>
                 </TableRow>
@@ -1294,16 +1374,17 @@ export default function TransactionsNew() {
                   .map((transaction) => (
                 <TableRow
                   key={transaction.id}
-                  className={`cursor-pointer transition-colors ${
-                    selectedTransaction?.id === transaction.id
-                      ? 'bg-primary/5'
-                      : 'hover:bg-muted/50'
-                  }`}
-                  onClick={() => setSelectedTransaction(selectedTransaction?.id === transaction.id ? null : transaction)}
+                  className="hover:bg-muted/50 transition-colors"
                 >
                   <TableCell className="font-medium">
                     <div>{format(new Date(transaction.created_at), 'PP')}</div>
                     <div className="text-xs text-muted-foreground">{format(new Date(transaction.created_at), 'p')}</div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="text-sm font-medium">{transaction.batch_code || '-'}</div>
+                    {transaction.batch_no && (
+                      <div className="text-xs text-muted-foreground">{transaction.batch_no}</div>
+                    )}
                   </TableCell>
                   <TableCell>
                     <div className="font-medium text-base">{transaction.product_type}</div>
@@ -1424,7 +1505,7 @@ export default function TransactionsNew() {
                     )}
                   </TableCell>
                   <TableCell>
-                    {transaction.transaction_type === 'SALE' ? '-' : formatWeight(transaction.total_weight || 0)}
+                    {transaction.transaction_type === 'SALE' || transaction.transaction_type === 'CUT' ? '-' : formatWeight(transaction.total_weight || 0)}
                   </TableCell>
                   <TableCell>{transaction.customer_name || '-'}</TableCell>
                   <TableCell>

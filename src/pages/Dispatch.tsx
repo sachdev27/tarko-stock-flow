@@ -21,6 +21,7 @@ interface Roll {
   initial_length_meters: number;
   status: string;
   roll_type: string;
+  is_cut_roll?: boolean;
   bundle_size?: number;
 }
 
@@ -146,7 +147,22 @@ const Dispatch = () => {
       quantity: 1,
       roll
     }]);
-    toast.success('Roll added to dispatch');
+
+    // Update available rolls to reduce the quantity
+    if (availableRolls) {
+      const updateRollsList = (rolls: Roll[]) =>
+        rolls.map(r => r.id === roll.id ? { ...r, length_meters: 0 } : r).filter(r => r.length_meters > 0);
+
+      setAvailableRolls({
+        ...availableRolls,
+        standard_rolls: updateRollsList(availableRolls.standard_rolls || []),
+        cut_rolls: updateRollsList(availableRolls.cut_rolls || []),
+        bundles: updateRollsList(availableRolls.bundles || [])
+      });
+    }
+
+    const isSprinklerPipe = availableRolls?.product_type?.toLowerCase().includes('sprinkler');
+    toast.success(isSprinklerPipe ? 'Bundle added to dispatch' : 'Roll added to dispatch');
   };
 
   const addPartialRollToDispatch = (roll: Roll, quantity: number) => {
@@ -171,7 +187,34 @@ const Dispatch = () => {
   };
 
   const removeDispatchItem = (rollId: string) => {
+    const itemToRemove = dispatchItems.find(item => item.roll_id === rollId);
     setDispatchItems(dispatchItems.filter(item => item.roll_id !== rollId));
+
+    // Restore the roll to available rolls
+    if (itemToRemove && availableRolls) {
+      const roll = itemToRemove.roll;
+      const rollToRestore = {
+        ...roll,
+        length_meters: itemToRemove.type === 'full_roll' ? roll.length_meters : itemToRemove.quantity
+      };
+
+      if (roll.roll_type === 'cut' || roll.is_cut_roll) {
+        setAvailableRolls({
+          ...availableRolls,
+          cut_rolls: [...(availableRolls.cut_rolls || []), rollToRestore]
+        });
+      } else if (roll.bundle_size) {
+        setAvailableRolls({
+          ...availableRolls,
+          bundles: [...(availableRolls.bundles || []), rollToRestore]
+        });
+      } else {
+        setAvailableRolls({
+          ...availableRolls,
+          standard_rolls: [...(availableRolls.standard_rolls || []), rollToRestore]
+        });
+      }
+    }
   };
 
   const handleCutRoll = async () => {
@@ -371,66 +414,73 @@ const Dispatch = () => {
         {availableRolls && (
           <Card>
             <CardHeader>
-              <CardTitle>Step 2: Available Rolls</CardTitle>
+              <CardTitle>Step 2: Available Inventory</CardTitle>
               <CardDescription>
                 {availableRolls.brand} - {Object.entries(selectedParameters).map(([k, v]) => `${k}: ${v}`).join(', ')}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               {/* Standard Rolls */}
-              {(availableRolls.standard_rolls?.length ?? 0) > 0 && (
-                <div className="space-y-3">
-                  <h3 className="font-semibold flex items-center gap-2">
-                    <Badge variant="default">Standard Rolls ({availableRolls.standard_rolls?.length ?? 0})</Badge>
-                  </h3>
-                  <div className="grid gap-3">
-                    {availableRolls.standard_rolls?.map((roll) => (
-                      <Card key={roll.id} className="p-4">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="font-medium">{roll.batch_code}</p>
-                            <p className="text-sm text-muted-foreground">
-                              {roll.length_meters.toFixed(2)}m available
-                            </p>
+              {(availableRolls.standard_rolls?.length ?? 0) > 0 && (() => {
+                const isSprinklerPipe = availableRolls.product_type?.toLowerCase().includes('sprinkler');
+                return (
+                  <div className="space-y-3">
+                    <h3 className="font-semibold flex items-center gap-2">
+                      <Badge variant="default">Standard Rolls ({availableRolls.standard_rolls?.length ?? 0})</Badge>
+                    </h3>
+                    <div className="grid gap-3">
+                      {availableRolls.standard_rolls?.map((roll) => (
+                        <Card key={roll.id} className="p-4">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="font-medium">{roll.batch_code}</p>
+                              <p className="text-sm text-muted-foreground">
+                                {roll.length_meters.toFixed(2)}m available
+                              </p>
+                            </div>
+                            <div className="flex gap-2">
+                              {!isSprinklerPipe && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => {
+                                    setRollToCut(roll);
+                                    setCutDialogOpen(true);
+                                  }}
+                                >
+                                  <ScissorsIcon className="h-4 w-4 mr-1" />
+                                  Cut
+                                </Button>
+                              )}
+                              <Button
+                                size="sm"
+                                onClick={() => addFullRollToDispatch(roll)}
+                              >
+                                Add Full Roll
+                              </Button>
+                              {!isSprinklerPipe && (
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  onClick={() => {
+                                    const qty = prompt(`Enter quantity to dispatch (max ${roll.length_meters}m):`);
+                                    if (qty) addPartialRollToDispatch(roll, parseFloat(qty));
+                                  }}
+                                >
+                                  Add Partial
+                                </Button>
+                              )}
+                            </div>
                           </div>
-                          <div className="flex gap-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                setRollToCut(roll);
-                                setCutDialogOpen(true);
-                              }}
-                            >
-                              <ScissorsIcon className="h-4 w-4 mr-1" />
-                              Cut
-                            </Button>
-                            <Button
-                              size="sm"
-                              onClick={() => addFullRollToDispatch(roll)}
-                            >
-                              Add Full Roll
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              onClick={() => {
-                                const qty = prompt(`Enter quantity to dispatch (max ${roll.length_meters}m):`);
-                                if (qty) addPartialRollToDispatch(roll, parseFloat(qty));
-                              }}
-                            >
-                              Add Partial
-                            </Button>
-                          </div>
-                        </div>
-                      </Card>
-                    ))}
+                        </Card>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
-              {/* Cut Rolls */}
-              {(availableRolls.cut_rolls?.length ?? 0) > 0 && (
+              {/* Cut Rolls - Hidden for Sprinkler Pipe */}
+              {(availableRolls.cut_rolls?.length ?? 0) > 0 && !availableRolls.product_type?.toLowerCase().includes('sprinkler') && (
                 <div className="space-y-3">
                   <h3 className="font-semibold flex items-center gap-2">
                     <Badge variant="secondary">Cut Rolls ({availableRolls.cut_rolls?.length ?? 0})</Badge>
@@ -482,33 +532,38 @@ const Dispatch = () => {
               )}
 
               {/* Bundles */}
-              {(availableRolls.bundles?.length ?? 0) > 0 && (
-                <div className="space-y-3">
-                  <h3 className="font-semibold flex items-center gap-2">
-                    <Badge variant="outline">Bundles ({availableRolls.bundles?.length ?? 0})</Badge>
-                  </h3>
-                  <div className="grid gap-3">
-                    {availableRolls.bundles?.map((roll) => (
-                      <Card key={roll.id} className="p-4">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="font-medium">{roll.batch_code} - Bundle of {roll.bundle_size}</p>
-                            <p className="text-sm text-muted-foreground">
-                              {roll.length_meters} pieces available
-                            </p>
+              {(availableRolls.bundles?.length ?? 0) > 0 && (() => {
+                const isSprinklerPipe = availableRolls.product_type?.toLowerCase().includes('sprinkler');
+                return (
+                  <div className="space-y-3">
+                    <h3 className="font-semibold flex items-center gap-2">
+                      <Badge variant="outline">Bundles ({availableRolls.bundles?.length ?? 0})</Badge>
+                    </h3>
+                    <div className="grid gap-3">
+                      {availableRolls.bundles?.map((roll) => (
+                        <Card key={roll.id} className="p-4">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="font-medium">{roll.batch_code} - Bundle of {roll.bundle_size}</p>
+                              {!isSprinklerPipe && (
+                                <p className="text-sm text-muted-foreground">
+                                  {roll.length_meters} pieces available
+                                </p>
+                              )}
+                            </div>
+                            <Button
+                              size="sm"
+                              onClick={() => addFullRollToDispatch(roll)}
+                            >
+                              Add Bundle
+                            </Button>
                           </div>
-                          <Button
-                            size="sm"
-                            onClick={() => addFullRollToDispatch(roll)}
-                          >
-                            Add Bundle
-                          </Button>
-                        </div>
-                      </Card>
-                    ))}
+                        </Card>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
             </CardContent>
           </Card>
         )}
@@ -524,29 +579,39 @@ const Dispatch = () => {
               {/* Dispatch Items List */}
               <div className="space-y-2">
                 <Label>Items to Dispatch</Label>
-                {dispatchItems.map((item) => (
-                  <div key={item.roll_id} className="flex items-center justify-between p-3 border rounded-lg">
-                    <div>
-                      <p className="font-medium">{item.roll.batch_code}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {item.type === 'full_roll'
-                          ? `Full roll - ${item.roll.length_meters.toFixed(2)}m`
-                          : `Partial - ${item.quantity.toFixed(2)}m`
-                        }
-                      </p>
+                {dispatchItems.map((item) => {
+                  const isSprinklerPipe = availableRolls?.product_type?.toLowerCase().includes('sprinkler');
+                  const isBundle = item.roll.bundle_size && item.roll.bundle_size > 0;
+
+                  return (
+                    <div key={item.roll_id} className="flex items-center justify-between p-3 border rounded-lg">
+                      <div>
+                        <p className="font-medium">{item.roll.batch_code}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {isBundle ? (
+                            `Bundle of ${item.roll.bundle_size}`
+                          ) : item.type === 'full_roll' ? (
+                            isSprinklerPipe ? 'Full bundle' : `Full roll - ${item.roll.length_meters.toFixed(2)}m`
+                          ) : (
+                            `Partial - ${item.quantity.toFixed(2)}m`
+                          )}
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => removeDispatchItem(item.roll_id)}
+                      >
+                        <TrashIcon className="h-4 w-4" />
+                      </Button>
                     </div>
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      onClick={() => removeDispatchItem(item.roll_id)}
-                    >
-                      <TrashIcon className="h-4 w-4" />
-                    </Button>
+                  );
+                })}
+                {!availableRolls?.product_type?.toLowerCase().includes('sprinkler') && (
+                  <div className="pt-2 border-t">
+                    <p className="font-semibold">Total: {totalDispatchQuantity.toFixed(2)}m</p>
                   </div>
-                ))}
-                <div className="pt-2 border-t">
-                  <p className="font-semibold">Total: {totalDispatchQuantity.toFixed(2)}m</p>
-                </div>
+                )}
               </div>
 
               {/* Customer Selection */}

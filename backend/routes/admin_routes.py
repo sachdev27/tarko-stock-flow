@@ -410,7 +410,7 @@ def get_audit_logs():
             u.email as user_email,
             u.username as user_username,
             u.full_name as user_name,
-            -- Get transaction details if entity is TRANSACTION
+            -- Get transaction details if entity is TRANSACTION or if there's a related transaction for ROLL
             t.customer_id,
             t.invoice_no,
             t.quantity_change,
@@ -424,7 +424,10 @@ def get_audit_logs():
             r.initial_length_meters as roll_initial_length
         FROM audit_logs al
         LEFT JOIN users u ON al.user_id = u.id
-        LEFT JOIN transactions t ON al.entity_type = 'TRANSACTION' AND al.entity_id::text = t.id::text
+        LEFT JOIN transactions t ON (
+            (al.entity_type = 'TRANSACTION' AND al.entity_id::text = t.id::text) OR
+            (al.entity_type = 'ROLL' AND al.entity_id::text = t.roll_id::text AND al.action_type = 'CUT_ROLL')
+        )
         LEFT JOIN customers c ON t.customer_id = c.id
         LEFT JOIN batches b ON t.batch_id = b.id
         LEFT JOIN rolls r ON al.entity_type = 'ROLL' AND al.entity_id::text = r.id::text

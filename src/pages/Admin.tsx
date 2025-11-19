@@ -1785,14 +1785,21 @@ const Admin = () => {
                             )}
 
                             {/* Roll Length */}
-                            {(log.roll_length || log.roll_initial_length) && (
+                            {(log.action_type === 'CUT_ROLL' && log.quantity_change) ? (
+                              <div className="p-2 bg-background rounded border">
+                                <div className="text-muted-foreground">Cut Length</div>
+                                <div className="font-medium">
+                                  {Math.abs(parseFloat(log.quantity_change)).toFixed(2)} m
+                                </div>
+                              </div>
+                            ) : (log.roll_length || log.roll_initial_length) ? (
                               <div className="p-2 bg-background rounded border">
                                 <div className="text-muted-foreground">Roll Length</div>
                                 <div className="font-medium">
                                   {parseFloat(log.roll_length || log.roll_initial_length).toFixed(2)} m
                                 </div>
                               </div>
-                            )}
+                            ) : null}
 
                             {/* Product Info from snapshot */}
                             {rollSnapshot?.product_type && (

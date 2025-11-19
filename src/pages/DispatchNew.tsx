@@ -544,35 +544,54 @@ const Dispatch = () => {
                             ))}
                           </div>
                           <p className="text-sm text-muted-foreground">
-                            <span className="font-bold text-lg">{product.standard_rolls.length + product.cut_rolls.length} rolls</span>
-                            <span className="text-xs ml-2">({product.total_available_meters}m available)</span>
+                            {(() => {
+                              const isSprinklerPipe = product.product_type?.toLowerCase().includes('sprinkler');
+                              const totalCount = product.standard_rolls.length + product.cut_rolls.length;
+                              const itemType = isSprinklerPipe ? 'bundles' : 'rolls';
+
+                              return (
+                                <>
+                                  <span className="font-bold text-lg">{totalCount} {itemType}</span>
+                                  {!isSprinklerPipe && (
+                                    <span className="text-xs ml-2">({product.total_available_meters}m available)</span>
+                                  )}
+                                </>
+                              );
+                            })()}
                           </p>
                         </div>
                       </div>
 
                       {/* Standard Rolls Summary */}
-                      {product.standard_rolls.length > 0 && (
-                        <div className="flex items-center justify-between">
-                          <div className="text-sm">
-                            <span className="font-bold text-base">{product.standard_rolls.length}</span>
-                            <span className="text-muted-foreground ml-1">standard rolls</span>
-                          </div>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              setSelectedProduct(product);
-                              setCutRollDialogOpen(true);
-                            }}
-                          >
-                            <PackageIcon className="h-4 w-4 mr-1" />
-                            View & Cut Rolls
-                          </Button>
-                        </div>
-                      )}
+                      {product.standard_rolls.length > 0 && (() => {
+                        const isSprinklerPipe = product.product_type?.toLowerCase().includes('sprinkler');
+                        const itemType = isSprinklerPipe ? 'bundles' : 'standard rolls';
 
-                      {/* Cut Rolls - Grouped by Length */}
-                      {product.cut_rolls.length > 0 && (
+                        return (
+                          <div className="flex items-center justify-between">
+                            <div className="text-sm">
+                              <span className="font-bold text-base">{product.standard_rolls.length}</span>
+                              <span className="text-muted-foreground ml-1">{itemType}</span>
+                            </div>
+                            {!isSprinklerPipe && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedProduct(product);
+                                  setCutRollDialogOpen(true);
+                                }}
+                              >
+                                <PackageIcon className="h-4 w-4 mr-1" />
+                                View & Cut Rolls
+                              </Button>
+                            )}
+                          </div>
+                        );
+                      })()}
+
+                      {/* Cut Rolls - Grouped by Length - Hidden for Sprinkler Pipe */}
+                      {product.cut_rolls.length > 0 && !product.product_type?.toLowerCase().includes('sprinkler') && (
                         <div className="space-y-2">
                           <div className="text-sm">
                             <span className="font-bold text-base">{product.cut_rolls.length}</span>
@@ -655,44 +674,49 @@ const Dispatch = () => {
                       {/* Add to Cart Controls */}
                       <div className="flex items-center gap-3 pt-2 border-t">
                         {/* Standard Rolls */}
-                        {product.standard_rolls.length > 0 && (
-                          <div className="flex-1 flex items-center gap-2">
-                            <Label className="text-sm whitespace-nowrap">Standard Rolls:</Label>
-                            <div className="flex items-center gap-2">
-                              <Input
-                                type="number"
-                                min="0"
-                                max={product.standard_rolls.length}
-                                defaultValue="0"
-                                className="w-20 h-9"
-                                id={`roll-count-${idx}`}
-                              />
-                              <span className="text-xs text-muted-foreground">/ {product.standard_rolls.length}</span>
+                        {product.standard_rolls.length > 0 && (() => {
+                          const isSprinklerPipe = product.product_type?.toLowerCase().includes('sprinkler');
+                          const itemType = isSprinklerPipe ? 'Bundles' : 'Standard Rolls';
+
+                          return (
+                            <div className="flex-1 flex items-center gap-2">
+                              <Label className="text-sm whitespace-nowrap">{itemType}:</Label>
+                              <div className="flex items-center gap-2">
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  max={product.standard_rolls.length}
+                                  defaultValue="0"
+                                  className="w-20 h-9"
+                                  id={`roll-count-${idx}`}
+                                />
+                                <span className="text-xs text-muted-foreground">/ {product.standard_rolls.length}</span>
+                              </div>
+                              <Button
+                                size="sm"
+                                onClick={() => {
+                                  const input = document.getElementById(`roll-count-${idx}`) as HTMLInputElement;
+                                  let count = parseInt(input.value) || 0;
+                                  const maxAvailable = product.standard_rolls.length;
+
+                                  if (count > maxAvailable) {
+                                    toast.error(`Only ${maxAvailable} ${isSprinklerPipe ? 'bundles' : 'rolls'} available`);
+                                    input.value = maxAvailable.toString();
+                                    count = maxAvailable;
+                                  }
+
+                                  if (count > 0) {
+                                    addProductToCart(product, count);
+                                    input.value = '0';
+                                  }
+                                }}
+                              >
+                                <PlusIcon className="h-4 w-4 mr-1" />
+                                Add
+                              </Button>
                             </div>
-                            <Button
-                              size="sm"
-                              onClick={() => {
-                                const input = document.getElementById(`roll-count-${idx}`) as HTMLInputElement;
-                                let count = parseInt(input.value) || 0;
-                                const maxAvailable = product.standard_rolls.length;
-
-                                if (count > maxAvailable) {
-                                  toast.error(`Only ${maxAvailable} rolls available`);
-                                  input.value = maxAvailable.toString();
-                                  count = maxAvailable;
-                                }
-
-                                if (count > 0) {
-                                  addProductToCart(product, count);
-                                  input.value = '0';
-                                }
-                              }}
-                            >
-                              <PlusIcon className="h-4 w-4 mr-1" />
-                              Add
-                            </Button>
-                          </div>
-                        )}
+                          );
+                        })()}
 
 
                       </div>
@@ -708,8 +732,14 @@ const Dispatch = () => {
             {/* Cart */}
             <Card>
               <CardHeader>
-                <CardTitle>Cart ({totalRolls} rolls)</CardTitle>
-                <CardDescription>Total: <span className="font-bold">{totalMeters.toFixed(2)}m</span></CardDescription>
+                <CardTitle>
+                  Cart ({totalRolls} {totalRolls === 1 ? 'item' : 'items'})
+                </CardTitle>
+                <CardDescription>
+                  {cart.some(item => !item.product.product_type?.toLowerCase().includes('sprinkler')) && (
+                    <>Total: <span className="font-bold">{totalMeters.toFixed(2)}m</span></>
+                  )}
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 {cart.length === 0 ? (
@@ -736,24 +766,32 @@ const Dispatch = () => {
                         </div>
 
                         {/* Standard Rolls */}
-                        {item.standard_roll_count > 0 && (
-                          <div className="flex items-center justify-between text-sm bg-slate-50 dark:bg-slate-800 p-2 rounded">
-                            <span className="text-muted-foreground">Standard Rolls:</span>
-                            <div className="flex items-center gap-2">
-                              <Input
-                                type="number"
-                                min="0"
-                                max={item.product.standard_rolls.length}
-                                value={item.standard_roll_count}
-                                onChange={(e) => updateRollCount(item.product_label, parseInt(e.target.value) || 0)}
-                                className="w-16 h-7 text-sm"
-                              />
-                              <span className="text-muted-foreground text-xs">
-                                (<span className="font-bold">{item.product.standard_rolls.slice(0, item.standard_roll_count).reduce((s, r) => s + r.length_meters, 0).toFixed(0)}m</span>)
-                              </span>
+                        {item.standard_roll_count > 0 && (() => {
+                          const isSprinklerPipe = item.product.product_type?.toLowerCase().includes('sprinkler');
+                          const itemType = isSprinklerPipe ? 'Bundles' : 'Standard Rolls';
+                          const totalLength = item.product.standard_rolls.slice(0, item.standard_roll_count).reduce((s, r) => s + r.length_meters, 0).toFixed(0);
+
+                          return (
+                            <div className="flex items-center justify-between text-sm bg-slate-50 dark:bg-slate-800 p-2 rounded">
+                              <span className="text-muted-foreground">{itemType}:</span>
+                              <div className="flex items-center gap-2">
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  max={item.product.standard_rolls.length}
+                                  value={item.standard_roll_count}
+                                  onChange={(e) => updateRollCount(item.product_label, parseInt(e.target.value) || 0)}
+                                  className="w-16 h-7 text-sm"
+                                />
+                                {!isSprinklerPipe && (
+                                  <span className="text-muted-foreground text-xs">
+                                    (<span className="font-bold">{totalLength}m</span>)
+                                  </span>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        )}
+                          );
+                        })()}
 
                         {/* Cut Rolls */}
                         {item.cut_rolls.length > 0 && (
