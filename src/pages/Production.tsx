@@ -10,21 +10,20 @@ import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { Factory, Plus, Upload, Trash2 } from 'lucide-react';
 import { inventory, production, parameters } from '@/lib/api';
+import { toISTDateTimeLocal } from '@/lib/utils';
 
 const Production = () => {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
-  const [locations, setLocations] = useState<any[]>([]);
   const [productTypes, setProductTypes] = useState<any[]>([]);
   const [brands, setBrands] = useState<any[]>([]);
   const [parameterOptions, setParameterOptions] = useState<Record<string, any[]>>({});
 
   const [formData, setFormData] = useState({
-    locationId: '',
     productTypeId: '',
     brandId: '',
-    productionDate: new Date().toISOString().slice(0, 16),
-    productionTime: new Date().toLocaleTimeString('en-GB', { hour12: false }).slice(0, 5),
+    productionDate: toISTDateTimeLocal(new Date()),
+    productionTime: '',
     quantity: '',
     batchNo: '',
     autoBatchNo: true,
@@ -37,6 +36,10 @@ const Production = () => {
     numberOfBundles: '1',
     bundleSize: '10',
     sparePipes: [] as { length: string }[],
+    // Weight tracking
+    weightPerMeter: '',
+    totalWeight: '',
+    lengthPerPiece: '6', // Default length for sprinkler pipes in meters
   });
 
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
@@ -102,18 +105,38 @@ const Production = () => {
     setFormData(prev => ({ ...prev, quantity: total > 0 ? total.toFixed(2) : '' }));
   }, [formData.numberOfRolls, formData.lengthPerRoll, formData.cutRolls, formData.numberOfBundles, formData.bundleSize, formData.sparePipes, formData.productTypeId, productTypes]);
 
+  // Auto-calculate total weight when quantity or weight per meter changes
+  useEffect(() => {
+    const qty = parseFloat(formData.quantity) || 0;
+    const weightPerM = parseFloat(formData.weightPerMeter) || 0;
+    const lengthPerPiece = parseFloat(formData.lengthPerPiece) || 0;
+
+    if (qty > 0 && weightPerM > 0) {
+      // Check if this is a quantity-based product (like sprinkler pipes)
+      const selectedPT = productTypes.find(pt => pt.id === formData.productTypeId);
+      const isQuantityBased = selectedPT?.roll_configuration?.quantity_based;
+
+      let totalWeightGrams;
+      if (isQuantityBased && lengthPerPiece > 0) {
+        // For quantity-based: total_weight = quantity * lengthPerPiece * weightPerMeter
+        totalWeightGrams = qty * lengthPerPiece * weightPerM;
+      } else {
+        // For length-based: total_weight = quantity * weightPerMeter
+        totalWeightGrams = qty * weightPerM;
+      }
+      setFormData(prev => ({ ...prev, totalWeight: totalWeightGrams.toFixed(2) }));
+    } else {
+      setFormData(prev => ({ ...prev, totalWeight: '' }));
+    }
+  }, [formData.quantity, formData.weightPerMeter, formData.lengthPerPiece, formData.productTypeId, productTypes]);
+
   const fetchMasterData = async () => {
     try {
-      const [locationsRes, productTypesRes, brandsRes, paramsRes] = await Promise.all([
-        inventory.getLocations(),
+      const [productTypesRes, brandsRes, paramsRes] = await Promise.all([
         inventory.getProductTypes(),
         inventory.getBrands(),
         parameters.getOptions(),
       ]);
-
-      if (locationsRes.data) {
-        setLocations(locationsRes.data);
-      }
 
       if (productTypesRes.data) {
         setProductTypes(productTypesRes.data);
@@ -133,17 +156,23 @@ const Production = () => {
   };
 
   const generateBatchNo = () => {
-    const date = new Date();
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const now = new Date();
+    // Convert to IST for batch number
+    const istOffset = 5.5 * 60 * 60 * 1000;
+    const istDate = new Date(now.getTime() + istOffset);
+    const year = istDate.getUTCFullYear();
+    const month = String(istDate.getUTCMonth() + 1).padStart(2, '0');
     const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
     return `BATCH-${year}${month}-${random}`;
   };
 
   const generateBatchCode = (productType: any, params: Record<string, string>) => {
     const brand = brands.find(b => b.id === formData.brandId)?.name || 'BRAND';
-    const date = new Date();
-    const year = date.getFullYear();
+    const now = new Date();
+    // Convert to IST for batch code
+    const istOffset = 5.5 * 60 * 60 * 1000;
+    const istDate = new Date(now.getTime() + istOffset);
+    const year = istDate.getUTCFullYear();
     const seq = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
 
     if (productType.name === 'HDPE Pipe') {
@@ -159,7 +188,7 @@ const Production = () => {
     e.preventDefault();
     setSubmitAttempted(true);
 
-    if (!formData.locationId || !formData.productTypeId || !formData.brandId || !formData.quantity) {
+    if (!formData.productTypeId || !formData.brandId || !formData.quantity) {
       toast.error('Please fill in all required fields');
       return;
     }
@@ -191,7 +220,6 @@ const Production = () => {
 
       // Create FormData for multipart/form-data submission
       const formDataToSend = new FormData();
-      formDataToSend.append('location_id', formData.locationId);
       formDataToSend.append('product_type_id', formData.productTypeId);
       formDataToSend.append('brand_id', formData.brandId);
       formDataToSend.append('parameters', JSON.stringify(formData.parameters));
@@ -210,6 +238,14 @@ const Production = () => {
       formDataToSend.append('roll_config_type', rollConfig.type);
       formDataToSend.append('quantity_based', rollConfig.quantity_based ? 'true' : 'false');
 
+      // Add weight tracking if provided
+      if (formData.weightPerMeter) {
+        formDataToSend.append('weight_per_meter', formData.weightPerMeter);
+      }
+      if (formData.totalWeight) {
+        formDataToSend.append('total_weight', formData.totalWeight);
+      }
+
       // Add attachment file if present
       if (attachmentFile) {
         formDataToSend.append('attachment', attachmentFile);
@@ -222,11 +258,10 @@ const Production = () => {
 
       // Reset form
       setFormData({
-        locationId: '',
         productTypeId: '',
         brandId: '',
-        productionDate: new Date().toISOString().slice(0, 10),
-        productionTime: new Date().toLocaleTimeString('en-GB', { hour12: false }).slice(0, 5),
+        productionDate: toISTDateTimeLocal(new Date()),
+        productionTime: '',
         quantity: '',
         batchNo: '',
         autoBatchNo: true,
@@ -238,6 +273,9 @@ const Production = () => {
         numberOfBundles: '1',
         bundleSize: '10',
         sparePipes: [],
+        weightPerMeter: '',
+        totalWeight: '',
+        lengthPerPiece: '6',
       });
       setAttachmentFile(null);
       setNewCutRollLength('');
@@ -287,21 +325,6 @@ const Production = () => {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Location */}
-              <div className="space-y-2">
-                <Label htmlFor="location">Location *</Label>
-                <Select value={formData.locationId} onValueChange={(value) => setFormData({...formData, locationId: value})}>
-                  <SelectTrigger id="location" className={`h-12 ${submitAttempted && !formData.locationId ? 'border-red-500 border-2' : ''}`}>
-                    <SelectValue placeholder="Select location" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {locations.map((loc) => (
-                      <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
               {/* Product Type */}
               <div className="space-y-2">
                 <Label htmlFor="productType">Product Type *</Label>
@@ -698,27 +721,18 @@ const Production = () => {
               )}
 
               {/* Production Date and Time */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="productionDate">Production Date *</Label>
-                  <Input
-                    id="productionDate"
-                    type="date"
-                    value={formData.productionDate.slice(0, 10)}
-                    onChange={(e) => setFormData({...formData, productionDate: e.target.value + 'T' + formData.productionTime})}
-                    className="h-12"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="productionTime">Production Time *</Label>
-                  <Input
-                    id="productionTime"
-                    type="time"
-                    value={formData.productionTime}
-                    onChange={(e) => setFormData({...formData, productionTime: e.target.value})}
-                    className="h-12"
-                  />
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor="productionDate">Production Date & Time (IST) *</Label>
+                <Input
+                  id="productionDate"
+                  type="datetime-local"
+                  value={formData.productionDate}
+                  onChange={(e) => setFormData({...formData, productionDate: e.target.value})}
+                  className="h-12"
+                />
+                <p className="text-xs text-muted-foreground">
+                  All times are in Indian Standard Time (IST)
+                </p>
               </div>
 
               {/* Quantity (Auto-calculated) */}
@@ -760,6 +774,70 @@ const Production = () => {
                   </p>
                 )}
               </div>
+
+              {/* Weight Tracking */}
+              <Card className="p-4 bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800">
+                <h3 className="font-medium mb-3 text-blue-900 dark:text-blue-100">Weight Tracking (Optional)</h3>
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="weightPerMeter">
+                      Weight per Meter (g/m)
+                    </Label>
+                    <Input
+                      id="weightPerMeter"
+                      type="number"
+                      step="0.001"
+                      min="0"
+                      placeholder="e.g., 450.5"
+                      value={formData.weightPerMeter}
+                      onChange={(e) => setFormData({...formData, weightPerMeter: e.target.value})}
+                      className="h-12"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Weight in grams per meter
+                    </p>
+                  </div>
+                  {productTypes.find(pt => pt.id === formData.productTypeId)?.roll_configuration?.quantity_based && (
+                    <div className="space-y-2">
+                      <Label htmlFor="lengthPerPiece">
+                        Length per Piece (m)
+                      </Label>
+                      <Input
+                        id="lengthPerPiece"
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        placeholder="e.g., 6"
+                        value={formData.lengthPerPiece}
+                        onChange={(e) => setFormData({...formData, lengthPerPiece: e.target.value})}
+                        className="h-12"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Default length for each piece
+                      </p>
+                    </div>
+                  )}
+                  <div className="space-y-2">
+                    <Label htmlFor="totalWeight">
+                      Total Weight (Auto-calculated)
+                    </Label>
+                    <Input
+                      id="totalWeight"
+                      type="number"
+                      step="0.001"
+                      placeholder="Auto-calculated"
+                      value={formData.totalWeight}
+                      readOnly
+                      className="h-12 bg-muted font-semibold"
+                    />
+                    {formData.totalWeight && (
+                      <p className="text-xs text-muted-foreground">
+                        = {(parseFloat(formData.totalWeight) / 1000).toFixed(2)} kg
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </Card>
 
               {/* Batch Number */}
               <div className="space-y-2">

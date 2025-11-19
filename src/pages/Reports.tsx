@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { BarChart, Download, Filter, Package, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { reports, inventory } from '@/lib/api';
+import { formatDate } from '@/lib/utils';
 
 interface ProductSalesData {
   product_type: string;
@@ -20,12 +21,6 @@ interface ProductSalesData {
   sales_count: number;
 }
 
-interface LocationInventory {
-  location: string;
-  total_quantity: number;
-  batch_count: number;
-}
-
 interface CustomerSales {
   customer_name: string;
   total_quantity: number;
@@ -36,7 +31,6 @@ interface CustomerSales {
 const Reports = () => {
   const [loading, setLoading] = useState(true);
   const [topProducts, setTopProducts] = useState<ProductSalesData[]>([]);
-  const [locationInventory, setLocationInventory] = useState<LocationInventory[]>([]);
   const [customerSales, setCustomerSales] = useState<CustomerSales[]>([]);
   const [productInventory, setProductInventory] = useState<any[]>([]);
   const [allProductInventory, setAllProductInventory] = useState<any[]>([]);
@@ -86,7 +80,6 @@ const Reports = () => {
     try {
       await Promise.all([
         fetchTopSellingProducts(),
-        fetchLocationInventory(),
         fetchCustomerSales(),
         fetchProductInventory(),
       ]);
@@ -140,21 +133,6 @@ const Reports = () => {
     } catch (error) {
       console.error('Error fetching top products:', error);
       toast.error('Failed to load top selling products');
-    }
-  };  const fetchLocationInventory = async () => {
-    try {
-      let brand, product_type;
-      if (selectedProduct !== 'all') {
-        [brand, product_type] = selectedProduct.split('-');
-      }
-      const response = await reports.getLocationInventory(brand, product_type);
-      setLocationInventory(response.data.map((item: any) => ({
-        ...item,
-        total_quantity: parseFloat(item.total_quantity || 0),
-      })));
-    } catch (error) {
-      console.error('Error fetching location inventory:', error);
-      toast.error('Failed to load location inventory');
     }
   };
 
@@ -245,7 +223,9 @@ const Reports = () => {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${filename}-${new Date().toISOString().split('T')[0]}.csv`;
+    // Use IST date in filename (DD-MM-YYYY format)
+    const istDate = formatDate(new Date().toISOString()).replace(/\//g, '-');
+    a.download = `${filename}-${istDate}.csv`;
     a.click();
     window.URL.revokeObjectURL(url);
     toast.success('Report exported successfully');
@@ -504,48 +484,6 @@ const Reports = () => {
                     }
                   </Badge>
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Location-wise Inventory */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle>Location-wise Inventory</CardTitle>
-              <CardDescription>
-                {getFilterDescription()
-                  ? `${getFilterDescription()} distribution by location`
-                  : 'Stock distribution across warehouses'
-                }
-              </CardDescription>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => exportToCSV(locationInventory, 'location-inventory')}
-            >
-              <Download className="h-4 w-4 mr-2" />
-              Export CSV
-            </Button>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 md:grid-cols-3">
-              {locationInventory.map((location, idx) => (
-                <Card key={idx}>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-lg">{location.location}</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-3xl font-bold mb-2">
-                      {location.total_quantity.toFixed(2)} units
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      {location.batch_count} batches
-                    </p>
-                  </CardContent>
-                </Card>
               ))}
             </div>
           </CardContent>

@@ -8,66 +8,6 @@ import io
 
 admin_bp = Blueprint('admin', __name__, url_prefix='/api/admin')
 
-# Locations
-@admin_bp.route('/locations', methods=['GET'])
-@jwt_required()
-def get_locations():
-    """Get all locations"""
-    query = "SELECT * FROM locations WHERE deleted_at IS NULL ORDER BY name"
-    locations = execute_query(query)
-    return jsonify(locations), 200
-
-@admin_bp.route('/locations', methods=['POST'])
-@jwt_required_with_role('admin')
-def create_location():
-    """Create a new location"""
-    data = request.json
-    name = data.get('name')
-    address = data.get('address', '')
-
-    if not name:
-        return jsonify({'error': 'Location name is required'}), 400
-
-    query = """
-        INSERT INTO locations (name, address)
-        VALUES (%s, %s)
-        RETURNING id, name, address
-    """
-    result = execute_insert(query, (name, address))
-    return jsonify(result), 201
-
-@admin_bp.route('/locations/<uuid:location_id>', methods=['PUT'])
-@jwt_required_with_role('admin')
-def update_location(location_id):
-    """Update a location"""
-    data = request.json
-    name = data.get('name')
-    address = data.get('address', '')
-
-    if not name:
-        return jsonify({'error': 'Location name is required'}), 400
-
-    query = """
-        UPDATE locations
-        SET name = %s, address = %s
-        WHERE id = %s AND deleted_at IS NULL
-        RETURNING id, name, address
-    """
-    result = execute_insert(query, (name, address, str(location_id)))
-    return jsonify(result), 200
-
-@admin_bp.route('/locations/<uuid:location_id>', methods=['DELETE'])
-@jwt_required_with_role('admin')
-def delete_location(location_id):
-    """Soft delete a location"""
-    query = """
-        UPDATE locations
-        SET deleted_at = NOW()
-        WHERE id = %s
-    """
-    execute_query(query, (str(location_id),), fetch_all=False)
-    return jsonify({'message': 'Location deleted'}), 200
-
 # Brands
 @admin_bp.route('/brands', methods=['GET'])
 @jwt_required()

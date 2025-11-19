@@ -10,16 +10,19 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { Package, Search, Filter, QrCode, ChevronDown, ChevronUp, MapPin, Edit2, CheckCircle, XCircle, Clock, Paperclip, Calendar } from 'lucide-react';
+import { Package, Search, Filter, QrCode, ChevronDown, ChevronUp, MapPin, Edit2, CheckCircle, XCircle, Clock, Paperclip, Calendar, FileText, Download } from 'lucide-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { inventory as inventoryAPI } from '@/lib/api';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { inventory as inventoryAPI, transactions as transactionsAPI } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
+import { toISTDateTimeLocal, fromISTDateTimeLocal } from '@/lib/utils';
 
 interface ProductInventory {
   product_type: string;
   product_type_id: string;
   brand: string;
   brand_id: string;
+  product_variant_id: string;  // THE KEY - used for exact matching
   parameters: any;
   total_quantity: number;
   batches: BatchInventory[];
@@ -30,9 +33,7 @@ interface BatchInventory {
   id: string;
   batch_code: string;
   batch_no: string;
-  location: string;
   current_quantity: number;
-  qc_status: string;
   production_date: string;
   attachment_url?: string;
   rolls: RollInventory[];
@@ -48,45 +49,76 @@ interface RollInventory {
   bundle_size?: number; // 10 or 20 for bundles
 }
 
+interface TransactionRecord {
+  id: string;
+  transaction_type: string;
+  quantity_change: number;
+  transaction_date: string;
+  invoice_no?: string;
+  notes?: string;
+  created_at: string;
+  batch_code: string;
+  batch_no: string;
+  initial_quantity: number;
+  weight_per_meter?: number;
+  total_weight?: number;
+  attachment_url?: string;
+  production_date: string;
+  product_type: string;
+  product_type_id: string;
+  brand_id: string;
+  product_variant_id: string | number;
+  brand: string;
+  parameters: Record<string, string>;
+  roll_length_meters?: number;
+  roll_initial_length_meters?: number;
+  roll_is_cut?: boolean;
+  roll_type?: string;
+  roll_bundle_size?: number;
+  roll_weight?: number;
+  unit_abbreviation?: string;
+  customer_name?: string;
+  created_by_email?: string;
+  created_by_username?: string;
+  created_by_name?: string;
+}
+
+interface TransactionDiagnostic {
+  id: string;
+  matchType: boolean;
+  matchBrand: boolean;
+  matchParams: boolean;
+  txnParams: Record<string, string>;
+}
+
 const Inventory = () => {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [inventory, setInventory] = useState<ProductInventory[]>([]);
-  const [locations, setLocations] = useState<any[]>([]);
   const [productTypes, setProductTypes] = useState<any[]>([]);
   const [brands, setBrands] = useState<any[]>([]);
-  const [selectedLocation, setSelectedLocation] = useState<string>('all');
   const [selectedProductType, setSelectedProductType] = useState<string>('all');
   const [selectedBrand, setSelectedBrand] = useState<string>('all');
   const [parameterFilters, setParameterFilters] = useState<Record<string, string>>({});
   const [searchQuery, setSearchQuery] = useState('');
-  const [viewMode, setViewMode] = useState<'product' | 'batch' | 'roll'>('product');
-  const [timeFilter, setTimeFilter] = useState<string>('all');
-  const [customStartDate, setCustomStartDate] = useState<string>('');
-  const [customEndDate, setCustomEndDate] = useState<string>('');
+  const [showOnlyCutRolls, setShowOnlyCutRolls] = useState(false);
 
   // Edit dialogs
   const [editingBatch, setEditingBatch] = useState<any>(null);
   const [editingRoll, setEditingRoll] = useState<any>(null);
-  const [qcDialogBatch, setQcDialogBatch] = useState<any>(null);
-  const [qcStatus, setQcStatus] = useState('');
-  const [qcNotes, setQcNotes] = useState('');
+
+  // Product history dialog
+  const [productHistoryDialogOpen, setProductHistoryDialogOpen] = useState(false);
+  const [selectedProductForHistory, setSelectedProductForHistory] = useState<ProductInventory | null>(null);
+  const [productHistory, setProductHistory] = useState<TransactionRecord[]>([]);
+  const [productHistoryDiagnostics, setProductHistoryDiagnostics] = useState<TransactionDiagnostic[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   useEffect(() => {
-    fetchLocations();
     fetchProductTypes();
     fetchBrands();
     fetchInventory();
-  }, [selectedLocation, selectedProductType, selectedBrand, parameterFilters]);
-
-  const fetchLocations = async () => {
-    try {
-      const { data } = await inventoryAPI.getLocations();
-      setLocations(data || []);
-    } catch (error) {
-      console.error('Error fetching locations:', error);
-    }
-  };
+  }, [selectedProductType, selectedBrand, parameterFilters]);
 
   const fetchProductTypes = async () => {
     try {
@@ -113,13 +145,13 @@ const Inventory = () => {
   const fetchInventory = async () => {
     setLoading(true);
     try {
-      const { data } = await inventoryAPI.getBatches(selectedLocation === 'all' ? undefined : selectedLocation);
+      const { data } = await inventoryAPI.getBatches();
 
       // Transform backend flat batch data to grouped ProductInventory structure
       const productMap = new Map<string, ProductInventory>();
 
       (data || []).forEach((batch: any) => {
-        const key = `${batch.product_type_name}-${batch.brand_name}-${JSON.stringify(batch.parameters)}`;
+        const key = `${batch.product_type_name}-${batch.brand_name}-${batch.product_variant_id}`;
 
         if (!productMap.has(key)) {
           // Get product type config to determine unit
@@ -131,6 +163,7 @@ const Inventory = () => {
             product_type_id: batch.product_type_id,
             brand: batch.brand_name,
             brand_id: batch.brand_id,
+            product_variant_id: batch.product_variant_id, // Store for exact matching
             parameters: batch.parameters,
             total_quantity: 0,
             batches: [],
@@ -169,9 +202,7 @@ const Inventory = () => {
           id: batch.id,
           batch_code: batch.batch_code,
           batch_no: batch.batch_no,
-          location: batch.location_name,
           current_quantity: parseFloat(batch.current_quantity || 0),
-          qc_status: batch.qc_status,
           production_date: batch.production_date,
           attachment_url: batch.attachment_url,
           rolls: (batch.rolls || []).map((roll: any) => ({
@@ -189,6 +220,104 @@ const Inventory = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const fetchProductHistory = async (product: ProductInventory) => {
+    setLoadingHistory(true);
+    try {
+      // Fetch all transactions
+      const { data } = await transactionsAPI.getAll();
+
+      // Diagnostic log to see raw transactions returned by the API
+      console.log('fetchProductHistory - raw transactions:', data);
+
+      const normalizeVariantId = (value: string | number | null | undefined) =>
+        value === null || value === undefined ? '' : String(value);
+
+      const targetVariantId = normalizeVariantId(product.product_variant_id);
+      console.log('Target product_variant_id:', targetVariantId);
+
+      // EXACT MATCH ONLY using product_variant_id - no complex comparisons needed!
+      const allTxns = (data || []) as TransactionRecord[];
+      const diagnostics: TransactionDiagnostic[] = [];
+      const filtered: TransactionRecord[] = [];
+
+      for (const txn of allTxns) {
+        // Simple exact match on product_variant_id
+        const txnVariantId = normalizeVariantId(txn.product_variant_id);
+        const isExactMatch = txnVariantId === targetVariantId;
+        console.log('Comparing:', { txnVariantId, targetVariantId, isExactMatch, txnId: txn.id });
+
+        diagnostics.push({
+          id: txn.id,
+          matchType: true,  // Not needed with product_variant_id
+          matchBrand: true, // Not needed with product_variant_id
+          matchParams: isExactMatch,
+          txnParams: txn.parameters
+        });
+
+        if (isExactMatch) {
+          filtered.push(txn);
+        }
+      }
+
+      console.log('fetchProductHistory - per-transaction diagnostics:', diagnostics);
+      console.log('fetchProductHistory - filtered transactions:', filtered);
+      setProductHistoryDiagnostics(diagnostics);
+      setProductHistory(filtered);
+    } catch (error) {
+      console.error('Error fetching product history:', error);
+      toast.error('Failed to load product history');
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+  const openProductHistory = (product: ProductInventory) => {
+    setSelectedProductForHistory(product);
+    setProductHistoryDialogOpen(true);
+    fetchProductHistory(product);
+  };
+
+  const formatWeight = (weightInGrams: number | null | undefined): string => {
+    if (weightInGrams == null) return '-';
+    if (weightInGrams >= 1000) {
+      return `${(weightInGrams / 1000).toFixed(2)} kg`;
+    }
+    return `${weightInGrams.toFixed(0)} g`;
+  };
+
+  const exportProductHistoryCSV = () => {
+    if (!selectedProductForHistory || productHistory.length === 0) return;
+
+    const headers = ['Date', 'Type', 'Batch Code', 'Quantity', 'Customer', 'Invoice', 'Notes'];
+    const headersWithRoll = [...headers, 'Roll Length (m)', 'Roll Weight', 'Roll Type', 'Is Cut'];
+    const rows = productHistory.map((txn) => [
+      new Date(txn.transaction_date).toLocaleString('en-IN'),
+      txn.transaction_type,
+      txn.batch_code || '-',
+      `${txn.quantity_change} m`,
+      txn.customer_name || '-',
+      txn.invoice_no || '-',
+      txn.notes || '-',
+      txn.roll_length_meters != null ? txn.roll_length_meters : '-',
+      formatWeight(txn.roll_weight),
+      txn.roll_type || '-',
+      txn.roll_is_cut ? 'Yes' : 'No'
+    ]);
+
+    const csvContent = [
+      headersWithRoll.join(','),
+      ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${selectedProductForHistory.product_type}-${selectedProductForHistory.brand}-history.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const filteredInventory = inventory.filter((item) => {
@@ -209,46 +338,12 @@ const Inventory = () => {
       }
     }
 
-    // Time range filter
-    if (timeFilter !== 'all' || (customStartDate && customEndDate)) {
-      const hasMatchingBatch = item.batches.some(batch => {
-        const productionDate = new Date(batch.production_date);
-        const now = new Date();
-
-        if (timeFilter !== 'all' && timeFilter !== 'custom') {
-          // Preset time filters
-          let startDate: Date;
-          switch (timeFilter) {
-            case '1day':
-              startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-              break;
-            case '2days':
-              startDate = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000);
-              break;
-            case '1week':
-              startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-              break;
-            case '2weeks':
-              startDate = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
-              break;
-            case '1month':
-              startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-              break;
-            default:
-              return true;
-          }
-          return productionDate >= startDate && productionDate <= now;
-        } else if (timeFilter === 'custom' && customStartDate && customEndDate) {
-          // Custom date range
-          const startDate = new Date(customStartDate);
-          const endDate = new Date(customEndDate);
-          endDate.setHours(23, 59, 59, 999); // Include entire end date
-          return productionDate >= startDate && productionDate <= endDate;
-        }
-        return true;
-      });
-
-      if (!hasMatchingBatch) {
+    // Cut rolls filter
+    if (showOnlyCutRolls) {
+      const hasCutRolls = item.batches.some(batch =>
+        batch.rolls.some(roll => roll.is_cut_roll || roll.roll_type === 'cut')
+      );
+      if (!hasCutRolls) {
         return false;
       }
     }
@@ -270,41 +365,12 @@ const Inventory = () => {
     return true;
   });
 
-  const getQCStatusColor = (status: string) => {
-    switch (status) {
-      case 'PASSED': return 'bg-green-500';
-      case 'FAILED': return 'bg-red-500';
-      case 'PENDING': return 'bg-yellow-500';
-      default: return 'bg-gray-500';
-    }
-  };
-
   const getRollStatusColor = (status: string) => {
     switch (status) {
       case 'AVAILABLE': return 'bg-green-500';
       case 'PARTIAL': return 'bg-orange-500';
       case 'SOLD_OUT': return 'bg-gray-500';
       default: return 'bg-gray-500';
-    }
-  };
-
-  const handleQCUpdate = async () => {
-    if (!qcDialogBatch || !qcStatus) return;
-
-    try {
-      await inventoryAPI.updateBatchQC(qcDialogBatch.id, {
-        qc_status: qcStatus,
-        notes: qcNotes
-      });
-
-      toast.success(`QC status updated to ${qcStatus}`);
-      setQcDialogBatch(null);
-      setQcStatus('');
-      setQcNotes('');
-      fetchInventory();
-    } catch (error) {
-      console.error('Error updating QC:', error);
-      toast.error('Failed to update QC status');
     }
   };
 
@@ -365,22 +431,6 @@ const Inventory = () => {
                   className="pl-10 h-12"
                 />
               </div>
-
-              {/* Location Filter */}
-              <Select value={selectedLocation} onValueChange={setSelectedLocation}>
-                <SelectTrigger className="h-12">
-                  <div className="flex items-center">
-                    <MapPin className="h-4 w-4 mr-2" />
-                    <SelectValue placeholder="All Locations" />
-                  </div>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Locations</SelectItem>
-                  {locations.map((loc) => (
-                    <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
 
               {/* Product Type Filter */}
               <Select value={selectedProductType} onValueChange={setSelectedProductType}>
@@ -447,72 +497,28 @@ const Inventory = () => {
                 ));
               })()}
 
-              {/* View Mode */}
-              <Select value={viewMode} onValueChange={(value: any) => setViewMode(value)}>
-                <SelectTrigger className="h-12">
-                  <SelectValue placeholder="View Mode" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="product">Product View</SelectItem>
-                  <SelectItem value="batch">Batch View</SelectItem>
-                  <SelectItem value="roll">Roll View</SelectItem>
-                </SelectContent>
-              </Select>
-
-              {/* Time Range Filter */}
-              <Select value={timeFilter} onValueChange={(value) => {
-                setTimeFilter(value);
-                if (value !== 'custom') {
-                  setCustomStartDate('');
-                  setCustomEndDate('');
-                }
-              }}>
-                <SelectTrigger className="h-12">
-                  <Calendar className="h-4 w-4 mr-2" />
-                  <SelectValue placeholder="Time Range" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Time</SelectItem>
-                  <SelectItem value="1day">Last 24 Hours</SelectItem>
-                  <SelectItem value="2days">Last 2 Days</SelectItem>
-                  <SelectItem value="1week">Last Week</SelectItem>
-                  <SelectItem value="2weeks">Last 2 Weeks</SelectItem>
-                  <SelectItem value="1month">Last Month</SelectItem>
-                  <SelectItem value="custom">Custom Range</SelectItem>
-                </SelectContent>
-              </Select>
-
-              {/* Custom Date Range Inputs */}
-              {timeFilter === 'custom' && (
-                <>
-                  <Input
-                    type="date"
-                    value={customStartDate}
-                    onChange={(e) => setCustomStartDate(e.target.value)}
-                    placeholder="Start Date"
-                    className="h-12"
-                  />
-                  <Input
-                    type="date"
-                    value={customEndDate}
-                    onChange={(e) => setCustomEndDate(e.target.value)}
-                    placeholder="End Date"
-                    className="h-12"
-                  />
-                </>
-              )}
+              {/* Cut Rolls Filter */}
+              <div className="flex items-center space-x-2 border rounded-md px-3 h-12">
+                <input
+                  type="checkbox"
+                  id="cut-rolls-filter"
+                  checked={showOnlyCutRolls}
+                  onChange={(e) => setShowOnlyCutRolls(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300"
+                />
+                <Label htmlFor="cut-rolls-filter" className="text-sm font-medium cursor-pointer">
+                  Show Only Cut Rolls
+                </Label>
+              </div>
 
               {/* Clear Filters Button */}
-              {(selectedLocation !== 'all' || selectedBrand !== 'all' || timeFilter !== 'all' || Object.keys(parameterFilters).length > 0) && (
+              {(selectedBrand !== 'all' || showOnlyCutRolls || Object.keys(parameterFilters).length > 0) && (
                 <Button
                   variant="outline"
                   onClick={() => {
-                    setSelectedLocation('all');
                     setSelectedBrand('all');
                     setParameterFilters({});
-                    setTimeFilter('all');
-                    setCustomStartDate('');
-                    setCustomEndDate('');
+                    setShowOnlyCutRolls(false);
                   }}
                   className="h-12"
                 >
@@ -598,357 +604,244 @@ const Inventory = () => {
               <p className="text-lg text-muted-foreground">No inventory found</p>
             </CardContent>
           </Card>
-        ) : viewMode === 'product' ? (
-          /* Product View - Grouped by Product */
+        ) : (
+          /* Product View with Colorful Pills and Aggregated Rolls */
           <div className="space-y-4">
             {filteredInventory.map((product, idx) => {
               const isBundle = product.roll_config?.type === 'bundles';
               const unit = isBundle ? 'pieces' : 'm';
               const displayQty = isBundle ? product.total_quantity : product.total_quantity.toFixed(2);
 
+              // Aggregate ALL rolls from ALL batches
+              let allRolls = product.batches.flatMap(batch => batch.rolls);
+
+              // Apply cut rolls filter if active
+              if (showOnlyCutRolls) {
+                allRolls = allRolls.filter(r => r.is_cut_roll || r.roll_type === 'cut');
+              }
+
+              // Standard rolls grouped by length
+              const standardRolls = allRolls.filter(r => r.roll_type === 'standard' || (!r.roll_type && !r.is_cut_roll));
+              const standardByLength = standardRolls.reduce((acc, roll) => {
+                const length = roll.initial_length_meters;
+                if (!acc[length]) {
+                  acc[length] = [];
+                }
+                acc[length].push(roll);
+                return acc;
+              }, {} as Record<number, typeof standardRolls>);
+
+              // Cut rolls grouped by length
+              const cutRolls = allRolls.filter(r => r.roll_type === 'cut' || r.is_cut_roll);
+              const cutByLength = cutRolls.reduce((acc, roll) => {
+                const length = roll.initial_length_meters;
+                if (!acc[length]) {
+                  acc[length] = [];
+                }
+                acc[length].push(roll);
+                return acc;
+              }, {} as Record<number, typeof cutRolls>);
+
+              // Bundles grouped by size
+              const bundleRolls = allRolls.filter(r => r.roll_type?.startsWith('bundle_'));
+              const bundlesBySize = bundleRolls.reduce((acc, roll) => {
+                const bundleSize = roll.bundle_size || parseInt(roll.roll_type?.split('_')[1] || '0');
+                if (!acc[bundleSize]) {
+                  acc[bundleSize] = [];
+                }
+                acc[bundleSize].push(roll);
+                return acc;
+              }, {} as Record<number, typeof bundleRolls>);
+
+              // Spare pipes
+              const spareRolls = allRolls.filter(r => r.roll_type === 'spare');
+
               return (
                 <Card key={idx}>
                   <Collapsible>
-                    <CardHeader className="cursor-pointer">
-                      <CollapsibleTrigger asChild>
-                        <div className="flex items-center justify-between w-full">
-                          <div className="flex-1">
-                            <div className="flex items-center space-x-3">
-                              <CardTitle className="text-xl">
-                                {product.brand} - {product.product_type}
-                              </CardTitle>
-                              <Badge variant="secondary">
-                                {displayQty} {unit}
+                    <CardHeader>
+                      <div className="flex items-center justify-between w-full gap-4">
+                        <CollapsibleTrigger asChild>
+                          <div className="flex items-center justify-between flex-1 gap-3 cursor-pointer">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <Badge variant="secondary" className="text-base px-3 py-1">
+                                {product.brand}
                               </Badge>
+                              {(() => {
+                                // Sort parameters in order: PE, PN, OD
+                                const paramOrder = ['PE', 'PN', 'OD'];
+                                const sortedParams = Object.entries(product.parameters).sort(([keyA], [keyB]) => {
+                                  const indexA = paramOrder.indexOf(keyA);
+                                  const indexB = paramOrder.indexOf(keyB);
+                                  if (indexA === -1 && indexB === -1) return 0;
+                                  if (indexA === -1) return 1;
+                                  if (indexB === -1) return -1;
+                                  return indexA - indexB;
+                                });
+
+                                return sortedParams.map(([key, value]) => (
+                                  <Badge key={key} variant="outline" className="text-base px-3 py-1">
+                                    {key}: {String(value)}
+                                  </Badge>
+                                ));
+                              })()}
                             </div>
-                            <CardDescription className="mt-2">
-                              {Object.entries(product.parameters).map(([key, value]) => (
-                                <span key={key} className="mr-4">
-                                  <strong>{key}:</strong> {String(value)}
-                                </span>
-                              ))}
-                            </CardDescription>
+                            <div className="flex items-center gap-3">
+                              <span className="text-2xl whitespace-nowrap">
+                                <span className="font-bold">{displayQty}</span> {unit}
+                              </span>
+                              <ChevronDown className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+                            </div>
                           </div>
-                          <ChevronDown className="h-5 w-5 text-muted-foreground" />
-                        </div>
-                      </CollapsibleTrigger>
+                        </CollapsibleTrigger>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openProductHistory(product);
+                          }}
+                          className="ml-2"
+                        >
+                          <FileText className="h-4 w-4 mr-1" />
+                          History
+                        </Button>
+                      </div>
                     </CardHeader>
 
                     <CollapsibleContent>
                     <CardContent>
-                      <div className="space-y-4">
-                        <div className="text-sm font-semibold text-muted-foreground mb-2">
-                          Batches ({product.batches.length})
-                        </div>
-                        {product.batches.map((batch) => (
-                          <Collapsible key={batch.id}>
-                            <Card className="border-l-4 border-l-primary">
-                              <CardHeader className="py-3">
-                                <CollapsibleTrigger asChild>
-                                  <div className="flex items-center justify-between cursor-pointer">
-                                    <div className="flex-1">
-                                      <div className="flex items-center space-x-3">
-                                        <code className="text-sm font-mono bg-secondary px-2 py-1 rounded">
-                                          {batch.batch_code}
-                                        </code>
-                                        <Badge className={getQCStatusColor(batch.qc_status)}>
-                                          {batch.qc_status}
-                                        </Badge>
-                                        <span className="text-sm text-muted-foreground flex items-center">
-                                          <MapPin className="h-3 w-3 mr-1" />
-                                          {batch.location}
-                                        </span>
-                                        {batch.attachment_url && (
-                                          <a
-                                            href={`${import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5500'}${batch.attachment_url}`}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            onClick={(e) => e.stopPropagation()}
-                                            className="text-sm text-primary hover:text-primary/80 flex items-center"
-                                            title="View attachment"
-                                          >
-                                            <Paperclip className="h-3 w-3 mr-1" />
-                                            Attachment
-                                          </a>
-                                        )}
+                      <div className="space-y-6">
+                        {/* Standard Rolls - Hide for quantity-based products */}
+                        {!product.roll_config?.quantity_based && Object.keys(standardByLength).length > 0 && (
+                          <div>
+                            <div className="text-sm font-semibold text-muted-foreground mb-3">
+                              Standard Rolls ({standardRolls.length} total)
+                            </div>
+                            <div className="space-y-2">
+                              {Object.entries(standardByLength)
+                                .sort(([a], [b]) => parseFloat(b) - parseFloat(a))
+                                .map(([length, rolls]) => {
+                                  const totalLength = rolls.reduce((sum, r) => sum + r.length_meters, 0);
+                                  return (
+                                    <div
+                                      key={length}
+                                      className="p-4 bg-secondary/50 rounded-lg flex items-center justify-between"
+                                    >
+                                      <div className="flex-1">
+                                        <div className="text-base font-semibold">
+                                          <span className="font-bold">{parseFloat(length).toFixed(0)}m</span> × {rolls.length}
+                                        </div>
+                                        <div className="text-xs text-muted-foreground mt-1">
+                                          {rolls.length} roll{rolls.length > 1 ? 's' : ''}
+                                        </div>
                                       </div>
-                                      <div className="mt-2 text-sm text-muted-foreground">
-                                        Batch No: {batch.batch_no} |
-                                        Stock: {product.roll_config?.quantity_based
-                                          ? (() => {
-                                              const bundleRolls = batch.rolls.filter((r: any) => r.roll_type?.startsWith('bundle_'));
-                                              const spareRolls = batch.rolls.filter((r: any) => r.roll_type === 'spare');
-                                              const bundlePieces = bundleRolls.reduce((sum, r) => {
-                                                const bundleSize = r.bundle_size || parseInt(r.roll_type?.split('_')[1] || '0');
-                                                return sum + bundleSize;
-                                              }, 0);
-                                              const sparePieces = spareRolls.reduce((sum, r) => sum + (r.bundle_size || 1), 0);
-                                              return `${bundlePieces + sparePieces} pcs`;
-                                            })()
-                                          : `${batch.current_quantity.toFixed(2)} m`
-                                        } |
-                                        {(() => {
-                                          // For quantity-based products, show only bundles and spares
-                                          if (product.roll_config?.quantity_based) {
-                                            const bundles = batch.rolls.filter(r => r.roll_type?.startsWith('bundle_')).length;
-                                            const spareCount = batch.rolls.filter(r => r.roll_type === 'spare').length;
-
-                                            const parts = [];
-                                            if (bundles > 0) parts.push(`${bundles} Bundles`);
-                                            if (spareCount > 0) parts.push(`${spareCount} Spare`);
-
-                                            return parts.join(', ') || 'No items';
-                                          } else {
-                                            // For length-based products, show all types
-                                            const standardRolls = batch.rolls.filter(r => r.roll_type === 'standard' || (!r.roll_type && !r.is_cut_roll)).length;
-                                            const cutRolls = batch.rolls.filter(r => r.roll_type === 'cut' || r.is_cut_roll).length;
-                                            const bundles = batch.rolls.filter(r => r.roll_type?.startsWith('bundle_')).length;
-                                            const sparePipes = batch.rolls.filter(r => r.roll_type === 'spare').length;
-
-                                            const parts = [];
-                                            if (standardRolls > 0) parts.push(`${standardRolls} Rolls`);
-                                            if (cutRolls > 0) parts.push(`${cutRolls} Cuts`);
-                                            if (bundles > 0) parts.push(`${bundles} Bundles`);
-                                            if (sparePipes > 0) parts.push(`${sparePipes} Spare`);
-
-                                            return parts.join(', ') || 'No items';
-                                          }
-                                        })()} |
-                                        Produced: {new Date(batch.production_date).toLocaleDateString()}
+                                      <div className="text-3xl text-primary">
+                                        <span className="font-bold">{totalLength.toFixed(0)}m</span>
                                       </div>
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                      {isAdmin && (
-                                        <Button
-                                          size="sm"
-                                          variant="outline"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            setQcDialogBatch(batch);
-                                            setQcStatus(batch.qc_status);
-                                          }}
-                                        >
-                                          {batch.qc_status === 'PASSED' ? <CheckCircle className="h-4 w-4" /> :
-                                           batch.qc_status === 'FAILED' ? <XCircle className="h-4 w-4" /> :
-                                           <Clock className="h-4 w-4" />}
-                                          <span className="ml-1">QC</span>
-                                        </Button>
-                                      )}
-                                      <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                                  );
+                                })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Cut Rolls - Hide for quantity-based products */}
+                        {!product.roll_config?.quantity_based && Object.keys(cutByLength).length > 0 && (
+                          <div>
+                            <div className="text-sm font-semibold text-muted-foreground mb-3">
+                              Cut Rolls ({cutRolls.length} total)
+                            </div>
+                            <div className="space-y-2">
+                              {Object.entries(cutByLength)
+                                .sort(([a], [b]) => parseFloat(b) - parseFloat(a))
+                                .map(([length, rolls]) => {
+                                  const totalLength = rolls.reduce((sum, r) => sum + r.length_meters, 0);
+                                  return (
+                                    <div
+                                      key={length}
+                                      className="p-4 bg-amber-50 dark:bg-amber-950 rounded-lg flex items-center justify-between border border-amber-200 dark:border-amber-800"
+                                    >
+                                      <div className="flex-1">
+                                        <div className="text-base font-semibold">
+                                          <span className="font-bold">{parseFloat(length).toFixed(0)}m</span> × {rolls.length}
+                                        </div>
+                                        <div className="text-xs text-muted-foreground mt-1">
+                                          {rolls.length} cut roll{rolls.length > 1 ? 's' : ''}
+                                        </div>
+                                      </div>
+                                      <div className="text-3xl text-amber-600">
+                                        <span className="font-bold">{totalLength.toFixed(0)}m</span>
+                                      </div>
                                     </div>
-                                  </div>
-                                </CollapsibleTrigger>
-                              </CardHeader>
+                                  );
+                                })}
+                            </div>
+                          </div>
+                        )}
 
-                              <CollapsibleContent>
-                                <CardContent className="pt-0">
-                                  <div className="pl-4 border-l-2 border-secondary">
-                                    {/* Standard Rolls - Hide for quantity-based products */}
-                                    {!product.roll_config?.quantity_based && batch.rolls.some(r => r.roll_type === 'standard' || (!r.roll_type && !r.is_cut_roll)) && (
-                                      <div className="mb-4">
-                                        <div className="text-xs font-semibold text-muted-foreground mb-2">
-                                          Standard Rolls ({batch.rolls.filter(r => r.roll_type === 'standard' || (!r.roll_type && !r.is_cut_roll)).length})
+                        {/* Bundles */}
+                        {Object.keys(bundlesBySize).length > 0 && (
+                          <div>
+                            <div className="text-sm font-semibold text-muted-foreground mb-3">
+                              Bundles ({bundleRolls.length} total)
+                            </div>
+                            <div className="space-y-2">
+                              {Object.entries(bundlesBySize)
+                                .sort(([a], [b]) => parseInt(b) - parseInt(a))
+                                .map(([bundleSize, rolls]) => {
+                                  const totalPieces = rolls.reduce((sum, r) => {
+                                    const size = r.bundle_size || parseInt(r.roll_type?.split('_')[1] || '0');
+                                    return sum + size;
+                                  }, 0);
+                                  const totalLength = rolls.reduce((sum, r) => sum + r.length_meters, 0);
+
+                                  return (
+                                    <div
+                                      key={bundleSize}
+                                      className="p-4 bg-blue-50 dark:bg-blue-950 rounded-lg flex items-center justify-between border border-blue-200 dark:border-blue-800"
+                                    >
+                                      <div className="flex-1">
+                                        <div className="text-base font-semibold">
+                                          Bundle of {bundleSize} × {rolls.length}
                                         </div>
-                                        <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
-                                          {batch.rolls.filter(r => r.roll_type === 'standard' || (!r.roll_type && !r.is_cut_roll)).map((roll, rollIdx) => (
-                                            <div
-                                              key={roll.id}
-                                              className="p-3 bg-secondary/50 rounded-lg flex items-center justify-between"
-                                            >
-                                              <div className="flex-1">
-                                                <div className="text-sm font-medium">Roll #{rollIdx + 1}</div>
-                                                <div className="text-xs text-muted-foreground">
-                                                  {roll.length_meters.toFixed(2)} m
-                                                  {roll.length_meters !== roll.initial_length_meters && (
-                                                    <span className="ml-1">
-                                                      (was {roll.initial_length_meters.toFixed(2)} m)
-                                                    </span>
-                                                  )}
-                                                </div>
-                                              </div>
-                                              <div className="flex items-center gap-1">
-                                                <Badge
-                                                  variant="secondary"
-                                                  className={getRollStatusColor(roll.status)}
-                                                >
-                                                  {roll.status}
-                                                </Badge>
-                                                {isAdmin && (
-                                                  <Button
-                                                    size="icon"
-                                                    variant="ghost"
-                                                    className="h-6 w-6"
-                                                    onClick={() => setEditingRoll({...roll, originalStatus: roll.status})}
-                                                  >
-                                                    <Edit2 className="h-3 w-3" />
-                                                  </Button>
-                                                )}
-                                              </div>
-                                            </div>
-                                          ))}
+                                        <div className="text-xs text-muted-foreground mt-1">
+                                          {totalPieces} pieces total
+                                          {!product.roll_config?.quantity_based && ` (${totalLength.toFixed(2)} m)`}
                                         </div>
                                       </div>
-                                    )}
-
-                                    {/* Cut Rolls - Hide for quantity-based products */}
-                                    {!product.roll_config?.quantity_based && batch.rolls.some(r => r.roll_type === 'cut' || r.is_cut_roll) && (
-                                      <div className="mb-4">
-                                        <div className="text-xs font-semibold text-muted-foreground mb-2">
-                                          Cut Rolls ({batch.rolls.filter(r => r.roll_type === 'cut' || r.is_cut_roll).length})
-                                        </div>
-                                        <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
-                                          {batch.rolls.filter(r => r.roll_type === 'cut' || r.is_cut_roll).map((roll, rollIdx) => (
-                                            <div
-                                              key={roll.id}
-                                              className="p-3 bg-amber-50 dark:bg-amber-950 rounded-lg flex items-center justify-between border border-amber-200 dark:border-amber-800"
-                                            >
-                                              <div className="flex-1">
-                                                <div className="text-sm font-medium">Cut #{rollIdx + 1}</div>
-                                                <div className="text-xs text-muted-foreground">
-                                                  {roll.length_meters.toFixed(2)} m
-                                                  {roll.length_meters !== roll.initial_length_meters && (
-                                                    <span className="ml-1">
-                                                      (was {roll.initial_length_meters.toFixed(2)} m)
-                                                    </span>
-                                                  )}
-                                                </div>
-                                              </div>
-                                              <div className="flex items-center gap-1">
-                                                <Badge
-                                                  variant="secondary"
-                                                  className={getRollStatusColor(roll.status)}
-                                                >
-                                                  {roll.status}
-                                                </Badge>
-                                                {isAdmin && (
-                                                  <Button
-                                                    size="icon"
-                                                    variant="ghost"
-                                                    className="h-6 w-6"
-                                                    onClick={() => setEditingRoll({...roll, originalStatus: roll.status})}
-                                                  >
-                                                    <Edit2 className="h-3 w-3" />
-                                                  </Button>
-                                                )}
-                                              </div>
-                                            </div>
-                                          ))}
-                                        </div>
+                                      <div className="text-3xl font-bold text-blue-600">
+                                        {totalPieces} pcs
                                       </div>
-                                    )}
+                                    </div>
+                                  );
+                                })}
+                            </div>
+                          </div>
+                        )}
 
-                                    {/* Bundles */}
-                                    {batch.rolls.some(r => r.roll_type?.startsWith('bundle_')) && (
-                                      <div className="mb-4">
-                                        <div className="text-xs font-semibold text-muted-foreground mb-2">
-                                          Bundles ({batch.rolls.filter(r => r.roll_type?.startsWith('bundle_')).length})
-                                        </div>
-                                        <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
-                                          {batch.rolls.filter(r => r.roll_type?.startsWith('bundle_')).map((roll, rollIdx) => (
-                                            <div
-                                              key={roll.id}
-                                              className="p-3 bg-blue-50 dark:bg-blue-950 rounded-lg flex items-center justify-between border border-blue-200 dark:border-blue-800"
-                                            >
-                                              <div className="flex-1">
-                                                <div className="text-sm font-medium">
-                                                  Bundle #{rollIdx + 1} ({roll.bundle_size || roll.roll_type?.split('_')[1]} {product.roll_config?.quantity_based ? 'pieces' : 'pipes'})
-                                                </div>
-                                                <div className="text-xs text-muted-foreground">
-                                                  {product.roll_config?.quantity_based
-                                                    ? `${roll.bundle_size || roll.roll_type?.split('_')[1]} pieces`
-                                                    : `${roll.length_meters.toFixed(2)} m total`
-                                                  }
-                                                </div>
-                                              </div>
-                                              <div className="flex items-center gap-1">
-                                                <Badge
-                                                  variant="secondary"
-                                                  className={getRollStatusColor(roll.status)}
-                                                >
-                                                  {roll.status}
-                                                </Badge>
-                                                {isAdmin && (
-                                                  <Button
-                                                    size="icon"
-                                                    variant="ghost"
-                                                    className="h-6 w-6"
-                                                    onClick={() => setEditingRoll({...roll, originalStatus: roll.status})}
-                                                  >
-                                                    <Edit2 className="h-3 w-3" />
-                                                  </Button>
-                                                )}
-                                              </div>
-                                            </div>
-                                          ))}
-                                        </div>
-                                      </div>
-                                    )}
-
-                                    {/* Spare Pipes */}
-                                    {batch.rolls.some(r => r.roll_type === 'spare') && (
-                                      <div className="mb-4">
-                                        <div className="text-xs font-semibold text-muted-foreground mb-2">
-                                          Spare {product.roll_config?.quantity_based ? 'Pieces' : 'Pipes'} ({batch.rolls.filter(r => r.roll_type === 'spare').length})
-                                        </div>
-                                        {product.roll_config?.quantity_based ? (
-                                          // Quantity-based: Show as single consolidated card
-                                          <div className="p-3 bg-purple-50 dark:bg-purple-950 rounded-lg border border-purple-200 dark:border-purple-800">
-                                            <div className="flex items-center justify-between">
-                                              <div className="flex-1">
-                                                <div className="text-sm font-medium">Spare Pieces</div>
-                                                <div className="text-xs text-muted-foreground">
-                                                  Total: {batch.rolls.filter(r => r.roll_type === 'spare').reduce((sum, r) => sum + (r.bundle_size || 1), 0)} pieces
-                                                </div>
-                                              </div>
-                                              <Badge variant="secondary">
-                                                SPARE
-                                              </Badge>
-                                            </div>
-                                          </div>
-                                        ) : (
-                                          // Length-based: Show individual pipes
-                                          <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
-                                            {batch.rolls.filter(r => r.roll_type === 'spare').map((roll, rollIdx) => (
-                                              <div
-                                                key={roll.id}
-                                                className="p-3 bg-purple-50 dark:bg-purple-950 rounded-lg flex items-center justify-between border border-purple-200 dark:border-purple-800"
-                                              >
-                                                <div className="flex-1">
-                                                  <div className="text-sm font-medium">Spare #{rollIdx + 1}</div>
-                                                  <div className="text-xs text-muted-foreground">
-                                                    {roll.length_meters.toFixed(2)} m
-                                                  </div>
-                                                </div>
-                                                <div className="flex items-center gap-1">
-                                                  <Badge
-                                                    variant="secondary"
-                                                    className={getRollStatusColor(roll.status)}
-                                                  >
-                                                    {roll.status}
-                                                  </Badge>
-                                                  {isAdmin && (
-                                                    <Button
-                                                      size="icon"
-                                                      variant="ghost"
-                                                      className="h-6 w-6"
-                                                      onClick={() => setEditingRoll({...roll, originalStatus: roll.status})}
-                                                    >
-                                                      <Edit2 className="h-3 w-3" />
-                                                    </Button>
-                                                  )}
-                                                </div>
-                                              </div>
-                                            ))}
-                                          </div>
-                                        )}
-                                      </div>
-                                    )}
-                                  </div>
-                                </CardContent>
-                              </CollapsibleContent>
-                            </Card>
-                          </Collapsible>
-                        ))}
+                        {/* Spare Pipes */}
+                        {spareRolls.length > 0 && (
+                          <div>
+                            <div className="text-sm font-semibold text-muted-foreground mb-3">
+                              Spare Pipes ({spareRolls.length} total)
+                            </div>
+                            <div className="p-4 bg-purple-50 dark:bg-purple-950 rounded-lg flex items-center justify-between border border-purple-200 dark:border-purple-800">
+                              <div className="flex-1">
+                                <div className="text-base font-semibold">
+                                  Spare Pipes × {spareRolls.length}
+                                </div>
+                                <div className="text-xs text-muted-foreground mt-1">
+                                  {spareRolls.reduce((sum, r) => sum + (r.bundle_size || 1), 0)} pieces total
+                                  {!product.roll_config?.quantity_based && ` (${spareRolls.reduce((sum, r) => sum + r.length_meters, 0).toFixed(2)} m)`}
+                                </div>
+                              </div>
+                              <div className="text-3xl font-bold text-purple-600">
+                                {spareRolls.reduce((sum, r) => sum + (r.bundle_size || 1), 0)} pcs
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </CardContent>
                   </CollapsibleContent>
@@ -957,205 +850,10 @@ const Inventory = () => {
             );
             })}
           </div>
-        ) : viewMode === 'batch' ? (
-          /* Batch View - All batches flat */
-          <div className="space-y-4">
-            {filteredInventory.flatMap(product =>
-              product.batches.map(batch => ({...batch, product_type: product.product_type, brand: product.brand, parameters: product.parameters, roll_config: product.roll_config}))
-            ).map((batch) => {
-              const isBundle = batch.roll_config?.type === 'bundles';
-              return (
-                <Card key={batch.id} className="border-l-4 border-l-primary">
-                  <Collapsible>
-                    <CardHeader className="cursor-pointer">
-                      <CollapsibleTrigger asChild>
-                        <div className="flex items-center justify-between w-full">
-                          <div className="flex-1">
-                            <div className="flex items-center space-x-3">
-                              <code className="text-sm font-mono bg-secondary px-2 py-1 rounded">
-                                {batch.batch_code}
-                              </code>
-                              <CardTitle className="text-lg">
-                                {batch.brand} - {batch.product_type}
-                              </CardTitle>
-                              <Badge className={getQCStatusColor(batch.qc_status)}>
-                                {batch.qc_status}
-                              </Badge>
-                              {batch.attachment_url && (
-                                <a
-                                  href={`${import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5500'}${batch.attachment_url}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="text-sm text-primary hover:text-primary/80 flex items-center"
-                                  title="View attachment"
-                                >
-                                  <Paperclip className="h-3 w-3 mr-1" />
-                                  Attachment
-                                </a>
-                              )}
-                            </div>
-                            <div className="mt-2 text-sm text-muted-foreground">
-                              Location: {batch.location} |
-                              Batch No: {batch.batch_no} |
-                              Stock: {isBundle ? `${batch.rolls.length} pieces` : `${batch.current_quantity.toFixed(2)} m`} |
-                              Produced: {new Date(batch.production_date).toLocaleDateString()}
-                            </div>
-                          </div>
-                          <ChevronDown className="h-5 w-5 text-muted-foreground" />
-                        </div>
-                      </CollapsibleTrigger>
-                    </CardHeader>
-                    <CollapsibleContent>
-                      <CardContent className="pt-0">
-                        {/* Same roll display as product view */}
-                        <div className="pl-4 border-l-2 border-secondary">
-                          {/* Rolls content here - reuse from product view */}
-                          {batch.rolls.length > 0 ? (
-                            <div className="text-sm">Rolls: {batch.rolls.length}</div>
-                          ) : (
-                            <div className="text-sm text-muted-foreground">No rolls</div>
-                          )}
-                        </div>
-                      </CardContent>
-                    </CollapsibleContent>
-                  </Collapsible>
-                </Card>
-              );
-            })}
-          </div>
-        ) : (
-          /* Roll View - All rolls flat */
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {filteredInventory.flatMap(product =>
-              product.batches.flatMap(batch =>
-                batch.rolls.map(roll => ({
-                  ...roll,
-                  batch_code: batch.batch_code,
-                  batch_no: batch.batch_no,
-                  location: batch.location,
-                  product_type: product.product_type,
-                  brand: product.brand,
-                  qc_status: batch.qc_status,
-                  roll_config: product.roll_config
-                }))
-              )
-            ).map((roll) => {
-              const isBundle = roll.roll_type?.startsWith('bundle_');
-              const isSpare = roll.roll_type === 'spare';
-              const isCut = roll.roll_type === 'cut' || roll.is_cut_roll;
-
-              return (
-                <Card key={roll.id} className={
-                  isBundle ? 'border-l-4 border-l-blue-500' :
-                  isSpare ? 'border-l-4 border-l-purple-500' :
-                  isCut ? 'border-l-4 border-l-amber-500' :
-                  'border-l-4 border-l-green-500'
-                }>
-                  <CardHeader className="pb-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <CardTitle className="text-sm">
-                          {roll.brand} - {roll.product_type}
-                        </CardTitle>
-                        <code className="text-xs font-mono text-muted-foreground">
-                          {roll.batch_code}
-                        </code>
-                      </div>
-                      <Badge variant="secondary" className={getRollStatusColor(roll.status)}>
-                        {roll.status}
-                      </Badge>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2 text-sm">
-                      {isBundle && (
-                        <div>
-                          <strong>Type:</strong> Bundle ({roll.bundle_size || roll.roll_type?.split('_')[1]} pipes)
-                        </div>
-                      )}
-                      {isSpare && (
-                        <div>
-                          <strong>Type:</strong> Spare Pipe
-                        </div>
-                      )}
-                      {isCut && (
-                        <div>
-                          <strong>Type:</strong> Cut Roll
-                        </div>
-                      )}
-                      {!isBundle && (
-                        <div>
-                          <strong>Length:</strong> {roll.length_meters.toFixed(2)} m
-                          {roll.length_meters !== roll.initial_length_meters && (
-                            <span className="text-muted-foreground ml-1">
-                              (was {roll.initial_length_meters.toFixed(2)} m)
-                            </span>
-                          )}
-                        </div>
-                      )}
-                      {isBundle && (
-                        <div>
-                          <strong>Total Length:</strong> {roll.length_meters.toFixed(2)} m
-                        </div>
-                      )}
-                      <div>
-                        <strong>Location:</strong> {roll.location}
-                      </div>
-                      <div>
-                        <Badge className={getQCStatusColor(roll.qc_status)}>
-                          QC: {roll.qc_status}
-                        </Badge>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
         )}
       </div>
 
-      {/* QC Status Dialog */}
-      <Dialog open={!!qcDialogBatch} onOpenChange={() => setQcDialogBatch(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Update QC Status</DialogTitle>
-            <DialogDescription>
-              Update quality check status for batch {qcDialogBatch?.batch_code}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>QC Status</Label>
-              <Select value={qcStatus} onValueChange={setQcStatus}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="PENDING">Pending</SelectItem>
-                  <SelectItem value="PASSED">Passed</SelectItem>
-                  <SelectItem value="FAILED">Failed</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Notes</Label>
-              <Textarea
-                placeholder="Add QC notes..."
-                value={qcNotes}
-                onChange={(e) => setQcNotes(e.target.value)}
-                rows={3}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setQcDialogBatch(null)}>Cancel</Button>
-            <Button onClick={handleQCUpdate}>Update Status</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
+      {/* Roll Edit Dialog */}
       {/* Roll Edit Dialog */}
       <Dialog open={!!editingRoll} onOpenChange={() => setEditingRoll(null)}>
         <DialogContent>
@@ -1195,6 +893,166 @@ const Inventory = () => {
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditingRoll(null)}>Cancel</Button>
             <Button onClick={handleRollUpdate}>Save Changes</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Product History Dialog */}
+      <Dialog open={productHistoryDialogOpen} onOpenChange={setProductHistoryDialogOpen}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 flex-wrap">
+              Product History - {selectedProductForHistory?.product_type} ({selectedProductForHistory?.brand})
+              {selectedProductForHistory?.parameters && (() => {
+                const paramOrder = ['PE', 'PN', 'OD'];
+                const sortedParams = Object.entries(selectedProductForHistory.parameters).sort(([keyA], [keyB]) => {
+                  const indexA = paramOrder.indexOf(keyA);
+                  const indexB = paramOrder.indexOf(keyB);
+                  if (indexA === -1 && indexB === -1) return 0;
+                  if (indexA === -1) return 1;
+                  if (indexB === -1) return -1;
+                  return indexA - indexB;
+                });
+                return sortedParams.map(([key, value]) => (
+                  <Badge key={key} variant="secondary" className="text-sm px-3 py-1 bg-primary/10 text-primary border-primary/20">
+                    {key}: {String(value)}
+                  </Badge>
+                ));
+              })()}
+            </DialogTitle>
+            <DialogDescription>
+              Complete transaction history and current outstanding inventory
+            </DialogDescription>
+          </DialogHeader>
+
+          {loadingHistory ? (
+            <div className="text-center py-8">Loading history...</div>
+          ) : (
+            <div className="space-y-6">
+              {/* Summary Cards */}
+              <div className="grid grid-cols-3 gap-4">
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="text-sm text-muted-foreground">Total Produced</div>
+                    <div className="text-2xl font-bold text-green-600">
+                      {productHistory
+                        .filter((txn) => txn.transaction_type === 'PRODUCTION')
+                        .reduce((sum, txn) => sum + Math.abs(txn.quantity_change || 0), 0)
+                        .toFixed(2)} m
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="text-sm text-muted-foreground">Total Sold</div>
+                    <div className="text-2xl font-bold text-red-600">
+                      {productHistory
+                        .filter((txn) => txn.transaction_type === 'SALE')
+                        .reduce((sum, txn) => sum + Math.abs(txn.quantity_change || 0), 0)
+                        .toFixed(2)} m
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="text-sm text-muted-foreground">Current Outstanding</div>
+                    <div className="text-2xl font-bold text-primary">
+                      {selectedProductForHistory?.total_quantity.toFixed(2)} {selectedProductForHistory?.roll_config?.type === 'bundles' ? 'pcs' : 'm'}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Diagnostics when no exact matches */}
+              {productHistory.length === 0 && productHistoryDiagnostics.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm font-medium text-muted-foreground">Potential Matches (no exact matches)</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {productHistoryDiagnostics.map((d) => (
+                        <div key={d.id} className="p-2 border rounded flex items-start justify-between">
+                          <div className="flex-1 mr-4">
+                            <div className="text-sm font-medium break-words">{d.id}</div>
+                            <div className="text-xs text-muted-foreground mt-1 truncate">params: {JSON.stringify(d.txnParams)}</div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge variant={d.matchType ? 'secondary' : 'outline'} className="text-xs">{d.matchType ? 'Type' : 'Type ✗'}</Badge>
+                            <Badge variant={d.matchBrand ? 'secondary' : 'outline'} className="text-xs">{d.matchBrand ? 'Brand' : 'Brand ✗'}</Badge>
+                            <Badge variant={d.matchParams ? 'secondary' : 'outline'} className="text-xs">{d.matchParams ? 'Params' : 'Params ✗'}</Badge>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Transaction Table */}
+              <div className="border rounded-lg">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date & Time</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Batch Code</TableHead>
+                      <TableHead>Roll</TableHead>
+                      <TableHead className="text-right">Quantity</TableHead>
+                      <TableHead>Customer</TableHead>
+                      <TableHead>Invoice</TableHead>
+                      <TableHead>Notes</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {productHistory.map((txn) => (
+                      <TableRow key={txn.id}>
+                        <TableCell className="whitespace-nowrap">
+                          {new Date(txn.transaction_date).toLocaleString('en-IN', {
+                            dateStyle: 'short',
+                            timeStyle: 'short'
+                          })}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={txn.transaction_type === 'PRODUCTION' ? 'default' : 'destructive'}>
+                            {txn.transaction_type}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>{txn.batch_code || '-'}</TableCell>
+                        <TableCell>
+                          {txn.roll_length_meters != null ? (
+                            <div className="text-sm">
+                              <div>{txn.roll_length_meters} m</div>
+                              <div className="text-xs text-muted-foreground">{formatWeight(txn.roll_weight)}</div>
+                              <div className="text-xs text-muted-foreground">{txn.roll_type || ''}{txn.roll_is_cut ? ' • Cut' : ''}</div>
+                            </div>
+                          ) : (
+                            <div className="text-sm text-muted-foreground">-</div>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right font-medium">
+                          {txn.transaction_type === 'PRODUCTION' ? '+' : '-'}
+                          {Math.abs(txn.quantity_change || 0).toFixed(2)} m
+                        </TableCell>
+                        <TableCell>{txn.customer_name || '-'}</TableCell>
+                        <TableCell>{txn.invoice_no || '-'}</TableCell>
+                        <TableCell className="max-w-xs truncate">{txn.notes || '-'}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setProductHistoryDialogOpen(false)}>
+              Close
+            </Button>
+            <Button onClick={exportProductHistoryCSV} disabled={productHistory.length === 0}>
+              <Download className="h-4 w-4 mr-2" />
+              Export CSV
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

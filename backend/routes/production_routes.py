@@ -33,7 +33,6 @@ def create_batch():
         file = None
 
     # Extract data
-    location_id = data.get('location_id')
     product_type_id = data.get('product_type_id')
     brand_id = data.get('brand_id')
     parameters = data.get('parameters', {})
@@ -52,6 +51,10 @@ def create_batch():
     number_of_bundles = int(data.get('number_of_bundles', 0))
     bundle_size = int(data.get('bundle_size', 10))
     spare_pipes = json.loads(data.get('spare_pipes', '[]')) if isinstance(data.get('spare_pipes'), str) else data.get('spare_pipes', [])
+
+    # Weight tracking
+    weight_per_meter = float(data.get('weight_per_meter')) if data.get('weight_per_meter') else None
+    total_weight = float(data.get('total_weight')) if data.get('total_weight') else None
 
     # Handle file upload
     attachment_url = None
@@ -87,13 +90,14 @@ def create_batch():
         # Create batch
         cursor.execute("""
             INSERT INTO batches (
-                batch_no, batch_code, product_variant_id, location_id,
+                batch_no, batch_code, product_variant_id,
                 production_date, initial_quantity, current_quantity,
-                qc_status, notes, attachment_url, created_by, created_at, updated_at
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, 'PENDING', %s, %s, %s, NOW(), NOW())
+                notes, attachment_url, weight_per_meter, total_weight,
+                created_by, created_at, updated_at
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
             RETURNING id, batch_code
-        """, (batch_no, batch_code, variant_id, location_id, production_date,
-              quantity, quantity, notes, attachment_url, user_id))
+        """, (batch_no, batch_code, variant_id, production_date,
+              quantity, quantity, notes, attachment_url, weight_per_meter, total_weight, user_id))
 
         batch = cursor.fetchone()
         batch_id = batch['id']
@@ -165,13 +169,9 @@ def create_batch():
                     """, (batch_id, variant_id, actual_length, actual_length, int(pipe_length) if quantity_based else None))
                     total_items += 1
 
-        # Create production transaction
-        cursor.execute("""
-            INSERT INTO transactions (
-                batch_id, transaction_type, quantity_change,
-                transaction_date, notes, created_by, created_at, updated_at
-            ) VALUES (%s, 'PRODUCTION', %s, %s, %s, %s, NOW(), NOW())
-        """, (batch_id, quantity, production_date, notes, user_id))
+        # Note: We don't create a transaction record for production
+        # Production batches are shown directly from the batches table
+        # Only SALE/DISPATCH operations create transaction records
 
         # Audit log
         actor_label = f"{actor['name']} ({actor['role']})"
@@ -192,6 +192,16 @@ def create_batch():
                 description, created_at
             ) VALUES (%s, 'CREATE_BATCH', 'BATCH', %s, %s, NOW())
         """, (user_id, batch_id, log_msg))
+
+        # Create single batch-level production transaction
+        cursor.execute("""
+            INSERT INTO transactions (
+                batch_id, roll_id, transaction_type, quantity_change,
+                transaction_date, customer_id, invoice_no, notes,
+                created_by, created_at, updated_at
+            ) VALUES (%s, NULL, %s, %s, %s, NULL, NULL, %s, %s, NOW(), NOW())
+        """, (batch_id, 'PRODUCTION', float(quantity),
+              production_date or None, notes, user_id))
 
     return jsonify({
         'id': batch_id,

@@ -13,13 +13,13 @@ import { toast } from 'sonner';
 import { Settings, Plus, Trash2, Edit, Building, Tag, Package, Users, Shield, Sliders, Upload, Download, FileText } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { admin, parameters } from '@/lib/api';
+import { formatDate } from '@/lib/utils';
 
 const Admin = () => {
   const { user, isAdmin } = useAuth();
   const [loading, setLoading] = useState(false);
 
   // Master data states
-  const [locations, setLocations] = useState<any[]>([]);
   const [brands, setBrands] = useState<any[]>([]);
   const [productTypes, setProductTypes] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
@@ -29,7 +29,6 @@ const Admin = () => {
   const [users, setUsers] = useState<any[]>([]);
 
   // Dialog states
-  const [locationDialog, setLocationDialog] = useState(false);
   const [brandDialog, setBrandDialog] = useState(false);
   const [productTypeDialog, setProductTypeDialog] = useState(false);
   const [customerDialog, setCustomerDialog] = useState(false);
@@ -42,7 +41,6 @@ const Admin = () => {
   const [editingParameter, setEditingParameter] = useState<any>(null);
 
   // Form data
-  const [locationForm, setLocationForm] = useState({ name: '', address: '' });
   const [brandForm, setBrandForm] = useState({ name: '' });
   const [productTypeForm, setProductTypeForm] = useState({
     name: '',
@@ -99,8 +97,7 @@ const Admin = () => {
     setLoading(true);
     try {
       console.log('Fetching admin data...');
-      const [locsRes, brandsRes, typesRes, customersRes, unitsRes, logsRes, paramsRes, usersRes] = await Promise.all([
-        admin.getLocations(),
+      const [brandsRes, typesRes, customersRes, unitsRes, logsRes, paramsRes, usersRes] = await Promise.all([
         admin.getBrands(),
         admin.getProductTypes(),
         admin.getCustomers(),
@@ -110,8 +107,7 @@ const Admin = () => {
         admin.getUsers(),
       ]);
 
-      console.log('Admin data fetched:', { locsRes, brandsRes, typesRes, customersRes, unitsRes, logsRes, paramsRes, usersRes });
-      setLocations(locsRes.data || []);
+      console.log('Admin data fetched:', { brandsRes, typesRes, customersRes, unitsRes, logsRes, paramsRes, usersRes });
       setBrands(brandsRes.data || []);
       setProductTypes(typesRes.data || []);
       setCustomers(customersRes.data || []);
@@ -125,23 +121,6 @@ const Admin = () => {
       toast.error(`Failed to load admin data: ${error.response?.data?.error || error.message}`);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleAddLocation = async () => {
-    if (!locationForm.name) {
-      toast.error('Location name is required');
-      return;
-    }
-
-    try {
-      await admin.createLocation(locationForm);
-      toast.success('Location added successfully');
-      setLocationDialog(false);
-      setLocationForm({ name: '', address: '' });
-      fetchAllData();
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to add location');
     }
   };
 
@@ -346,9 +325,6 @@ const Admin = () => {
 
     try {
       switch (table) {
-        case 'locations':
-          await admin.deleteLocation(id);
-          break;
         case 'brands':
           await admin.deleteBrand(id);
           break;
@@ -475,9 +451,8 @@ const Admin = () => {
           </div>
         </div>
 
-        <Tabs defaultValue="locations" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-7">
-            <TabsTrigger value="locations">Locations</TabsTrigger>
+        <Tabs defaultValue="brands" className="space-y-6">
+          <TabsList className="grid w-full grid-cols-6">
             <TabsTrigger value="brands">Brands</TabsTrigger>
             <TabsTrigger value="products">Products</TabsTrigger>
             <TabsTrigger value="customers">Customers</TabsTrigger>
@@ -485,83 +460,6 @@ const Admin = () => {
             <TabsTrigger value="parameters">Parameters</TabsTrigger>
             <TabsTrigger value="audit">Audit Logs</TabsTrigger>
           </TabsList>
-
-          {/* Locations Tab */}
-          <TabsContent value="locations">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
-                <div>
-                  <CardTitle>Locations / Warehouses</CardTitle>
-                  <CardDescription>Manage storage locations and warehouses</CardDescription>
-                </div>
-                <Dialog open={locationDialog} onOpenChange={setLocationDialog}>
-                  <DialogTrigger asChild>
-                    <Button>
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add Location
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Add New Location</DialogTitle>
-                      <DialogDescription>Create a new warehouse or storage location</DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="locName">Location Name *</Label>
-                        <Input
-                          id="locName"
-                          value={locationForm.name}
-                          onChange={(e) => setLocationForm({ ...locationForm, name: e.target.value })}
-                          placeholder="e.g., Main Warehouse"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="locAddress">Address</Label>
-                        <Textarea
-                          id="locAddress"
-                          value={locationForm.address}
-                          onChange={(e) => setLocationForm({ ...locationForm, address: e.target.value })}
-                          placeholder="Full address"
-                          rows={3}
-                        />
-                      </div>
-                      <Button onClick={handleAddLocation} className="w-full">
-                        Add Location
-                      </Button>
-                    </div>
-                  </DialogContent>
-                </Dialog>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  {locations.map((loc) => (
-                    <div
-                      key={loc.id}
-                      className="flex items-center justify-between p-4 bg-secondary/30 rounded-lg"
-                    >
-                      <div className="flex items-center space-x-3">
-                        <Building className="h-5 w-5 text-muted-foreground" />
-                        <div>
-                          <div className="font-medium">{loc.name}</div>
-                          {loc.address && (
-                            <div className="text-sm text-muted-foreground">{loc.address}</div>
-                          )}
-                        </div>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDelete('locations', loc.id)}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
 
           {/* Brands Tab */}
           <TabsContent value="brands">
@@ -1255,7 +1153,10 @@ const Admin = () => {
                             </Badge>
                           </td>
                           <td className="p-3">
-                            {usr.last_login_at ? new Date(usr.last_login_at).toLocaleString() : 'Never'}
+                            {usr.last_login_at ? (() => {
+                              const date = new Date(usr.last_login_at);
+                              return `${formatDate(usr.last_login_at)} ${date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}`;
+                            })() : 'Never'}
                           </td>
                           <td className="p-3 text-right space-x-2">
                             <Button
@@ -1555,7 +1456,10 @@ const Admin = () => {
                           </span>
                         </div>
                         <span className="text-xs text-muted-foreground">
-                          {new Date(log.created_at).toLocaleString()}
+                          {(() => {
+                            const date = new Date(log.created_at);
+                            return `${formatDate(log.created_at)} ${date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}`;
+                          })()}
                         </span>
                       </div>
                     </div>

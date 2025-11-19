@@ -12,12 +12,20 @@ from routes.stats_routes import stats_bp
 from routes.admin_routes import admin_bp
 from routes.reports_routes import reports_bp
 from routes.parameter_routes import parameter_bp
+from routes.dispatch_routes import dispatch_bp
 
 app = Flask(__name__)
 app.config.from_object(Config)
 
 # Enable CORS for all origins (for development)
-CORS(app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=True)
+CORS(app,
+     resources={r"/api/*": {
+         "origins": "*",
+         "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+         "allow_headers": ["Content-Type", "Authorization"],
+         "expose_headers": ["Content-Type", "Authorization"]
+     }},
+     supports_credentials=True)
 
 # Setup JWT
 jwt = JWTManager(app)
@@ -31,6 +39,7 @@ app.register_blueprint(stats_bp)
 app.register_blueprint(admin_bp)
 app.register_blueprint(reports_bp)
 app.register_blueprint(parameter_bp)
+app.register_blueprint(dispatch_bp)
 
 @app.route('/api/health', methods=['GET'])
 def health_check():

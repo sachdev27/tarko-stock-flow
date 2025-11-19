@@ -71,6 +71,12 @@ def create_transaction():
         if new_batch_qty['current_quantity'] < 0:
             return jsonify({'error': 'Insufficient batch quantity'}), 400
 
+        # Get product_variant_id from batch
+        cursor.execute("SELECT product_variant_id FROM batches WHERE id = %s", (batch_id,))
+        batch_data = cursor.fetchone()
+        if not batch_data:
+            return jsonify({'error': 'Batch not found'}), 404
+
         # Create transaction
         cursor.execute("""
             INSERT INTO transactions (
@@ -83,6 +89,8 @@ def create_transaction():
               customer_id, invoice_no, notes, user_id))
 
         txn = cursor.fetchone()
+        if not txn:
+            return jsonify({'error': 'Failed to create transaction'}), 500
 
         # Audit log
         cursor.execute("""
@@ -102,24 +110,121 @@ def create_transaction():
 @transaction_bp.route('/', methods=['GET'])
 @jwt_required_with_role()
 def get_transactions():
-    """Get recent transactions with user details"""
-    query = """
+    """Get comprehensive transaction history with product details"""
+    # Get optional date range parameters from query string (in IST)
+    start_date_ist = request.args.get('start_date')  # IST datetime string
+    end_date_ist = request.args.get('end_date')  # IST datetime string
+
+    # Build WHERE clause for date filtering
+    date_filter = ""
+    params = []
+
+    if start_date_ist and end_date_ist:
+        # Frontend sends IST datetime, database stores timezone-aware IST times
+        # Need to add timezone info to match database format
+        from datetime import datetime, timezone, timedelta
+
+        # Parse IST datetime and add IST timezone (+05:30)
+        ist_tz = timezone(timedelta(hours=5, minutes=30))
+        start_naive = datetime.fromisoformat(start_date_ist.replace('Z', ''))
+        end_naive = datetime.fromisoformat(end_date_ist.replace('Z', ''))
+
+        # Add IST timezone to make them timezone-aware
+        start_ist = start_naive.replace(tzinfo=ist_tz)
+        end_ist = end_naive.replace(tzinfo=ist_tz)
+
+        print(f"🔍 Backend Date Filter Debug:")
+        print(f"  Received start_date: {start_date_ist}")
+        print(f"  Received end_date: {end_date_ist}")
+        print(f"  Parsed start (with TZ): {start_ist}")
+        print(f"  Parsed end (with TZ): {end_ist}")
+
+        date_filter = " AND t.created_at >= %s AND t.created_at <= %s"
+        params = [start_ist, end_ist]
+
+    query = f"""
         SELECT
-            t.id, t.transaction_type, t.quantity_change, t.transaction_date,
-            t.invoice_no, t.notes, t.created_at,
+            CONCAT('txn_', t.id) as id,
+            t.transaction_type,
+            t.quantity_change,
+            t.transaction_date,
+            t.invoice_no,
+            t.notes,
+            t.created_at,
             b.batch_code,
+            b.batch_no,
+            b.initial_quantity,
+            b.weight_per_meter,
+            b.total_weight,
+            b.attachment_url,
+            b.created_at as production_date,
+            pt.name as product_type,
+            pv.id as product_variant_id,
+            pv.product_type_id,
+            pv.brand_id,
+            br.name as brand,
+            pv.parameters,
+            r.length_meters as roll_length_meters,
+            r.initial_length_meters as roll_initial_length_meters,
+            r.is_cut_roll as roll_is_cut,
+            r.roll_type as roll_type,
+            r.bundle_size as roll_bundle_size,
+            CASE WHEN r.length_meters IS NOT NULL AND b.weight_per_meter IS NOT NULL THEN (r.length_meters * b.weight_per_meter) ELSE NULL END as roll_weight,
+            u_unit.abbreviation as unit_abbreviation,
             c.name as customer_name,
             u.email as created_by_email,
             u.username as created_by_username,
-            u.full_name as created_by_name
+            u.full_name as created_by_name,
+            rc.standard_rolls_count,
+            rc.cut_rolls_count,
+            rc.bundles_count,
+            rc.spare_pieces_count,
+            rc.avg_standard_roll_length,
+            rc.cut_rolls_details
         FROM transactions t
         JOIN batches b ON t.batch_id = b.id
+        JOIN product_variants pv ON b.product_variant_id = pv.id
+        JOIN product_types pt ON pv.product_type_id = pt.id
+        JOIN brands br ON pv.brand_id = br.id
+        LEFT JOIN rolls r ON t.roll_id = r.id
+        LEFT JOIN units u_unit ON pt.unit_id = u_unit.id
         LEFT JOIN customers c ON t.customer_id = c.id
         LEFT JOIN users u ON t.created_by = u.id
-        WHERE t.deleted_at IS NULL
+        LEFT JOIN LATERAL (
+            SELECT
+                COUNT(*) FILTER (WHERE is_cut_roll = FALSE AND (roll_type IS NULL OR roll_type = 'standard')) as standard_rolls_count,
+                COUNT(*) FILTER (WHERE is_cut_roll = TRUE OR roll_type = 'cut') as cut_rolls_count,
+                COUNT(*) FILTER (WHERE roll_type LIKE 'bundle_%%') as bundles_count,
+                COUNT(*) FILTER (WHERE roll_type = 'spare') as spare_pieces_count,
+                AVG(length_meters) FILTER (WHERE is_cut_roll = FALSE AND (roll_type IS NULL OR roll_type = 'standard')) as avg_standard_roll_length,
+                array_agg(length_meters ORDER BY length_meters DESC) FILTER (WHERE is_cut_roll = TRUE OR roll_type = 'cut') as cut_rolls_details
+            FROM rolls
+            WHERE batch_id = b.id AND deleted_at IS NULL
+        ) rc ON true
+        WHERE t.deleted_at IS NULL{date_filter}
         ORDER BY t.created_at DESC
-        LIMIT 100
+        LIMIT 1000
     """
 
-    transactions = execute_query(query)
-    return jsonify(transactions), 200
+    transactions = execute_query(query, tuple(params)) if params else execute_query(query)
+
+    print(f"📊 Query Results:")
+    print(f"  Transactions found (filtered): {len(transactions) if transactions else 0}")
+    print(f"  Date filter applied: {bool(params)}")
+
+    # Sort all records by creation date
+    all_records = list(transactions) if transactions else []
+    if all_records:
+        all_records.sort(key=lambda x: x['created_at'], reverse=True)
+        sample_ids = [r['id'] for r in all_records[:3]]
+        print(f"  Sample IDs: {sample_ids}")
+        # Debug: Check parameters
+        if len(all_records) > 0:
+            sample = all_records[0]
+            print(f"  Sample parameters type: {type(sample.get('parameters'))}")
+            print(f"  Sample parameters value: {sample.get('parameters')}")
+            print(f"  Sample batch_code: {sample.get('batch_code')}")
+
+    print(f"  Total records returned: {len(all_records)}")
+
+    return jsonify(all_records), 200
