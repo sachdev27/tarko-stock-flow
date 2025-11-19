@@ -10,10 +10,10 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { Package, Search, Filter, QrCode, ChevronDown, ChevronUp, MapPin, Edit2, CheckCircle, XCircle, Clock, Paperclip, Calendar, FileText, Download, ScissorsIcon, PlusIcon, TrashIcon } from 'lucide-react';
+import { Package, Search, Filter, QrCode, ChevronDown, ChevronUp, MapPin, Edit2, CheckCircle, XCircle, Clock, Paperclip, Calendar, FileText, Download, ScissorsIcon, PlusIcon, TrashIcon, Upload, FileSpreadsheet, MessageCircle } from 'lucide-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { inventory as inventoryAPI, transactions as transactionsAPI } from '@/lib/api';
+import { inventory as inventoryAPI, transactions as transactionsAPI, production as productionAPI } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { toISTDateTimeLocal, fromISTDateTimeLocal } from '@/lib/utils';
 
@@ -120,6 +120,11 @@ const Inventory = () => {
   const [cutLength, setCutLength] = useState<string>('');
   const [cuttingLoading, setCuttingLoading] = useState(false);
   const [availableRolls, setAvailableRolls] = useState<RollInventory[]>([]);
+
+  // Import/Export
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importing, setImporting] = useState(false);
 
   useEffect(() => {
     fetchProductTypes();
@@ -459,6 +464,440 @@ const Inventory = () => {
     }
   };
 
+  const downloadTemplate = () => {
+    const template = [
+      {
+        product_type: 'HDPE Pipe',
+        brand: 'Tarko Gold',
+        'OD (mm)': '32',
+        'PN (bar)': '6',
+        'PE (SDR)': '100',
+        batch_code: 'TG-HDPE',
+        batch_no: '001',
+        production_date: '2025-11-20',
+        'roll_length (m)': '100',
+        number_of_rolls: '10',
+        'weight_per_meter (kg/m)': '0.5',
+        notes: 'Initial inventory'
+      },
+      {
+        product_type: 'Sprinkler Pipe',
+        brand: 'Tarko Premium',
+        'OD (mm)': '50',
+        'PN (bar)': '10',
+        Type: 'L',
+        batch_code: 'TP-SPR',
+        batch_no: '001',
+        production_date: '2025-11-20',
+        'bundle_size (pcs)': '10',
+        'piece_length (m)': '6',
+        number_of_bundles: '5',
+        notes: 'Initial sprinkler inventory'
+      }
+    ];
+
+    const csv = [
+      Object.keys(template[0]).join(','),
+      ...template.map(row => Object.values(row).join(','))
+    ].join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'inventory_template.csv';
+    a.click();
+    window.URL.revokeObjectURL(url);
+    toast.success('Template downloaded');
+  };
+
+  const exportInventory = () => {
+    const exportData: any[] = [];
+
+    inventory.forEach(product => {
+      const isSprinklerPipe = product.product_type?.toLowerCase().includes('sprinkler');
+      const isBundle = product.roll_config?.type === 'bundles';
+
+      product.batches.forEach(batch => {
+        if (isSprinklerPipe || isBundle) {
+          // For Sprinkler/Bundle products: Group by bundle type
+          const bundleGroups = batch.rolls.reduce((acc, roll) => {
+            const key = `${roll.roll_type}_${roll.bundle_size}`;
+            if (!acc[key]) {
+              acc[key] = {
+                rolls: [],
+                roll_type: roll.roll_type || 'bundle',
+                bundle_size: roll.bundle_size || 0
+              };
+            }
+            acc[key].rolls.push(roll);
+            return acc;
+          }, {} as Record<string, any>);
+
+          Object.values(bundleGroups).forEach((group: any) => {
+            const params = product.parameters || {};
+            exportData.push({
+              'Product Type': product.product_type,
+              'Brand': product.brand,
+              'OD (mm)': params.OD || params.od || '',
+              'PN (bar)': params.PN || params.pn || '',
+              'Type/PE': params.Type || params.PE || '',
+              'Batch Code': batch.batch_code,
+              'Batch No': batch.batch_no,
+              'Production Date': batch.production_date,
+              'Item Type': group.roll_type === 'spare' ? 'Spare Pieces' : `Bundle (${group.bundle_size} pcs)`,
+              'Quantity': group.rolls.length,
+              'Total Pieces': group.rolls.length * (group.bundle_size || 1),
+              'Status': 'AVAILABLE'
+            });
+          });
+        } else {
+          // For HDPE/Standard rolls: Group by standard vs cut
+          const standardRolls = batch.rolls.filter(r => !r.is_cut_roll && (!r.roll_type || r.roll_type === 'standard'));
+          const cutRolls = batch.rolls.filter(r => r.is_cut_roll || r.roll_type === 'cut');
+
+          if (standardRolls.length > 0) {
+            // Group standard rolls by initial length (since they might be consumed)
+            const lengthGroups = standardRolls.reduce((acc, roll) => {
+              const key = roll.initial_length_meters.toFixed(2);
+              if (!acc[key]) {
+                acc[key] = [];
+              }
+              acc[key].push(roll);
+              return acc;
+            }, {} as Record<string, typeof standardRolls>);
+
+            Object.entries(lengthGroups).forEach(([initialLength, rolls]) => {
+              const params = product.parameters || {};
+              const currentTotalLength = rolls.reduce((sum, r) => sum + r.length_meters, 0);
+              exportData.push({
+                'Product Type': product.product_type,
+                'Brand': product.brand,
+                'OD (mm)': params.OD || params.od || '',
+                'PN (bar)': params.PN || params.pn || '',
+                'Type/PE': params.Type || params.PE || '',
+                'Batch Code': batch.batch_code,
+                'Batch No': batch.batch_no,
+                'Production Date': batch.production_date,
+                'Item Type': 'Standard Roll',
+                'Original Roll Length (m)': initialLength,
+                'Number of Rolls': rolls.length,
+                'Current Total Length (m)': currentTotalLength.toFixed(2),
+                'Status': 'AVAILABLE'
+              });
+            });
+          }
+
+          if (cutRolls.length > 0) {
+            // Group cut rolls by current length
+            const cutLengthGroups = cutRolls.reduce((acc, roll) => {
+              const key = roll.length_meters.toFixed(2);
+              if (!acc[key]) {
+                acc[key] = [];
+              }
+              acc[key].push(roll);
+              return acc;
+            }, {} as Record<string, typeof cutRolls>);
+
+            Object.entries(cutLengthGroups).forEach(([length, rolls]) => {
+              const params = product.parameters || {};
+              const totalLength = rolls.reduce((sum, r) => sum + r.length_meters, 0);
+              const avgOriginalLength = rolls.reduce((sum, r) => sum + (r.initial_length_meters || r.length_meters), 0) / rolls.length;
+              exportData.push({
+                'Product Type': product.product_type,
+                'Brand': product.brand,
+                'OD (mm)': params.OD || params.od || '',
+                'PN (bar)': params.PN || params.pn || '',
+                'Type/PE': params.Type || params.PE || '',
+                'Batch Code': batch.batch_code,
+                'Batch No': batch.batch_no,
+                'Production Date': batch.production_date,
+                'Item Type': 'Cut Roll',
+                'Cut Length (m)': length,
+                'Number of Cut Pieces': rolls.length,
+                'Total Length (m)': totalLength.toFixed(2),
+                'Avg Original Length (m)': avgOriginalLength.toFixed(2),
+                'Status': 'AVAILABLE'
+              });
+            });
+          }
+        }
+      });
+    });
+
+    if (exportData.length === 0) {
+      toast.error('No inventory to export');
+      return;
+    }
+
+    const headers = Object.keys(exportData[0]);
+    const csv = [
+      headers.join(','),
+      ...exportData.map(row => headers.map(h => `"${row[h] || ''}"`).join(','))
+    ].join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `inventory_export_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+    toast.success('Inventory exported successfully');
+  };
+
+  const shareOnWhatsApp = () => {
+    // Generate inventory message from filtered inventory
+    let message = '📦 *Inventory Report*\n';
+    message += `Date: ${new Date().toLocaleDateString('en-IN')}\n\n`;
+
+    if (showOnlyCutRolls) {
+      message += '🔪 *Cut Rolls Only*\n\n';
+    }
+
+    if (filteredInventory.length === 0) {
+      message += 'No items in inventory matching current filters.';
+    } else {
+      filteredInventory.forEach((product) => {
+        const params = product.parameters || {};
+        const productLine = `*${product.product_type}* - ${product.brand}`;
+        const paramsLine = Object.entries(params)
+          .filter(([k, v]) => v && k !== 'Type' && k !== 'type')
+          .map(([k, v]) => `${k}: ${v}`)
+          .join(', ');
+
+        message += `${productLine}\n`;
+        if (paramsLine) message += `${paramsLine}\n`;
+
+        const isSprinkler = product.product_type.toLowerCase().includes('sprinkler');
+
+        // Aggregate all rolls across all batches
+        const allRolls = product.batches.flatMap(b => b.rolls);
+
+        if (showOnlyCutRolls) {
+          // Only show cut rolls when filter is active
+          const cutRolls = allRolls.filter(r => r.is_cut_roll || r.roll_type === 'cut');
+
+          if (cutRolls.length > 0) {
+            // Group cut rolls by their exact length
+            const cutLengthGroups = cutRolls.reduce((acc, roll) => {
+              const key = roll.length_meters.toFixed(2);
+              if (!acc[key]) acc[key] = [];
+              acc[key].push(roll);
+              return acc;
+            }, {} as Record<string, RollInventory[]>);
+
+            Object.entries(cutLengthGroups).forEach(([length, rolls]) => {
+              const totalLength = rolls.reduce((sum, r) => sum + r.length_meters, 0);
+              message += `  • *${rolls.length} cut pieces* (${length}m each) = ${totalLength.toFixed(2)}m total\n`;
+            });
+          }
+        } else {
+          // Show all inventory (original behavior)
+          if (isSprinkler) {
+            // For Sprinkler Pipe - aggregate bundles and spare pieces
+            const bundles = allRolls.filter(r => r.roll_type?.startsWith('bundle_'));
+            const spares = allRolls.filter(r => r.roll_type === 'spare');
+
+            const bundleGroups = bundles.reduce((acc, roll) => {
+              const key = roll.bundle_size || 0;
+              if (!acc[key]) acc[key] = [];
+              acc[key].push(roll);
+              return acc;
+            }, {} as Record<number, RollInventory[]>);
+
+            Object.entries(bundleGroups).forEach(([size, rolls]) => {
+              const totalPieces = rolls.length * parseInt(size);
+              message += `  • ${rolls.length} bundles (${size} pcs/bundle) = *${totalPieces} pieces*\n`;
+            });
+
+            if (spares.length > 0) {
+              const sparePieces = spares.reduce((sum, r) => sum + (r.bundle_size || 1), 0);
+              message += `  • *${sparePieces} spare pieces*\n`;
+            }
+          } else {
+            // For HDPE - aggregate rolls with lengths
+            const standardRolls = allRolls.filter(r => !r.is_cut_roll && (!r.roll_type || r.roll_type === 'standard'));
+            const cutRolls = allRolls.filter(r => r.is_cut_roll || r.roll_type === 'cut');
+
+            if (standardRolls.length > 0) {
+              // Group by roll length
+              const lengthGroups = standardRolls.reduce((acc, roll) => {
+                const key = roll.initial_length_meters.toFixed(0);
+                if (!acc[key]) acc[key] = [];
+                acc[key].push(roll);
+                return acc;
+              }, {} as Record<string, RollInventory[]>);
+
+              Object.entries(lengthGroups).forEach(([length, rolls]) => {
+                const totalLength = rolls.reduce((sum, r) => sum + r.length_meters, 0);
+                message += `  • *${rolls.length} rolls* (${length}m each) = ${totalLength.toFixed(2)}m total\n`;
+              });
+            }
+
+            if (cutRolls.length > 0) {
+              // Group cut rolls by their exact length
+              const cutLengthGroups = cutRolls.reduce((acc, roll) => {
+                const key = roll.length_meters.toFixed(2);
+                if (!acc[key]) acc[key] = [];
+                acc[key].push(roll);
+                return acc;
+              }, {} as Record<string, RollInventory[]>);
+
+              Object.entries(cutLengthGroups).forEach(([length, rolls]) => {
+                const totalLength = rolls.reduce((sum, r) => sum + r.length_meters, 0);
+                message += `  • *${rolls.length} cut pieces* (${length}m each) = ${totalLength.toFixed(2)}m total\n`;
+              });
+            }
+          }
+        }
+
+        message += '\n';
+      });
+    }
+
+    // Encode the message for URL
+    const encodedMessage = encodeURIComponent(message);
+    const whatsappUrl = `https://wa.me/?text=${encodedMessage}`;
+
+    // Open WhatsApp in new window
+    window.open(whatsappUrl, '_blank');
+  };
+
+  const handleImport = async () => {
+    if (!importFile) {
+      toast.error('Please select a file');
+      return;
+    }
+
+    setImporting(true);
+    try {
+      const text = await importFile.text();
+      const lines = text.split('\n').filter(line => line.trim());
+      const headers = lines[0].split(',').map(h => h.trim());
+
+      const data = lines.slice(1).map(line => {
+        const values = line.split(',').map(v => v.trim().replace(/^"|"$/g, '')); // Remove quotes
+        const obj: any = {};
+        headers.forEach((header, index) => {
+          obj[header] = values[index];
+        });
+        return obj;
+      });
+
+      // Group by product variant to create batches
+      const batches: any[] = [];
+
+      for (const row of data) {
+        // Helper function to extract value from column with or without units
+        const getValue = (key: string, alternatives: string[] = []) => {
+          if (row[key]) return row[key];
+          for (const alt of alternatives) {
+            if (row[alt]) return row[alt];
+          }
+          return '';
+        };
+
+        // Determine if it's HDPE or Sprinkler based on available fields
+        const pe = getValue('PE (SDR)', ['PE', 'pe']);
+        const type = getValue('Type/PE', ['Type', 'type']);
+        const isHDPE = pe !== undefined && pe !== '';
+        const isSprinkler = !isHDPE && type !== undefined && type !== '';
+
+        if (!isHDPE && !isSprinkler) {
+          console.warn('Skipping row - cannot determine product type:', row);
+          continue;
+        }
+
+        // Find matching product type and brand
+        const productTypeName = getValue('Product Type', ['product_type']);
+        const brandName = getValue('Brand', ['brand']);
+
+        const productType = productTypes.find(pt =>
+          pt.name.toLowerCase() === productTypeName?.toLowerCase()
+        );
+        const brand = brands.find(b =>
+          b.name.toLowerCase() === brandName?.toLowerCase()
+        );
+
+        if (!productType || !brand) {
+          console.warn('Product type or brand not found:', productTypeName, brandName);
+          continue;
+        }
+
+        // Build parameters - extract values with or without units
+        const od = getValue('OD (mm)', ['OD', 'od']);
+        const pn = getValue('PN (bar)', ['PN', 'pn']);
+
+        const parameters: any = {};
+        if (isHDPE) {
+          parameters.OD = od;
+          parameters.PN = pn;
+          parameters.PE = pe;
+        } else {
+          parameters.OD = od;
+          parameters.PN = pn;
+          parameters.Type = type;
+        }
+
+        // Get batch details
+        const batchCode = getValue('Batch Code', ['batch_code']);
+        const batchNo = getValue('Batch No', ['batch_no']);
+        const prodDate = getValue('Production Date', ['production_date']);
+
+        // Get quantity details based on product type
+        let initialQuantity, rollLength, numRolls, bundleSize, pieceLength, numBundles, weightPerMeter;
+
+        if (isSprinkler) {
+          bundleSize = parseFloat(getValue('bundle_size (pcs)', ['bundle_size', 'Bundle Size (pcs)']) || '10');
+          pieceLength = parseFloat(getValue('piece_length (m)', ['piece_length', 'Piece Length (m)']) || '6');
+          numBundles = parseInt(getValue('number_of_bundles', ['Number of Bundles']) || '1');
+          initialQuantity = numBundles * bundleSize * pieceLength;
+        } else {
+          rollLength = parseFloat(getValue('roll_length (m)', ['roll_length_meters', 'Roll Length (m)']) || '100');
+          numRolls = parseInt(getValue('number_of_rolls', ['Number of Rolls']) || '1');
+          weightPerMeter = parseFloat(getValue('weight_per_meter (kg/m)', ['weight_per_meter']) || '0');
+          initialQuantity = rollLength * numRolls;
+        }
+
+        batches.push({
+          product_type_id: productType.id,
+          brand_id: brand.id,
+          parameters,
+          batch_code: batchCode,
+          batch_no: batchNo,
+          production_date: prodDate,
+          initial_quantity: initialQuantity,
+          weight_per_meter: weightPerMeter || 0,
+          notes: getValue('notes', ['Notes']) || 'Imported from CSV',
+          // Roll configuration
+          roll_length: isSprinkler ? null : rollLength,
+          number_of_rolls: isSprinkler ? null : numRolls,
+          bundle_size: isSprinkler ? bundleSize : null,
+          piece_length: isSprinkler ? pieceLength : null,
+          number_of_bundles: isSprinkler ? numBundles : null
+        });
+      }
+
+      console.log('Importing batches:', batches);
+
+      // Create batches via API
+      for (const batch of batches) {
+        await productionAPI.createBatch(batch);
+      }
+
+      toast.success(`Successfully imported ${batches.length} batches`);
+      setImportDialogOpen(false);
+      setImportFile(null);
+      fetchInventory();
+    } catch (error: any) {
+      console.error('Import error:', error);
+      toast.error(error.message || 'Failed to import inventory');
+    } finally {
+      setImporting(false);
+    }
+  };
+
   const isAdmin = user?.role === 'admin';
 
   return (
@@ -474,6 +913,24 @@ const Inventory = () => {
               <h1 className="text-3xl font-bold text-foreground">Inventory</h1>
               <p className="text-muted-foreground">Track stock across products, batches, and rolls</p>
             </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={downloadTemplate}>
+              <FileSpreadsheet className="h-4 w-4 mr-2" />
+              Download Template
+            </Button>
+            <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
+              <Upload className="h-4 w-4 mr-2" />
+              Import
+            </Button>
+            <Button variant="outline" onClick={exportInventory}>
+              <Download className="h-4 w-4 mr-2" />
+              Export
+            </Button>
+            <Button variant="outline" onClick={shareOnWhatsApp} className="bg-green-50 hover:bg-green-100 border-green-200">
+              <MessageCircle className="h-4 w-4 mr-2 text-green-600" />
+              <span className="text-green-700">Share on WhatsApp</span>
+            </Button>
           </div>
         </div>
 
@@ -1277,6 +1734,125 @@ const Inventory = () => {
                 <>
                   <ScissorsIcon className="h-4 w-4 mr-2" />
                   Cut Roll
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Import Dialog */}
+      <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Import Initial Inventory</DialogTitle>
+            <DialogDescription>
+              Upload a CSV file to import your initial inventory. Download the template first to see the required format.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="border-2 border-dashed border-muted rounded-lg p-8">
+              <div className="text-center space-y-2">
+                <Upload className="h-12 w-12 mx-auto text-muted-foreground" />
+                <div>
+                  <Label htmlFor="file-upload" className="cursor-pointer text-primary hover:underline">
+                    Click to upload
+                  </Label>
+                  <Input
+                    id="file-upload"
+                    type="file"
+                    accept=".csv"
+                    onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+                    className="hidden"
+                  />
+                  <p className="text-sm text-muted-foreground mt-1">or drag and drop</p>
+                </div>
+                <p className="text-xs text-muted-foreground">CSV file only</p>
+              </div>
+              {importFile && (
+                <div className="mt-4 text-center">
+                  <Badge variant="secondary" className="text-sm">
+                    <FileText className="h-3 w-3 mr-1" />
+                    {importFile.name}
+                  </Badge>
+                </div>
+              )}
+            </div>
+
+            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
+              <h4 className="font-semibold text-sm mb-2 flex items-center gap-2">
+                <FileSpreadsheet className="h-4 w-4" />
+                Template Format (with units)
+              </h4>
+              <p className="text-xs text-muted-foreground mb-2">
+                Your CSV should include these columns with units specified:
+              </p>
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div className="space-y-1">
+                  <strong className="text-blue-600 dark:text-blue-400">For HDPE Pipe:</strong>
+                  <ul className="list-disc list-inside mt-1 text-muted-foreground space-y-0.5">
+                    <li>product_type, brand</li>
+                    <li><strong>OD (mm)</strong>, <strong>PN (bar)</strong>, <strong>PE (SDR)</strong></li>
+                    <li>batch_code, batch_no</li>
+                    <li>production_date (YYYY-MM-DD)</li>
+                    <li><strong>roll_length (m)</strong>, number_of_rolls</li>
+                    <li><strong>weight_per_meter (kg/m)</strong></li>
+                    <li>notes</li>
+                  </ul>
+                </div>
+                <div className="space-y-1">
+                  <strong className="text-purple-600 dark:text-purple-400">For Sprinkler Pipe:</strong>
+                  <ul className="list-disc list-inside mt-1 text-muted-foreground space-y-0.5">
+                    <li>product_type, brand</li>
+                    <li><strong>OD (mm)</strong>, <strong>PN (bar)</strong>, Type</li>
+                    <li>batch_code, batch_no</li>
+                    <li>production_date (YYYY-MM-DD)</li>
+                    <li><strong>bundle_size (pcs)</strong></li>
+                    <li><strong>piece_length (m)</strong></li>
+                    <li>number_of_bundles</li>
+                    <li>notes</li>
+                  </ul>
+                </div>
+              </div>
+              <div className="mt-3 pt-2 border-t border-amber-200 dark:border-amber-800">
+                <p className="text-xs text-muted-foreground italic">
+                  💡 Units are shown in parentheses (mm, bar, m, kg/m, pcs) to help you enter correct values
+                </p>
+              </div>
+              <Button
+                variant="link"
+                size="sm"
+                onClick={downloadTemplate}
+                className="mt-2 h-auto p-0 text-xs"
+              >
+                <Download className="h-3 w-3 mr-1" />
+                Download example template with units
+              </Button>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setImportDialogOpen(false);
+                setImportFile(null);
+              }}
+              disabled={importing}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleImport}
+              disabled={!importFile || importing}
+            >
+              {importing ? (
+                <>Importing...</>
+              ) : (
+                <>
+                  <Upload className="h-4 w-4 mr-2" />
+                  Import Inventory
                 </>
               )}
             </Button>
