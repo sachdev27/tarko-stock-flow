@@ -184,37 +184,37 @@ export default function TransactionsNew() {
       const now = new Date();
       if (timePreset === 'today') {
         const todayStart = new Date(now.setHours(0, 0, 0, 0));
-        filtered = filtered.filter(t => new Date(t.created_at) >= todayStart);
+        filtered = filtered.filter(t => new Date(t.transaction_date) >= todayStart);
       } else if (timePreset === 'yesterday') {
         const yesterdayStart = new Date(now.setHours(0, 0, 0, 0));
         yesterdayStart.setDate(yesterdayStart.getDate() - 1);
         const yesterdayEnd = new Date(yesterdayStart);
         yesterdayEnd.setDate(yesterdayEnd.getDate() + 1);
-        filtered = filtered.filter(t => new Date(t.created_at) >= yesterdayStart && new Date(t.created_at) < yesterdayEnd);
+        filtered = filtered.filter(t => new Date(t.transaction_date) >= yesterdayStart && new Date(t.transaction_date) < yesterdayEnd);
       } else if (timePreset === 'last7days') {
         const sevenDaysAgo = new Date(now);
         sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-        filtered = filtered.filter(t => new Date(t.created_at) >= sevenDaysAgo);
+        filtered = filtered.filter(t => new Date(t.transaction_date) >= sevenDaysAgo);
       } else if (timePreset === 'last30days') {
         const thirtyDaysAgo = new Date(now);
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-        filtered = filtered.filter(t => new Date(t.created_at) >= thirtyDaysAgo);
+        filtered = filtered.filter(t => new Date(t.transaction_date) >= thirtyDaysAgo);
       } else if (timePreset === 'thisMonth') {
         const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-        filtered = filtered.filter(t => new Date(t.created_at) >= monthStart);
+        filtered = filtered.filter(t => new Date(t.transaction_date) >= monthStart);
       } else if (timePreset === 'lastMonth') {
         const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
         const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 1);
-        filtered = filtered.filter(t => new Date(t.created_at) >= lastMonthStart && new Date(t.created_at) < lastMonthEnd);
+        filtered = filtered.filter(t => new Date(t.transaction_date) >= lastMonthStart && new Date(t.transaction_date) < lastMonthEnd);
       } else if (timePreset === 'custom') {
         // Date range filter
         if (startDate) {
-          filtered = filtered.filter(t => new Date(t.created_at) >= new Date(startDate));
+          filtered = filtered.filter(t => new Date(t.transaction_date) >= new Date(startDate));
         }
         if (endDate) {
           const endDateTime = new Date(endDate);
           endDateTime.setHours(23, 59, 59, 999);
-          filtered = filtered.filter(t => new Date(t.created_at) <= endDateTime);
+          filtered = filtered.filter(t => new Date(t.transaction_date) <= endDateTime);
         }
       }
 
@@ -467,8 +467,8 @@ export default function TransactionsNew() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{format(new Date(transaction.created_at), 'MMM dd')}</div>
-            <p className="text-xs text-muted-foreground mt-1">{format(new Date(transaction.created_at), 'yyyy')}</p>
+            <div className="text-2xl font-bold">{format(new Date(transaction.transaction_date), 'MMM dd')}</div>
+            <p className="text-xs text-muted-foreground mt-1">{format(new Date(transaction.transaction_date), 'yyyy')}</p>
           </CardContent>
         </Card>
       </div>
@@ -1394,8 +1394,8 @@ export default function TransactionsNew() {
                   className="hover:bg-muted/50 transition-colors"
                 >
                   <TableCell className="font-medium">
-                    <div>{format(new Date(transaction.created_at), 'PP')}</div>
-                    <div className="text-xs text-muted-foreground">{format(new Date(transaction.created_at), 'p')}</div>
+                    <div>{format(new Date(transaction.transaction_date), 'PP')}</div>
+                    <div className="text-xs text-muted-foreground">{format(new Date(transaction.transaction_date), 'p')}</div>
                   </TableCell>
                   <TableCell>
                     <div className="text-sm font-medium">{transaction.batch_code || '-'}</div>

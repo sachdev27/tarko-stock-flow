@@ -333,6 +333,7 @@ def create_dispatch():
     invoice_number = data.get('invoice_number')
     notes = data.get('notes', '')
     items = data.get('items', [])
+    transaction_date = data.get('transaction_date')  # Optional custom date
 
     if not customer_id or not items:
         return jsonify({'error': 'customer_id and items are required'}), 400
@@ -430,24 +431,45 @@ def create_dispatch():
 
             # Create ONE transaction for the entire dispatch
             # Store all rolls in roll_snapshot as an array
-            cursor.execute("""
-                INSERT INTO transactions (
-                    batch_id, roll_id, transaction_type, quantity_change,
-                    customer_id, invoice_no, notes, roll_snapshot, dispatch_id, created_by
-                )
-                VALUES (%s, %s, 'SALE', %s, %s, %s, %s, %s, %s, %s)
-                RETURNING id
-            """, (
-                first_batch_id,
-                first_roll_id,
-                -total_quantity,  # Negative for outgoing, total of all rolls
-                customer_id,
-                invoice_number,
-                notes,
-                json.dumps({'rolls': roll_snapshots, 'total_rolls': len(roll_snapshots)}),
-                dispatch_id,
-                user_id
-            ))
+            if transaction_date:
+                cursor.execute("""
+                    INSERT INTO transactions (
+                        batch_id, roll_id, transaction_type, quantity_change,
+                        customer_id, invoice_no, notes, roll_snapshot, dispatch_id, created_by, transaction_date
+                    )
+                    VALUES (%s, %s, 'SALE', %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                """, (
+                    first_batch_id,
+                    first_roll_id,
+                    -total_quantity,  # Negative for outgoing, total of all rolls
+                    customer_id,
+                    invoice_number,
+                    notes,
+                    json.dumps({'rolls': roll_snapshots, 'total_rolls': len(roll_snapshots)}),
+                    dispatch_id,
+                    user_id,
+                    transaction_date
+                ))
+            else:
+                cursor.execute("""
+                    INSERT INTO transactions (
+                        batch_id, roll_id, transaction_type, quantity_change,
+                        customer_id, invoice_no, notes, roll_snapshot, dispatch_id, created_by
+                    )
+                    VALUES (%s, %s, 'SALE', %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                """, (
+                    first_batch_id,
+                    first_roll_id,
+                    -total_quantity,  # Negative for outgoing, total of all rolls
+                    customer_id,
+                    invoice_number,
+                    notes,
+                    json.dumps({'rolls': roll_snapshots, 'total_rolls': len(roll_snapshots)}),
+                    dispatch_id,
+                    user_id
+                ))
 
             transaction_id = cursor.fetchone()['id']
 

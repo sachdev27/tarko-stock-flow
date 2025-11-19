@@ -235,7 +235,7 @@ def get_transactions():
             WHERE batch_id = b.id AND deleted_at IS NULL
         ) rc ON true
         WHERE t.deleted_at IS NULL{date_filter}
-        ORDER BY t.created_at DESC
+        ORDER BY t.transaction_date DESC
         LIMIT 1000
     """
 
@@ -245,10 +245,10 @@ def get_transactions():
     print(f"  Transactions found (filtered): {len(transactions) if transactions else 0}")
     print(f"  Date filter applied: {bool(params)}")
 
-    # Sort all records by creation date
+    # Sort all records by transaction date
     all_records = list(transactions) if transactions else []
     if all_records:
-        all_records.sort(key=lambda x: x['created_at'], reverse=True)
+        all_records.sort(key=lambda x: x['transaction_date'], reverse=True)
         sample_ids = [r['id'] for r in all_records[:3]]
         print(f"  Sample IDs: {sample_ids}")
         # Debug: Check parameters

@@ -69,6 +69,8 @@ const Dispatch = () => {
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [notes, setNotes] = useState('');
+  const [useCustomDate, setUseCustomDate] = useState(false);
+  const [customDate, setCustomDate] = useState('');
 
   // Dialogs
   const [cutDialogOpen, setCutDialogOpen] = useState(false);
@@ -369,6 +371,7 @@ const Dispatch = () => {
         items: items,
         invoice_number: invoiceNumber || undefined,
         notes: notes || undefined,
+        transaction_date: useCustomDate && customDate ? customDate : undefined,
       });
 
       toast.success('Sale completed successfully!');
@@ -378,6 +381,8 @@ const Dispatch = () => {
       setSelectedCustomerId('');
       setInvoiceNumber('');
       setNotes('');
+      setUseCustomDate(false);
+      setCustomDate('');
       setProducts([]);
       setAllProducts([]);
       setRolls([]);
@@ -861,9 +866,38 @@ const Dispatch = () => {
                     />
                   </div>
 
+                  <div className="space-y-2">
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        id="useCustomDate"
+                        checked={useCustomDate}
+                        onChange={(e) => setUseCustomDate(e.target.checked)}
+                        className="rounded border-gray-300"
+                      />
+                      <Label htmlFor="useCustomDate" className="cursor-pointer font-normal">
+                        Use custom date/time (for backdated orders)
+                      </Label>
+                    </div>
+                    {useCustomDate && (
+                      <div className="space-y-2">
+                        <Input
+                          type="datetime-local"
+                          value={customDate}
+                          onChange={(e) => setCustomDate(e.target.value)}
+                          max={new Date().toISOString().slice(0, 16)}
+                          placeholder="Select date and time"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Transaction will be recorded with this date/time
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
                   <Button
                     onClick={handleDispatch}
-                    disabled={loading || !selectedCustomerId}
+                    disabled={loading || !selectedCustomerId || (useCustomDate && !customDate)}
                     className="w-full"
                   >
                     <TruckIcon className="h-4 w-4 mr-2" />
