@@ -14,23 +14,45 @@ def get_available_rolls():
     Get available rolls/cut rolls for dispatch based on product selection.
     Request body: { product_type_id, brand_id, parameters }
     """
+    # Cleanup any rolls with zero length before fetching
+    execute_query("""
+        UPDATE rolls
+        SET deleted_at = NOW(), status = 'SOLD_OUT'
+        WHERE length_meters = 0
+        AND deleted_at IS NULL
+    """, fetch_all=False)
+
     data = request.json
     product_type_id = data.get('product_type_id')
-    brand_id = data.get('brand_id')
+    brand_id = data.get('brand_id')  # Optional for "All Brands"
     parameters = data.get('parameters', {})
 
-    if not product_type_id or not brand_id:
-        return jsonify({'error': 'product_type_id and brand_id are required'}), 400
+    print(f"[DEBUG] Available rolls request: product_type_id={product_type_id}, brand_id={brand_id}, parameters={parameters}")
+
+    if not product_type_id:
+        return jsonify({'error': 'product_type_id is required'}), 400
 
     # Find the product variant
-    variant_query = """
-        SELECT id, parameters
-        FROM product_variants
-        WHERE product_type_id = %s
-        AND brand_id = %s
-        AND deleted_at IS NULL
-    """
-    variants = execute_query(variant_query, (product_type_id, brand_id))
+    if brand_id:
+        variant_query = """
+            SELECT id, parameters
+            FROM product_variants
+            WHERE product_type_id = %s
+            AND brand_id = %s
+            AND deleted_at IS NULL
+        """
+        variants = execute_query(variant_query, (product_type_id, brand_id))
+    else:
+        # All brands - fetch all variants for this product type
+        variant_query = """
+            SELECT id, parameters
+            FROM product_variants
+            WHERE product_type_id = %s
+            AND deleted_at IS NULL
+        """
+        variants = execute_query(variant_query, (product_type_id,))
+
+    print(f"[DEBUG] Found {len(variants)} variants for product_type_id={product_type_id}, brand_id={brand_id}")
 
     # Match parameters
     matching_variants = []
@@ -38,6 +60,7 @@ def get_available_rolls():
     # If no parameters provided (empty dict), match ALL variants
     if not parameters or parameters == {}:
         matching_variants = variants
+        print(f"[DEBUG] No parameters filter, matched all {len(matching_variants)} variants")
     else:
         # Match exact parameters or partial match
         for variant in variants:
@@ -49,9 +72,11 @@ def get_available_rolls():
             )
             if matches:
                 matching_variants.append(variant)
+        print(f"[DEBUG] With parameters filter, matched {len(matching_variants)} variants")
 
     if not matching_variants:
-        return jsonify({'rolls': [], 'cut_rolls': [], 'message': 'No matching product variant found'}), 200
+        print(f"[DEBUG] No matching variants found!")
+        return jsonify({'products': [], 'message': 'No matching product variant found'}), 200
 
     # Get all available rolls for matching variants
     variant_ids = [v['id'] for v in matching_variants]
@@ -88,25 +113,24 @@ def get_available_rolls():
 
     all_rolls = execute_query(rolls_query, tuple(variant_ids))
 
-    # Group by variant and separate into standard rolls and cut rolls
-    variant_groups = {}  # key: variant_id, value: {variant_info, standard_rolls, cut_rolls}
+    # Group by product parameters (not variant_id) to merge across batches
+    product_groups = {}  # key: product_label, value: {product_info, standard_rolls, cut_rolls}
 
     for roll in all_rolls:
-        variant_id = roll['product_variant_id']
+        # Build product label: PRODUCT-PARAMS-BRAND
+        params_str = ''
+        if roll['parameters']:
+            params_list = [str(v) for v in roll['parameters'].values()]
+            params_str = '-'.join(params_list)
 
-        if variant_id not in variant_groups:
-            # Build product label: PRODUCT-PARAMS-BRAND-BATCHCODE
-            params_str = ''
-            if roll['parameters']:
-                params_list = [str(v) for v in roll['parameters'].values()]
-                params_str = '-'.join(params_list)
+        product_label = f"{roll['product_type']}"
+        if params_str:
+            product_label += f"-{params_str}"
+        product_label += f"-{roll['brand']}"
 
-            product_label = f"{roll['product_type']}"
-            if params_str:
-                product_label += f"-{params_str}"
-            product_label += f"-{roll['brand']}"
-
-            variant_groups[variant_id] = {
+        # Initialize product group if not exists
+        if product_label not in product_groups:
+            product_groups[product_label] = {
                 'product_label': product_label,
                 'product_type': roll['product_type'],
                 'brand': roll['brand'],
@@ -129,14 +153,14 @@ def get_available_rolls():
         }
 
         if roll['is_cut_roll'] or roll['roll_type'] == 'cut':
-            variant_groups[variant_id]['cut_rolls'].append(roll_info)
+            product_groups[product_label]['cut_rolls'].append(roll_info)
         else:
-            variant_groups[variant_id]['standard_rolls'].append(roll_info)
-            variant_groups[variant_id]['total_length'] += float(roll['length_meters'])
+            product_groups[product_label]['standard_rolls'].append(roll_info)
+            product_groups[product_label]['total_length'] += float(roll['length_meters'])
 
     # Convert to list format
     products = []
-    for group in variant_groups.values():
+    for group in product_groups.values():
         products.append({
             'product_label': group['product_label'],
             'product_type': group['product_type'],
@@ -218,13 +242,22 @@ def cut_roll():
 
             # Update original roll
             remaining_length = available_length - total_cut_length
-            new_status = 'SOLD_OUT' if remaining_length == 0 else 'PARTIAL'
 
-            cursor.execute("""
-                UPDATE rolls
-                SET length_meters = %s, status = %s, updated_at = NOW()
-                WHERE id = %s
-            """, (remaining_length, new_status, roll_id))
+            if remaining_length == 0:
+                # Mark roll as deleted if fully cut
+                cursor.execute("""
+                    UPDATE rolls
+                    SET length_meters = 0, status = 'SOLD_OUT', deleted_at = NOW(), updated_at = NOW()
+                    WHERE id = %s
+                """, (roll_id,))
+            else:
+                # Update roll with remaining length
+                new_status = 'PARTIAL'
+                cursor.execute("""
+                    UPDATE rolls
+                    SET length_meters = %s, status = %s, updated_at = NOW()
+                    WHERE id = %s
+                """, (remaining_length, new_status, roll_id))
 
             # Update batch quantity
             cursor.execute("""
@@ -237,6 +270,20 @@ def cut_roll():
                 updated_at = NOW()
                 WHERE id = %s
             """, (roll['batch_id'], roll['batch_id']))
+
+            # Create CUT transaction
+            cursor.execute("""
+                INSERT INTO transactions (
+                    batch_id, roll_id, transaction_type, quantity_change,
+                    transaction_date, notes, created_by, created_at, updated_at
+                ) VALUES (%s, %s, 'CUT', %s, NOW(), %s, %s, NOW(), NOW())
+            """, (
+                roll['batch_id'],
+                roll_id,
+                -total_cut_length,  # Negative because it's reducing the original roll
+                f"Cut roll into {len(cuts)} pieces: {', '.join([str(c['length']) + 'm' for c in cuts])}",
+                user_id
+            ))
 
             # Create audit log
             actor = get_user_identity_details(user_id)
@@ -447,6 +494,165 @@ def create_dispatch():
             'total_quantity': float(total_quantity),
             'rolls_count': len(roll_snapshots)
         }), 201
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@dispatch_bp.route('/products-summary', methods=['GET'])
+@jwt_required()
+def get_products_summary():
+    """
+    Get aggregated product inventory grouped by product category (type + brand + parameters).
+    Returns total quantities and roll counts across all batches.
+    """
+    try:
+        brand_id = request.args.get('brand_id')
+        product_type_id = request.args.get('product_type_id')
+
+        # Build WHERE clause based on filters
+        where_conditions = ["pv.deleted_at IS NULL"]
+        params = []
+
+        if brand_id and brand_id != 'all':
+            where_conditions.append("br.id = %s")
+            params.append(brand_id)
+
+        if product_type_id and product_type_id != 'all':
+            where_conditions.append("pt.id = %s")
+            params.append(product_type_id)
+
+        where_clause = " AND ".join(where_conditions)
+
+        # Query to aggregate rolls by product variant
+        query = f"""
+            SELECT
+                pv.id as variant_id,
+                pt.id as product_type_id,
+                pt.name as product_type,
+                pt.roll_configuration,
+                br.id as brand_id,
+                br.name as brand,
+                pv.parameters,
+                COUNT(CASE WHEN r.roll_type = 'standard' AND NOT r.is_cut_roll THEN 1 END) as standard_rolls_count,
+                COUNT(CASE WHEN r.is_cut_roll THEN 1 END) as cut_rolls_count,
+                COUNT(CASE WHEN r.roll_type LIKE 'bundle_%' THEN 1 END) as bundles_count,
+                COUNT(CASE WHEN r.roll_type = 'spare' THEN 1 END) as spare_pieces_count,
+                COALESCE(SUM(r.length_meters), 0) as total_quantity,
+                COALESCE(AVG(CASE WHEN r.roll_type = 'standard' AND NOT r.is_cut_roll THEN r.length_meters END), 0) as avg_standard_length,
+                COUNT(r.id) as total_items
+            FROM product_variants pv
+            JOIN product_types pt ON pv.product_type_id = pt.id
+            JOIN brands br ON pv.brand_id = br.id
+            LEFT JOIN rolls r ON r.product_variant_id = pv.id
+                AND r.deleted_at IS NULL
+                AND r.status IN ('AVAILABLE', 'PARTIAL')
+                AND r.length_meters > 0
+            WHERE {where_clause}
+            GROUP BY pv.id, pt.id, pt.name, pt.roll_configuration, br.id, br.name, pv.parameters
+            HAVING COUNT(r.id) > 0
+            ORDER BY pt.name, br.name, pv.parameters
+        """
+
+        products = execute_query(query, tuple(params))
+
+        result = []
+        for product in products:
+            result.append({
+                'variant_id': str(product['variant_id']),
+                'product_type_id': product['product_type_id'],
+                'product_type': product['product_type'],
+                'brand_id': product['brand_id'],
+                'brand': product['brand'],
+                'parameters': product['parameters'] or {},
+                'roll_configuration': product['roll_configuration'] or {},
+                'standard_rolls_count': int(product['standard_rolls_count'] or 0),
+                'cut_rolls_count': int(product['cut_rolls_count'] or 0),
+                'bundles_count': int(product['bundles_count'] or 0),
+                'spare_pieces_count': int(product['spare_pieces_count'] or 0),
+                'total_quantity': float(product['total_quantity'] or 0),
+                'avg_standard_length': float(product['avg_standard_length'] or 0),
+                'total_items': int(product['total_items'] or 0)
+            })
+
+        return jsonify({'products': result}), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@dispatch_bp.route('/product-rolls/<variant_id>', methods=['GET'])
+@jwt_required()
+def get_product_rolls(variant_id):
+    """
+    Get all available rolls for a specific product variant.
+    Used when user selects a product category to dispatch.
+    """
+    try:
+        query = """
+            SELECT
+                r.id,
+                r.batch_id,
+                r.length_meters,
+                r.initial_length_meters,
+                r.status,
+                r.is_cut_roll,
+                r.roll_type,
+                r.bundle_size,
+                b.batch_code,
+                b.batch_no
+            FROM rolls r
+            JOIN batches b ON r.batch_id = b.id
+            WHERE r.product_variant_id = %s
+            AND r.deleted_at IS NULL
+            AND r.status IN ('AVAILABLE', 'PARTIAL')
+            AND r.length_meters > 0
+            ORDER BY
+                CASE WHEN r.roll_type = 'standard' THEN 1
+                     WHEN r.is_cut_roll THEN 2
+                     WHEN r.roll_type LIKE 'bundle_%' THEN 3
+                     ELSE 4 END,
+                r.length_meters DESC,
+                r.created_at
+        """
+
+        rolls = execute_query(query, (variant_id,))
+
+        # Separate by type
+        standard_rolls = []
+        cut_rolls = []
+        bundles = []
+        spares = []
+
+        for roll in rolls:
+            roll_data = {
+                'id': str(roll['id']),
+                'batch_id': str(roll['batch_id']),
+                'batch_code': roll['batch_code'],
+                'batch_no': roll['batch_no'],
+                'length_meters': float(roll['length_meters']),
+                'initial_length_meters': float(roll['initial_length_meters']),
+                'status': roll['status'],
+                'is_cut_roll': roll['is_cut_roll'],
+                'roll_type': roll['roll_type'],
+                'bundle_size': roll['bundle_size']
+            }
+
+            if roll['roll_type'] == 'standard' and not roll['is_cut_roll']:
+                standard_rolls.append(roll_data)
+            elif roll['is_cut_roll']:
+                cut_rolls.append(roll_data)
+            elif roll['roll_type'] and roll['roll_type'].startswith('bundle_'):
+                bundles.append(roll_data)
+            elif roll['roll_type'] == 'spare':
+                spares.append(roll_data)
+
+        return jsonify({
+            'standard_rolls': standard_rolls,
+            'cut_rolls': cut_rolls,
+            'bundles': bundles,
+            'spares': spares
+        }), 200
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500

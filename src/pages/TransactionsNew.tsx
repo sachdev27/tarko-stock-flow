@@ -16,7 +16,7 @@ import { format } from 'date-fns';
 interface TransactionRecord {
   id: string;
   dispatch_id?: string;
-  transaction_type: 'PRODUCTION' | 'SALE' | 'ADJUSTMENT';
+  transaction_type: 'PRODUCTION' | 'SALE' | 'ADJUSTMENT' | 'CUT';
   quantity_change: number; // This is total meters/quantity, not roll count
   transaction_date: string;
   invoice_no?: string;
@@ -98,6 +98,11 @@ export default function TransactionsNew() {
   const [productTypeFilter, setProductTypeFilter] = useState<string>('all');
   const [brandFilter, setBrandFilter] = useState<string>('all');
   const [parameterFilter, setParameterFilter] = useState<string>('all');
+  // Separate parameter filters
+  const [odFilter, setOdFilter] = useState<string>('all');
+  const [pnFilter, setPnFilter] = useState<string>('all');
+  const [peFilter, setPeFilter] = useState<string>('all');
+  const [typeParamFilter, setTypeParamFilter] = useState<string>('all'); // For Sprinkler Pipe Type (A/B/C)
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [showFilters, setShowFilters] = useState(false);
@@ -105,6 +110,11 @@ export default function TransactionsNew() {
   // Master data for filters
   const [productTypes, setProductTypes] = useState<Array<{ id: number; name: string }>>([]);
   const [brands, setBrands] = useState<Array<{ id: number; name: string }>>([]);
+  // Parameter options extracted from transactions
+  const [odOptions, setOdOptions] = useState<string[]>([]);
+  const [pnOptions, setPnOptions] = useState<string[]>([]);
+  const [peOptions, setPeOptions] = useState<string[]>([]);
+  const [typeOptions, setTypeOptions] = useState<string[]>([]);
 
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
@@ -156,6 +166,20 @@ export default function TransactionsNew() {
         });
       }
 
+      // Separate parameter filters
+      if (odFilter !== 'all') {
+        filtered = filtered.filter(t => t.parameters?.OD === odFilter);
+      }
+      if (pnFilter !== 'all') {
+        filtered = filtered.filter(t => t.parameters?.PN === pnFilter);
+      }
+      if (peFilter !== 'all') {
+        filtered = filtered.filter(t => t.parameters?.PE === peFilter);
+      }
+      if (typeParamFilter !== 'all') {
+        filtered = filtered.filter(t => t.parameters?.Type === typeParamFilter);
+      }
+
       // Date range filter
       if (startDate) {
         filtered = filtered.filter(t => new Date(t.created_at) >= new Date(startDate));
@@ -171,7 +195,7 @@ export default function TransactionsNew() {
     };
 
     applyFilters();
-  }, [transactions, searchQuery, typeFilter, productTypeFilter, brandFilter, parameterFilter, startDate, endDate]);
+  }, [transactions, searchQuery, typeFilter, productTypeFilter, brandFilter, parameterFilter, odFilter, pnFilter, peFilter, typeParamFilter, startDate, endDate]);
 
   const loadTransactions = async () => {
     try {
@@ -194,6 +218,26 @@ export default function TransactionsNew() {
         };
       });
       setTransactions(parsedTransactions);
+
+      // Extract unique parameter values for filters
+      const ods = new Set<string>();
+      const pns = new Set<string>();
+      const pes = new Set<string>();
+      const types = new Set<string>();
+
+      parsedTransactions.forEach((t: TransactionRecord) => {
+        if (t.parameters) {
+          if (t.parameters.OD) ods.add(t.parameters.OD);
+          if (t.parameters.PN) pns.add(t.parameters.PN);
+          if (t.parameters.PE) pes.add(t.parameters.PE);
+          if (t.parameters.Type) types.add(t.parameters.Type);
+        }
+      });
+
+      setOdOptions(Array.from(ods).sort());
+      setPnOptions(Array.from(pns).sort());
+      setPeOptions(Array.from(pes).sort());
+      setTypeOptions(Array.from(types).sort());
     } catch (error) {
       console.error('Failed to load transactions:', error);
     } finally {
@@ -220,12 +264,17 @@ export default function TransactionsNew() {
     setProductTypeFilter('all');
     setBrandFilter('all');
     setParameterFilter('all');
+    setOdFilter('all');
+    setPnFilter('all');
+    setPeFilter('all');
+    setTypeParamFilter('all');
     setStartDate('');
     setEndDate('');
   };
 
   const hasActiveFilters = searchQuery || typeFilter !== 'all' || productTypeFilter !== 'all' ||
-    brandFilter !== 'all' || parameterFilter !== 'all' || startDate || endDate;
+    brandFilter !== 'all' || parameterFilter !== 'all' || odFilter !== 'all' || pnFilter !== 'all' ||
+    peFilter !== 'all' || typeParamFilter !== 'all' || startDate || endDate;
 
   const getTotalProductionWeight = () => {
     return filteredTransactions
@@ -1019,6 +1068,7 @@ export default function TransactionsNew() {
                       <SelectItem value="all">All Types</SelectItem>
                       <SelectItem value="PRODUCTION">Production</SelectItem>
                       <SelectItem value="SALE">Sale</SelectItem>
+                      <SelectItem value="CUT">Cut Roll</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -1057,17 +1107,100 @@ export default function TransactionsNew() {
 
                 {/* Parameter Filter - Show when product type is selected */}
                 {productTypeFilter !== 'all' && (
-                  <div className="space-y-2">
-                    <Label>Parameters</Label>
-                    <div className="relative">
-                      <Input
-                        placeholder="Search parameters (OD, PN, etc.)..."
-                        value={parameterFilter === 'all' ? '' : parameterFilter}
-                        onChange={(e) => setParameterFilter(e.target.value || 'all')}
-                        className="pl-3"
-                      />
-                    </div>
-                  </div>
+                  <>
+                    {productTypeFilter === 'HDPE Pipe' && (
+                      <>
+                        <div className="space-y-2">
+                          <Label>OD (Outer Diameter)</Label>
+                          <Select value={odFilter} onValueChange={setOdFilter}>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">All OD</SelectItem>
+                              {odOptions.map(od => (
+                                <SelectItem key={od} value={od}>{od}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>PN (Pressure Nominal)</Label>
+                          <Select value={pnFilter} onValueChange={setPnFilter}>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">All PN</SelectItem>
+                              {pnOptions.map(pn => (
+                                <SelectItem key={pn} value={pn}>{pn}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>PE (Polyethylene Grade)</Label>
+                          <Select value={peFilter} onValueChange={setPeFilter}>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">All PE</SelectItem>
+                              {peOptions.map(pe => (
+                                <SelectItem key={pe} value={pe}>{pe}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </>
+                    )}
+                    {productTypeFilter === 'Sprinkler Pipe' && (
+                      <>
+                        <div className="space-y-2">
+                          <Label>Type</Label>
+                          <Select value={typeParamFilter} onValueChange={setTypeParamFilter}>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">All Types</SelectItem>
+                              {typeOptions.map(type => (
+                                <SelectItem key={type} value={type}>Type {type}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>PN (Pressure Nominal)</Label>
+                          <Select value={pnFilter} onValueChange={setPnFilter}>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">All PN</SelectItem>
+                              {pnOptions.map(pn => (
+                                <SelectItem key={pn} value={pn}>{pn}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>OD (Outer Diameter)</Label>
+                          <Select value={odFilter} onValueChange={setOdFilter}>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">All OD</SelectItem>
+                              {odOptions.map(od => (
+                                <SelectItem key={od} value={od}>{od}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </>
+                    )}
+                  </>
                 )}
 
                 {/* Start Date */}
@@ -1197,7 +1330,13 @@ export default function TransactionsNew() {
                   <TableCell>
                     <Badge
                       variant={transaction.transaction_type === 'PRODUCTION' ? 'default' : 'secondary'}
-                      className={transaction.transaction_type === 'SALE' ? 'bg-red-100 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-300 dark:border-red-700' : ''}
+                      className={
+                        transaction.transaction_type === 'SALE'
+                          ? 'bg-red-100 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-300 dark:border-red-700'
+                          : transaction.transaction_type === 'CUT'
+                          ? 'bg-orange-100 text-orange-700 border-orange-300 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-700'
+                          : ''
+                      }
                     >
                       {transaction.transaction_type}
                     </Badge>

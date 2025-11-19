@@ -54,9 +54,11 @@ const Dispatch = () => {
   const [searchProductType, setSearchProductType] = useState('');
   const [searchBrand, setSearchBrand] = useState('');
   const [searchParameters, setSearchParameters] = useState<Record<string, string>>({});
+  const [searchQuery, setSearchQuery] = useState(''); // New unified search
 
   // Available inventory
   const [products, setProducts] = useState<ProductVariant[]>([]);
+  const [allProducts, setAllProducts] = useState<ProductVariant[]>([]); // Store all products for filtering
   const [rolls, setRolls] = useState<Roll[]>([]);
   const [cutRolls, setCutRolls] = useState<Roll[]>([]);
 
@@ -72,6 +74,7 @@ const Dispatch = () => {
   const [cutDialogOpen, setCutDialogOpen] = useState(false);
   const [rollToCut, setRollToCut] = useState<Roll | null>(null);
   const [cutLengths, setCutLengths] = useState<string[]>(['']);
+  const [cutLength, setCutLength] = useState<string>(''); // Single cut length
   const [isCuttingFromCart, setIsCuttingFromCart] = useState(false);
   const [cutRollDialogOpen, setCutRollDialogOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<ProductVariant | null>(null);
@@ -80,7 +83,65 @@ const Dispatch = () => {
     fetchMasterData();
   }, []);
 
-  const fetchMasterData = async () => {
+  // Auto-load products when product type and brand are selected
+  useEffect(() => {
+    if (searchProductType && searchBrand) {
+      searchRolls();
+    }
+  }, [searchProductType, searchBrand]);
+
+  useEffect(() => {
+    // Filter products based on search query
+    if (!searchQuery.trim()) {
+      setProducts(allProducts);
+      return;
+    }
+
+    const query = searchQuery.toLowerCase().trim();
+    const filtered = allProducts.filter(product => {
+      // Check for comma-separated parameter search (e.g., "32,6,10" for OD,PN,PE)
+      if (query.includes(',')) {
+        const values = query.split(',').map(v => v.trim());
+        const productParams = product.parameters || {};
+
+        // Get parameter order based on product type
+        const selectedProductType = productTypes.find(pt => pt.id === searchProductType);
+        const isHDPE = selectedProductType?.name?.toLowerCase().includes('hdpe');
+        const paramOrder = isHDPE ? ['OD', 'PN', 'PE'] : ['OD', 'PN', 'Type'];
+
+        // Match each value in order against the parameter order
+        return values.every((value, index) => {
+          if (!value) return true; // Skip empty values
+          const paramKey = paramOrder[index];
+          if (!paramKey) return true;
+          const paramValue = String(productParams[paramKey] || '').toLowerCase();
+          return paramValue.includes(value);
+        });
+      }
+
+      // Search in product type
+      if (product.product_type.toLowerCase().includes(query)) return true;
+
+      // Search in brand
+      if (product.brand.toLowerCase().includes(query)) return true;
+
+      // Search in parameter values
+      if (product.parameters) {
+        const paramValues = Object.values(product.parameters).map(v => String(v).toLowerCase());
+        if (paramValues.some(v => v.includes(query))) return true;
+
+        // Search in parameter keys + values (e.g., "od 32" or "pn 10")
+        const paramEntries = Object.entries(product.parameters).map(([k, v]) =>
+          `${k} ${v}`.toLowerCase()
+        );
+        if (paramEntries.some(e => e.includes(query))) return true;
+      }
+
+      return false;
+    });
+
+    setProducts(filtered);
+  }, [searchQuery, allProducts, searchProductType, productTypes]);  const fetchMasterData = async () => {
     try {
       const [productTypesRes, brandsRes, paramsRes, customersRes] = await Promise.all([
         inventory.getProductTypes(),
@@ -100,8 +161,13 @@ const Dispatch = () => {
   };
 
   const searchRolls = async () => {
-    if (!searchProductType || !searchBrand) {
-      toast.error('Please select product type and brand');
+    if (!searchProductType) {
+      toast.error('Please select product type');
+      return;
+    }
+
+    if (!searchBrand) {
+      toast.error('Please select brand');
       return;
     }
 
@@ -112,16 +178,26 @@ const Dispatch = () => {
         Object.entries(searchParameters).filter(([_, value]) => value !== 'all')
       );
 
-      const response = await dispatchAPI.getAvailableRolls({
+      const requestData: any = {
         product_type_id: searchProductType,
-        brand_id: searchBrand,
         parameters: filteredParameters,
-      });
+      };
 
-      setProducts(response.data?.products || []);
+      // Only include brand_id if not "all"
+      if (searchBrand !== 'all') {
+        requestData.brand_id = searchBrand;
+      }
+
+      const response = await dispatchAPI.getAvailableRolls(requestData);
+
+      const fetchedProducts = response.data?.products || [];
+      setAllProducts(fetchedProducts);
+      setProducts(fetchedProducts);
       setRolls([]);
-      setCutRolls([]);      if (!response.data?.standard_rolls?.length && !response.data?.cut_rolls?.length) {
-        toast.info('No rolls found for selected product');
+      setCutRolls([]);
+
+      if (fetchedProducts.length === 0) {
+        toast.info('No products found');
       }
     } catch (error: any) {
       console.error('Error fetching rolls:', error);
@@ -207,37 +283,39 @@ const Dispatch = () => {
   const openCutDialog = (roll: Roll, fromCart: boolean = false) => {
     setRollToCut(roll);
     setIsCuttingFromCart(fromCart);
-    setCutLengths(['']);
+    setCutLength('');
     setCutDialogOpen(true);
   };
 
   const handleCutRoll = async () => {
     if (!rollToCut) return;
 
-    const lengths = cutLengths
-      .map(l => parseFloat(l))
-      .filter(l => !isNaN(l) && l > 0);
-
-    if (lengths.length === 0) {
-      toast.error('Please enter at least one valid length');
+    const cutLengthValue = parseFloat(cutLength);
+    if (isNaN(cutLengthValue) || cutLengthValue <= 0) {
+      toast.error('Please enter a valid cut length');
       return;
     }
 
-    const totalCutLength = lengths.reduce((sum, l) => sum + l, 0);
-    if (totalCutLength > rollToCut.length_meters) {
-      toast.error(`Total cut length (${totalCutLength}m) exceeds roll length (${rollToCut.length_meters}m)`);
+    if (cutLengthValue >= rollToCut.length_meters) {
+      toast.error(`Cut length must be less than roll length (${rollToCut.length_meters}m)`);
       return;
     }
+
+    const remainingLength = rollToCut.length_meters - cutLengthValue;
+    const lengths = [cutLengthValue, remainingLength];
 
     setLoading(true);
     try {
       await dispatchAPI.cutRoll({
         roll_id: rollToCut.id,
-        lengths: lengths,
+        cuts: lengths.map(length => ({ length })),
       });
 
       toast.success(`Roll cut into ${lengths.length} pieces`);
       setCutDialogOpen(false);
+
+      // Refresh products list to show updated inventory
+      await searchRolls();
 
       // Remove from cart if cutting from cart
       if (isCuttingFromCart) {
@@ -295,17 +373,19 @@ const Dispatch = () => {
 
       toast.success('Sale completed successfully!');
 
-      // Reset
+      // Reset everything including clearing the product selection
       setCart([]);
       setSelectedCustomerId('');
       setInvoiceNumber('');
       setNotes('');
       setProducts([]);
+      setAllProducts([]);
       setRolls([]);
       setCutRolls([]);
       setSearchProductType('');
       setSearchBrand('');
       setSearchParameters({});
+      setSearchQuery('');
     } catch (error: any) {
       console.error('Error creating dispatch:', error);
       toast.error(error.response?.data?.error || 'Failed to create sale');
@@ -369,6 +449,7 @@ const Dispatch = () => {
                         <SelectValue placeholder="Select brand" />
                       </SelectTrigger>
                       <SelectContent>
+                        <SelectItem value="all">All Brands</SelectItem>
                         {brands.map(brand => (
                           <SelectItem key={brand.id} value={brand.id}>{brand.name}</SelectItem>
                         ))}
@@ -377,41 +458,62 @@ const Dispatch = () => {
                   </div>
                 </div>
 
-                {/* Dynamic Parameters */}
-                {parameterSchema.length > 0 && (
-                  <div className="grid gap-4 md:grid-cols-3">
-                    {paramOrder
-                      .filter(key => parameterSchema.find((p: any) => p.name === key))
-                      .map(paramKey => (
-                        <div key={paramKey} className="space-y-2">
-                          <Label>{paramKey}</Label>
-                          <Select
-                            value={searchParameters[paramKey] || ''}
-                            onValueChange={(value) => setSearchParameters({ ...searchParameters, [paramKey]: value })}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder={`Select ${paramKey}`} />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="all">All {paramKey}</SelectItem>
-                              {(parameterOptions[paramKey] || []).map((option: any) => (
-                                <SelectItem key={option.id} value={option.value}>
-                                  {option.value}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      ))}
+                {loading && (
+                  <div className="text-sm text-muted-foreground flex items-center gap-2">
+                    <div className="h-4 w-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                    Loading products...
                   </div>
                 )}
 
-                <Button onClick={searchRolls} disabled={loading} className="w-full">
-                  <SearchIcon className="h-4 w-4 mr-2" />
-                  {loading ? 'Searching...' : 'Search'}
-                </Button>
+                {loading && (
+                  <div className="text-sm text-muted-foreground flex items-center gap-2">
+                    <div className="h-4 w-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                    Loading products...
+                  </div>
+                )}
+
+                {allProducts.length > 0 && (
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setAllProducts([]);
+                      setProducts([]);
+                      setSearchQuery('');
+                      setSearchProductType('');
+                      setSearchBrand('');
+                    }}
+                    className="w-full"
+                  >
+                    Clear Selection
+                  </Button>
+                )}
               </CardContent>
             </Card>
+
+            {/* Smart Search Input */}
+            {allProducts.length > 0 && (
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="space-y-2">
+                    <Label>Filter Products</Label>
+                    <div className="relative">
+                      <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Search: '32,6,10' for OD,PN,PE (HDPE) or 'OD,PN,Type' (Sprinkler) or any keyword..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="pl-10"
+                      />
+                    </div>
+                    {searchQuery && (
+                      <p className="text-xs text-muted-foreground">
+                        Showing {products.length} of {allProducts.length} products
+                      </p>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Available Products */}
             {products.length > 0 && (
@@ -442,61 +544,110 @@ const Dispatch = () => {
                             ))}
                           </div>
                           <p className="text-sm text-muted-foreground">
-                            <span className="font-bold">{product.total_available_meters}m</span> available
+                            <span className="font-bold text-lg">{product.standard_rolls.length + product.cut_rolls.length} rolls</span>
+                            <span className="text-xs ml-2">({product.total_available_meters}m available)</span>
                           </p>
                         </div>
                       </div>
 
                       {/* Standard Rolls Summary */}
                       {product.standard_rolls.length > 0 && (
-                        <div className="text-xs text-muted-foreground">
-                          Standard Rolls: {product.standard_rolls.length} rolls
+                        <div className="flex items-center justify-between">
+                          <div className="text-sm">
+                            <span className="font-bold text-base">{product.standard_rolls.length}</span>
+                            <span className="text-muted-foreground ml-1">standard rolls</span>
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setSelectedProduct(product);
+                              setCutRollDialogOpen(true);
+                            }}
+                          >
+                            <PackageIcon className="h-4 w-4 mr-1" />
+                            View & Cut Rolls
+                          </Button>
                         </div>
                       )}
 
-                      {/* Cut Rolls - Open Format */}
+                      {/* Cut Rolls - Grouped by Length */}
                       {product.cut_rolls.length > 0 && (
                         <div className="space-y-2">
-                          <div className="text-xs font-medium text-muted-foreground">Cut Rolls Available:</div>
+                          <div className="text-sm">
+                            <span className="font-bold text-base">{product.cut_rolls.length}</span>
+                            <span className="text-muted-foreground ml-1">cut rolls available</span>
+                          </div>
                           <div className="space-y-1">
-                            {product.cut_rolls.map(roll => {
-                              const alreadyInCart = cart
-                                .find(item => item.product_label === product.product_label)
-                                ?.cut_rolls.some(r => r.id === roll.id);
+                            {(() => {
+                              // Group cut rolls by length
+                              const grouped = product.cut_rolls.reduce((acc, roll) => {
+                                const key = roll.length_meters.toString();
+                                if (!acc[key]) {
+                                  acc[key] = [];
+                                }
+                                acc[key].push(roll);
+                                return acc;
+                              }, {} as Record<string, typeof product.cut_rolls>);
 
-                              return (
-                                <div
-                                  key={roll.id}
-                                  className={`flex items-center justify-between p-2 rounded text-sm cursor-pointer transition-colors ${
-                                    alreadyInCart
-                                      ? 'bg-green-50 dark:bg-green-950/30 border border-green-200'
-                                      : 'bg-amber-50 dark:bg-amber-950/30 hover:bg-amber-100 dark:hover:bg-amber-950/50'
-                                  }`}
-                                  onClick={() => {
-                                    if (!alreadyInCart) {
-                                      addCutRollToCart(product, roll);
-                                    }
-                                  }}
-                                >
-                                  <div className="flex items-center gap-2 flex-1">
-                                    <span className="text-xs font-medium">{roll.batch_code}</span>
-                                    <div className="flex gap-1">
-                                      {Object.entries(product.parameters || {}).map(([key, value]) => (
-                                        <Badge key={key} variant="outline" className="text-xs px-1.5 py-0">
-                                          {value}
-                                        </Badge>
-                                      ))}
+                              return Object.entries(grouped).map(([length, rolls]) => {
+                                const allInCart = rolls.every(roll =>
+                                  cart
+                                    .find(item => item.product_label === product.product_label)
+                                    ?.cut_rolls.some(r => r.id === roll.id)
+                                );
+
+                                return (
+                                  <div
+                                    key={length}
+                                    className={`flex items-center justify-between p-2 rounded text-sm transition-colors ${
+                                      allInCart
+                                        ? 'bg-green-50 dark:bg-green-950/30 border border-green-200'
+                                        : 'bg-amber-50 dark:bg-amber-950/30 hover:bg-amber-100 dark:hover:bg-amber-950/50'
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-3 flex-1">
+                                      <Badge variant="secondary" className="text-xs">CUT</Badge>
+                                      <span className="font-bold text-base">{length}m</span>
+                                      <span className="text-xs text-muted-foreground">× {rolls.length} pieces</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      {!allInCart && rolls.map(roll => {
+                                        const isInCart = cart
+                                          .find(item => item.product_label === product.product_label)
+                                          ?.cut_rolls.some(r => r.id === roll.id);
+
+                                        return !isInCart ? (
+                                          <Button
+                                            key={roll.id}
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-7 px-2"
+                                            onClick={() => addCutRollToCart(product, roll)}
+                                          >
+                                            <PlusIcon className="h-3 w-3 mr-1" />
+                                            Add
+                                          </Button>
+                                        ) : null;
+                                      })}
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-7 px-2"
+                                        onClick={() => {
+                                          openCutDialog(rolls[0], false);
+                                        }}
+                                      >
+                                        <ScissorsIcon className="h-3 w-3" />
+                                      </Button>
+                                      {allInCart && (
+                                        <Badge variant="default" className="text-xs">All Added</Badge>
+                                      )}
                                     </div>
                                   </div>
-                                  <div className="flex items-center gap-2">
-                                    <span className="font-bold text-sm">{roll.length_meters}m</span>
-                                    {alreadyInCart && (
-                                      <Badge variant="default" className="text-xs">Added</Badge>
-                                    )}
-                                  </div>
-                                </div>
-                              );
-                            })}
+                                );
+                              });
+                            })()}
                           </div>
                         </div>
                       )}
@@ -696,46 +847,39 @@ const Dispatch = () => {
               </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-3">
-              {cutLengths.map((length, index) => (
-                <div key={index} className="flex gap-2">
-                  <Input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    placeholder="Length (m)"
-                    value={length}
-                    onChange={(e) => {
-                      const newLengths = [...cutLengths];
-                      newLengths[index] = e.target.value;
-                      setCutLengths(newLengths);
-                    }}
-                  />
-                  {cutLengths.length > 1 && (
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => setCutLengths(cutLengths.filter((_, i) => i !== index))}
-                    >
-                      <TrashIcon className="h-4 w-4" />
-                    </Button>
-                  )}
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Cut Length (meters)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  max={rollToCut?.length_meters}
+                  placeholder="Enter length to cut"
+                  value={cutLength}
+                  onChange={(e) => setCutLength(e.target.value)}
+                  autoFocus
+                />
+              </div>
+
+              {cutLength && rollToCut && parseFloat(cutLength) > 0 && parseFloat(cutLength) < rollToCut.length_meters && (
+                <div className="p-3 bg-slate-50 dark:bg-slate-900 rounded-lg space-y-2">
+                  <div className="text-sm font-medium">Result:</div>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div className="p-2 bg-white dark:bg-slate-800 rounded border">
+                      <div className="text-xs text-muted-foreground">Cut Piece</div>
+                      <div className="font-bold text-lg">{parseFloat(cutLength).toFixed(2)}m</div>
+                    </div>
+                    <div className="p-2 bg-white dark:bg-slate-800 rounded border">
+                      <div className="text-xs text-muted-foreground">Remaining</div>
+                      <div className="font-bold text-lg">{(rollToCut.length_meters - parseFloat(cutLength)).toFixed(2)}m</div>
+                    </div>
+                  </div>
                 </div>
-              ))}
+              )}
 
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setCutLengths([...cutLengths, ''])}
-                className="w-full"
-              >
-                <PlusIcon className="h-4 w-4 mr-1" />
-                Add Another Piece
-              </Button>
-
-              <div className="text-sm text-muted-foreground">
-                Total: {cutLengths.reduce((sum, l) => sum + (parseFloat(l) || 0), 0).toFixed(2)}m
-                {rollToCut && ` / ${rollToCut.length_meters}m`}
+              <div className="text-xs text-muted-foreground">
+                Original roll length: {rollToCut?.length_meters}m
               </div>
             </div>
 
@@ -750,47 +894,139 @@ const Dispatch = () => {
           </DialogContent>
         </Dialog>
 
-        {/* Cut Roll Selection Dialog */}
+        {/* View & Cut Rolls Dialog */}
         <Dialog open={cutRollDialogOpen} onOpenChange={setCutRollDialogOpen}>
-          <DialogContent className="max-w-md">
+          <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Select Cut Rolls</DialogTitle>
+              <DialogTitle>View & Cut Rolls</DialogTitle>
               <DialogDescription>
-                {selectedProduct && `Select cut rolls for ${selectedProduct.product_label}`}
+                {selectedProduct && (
+                  <div className="flex items-center gap-2 mt-2">
+                    <span>{selectedProduct.product_type} - {selectedProduct.brand}</span>
+                    <div className="flex gap-1">
+                      {Object.entries(selectedProduct.parameters || {}).map(([key, value]) => (
+                        <Badge key={key} variant="outline" className="text-xs">
+                          {key}: {value}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-2 max-h-96 overflow-y-auto">
-              {selectedProduct?.cut_rolls.map(roll => {
-                const alreadyInCart = cart
-                  .find(item => item.product_label === selectedProduct.product_label)
-                  ?.cut_rolls.some(r => r.id === roll.id);
-
-                return (
-                  <div key={roll.id} className="flex items-center justify-between p-3 border rounded-lg">
-                    <div>
-                      <div className="font-medium text-sm">{roll.batch_code}</div>
-                      <div className="text-xs text-muted-foreground">{roll.length_meters}m</div>
-                    </div>
-                    <Button
-                      size="sm"
-                      onClick={() => {
-                        if (selectedProduct) {
-                          addCutRollToCart(selectedProduct, roll);
+            <div className="space-y-4">
+              {/* Standard Rolls */}
+              {selectedProduct && selectedProduct.standard_rolls.length > 0 && (
+                <div className="space-y-2">
+                  <h3 className="font-semibold text-sm">Standard Rolls ({selectedProduct.standard_rolls.length} total)</h3>
+                  <div className="space-y-2 max-h-60 overflow-y-auto">
+                    {(() => {
+                      // Group rolls by length and bundle size
+                      const grouped = selectedProduct.standard_rolls.reduce((acc, roll) => {
+                        const key = `${roll.length_meters}-${roll.bundle_size || 'none'}`;
+                        if (!acc[key]) {
+                          acc[key] = {
+                            length: roll.length_meters,
+                            bundle_size: roll.bundle_size,
+                            rolls: []
+                          };
                         }
-                      }}
-                      disabled={alreadyInCart}
-                    >
-                      {alreadyInCart ? 'Added' : 'Add'}
-                    </Button>
+                        acc[key].rolls.push(roll);
+                        return acc;
+                      }, {} as Record<string, { length: number; bundle_size?: number; rolls: Roll[] }>);
+
+                      return Object.values(grouped).map((group, idx) => (
+                        <div key={idx} className="border rounded-lg p-3 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <div className="font-bold text-lg">{group.length}m</div>
+                              {group.bundle_size && (
+                                <Badge variant="outline" className="text-xs">
+                                  Bundle: {group.bundle_size}
+                                </Badge>
+                              )}
+                              <span className="text-sm text-muted-foreground">
+                                × {group.rolls.length} rolls
+                              </span>
+                            </div>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                openCutDialog(group.rolls[0], false);
+                                setCutRollDialogOpen(false);
+                              }}
+                            >
+                              <ScissorsIcon className="h-4 w-4 mr-1" />
+                              Cut One
+                            </Button>
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            Batches: {[...new Set(group.rolls.map(r => r.batch_code))].join(', ')}
+                          </div>
+                        </div>
+                      ));
+                    })()}
                   </div>
-                );
-              })}
+                </div>
+              )}
+
+              {/* Cut Rolls */}
+              {selectedProduct && selectedProduct.cut_rolls.length > 0 && (
+                <div className="space-y-2">
+                  <h3 className="font-semibold text-sm">Cut Rolls</h3>
+                  <div className="space-y-2 max-h-60 overflow-y-auto">
+                    {selectedProduct.cut_rolls.map(roll => {
+                      const alreadyInCart = cart
+                        .find(item => item.product_label === selectedProduct.product_label)
+                        ?.cut_rolls.some(r => r.id === roll.id);
+
+                      return (
+                        <div key={roll.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-slate-50 dark:hover:bg-slate-900">
+                          <div className="flex items-center gap-3 flex-1">
+                            <Badge variant="secondary" className="text-xs">CUT</Badge>
+                            <div className="flex-1">
+                              <div className="font-medium text-sm">{roll.batch_code}</div>
+                              <div className="text-xs text-muted-foreground">
+                                {roll.initial_length_meters}m → {roll.length_meters}m
+                              </div>
+                            </div>
+                            <div className="font-bold">{roll.length_meters}m</div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                openCutDialog(roll, false);
+                                setCutRollDialogOpen(false);
+                              }}
+                            >
+                              <ScissorsIcon className="h-4 w-4 mr-1" />
+                              Cut Further
+                            </Button>
+                            <Button
+                              size="sm"
+                              onClick={() => {
+                                addCutRollToCart(selectedProduct, roll);
+                              }}
+                              disabled={alreadyInCart}
+                            >
+                              {alreadyInCart ? 'Added' : 'Add to Cart'}
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
 
             <DialogFooter>
               <Button onClick={() => setCutRollDialogOpen(false)}>
-                Done
+                Close
               </Button>
             </DialogFooter>
           </DialogContent>

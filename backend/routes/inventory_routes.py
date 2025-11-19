@@ -9,6 +9,16 @@ inventory_bp = Blueprint('inventory', __name__, url_prefix='/api/inventory')
 @jwt_required()
 def get_batches():
     """Get all batches with inventory"""
+
+    # First, cleanup any rolls with zero length
+    cleanup_query = """
+        UPDATE rolls
+        SET deleted_at = NOW(), status = 'SOLD_OUT'
+        WHERE length_meters = 0
+        AND deleted_at IS NULL
+    """
+    execute_query(cleanup_query, fetch_all=False)
+
     query = """
         SELECT
             b.id, b.batch_code, b.batch_no, b.current_quantity,
