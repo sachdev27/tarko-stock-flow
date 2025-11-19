@@ -72,6 +72,9 @@ export const inventory = {
   // Roll management
   updateRoll: (rollId: string, data: any) =>
     api.put(`/inventory/rolls/${rollId}`, data),
+
+  searchProductVariants: (params: any) =>
+    api.get('/inventory/product-variants/search', { params }),
 };
 
 // Production endpoints
@@ -102,8 +105,14 @@ export const stats = {
 
 // Dispatch endpoints
 export const dispatch = {
-  getAvailableRolls: (data: { product_type_id: string; brand_id: string; parameters: Record<string, string> }) =>
+  getAvailableRolls: (data: { product_type_id: string; brand_id?: string; parameters: Record<string, string> }) =>
     api.post('/dispatch/available-rolls', data),
+
+  getProductsSummary: (params?: { brand_id?: string; product_type_id?: string }) =>
+    api.get('/dispatch/products-summary', { params }),
+
+  getProductRolls: (variantId: string) =>
+    api.get(`/dispatch/product-rolls/${variantId}`),
 
   cutRoll: (data: { roll_id: string; cuts: { length: number }[] }) =>
     api.post('/dispatch/cut-roll', data),

@@ -386,19 +386,58 @@ def get_units():
 @admin_bp.route('/audit-logs', methods=['GET'])
 @jwt_required_with_role('admin')
 def get_audit_logs():
-    """Get recent audit logs with detailed user info"""
-    query = """
+    """Get detailed audit logs with transaction and entity info"""
+    user_filter = request.args.get('user_id')
+    action_filter = request.args.get('action_type')
+    limit = request.args.get('limit', 100)
+
+    where_clauses = []
+    params = []
+
+    if user_filter:
+        where_clauses.append("al.user_id = %s")
+        params.append(user_filter)
+
+    if action_filter:
+        where_clauses.append("al.action_type = %s")
+        params.append(action_filter)
+
+    where_sql = " AND " + " AND ".join(where_clauses) if where_clauses else ""
+
+    query = f"""
         SELECT
             al.*,
             u.email as user_email,
             u.username as user_username,
-            u.full_name as user_name
+            u.full_name as user_name,
+            -- Get transaction details if entity is TRANSACTION or if there's a related transaction for ROLL
+            t.customer_id,
+            t.invoice_no,
+            t.quantity_change,
+            t.roll_snapshot,
+            c.name as customer_name,
+            -- Get batch details
+            b.batch_code,
+            b.batch_no,
+            -- Get roll details if entity is ROLL
+            r.length_meters as roll_length,
+            r.initial_length_meters as roll_initial_length
         FROM audit_logs al
         LEFT JOIN users u ON al.user_id = u.id
+        LEFT JOIN transactions t ON (
+            (al.entity_type = 'TRANSACTION' AND al.entity_id::text = t.id::text) OR
+            (al.entity_type = 'ROLL' AND al.entity_id::text = t.roll_id::text AND al.action_type = 'CUT_ROLL')
+        )
+        LEFT JOIN customers c ON t.customer_id = c.id
+        LEFT JOIN batches b ON t.batch_id = b.id
+        LEFT JOIN rolls r ON al.entity_type = 'ROLL' AND al.entity_id::text = r.id::text
+        WHERE 1=1{where_sql}
         ORDER BY al.created_at DESC
-        LIMIT 100
+        LIMIT %s
     """
-    logs = execute_query(query)
+    params.append(limit)
+
+    logs = execute_query(query, tuple(params))
     return jsonify(logs), 200
 
 # User Management

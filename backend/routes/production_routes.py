@@ -43,6 +43,15 @@ def create_batch():
     notes = data.get('notes', '')
     number_of_rolls = int(data.get('number_of_rolls', 1))
     cut_rolls = json.loads(data.get('cut_rolls', '[]')) if isinstance(data.get('cut_rolls'), str) else data.get('cut_rolls', [])
+
+    # DEBUG: Log piece length extraction
+    print(f"\n{'='*60}")
+    print(f"🔍 PIECE LENGTH DEBUG")
+    print(f"Form/JSON keys: {list(data.keys())}")
+    print(f"length_per_roll: '{data.get('length_per_roll')}'")
+    print(f"lengthPerRoll: '{data.get('lengthPerRoll')}'")
+    print(f"{'='*60}\n")
+
     length_per_roll_input = float(data.get('length_per_roll') or data.get('lengthPerRoll') or 0)
 
     # Bundle/spare pipe data
@@ -55,6 +64,18 @@ def create_batch():
     # Weight tracking
     weight_per_meter = float(data.get('weight_per_meter')) if data.get('weight_per_meter') else None
     total_weight = float(data.get('total_weight')) if data.get('total_weight') else None
+
+    # Calculate piece_length for quantity-based products (Sprinkler Pipe)
+    piece_length_value = None
+    if quantity_based and length_per_roll_input > 0:
+        piece_length_value = length_per_roll_input
+        print(f"📏 Sprinkler Pipe piece_length: {piece_length_value}m")
+    elif quantity_based:
+        print(f"⚠️  WARNING: Sprinkler Pipe missing piece length!")
+        print(f"   - length_per_roll_input: {length_per_roll_input}")
+        print(f"   - Received data keys: {list(data.keys())}")
+
+
 
     # Handle file upload
     attachment_url = None
@@ -92,12 +113,13 @@ def create_batch():
             INSERT INTO batches (
                 batch_no, batch_code, product_variant_id,
                 production_date, initial_quantity, current_quantity,
-                notes, attachment_url, weight_per_meter, total_weight,
+                notes, attachment_url, weight_per_meter, total_weight, piece_length,
                 created_by, created_at, updated_at
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
             RETURNING id, batch_code
         """, (batch_no, batch_code, variant_id, production_date,
-              quantity, quantity, notes, attachment_url, weight_per_meter, total_weight, user_id))
+              quantity, quantity, notes, attachment_url, weight_per_meter, total_weight,
+              piece_length_value, user_id))
 
         batch = cursor.fetchone()
         batch_id = batch['id']
@@ -139,13 +161,20 @@ def create_batch():
                 total_spare_length = sum(float(pipe.get('length', 0)) for pipe in spare_pipes)
                 bundled_total = quantity - total_spare_length
 
-                # Determine per-pipe length; prefer explicit input and fall back to equal split
-                length_per_pipe = length_per_roll_input
-                if length_per_pipe <= 0 and number_of_bundles * bundle_size > 0:
-                    length_per_pipe = bundled_total / (number_of_bundles * bundle_size)
+                # For quantity-based products (Sprinkler Pipe):
+                # - length_meters in rolls = bundle_size (number of pieces)
+                # - piece_length is stored in batches table
+                # For length-based products (HDPE):
+                # - length_meters = actual total length of bundle
 
                 for _ in range(number_of_bundles):
-                    bundle_length = length_per_pipe * bundle_size
+                    if quantity_based:
+                        # For Sprinkler: store piece count as length_meters
+                        bundle_length = bundle_size
+                    else:
+                        # For HDPE: calculate actual length
+                        bundle_length = length_per_roll_input * bundle_size if length_per_roll_input > 0 else bundled_total / number_of_bundles
+
                     cursor.execute("""
                         INSERT INTO rolls (
                             batch_id, product_variant_id, length_meters,
@@ -158,15 +187,21 @@ def create_batch():
             for spare_pipe in spare_pipes:
                 pipe_length = float(spare_pipe.get('length', 0))
                 if pipe_length > 0:
-                    # For quantity-based products, each spare piece is 1 unit (quantity)
-                    # For length-based products, use the actual length in meters
-                    actual_length = 1.0 if quantity_based else pipe_length
+                    # For quantity-based products (Sprinkler): pipe_length is the count of pieces
+                    # For length-based products (HDPE): pipe_length is the actual length in meters
+                    if quantity_based:
+                        actual_length = pipe_length  # Store the count of spare pieces
+                        spare_count = int(pipe_length)
+                    else:
+                        actual_length = pipe_length  # Store the length in meters
+                        spare_count = None
+
                     cursor.execute("""
                         INSERT INTO rolls (
                             batch_id, product_variant_id, length_meters,
                             initial_length_meters, status, is_cut_roll, roll_type, bundle_size, created_at, updated_at
-                        ) VALUES (%s, %s, %s, %s, 'AVAILABLE', TRUE, 'spare', %s, NOW(), NOW())
-                    """, (batch_id, variant_id, actual_length, actual_length, int(pipe_length) if quantity_based else None))
+                        ) VALUES (%s, %s, %s, %s, 'AVAILABLE', FALSE, 'spare', %s, NOW(), NOW())
+                    """, (batch_id, variant_id, actual_length, actual_length, spare_count))
                     total_items += 1
 
         # Note: We don't create a transaction record for production
@@ -193,15 +228,44 @@ def create_batch():
             ) VALUES (%s, 'CREATE_BATCH', 'BATCH', %s, %s, NOW())
         """, (user_id, batch_id, log_msg))
 
-        # Create single batch-level production transaction
+        # Capture roll snapshot for production transaction
+        cursor.execute("""
+            SELECT id, roll_type, length_meters, initial_length_meters,
+                   is_cut_roll, bundle_size, status
+            FROM rolls
+            WHERE batch_id = %s AND deleted_at IS NULL
+            ORDER BY created_at
+        """, (batch_id,))
+
+        rolls_at_production = cursor.fetchall()
+        roll_snapshots = []
+
+        for roll in rolls_at_production:
+            roll_snapshots.append({
+                'roll_id': str(roll['id']),
+                'batch_id': str(batch_id),
+                'roll_type': roll['roll_type'],
+                'length_meters': float(roll['length_meters']),
+                'initial_length_meters': float(roll['initial_length_meters']),
+                'is_cut_roll': roll['is_cut_roll'],
+                'bundle_size': roll['bundle_size'],
+                'status': roll['status']
+            })
+
+        roll_snapshot_json = json.dumps({
+            'rolls': roll_snapshots,
+            'total_rolls': len(roll_snapshots)
+        })
+
+        # Create single batch-level production transaction with roll snapshot
         cursor.execute("""
             INSERT INTO transactions (
                 batch_id, roll_id, transaction_type, quantity_change,
                 transaction_date, customer_id, invoice_no, notes,
-                created_by, created_at, updated_at
-            ) VALUES (%s, NULL, %s, %s, %s, NULL, NULL, %s, %s, NOW(), NOW())
+                roll_snapshot, created_by, created_at, updated_at
+            ) VALUES (%s, NULL, %s, %s, %s, NULL, NULL, %s, %s, %s, NOW(), NOW())
         """, (batch_id, 'PRODUCTION', float(quantity),
-              production_date or None, notes, user_id))
+              production_date or None, notes, roll_snapshot_json, user_id))
 
     return jsonify({
         'id': batch_id,
