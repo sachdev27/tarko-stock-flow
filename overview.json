@@ -1,6 +1,6 @@
 {
   "rootFolder": "/Users/sachdevs/Projects/Tarko-Inv/tarko-stock-flow",
-  "analyzedAt": "2025-11-19T11:21:20.139Z",
+  "analyzedAt": "2025-11-19T12:00:53.744Z",
   "rootStructure": [
     {
       "name": ".gitignore",
@@ -173,7 +173,7 @@
     "overview.json": [
       "{",
       "\"rootFolder\": \"/Users/sachdevs/Projects/Tarko-Inv/tarko-stock-flow\",",
-      "\"analyzedAt\": \"2025-11-19T11:07:21.941Z\",",
+      "\"analyzedAt\": \"2025-11-19T11:21:20.139Z\",",
       "\"rootStructure\": [",
       "{",
       "\"name\": \".gitignore\",",
@@ -280,7 +280,7 @@
     {
       "path": "backend",
       "category": "backend",
-      "fileCount": 33,
+      "fileCount": 36,
       "primaryLanguage": "Python"
     },
     {
@@ -318,26 +318,26 @@
     "root": "# Tarko Inventory Management System"
   },
   "totals": {
-    "numFiles": 133,
+    "numFiles": 136,
     "numDirs": 16,
-    "totalSizeBytes": 1252174,
-    "totalLinesOfCode": 14930
+    "totalSizeBytes": 1258668,
+    "totalLinesOfCode": 14977
   },
   "fileCategories": {
-    "other": 30,
+    "other": 32,
     "documentation": 4,
-    "source": 92,
+    "source": 93,
     "config": 7
   },
   "linesOfCodePerLanguage": {
-    "Python": 2569,
-    "Shell": 70,
+    "Python": 2517,
+    "Shell": 104,
     "JavaScript": 34,
-    "TypeScript": 12257
+    "TypeScript": 12322
   },
   "filesPerLanguage": {
     "Python": 14,
-    "Shell": 1,
+    "Shell": 2,
     "JavaScript": 2,
     "TypeScript": 75
   },
@@ -351,6 +351,7 @@
     "Vite"
   ],
   "entryPoints": [
+    "backend/run_migration.sh",
     "backend/setup_db.sh"
   ],
   "ciCdTools": [],
@@ -361,13 +362,13 @@
     {
       "name": "src",
       "numFiles": 78,
-      "totalLoc": 12142,
+      "totalLoc": 12207,
       "dominantLanguage": "TypeScript"
     },
     {
       "name": "backend",
-      "numFiles": 33,
-      "totalLoc": 2639,
+      "numFiles": 36,
+      "totalLoc": 2621,
       "dominantLanguage": "Python"
     },
     {
@@ -382,7 +383,7 @@
       "name": "src",
       "level": 1,
       "numFiles": 78,
-      "totalLoc": 12142,
+      "totalLoc": 12207,
       "dominantLanguage": "TypeScript",
       "category": "General",
       "description": "General module with 78 files (TypeScript)",
@@ -392,7 +393,7 @@
           "name": "pages",
           "level": 2,
           "numFiles": 16,
-          "totalLoc": 7185,
+          "totalLoc": 7250,
           "dominantLanguage": "TypeScript",
           "category": "General",
           "description": "General module with 16 files (TypeScript)",
@@ -460,8 +461,8 @@
       "path": "backend",
       "name": "backend",
       "level": 1,
-      "numFiles": 33,
-      "totalLoc": 2639,
+      "numFiles": 36,
+      "totalLoc": 2621,
       "dominantLanguage": "Python",
       "category": "General",
       "description": "# Tarko Inventory - Backend API",
@@ -471,7 +472,7 @@
           "name": "routes",
           "level": 2,
           "numFiles": 9,
-          "totalLoc": 2192,
+          "totalLoc": 2133,
           "dominantLanguage": "Python",
           "category": "General",
           "description": "General module with 9 files (Python)",
@@ -481,10 +482,10 @@
           "path": "backend/migrations",
           "name": "migrations",
           "level": 2,
-          "numFiles": 8,
+          "numFiles": 9,
           "totalLoc": 0,
           "category": "General",
-          "description": "General module with 8 files",
+          "description": "General module with 9 files",
           "subdirectories": []
         },
         {
@@ -524,6 +525,11 @@
   "architecturalInsights": {
     "coreApplications": [],
     "entryPointDetails": [
+      {
+        "path": "../../../../../backend/run_migration.sh",
+        "type": "Unknown",
+        "description": ""
+      },
       {
         "path": "../../../../../backend/setup_db.sh",
         "type": "Unknown",
@@ -617,14 +623,14 @@
     "total": 66
   },
   "complexity": {
-    "averageFileSize": 112.25563909774436,
+    "averageFileSize": 110.125,
     "maxFileSize": 0,
     "nestedDepth": 0,
     "estimatedComplexity": "high"
   },
   "gitRepo": {
     "firstCommitDate": "2025-11-19",
-    "totalCommits": 22,
+    "totalCommits": 23,
     "numContributors": 0,
     "currentBranch": "sachdevs/transactions",
     "remoteUrls": [

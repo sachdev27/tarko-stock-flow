@@ -1,671 +1,971 @@
 import { useState, useEffect } from 'react';
-import { Layout } from '@/components/Layout';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { toast } from 'sonner';
-import { FileText, Download, Filter, X, Calendar } from 'lucide-react';
-import { transactions as transactionsAPI, inventory, parameters as paramAPI } from '@/lib/api';
-import { useAuth } from '@/contexts/AuthContext';
-import { formatDate, toISTDateTimeLocal, fromISTDateTimeLocal } from '@/lib/utils';
+import { Layout } from '../components/Layout';
+import { transactions as transactionsAPI, inventory as inventoryAPI } from '../lib/api';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
+import { Badge } from '../components/ui/badge';
+import { Button } from '../components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
+import { Separator } from '../components/ui/separator';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
+import { Package, Weight, FileText, User, Calendar, Truck, Scale, Ruler, Info, Filter, X, Search, Download, Paperclip } from 'lucide-react';
+import { format } from 'date-fns';
 
-interface Transaction {
+interface TransactionRecord {
   id: string;
-  transaction_type: 'PRODUCTION' | 'SALE';
+  transaction_type: 'PRODUCTION' | 'SALE' | 'ADJUSTMENT';
+  quantity_change: number; // This is total meters/quantity, not roll count
   transaction_date: string;
-  product_type: string;
-  brand: string;
-  parameters: Record<string, string>;
-  quantity: number;
-  weight_per_meter?: number;
-  total_weight?: number;
-  customer_name?: string;
-  batch_code?: string;
-  batch_no?: string;
   invoice_no?: string;
   notes?: string;
-  created_by_name: string;
-  unit: string;
+  created_at: string;
+  batch_code: string;
+  batch_no: string;
+  initial_quantity: number; // Number of rolls in batch
+  weight_per_meter?: number;
+  total_weight: number;
   attachment_url?: string;
+  production_date: string;
+  product_type: string;
+  product_variant_id: string;
+  product_type_id: number;
+  brand_id: number;
+  brand: string;
+  parameters?: {
+    quality?: string;
+    color?: string;
+    size?: string;
+    thickness?: string;
+    [key: string]: string | undefined;
+  };
+  roll_length_meters?: number; // Length of the specific roll if transaction is for a single roll
+  roll_initial_length_meters?: number;
+  roll_is_cut?: boolean;
+  roll_type?: string;
+  roll_bundle_size?: number;
+  roll_weight?: number;
+  unit_abbreviation?: string;
+  customer_name?: string;
+  created_by_email?: string;
+  created_by_username?: string;
+  created_by_name?: string;
+  // Roll breakdown counts
+  standard_rolls_count?: number;
+  cut_rolls_count?: number;
+  bundles_count?: number;
+  spare_pieces_count?: number;
+  // Average roll lengths
+  avg_standard_roll_length?: number;
+  cut_rolls_details?: number[]; // Array of individual cut roll lengths
 }
 
-const Transactions = () => {
-  const { user } = useAuth();
-  const [loading, setLoading] = useState(false);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [filteredTransactions, setFilteredTransactions] = useState<Transaction[]>([]);
+export default function TransactionsNew() {
+  const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
+  const [filteredTransactions, setFilteredTransactions] = useState<TransactionRecord[]>([]);
+  const [selectedTransaction, setSelectedTransaction] = useState<TransactionRecord | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [detailModalOpen, setDetailModalOpen] = useState(false);
+  const [modalTransaction, setModalTransaction] = useState<TransactionRecord | null>(null);
 
-  // Master data
-  const [productTypes, setProductTypes] = useState<any[]>([]);
-  const [brands, setBrands] = useState<any[]>([]);
-  const [customers, setCustomers] = useState<any[]>([]);
-  const [parameterOptions, setParameterOptions] = useState<Record<string, any[]>>({});
+  // Filter states
+  const [searchQuery, setSearchQuery] = useState('');
+  const [typeFilter, setTypeFilter] = useState<string>('all');
+  const [productTypeFilter, setProductTypeFilter] = useState<string>('all');
+  const [brandFilter, setBrandFilter] = useState<string>('all');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
 
-  // Filters
-  const [filterType, setFilterType] = useState<string>('all'); // all, PRODUCTION, SALE
-  const [filterProductType, setFilterProductType] = useState<string>('all');
-  const [filterBrand, setFilterBrand] = useState<string>('all');
-  const [filterCustomer, setFilterCustomer] = useState<string>('all');
-  const [filterDateFrom, setFilterDateFrom] = useState<string>('');
-  const [filterDateTo, setFilterDateTo] = useState<string>('');
-  const [filterParameters, setFilterParameters] = useState<Record<string, string>>({});
-  const [searchTerm, setSearchTerm] = useState<string>('');
-  const [dateRangePreset, setDateRangePreset] = useState<string>('custom');
+  // Master data for filters
+  const [productTypes, setProductTypes] = useState<Array<{ id: number; name: string }>>([]);
+  const [brands, setBrands] = useState<Array<{ id: number; name: string }>>([]);
 
   useEffect(() => {
-    fetchMasterData();
-    fetchTransactions();
+    loadTransactions();
+    loadMasterData();
   }, []);
 
-  // Function to set date range based on preset
-  const applyDateRangePreset = (preset: string) => {
-    setDateRangePreset(preset);
+  useEffect(() => {
+    const applyFilters = () => {
+      let filtered = [...transactions];
 
-    if (preset === 'custom') {
-      return; // Don't change dates for custom
-    }
+      // Search filter
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase();
+        filtered = filtered.filter(t =>
+          t.batch_code?.toLowerCase().includes(query) ||
+          t.batch_no?.toLowerCase().includes(query) ||
+          t.product_type?.toLowerCase().includes(query) ||
+          t.brand?.toLowerCase().includes(query) ||
+          t.customer_name?.toLowerCase().includes(query) ||
+          t.invoice_no?.toLowerCase().includes(query)
+        );
+      }
 
-    const now = new Date();
-    // Since DB stores IST and browser is in IST, use local time directly
-    // Format for datetime-local: YYYY-MM-DDTHH:MM
-    const formatForDateTimeLocal = (date: Date): string => {
-      const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const day = String(date.getDate()).padStart(2, '0');
-      const hours = String(date.getHours()).padStart(2, '0');
-      const minutes = String(date.getMinutes()).padStart(2, '0');
-      return `${year}-${month}-${day}T${hours}:${minutes}`;
+      // Transaction type filter
+      if (typeFilter !== 'all') {
+        filtered = filtered.filter(t => t.transaction_type === typeFilter);
+      }
+
+      // Product type filter
+      if (productTypeFilter !== 'all') {
+        filtered = filtered.filter(t => t.product_type === productTypeFilter);
+      }
+
+      // Brand filter
+      if (brandFilter !== 'all') {
+        filtered = filtered.filter(t => t.brand === brandFilter);
+      }
+
+      // Date range filter
+      if (startDate) {
+        filtered = filtered.filter(t => new Date(t.created_at) >= new Date(startDate));
+      }
+      if (endDate) {
+        const endDateTime = new Date(endDate);
+        endDateTime.setHours(23, 59, 59, 999);
+        filtered = filtered.filter(t => new Date(t.created_at) <= endDateTime);
+      }
+
+      setFilteredTransactions(filtered);
     };
 
-    const toDateTime = formatForDateTimeLocal(now);
-    let fromDateTime = '';
+    applyFilters();
+  }, [transactions, searchQuery, typeFilter, productTypeFilter, brandFilter, startDate, endDate]);
 
-    switch (preset) {
-      case 'last24h':
-        // For last 24h, go back exactly 24 hours from now
-        const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-        fromDateTime = formatForDateTimeLocal(yesterday);
-        break;
-      case 'last3days':
-        fromDateTime = formatForDateTimeLocal(new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000));
-        break;
-      case 'last7days':
-        fromDateTime = formatForDateTimeLocal(new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000));
-        break;
-      case 'last2weeks':
-        fromDateTime = formatForDateTimeLocal(new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000));
-        break;
-      case 'last30days':
-        fromDateTime = formatForDateTimeLocal(new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000));
-        break;
-      default:
-        return;
+  const loadTransactions = async () => {
+    try {
+      const response = await transactionsAPI.getAll();
+      // Parse parameters if they come as JSON strings, but they might already be objects
+      const parsedTransactions = response.data.map((t: TransactionRecord) => {
+        let params = t.parameters;
+        if (typeof params === 'string') {
+          try {
+            params = JSON.parse(params);
+          } catch (e) {
+            console.error('Failed to parse parameters:', e);
+            params = {};
+          }
+        }
+        console.log('Transaction parameters:', t.batch_code, params, typeof params);
+        return {
+          ...t,
+          parameters: params || {}
+        };
+      });
+      setTransactions(parsedTransactions);
+    } catch (error) {
+      console.error('Failed to load transactions:', error);
+    } finally {
+      setIsLoading(false);
     }
-
-    setFilterDateFrom(fromDateTime);
-    setFilterDateTo(toDateTime);
   };
 
-  useEffect(() => {
-    applyFilters();
-  }, [transactions, filterType, filterProductType, filterBrand, filterCustomer, filterParameters, searchTerm]);
-
-  // Re-fetch when date filters change (backend filtering)
-  useEffect(() => {
-    if (filterDateFrom && filterDateTo) {
-      fetchTransactions();
-    }
-  }, [filterDateFrom, filterDateTo]);
-
-  const fetchMasterData = async () => {
+  const loadMasterData = async () => {
     try {
-      const [productTypesRes, brandsRes, customersRes, paramsRes] = await Promise.all([
-        inventory.getProductTypes(),
-        inventory.getBrands(),
-        inventory.getCustomers(),
-        paramAPI.getOptions(),
+      const [productTypesRes, brandsRes] = await Promise.all([
+        inventoryAPI.getProductTypes(),
+        inventoryAPI.getBrands(),
       ]);
-
       setProductTypes(productTypesRes.data || []);
       setBrands(brandsRes.data || []);
-      setCustomers(customersRes.data || []);
-      setParameterOptions(paramsRes.data || {});
     } catch (error) {
-      console.error('Error fetching master data:', error);
-      toast.error('Failed to load master data');
+      console.error('Failed to load master data:', error);
     }
-  };
-
-  const fetchTransactions = async () => {
-    try {
-      setLoading(true);
-
-      // Build query params for date filtering
-      const params: { start_date?: string; end_date?: string } = {};
-
-      if (filterDateFrom && filterDateTo) {
-        // Database stores IST times, so send datetime-local value directly
-        // datetime-local format: "2025-11-19T14:30" - append seconds for ISO format
-        params.start_date = filterDateFrom + ':00';  // Add seconds
-        params.end_date = filterDateTo + ':00';      // Add seconds
-
-        console.log('🔍 Date Filter Debug:');
-        console.log('  From (input):', filterDateFrom);
-        console.log('  To (input):', filterDateTo);
-        console.log('  From (sent):', params.start_date);
-        console.log('  To (sent):', params.end_date);
-      } else {
-        console.log('🔍 No date filter applied');
-      }
-
-      const paramsToSend = Object.keys(params).length > 0 ? params : undefined;
-      console.log('📤 Calling API with params:', paramsToSend);
-
-      const response = await transactionsAPI.getAll(paramsToSend);
-
-      console.log('📊 Received transactions:', response.data?.length || 0);
-
-      // Check for duplicates in raw data
-      const allIds = (response.data || []).map((t: any) => t.id);
-      const duplicateIds = allIds.filter((id: any, index: number) => allIds.indexOf(id) !== index);
-      if (duplicateIds.length > 0) {
-        console.warn('⚠️ Duplicate IDs found:', duplicateIds);
-      }
-
-      // Transform transactions data and remove duplicates
-      const seenIds = new Set();
-      const transformedData = (response.data || []).filter((txn: any) => {
-        // Remove duplicates based on id
-        if (seenIds.has(txn.id)) {
-          console.warn('🔄 Filtering duplicate:', txn.id, txn.batch_code);
-          return false;
-        }
-        seenIds.add(txn.id);
-        return true;
-      }).map((txn: any) => ({
-        id: txn.id,
-        transaction_type: txn.transaction_type === 'SALE' ? 'SALE' : 'PRODUCTION',
-        transaction_date: txn.transaction_date || txn.created_at,
-        product_type: txn.product_type,
-        brand: txn.brand,
-        parameters: txn.parameters || {},
-        quantity: Math.abs(txn.quantity_change || txn.initial_quantity || 0),
-        weight_per_meter: txn.weight_per_meter,
-        total_weight: txn.total_weight,
-        customer_name: txn.customer_name,
-        batch_code: txn.batch_code,
-        batch_no: txn.batch_no,
-        invoice_no: txn.invoice_no,
-        notes: txn.notes,
-        created_by_name: txn.created_by_name || 'System',
-        unit: txn.unit_abbreviation || 'm',
-        attachment_url: txn.attachment_url
-      }));
-
-      // Sort by date, latest first
-      transformedData.sort((a, b) => new Date(b.transaction_date).getTime() - new Date(a.transaction_date).getTime());
-
-      setTransactions(transformedData);
-    } catch (error) {
-      console.error('Error fetching transactions:', error);
-      toast.error('Failed to load transactions');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const applyFilters = () => {
-    let filtered = [...transactions];
-
-    // Filter by type
-    if (filterType !== 'all') {
-      filtered = filtered.filter(t => t.transaction_type === filterType);
-    }
-
-    // Filter by product type
-    if (filterProductType !== 'all') {
-      filtered = filtered.filter(t => t.product_type === filterProductType);
-    }
-
-    // Filter by brand
-    if (filterBrand !== 'all') {
-      filtered = filtered.filter(t => t.brand === filterBrand);
-    }
-
-    // Filter by customer (for SALE only)
-    if (filterCustomer !== 'all') {
-      filtered = filtered.filter(t => t.customer_name === filterCustomer);
-    }
-
-    // Date filtering is now handled by the backend, no need to filter client-side
-    // The backend already filters based on filterDateFrom and filterDateTo
-
-    // Filter by parameters
-    Object.entries(filterParameters).forEach(([key, value]) => {
-      if (value && value !== 'all') {
-        filtered = filtered.filter(t => t.parameters[key] === value);
-      }
-    });
-
-    // Search filter
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
-      filtered = filtered.filter(t =>
-        t.batch_code?.toLowerCase().includes(term) ||
-        t.batch_no?.toLowerCase().includes(term) ||
-        t.invoice_no?.toLowerCase().includes(term) ||
-        t.customer_name?.toLowerCase().includes(term) ||
-        t.notes?.toLowerCase().includes(term)
-      );
-    }
-
-    setFilteredTransactions(filtered);
   };
 
   const clearFilters = () => {
-    setFilterType('all');
-    setFilterProductType('all');
-    setFilterBrand('all');
-    setFilterCustomer('all');
-    setFilterDateFrom('');
-    setFilterDateTo('');
-    setFilterParameters({});
-    setSearchTerm('');
-    setDateRangePreset('custom');
+    setSearchQuery('');
+    setTypeFilter('all');
+    setProductTypeFilter('all');
+    setBrandFilter('all');
+    setStartDate('');
+    setEndDate('');
   };
 
-  const exportToCSV = () => {
-    const headers = ['Date', 'Type', 'Product Type', 'Brand', 'Parameters', 'Quantity', 'Unit', 'Weight/m (g)', 'Total Weight (g)', 'Customer', 'Batch Code', 'Invoice', 'Notes'];
+  const hasActiveFilters = searchQuery || typeFilter !== 'all' || productTypeFilter !== 'all' || brandFilter !== 'all' || startDate || endDate;
 
-    const rows = filteredTransactions.map(t => [
-      formatDate(t.transaction_date),
-      t.transaction_type,
-      t.product_type,
-      t.brand,
-      Object.entries(t.parameters).map(([k, v]) => `${k}:${v}`).join(', '),
-      t.quantity,
-      t.unit,
-      t.weight_per_meter || '',
-      t.total_weight || '',
-      t.customer_name || '',
-      t.batch_code || '',
-      t.invoice_no || '',
-      t.notes || ''
-    ]);
-
-    const csvContent = [
-      headers.join(','),
-      ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
-    ].join('\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `transactions-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-  };
-
-  // Calculate summary statistics
-  const summary = {
-    totalProduction: filteredTransactions
+  const getTotalProductionWeight = () => {
+    return filteredTransactions
       .filter(t => t.transaction_type === 'PRODUCTION')
-      .reduce((sum, t) => sum + t.quantity, 0),
-    totalSales: filteredTransactions
-      .filter(t => t.transaction_type === 'SALE')
-      .reduce((sum, t) => sum + t.quantity, 0),
-    totalWeight: filteredTransactions
-      .filter(t => t.total_weight)
-      .reduce((sum, t) => {
-        // total_weight is stored in grams in the database
-        const weight = typeof t.total_weight === 'string' ? parseFloat(t.total_weight) : t.total_weight;
-        return sum + (weight || 0);
-      }, 0),
-    productionCount: filteredTransactions.filter(t => t.transaction_type === 'PRODUCTION').length,
-    salesCount: filteredTransactions.filter(t => t.transaction_type === 'SALE').length,
+      .reduce((sum, t) => sum + (t.total_weight || 0), 0);
   };
 
-  // Get available parameter keys from selected product type
-  const selectedProductType = productTypes.find(pt => pt.name === filterProductType);
-  const parameterSchema = selectedProductType?.parameter_schema || [];
-  const availableParamNames = parameterSchema.map((p: any) => p.name);
+  const getProductCode = (transaction: TransactionRecord) => {
+    return transaction.batch_code || `${transaction.brand}-${transaction.product_type}`;
+  };
 
-  const paramOrder = ['PE', 'PN', 'OD', 'Type'];
+  const getProductName = (transaction: TransactionRecord) => {
+    const params = transaction.parameters || {};
+    const parts = [transaction.brand, transaction.product_type];
+    if (params.quality) parts.push(params.quality);
+    if (params.color) parts.push(params.color);
+    if (params.size) parts.push(params.size);
+    if (params.thickness) parts.push(params.thickness);
+    return parts.filter(Boolean).join(' - ');
+  };
+
+  const formatWeight = (grams: number) => {
+    return `${(grams / 1000).toFixed(2)} kg`;
+  };
+
+  const openDetailModal = (transaction: TransactionRecord) => {
+    // Parse parameters if they're a string, but they might already be an object
+    let params = transaction.parameters;
+    if (typeof params === 'string') {
+      try {
+        params = JSON.parse(params);
+      } catch (e) {
+        console.error('Failed to parse parameters:', e);
+        params = {};
+      }
+    }
+    const parsedTransaction = {
+      ...transaction,
+      parameters: params || {}
+    };
+    console.log('Opening modal with transaction:', parsedTransaction);
+    console.log('Standard rolls:', parsedTransaction.standard_rolls_count, 'Avg length:', parsedTransaction.avg_standard_roll_length);
+    console.log('Cut rolls details:', parsedTransaction.cut_rolls_details);
+    console.log('Parameters type:', typeof parsedTransaction.parameters, parsedTransaction.parameters);
+    setModalTransaction(parsedTransaction);
+    setDetailModalOpen(true);
+  };
+
+  const renderTransactionSummaryCards = (transaction: TransactionRecord) => {
+    // For production batches, sum up the actual roll counts from breakdown
+    // For sales, use quantity_change which could be rolls or meters depending on context
+    const rollCount = transaction.transaction_type === 'PRODUCTION'
+      ? (
+          (transaction.standard_rolls_count || 0) +
+          (transaction.cut_rolls_count || 0) +
+          (transaction.bundles_count || 0) +
+          (transaction.spare_pieces_count || 0)
+        )
+      : (transaction.roll_length_meters ? 1 : Math.abs(transaction.quantity_change || 0));
+
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+              <Package className="h-4 w-4" />
+              {transaction.transaction_type === 'PRODUCTION' ? 'Total Rolls/Items' : 'Quantity'}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{rollCount}</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {transaction.transaction_type === 'SALE' ? 'Items sold' : 'Items produced'}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+              <Weight className="h-4 w-4" />
+              Total Weight
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{formatWeight(transaction.total_weight)}</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              {transaction.transaction_type === 'SALE' ? 'Weight sold' : 'Weight produced'}
+            </p>
+          </CardContent>
+        </Card>
+
+        {transaction.transaction_type === 'PRODUCTION' && transaction.weight_per_meter ? (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                <Scale className="h-4 w-4" />
+                Weight/Meter
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{Number(transaction.weight_per_meter).toFixed(2)} g/m</div>
+              <p className="text-xs text-muted-foreground mt-1">Average weight per meter</p>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                <User className="h-4 w-4" />
+                Customer
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold truncate">{transaction.customer_name || 'N/A'}</div>
+              <p className="text-xs text-muted-foreground mt-1">Customer name</p>
+            </CardContent>
+          </Card>
+        )}
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+              <Calendar className="h-4 w-4" />
+              Date
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{format(new Date(transaction.created_at), 'MMM dd')}</div>
+            <p className="text-xs text-muted-foreground mt-1">{format(new Date(transaction.created_at), 'yyyy')}</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  };
+
+  const renderDetailModal = () => {
+    if (!modalTransaction) return null;
+
+    return (
+      <Dialog open={detailModalOpen} onOpenChange={setDetailModalOpen}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5" />
+              Transaction Details - {modalTransaction.transaction_type}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-6">
+            {/* Product Information */}
+            <div>
+              <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                <Package className="h-5 w-5" />
+                Product Information
+              </h3>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-medium text-xl">{modalTransaction.product_type}</span>
+                  <span className="text-muted-foreground">•</span>
+                  <span className="font-semibold text-xl">{modalTransaction.brand}</span>
+                  {modalTransaction.parameters && Object.keys(modalTransaction.parameters).length > 0 && (
+                    <>
+                      <span className="text-muted-foreground">•</span>
+                      <div className="flex flex-wrap gap-2">
+                        {modalTransaction.parameters.PE && (
+                          <Badge variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200">
+                            PE: {modalTransaction.parameters.PE}
+                          </Badge>
+                        )}
+                        {modalTransaction.parameters.OD && (
+                          <Badge variant="secondary" className="bg-green-50 text-green-700 border-green-200">
+                            OD: {modalTransaction.parameters.OD}
+                          </Badge>
+                        )}
+                        {modalTransaction.parameters.PN && (
+                          <Badge variant="secondary" className="bg-purple-50 text-purple-700 border-purple-200">
+                            PN: {modalTransaction.parameters.PN}
+                          </Badge>
+                        )}
+                        {modalTransaction.parameters.Type && (
+                          <Badge variant="secondary" className="bg-orange-50 text-orange-700 border-orange-200">
+                            Type: {modalTransaction.parameters.Type}
+                          </Badge>
+                        )}
+                        {modalTransaction.parameters.size && (
+                          <Badge variant="secondary" className="bg-pink-50 text-pink-700 border-pink-200">
+                            Size: {modalTransaction.parameters.size}
+                          </Badge>
+                        )}
+                        {modalTransaction.parameters.quality && (
+                          <Badge variant="secondary" className="bg-cyan-50 text-cyan-700 border-cyan-200">
+                            Quality: {modalTransaction.parameters.quality}
+                          </Badge>
+                        )}
+                        {modalTransaction.parameters.color && (
+                          <Badge variant="secondary" className="bg-yellow-50 text-yellow-700 border-yellow-200">
+                            Color: {modalTransaction.parameters.color}
+                          </Badge>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+            </div>
+
+            <Separator />
+
+            {/* Quantity and Weight Information */}
+            <div>
+              <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                <Weight className="h-5 w-5" />
+                Quantity & Weight
+              </h3>
+              <div className="grid grid-cols-2 gap-4">
+                {/* For production, show number of rolls from breakdown counts */}
+                {modalTransaction.transaction_type === 'PRODUCTION' ? (
+                  <>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Total Rolls/Items</p>
+                      <p className="font-medium text-lg">
+                        {(
+                          (modalTransaction.standard_rolls_count || 0) +
+                          (modalTransaction.cut_rolls_count || 0) +
+                          (modalTransaction.bundles_count || 0) +
+                          (modalTransaction.spare_pieces_count || 0)
+                        )} items
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Total Length/Quantity</p>
+                      <p className="font-medium text-lg">
+                        {Math.abs(modalTransaction.quantity_change || 0).toFixed(2)} {modalTransaction.unit_abbreviation || 'm'}
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Quantity</p>
+                      <p className="font-medium text-lg">
+                        {modalTransaction.roll_length_meters
+                          ? `${Number(modalTransaction.roll_length_meters).toFixed(2)} m`
+                          : `${Math.abs(modalTransaction.quantity_change || 0)} items`
+                        }
+                      </p>
+                    </div>
+                    {modalTransaction.roll_initial_length_meters && (
+                      <div>
+                        <p className="text-sm text-muted-foreground">Original Length</p>
+                        <p className="font-medium text-lg">{Number(modalTransaction.roll_initial_length_meters).toFixed(2)} m</p>
+                      </div>
+                    )}
+                  </>
+                )}
+                <div>
+                  <p className="text-sm text-muted-foreground">Total Weight</p>
+                  <p className="font-medium text-lg">{formatWeight(modalTransaction.total_weight || 0)}</p>
+                </div>
+                {modalTransaction.roll_is_cut && (
+                  <div>
+                    <p className="text-sm text-muted-foreground">Roll Type</p>
+                    <p className="font-medium text-lg">
+                      <Badge variant="secondary">Cut Roll</Badge>
+                    </p>
+                  </div>
+                )}
+                {modalTransaction.roll_bundle_size && (
+                  <div>
+                    <p className="text-sm text-muted-foreground">Bundle Size</p>
+                    <p className="font-medium text-lg">
+                      <Badge variant="secondary">{modalTransaction.roll_bundle_size} pieces</Badge>
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Roll Information (Production specific) */}
+            {modalTransaction.transaction_type === 'PRODUCTION' && (
+              <>
+                <div>
+                  <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                    <Ruler className="h-5 w-5" />
+                    Batch & Roll Information
+                  </h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    {modalTransaction.batch_code && (
+                      <div>
+                        <p className="text-sm text-muted-foreground">Batch Code</p>
+                        <p className="font-medium">{modalTransaction.batch_code}</p>
+                      </div>
+                    )}
+                    {modalTransaction.batch_no && (
+                      <div>
+                        <p className="text-sm text-muted-foreground">Batch Number</p>
+                        <p className="font-medium">{modalTransaction.batch_no}</p>
+                      </div>
+                    )}
+                    {modalTransaction.transaction_type === 'PRODUCTION' && (
+                      <>
+                        {modalTransaction.standard_rolls_count > 0 && (
+                          <>
+                            <div>
+                              <p className="text-sm text-muted-foreground">Standard Rolls</p>
+                              <div className="font-medium">
+                                {modalTransaction.standard_rolls_count} rolls
+                                <Badge variant="outline" className="ml-2">Standard</Badge>
+                              </div>
+                            </div>
+                            {modalTransaction.avg_standard_roll_length && (
+                              <div>
+                                <p className="text-sm text-muted-foreground">Avg. Standard Roll Length</p>
+                                <p className="font-medium">
+                                  {Number(modalTransaction.avg_standard_roll_length).toFixed(2)} m
+                                </p>
+                              </div>
+                            )}
+                            {modalTransaction.avg_standard_roll_length && modalTransaction.standard_rolls_count && (
+                              <div>
+                                <p className="text-sm text-muted-foreground">Total Standard Roll Length</p>
+                                <p className="font-medium text-lg">
+                                  {(Number(modalTransaction.avg_standard_roll_length) * modalTransaction.standard_rolls_count).toFixed(2)} m
+                                </p>
+                              </div>
+                            )}
+                          </>
+                        )}
+                        {modalTransaction.cut_rolls_details && modalTransaction.cut_rolls_details.length > 0 && (
+                          <>
+                            <div className="col-span-2">
+                              <p className="text-sm text-muted-foreground mb-2">Cut Rolls ({modalTransaction.cut_rolls_details.length} rolls)</p>
+                              <div className="grid grid-cols-3 gap-3">
+                                {modalTransaction.cut_rolls_details.map((length, index) => (
+                                  <div key={index} className="border rounded-lg p-3">
+                                    <p className="text-xs text-muted-foreground">Cut Roll {index + 1}</p>
+                                    <p className="font-medium text-lg">{Number(length).toFixed(2)} m</p>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </>
+                        )}
+                        {modalTransaction.bundles_count > 0 && (
+                          <div>
+                            <p className="text-sm text-muted-foreground">Bundles</p>
+                            <div className="font-medium">
+                              {modalTransaction.bundles_count} bundles
+                              {modalTransaction.roll_bundle_size && (
+                                <Badge variant="outline" className="ml-2">
+                                  {modalTransaction.roll_bundle_size} pcs each
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                        {modalTransaction.spare_pieces_count > 0 && (
+                          <div>
+                            <p className="text-sm text-muted-foreground">Spare Pieces</p>
+                            <div className="font-medium">
+                              {modalTransaction.spare_pieces_count} pieces
+                              <Badge variant="secondary" className="ml-2">Spare</Badge>
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
+                    {modalTransaction.weight_per_meter && (
+                      <div>
+                        <p className="text-sm text-muted-foreground">Weight per Meter</p>
+                        <p className="font-medium">{Number(modalTransaction.weight_per_meter).toFixed(2)} g/m</p>
+                      </div>
+                    )}
+                    {modalTransaction.production_date && (
+                      <div>
+                        <p className="text-sm text-muted-foreground">Production Date</p>
+                        <p className="font-medium">{format(new Date(modalTransaction.production_date), 'PPp')}</p>
+                      </div>
+                    )}
+                    {modalTransaction.transaction_date && (
+                      <div>
+                        <p className="text-sm text-muted-foreground">Transaction Date</p>
+                        <p className="font-medium">{format(new Date(modalTransaction.transaction_date), 'PPp')}</p>
+                      </div>
+                    )}
+                  </div>
+                  {modalTransaction.attachment_url && (
+                    <div className="mt-4">
+                      <p className="text-sm text-muted-foreground mb-2">Attachment</p>
+                      <a
+                        href={modalTransaction.attachment_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:underline"
+                      >
+                        View Attachment
+                      </a>
+                    </div>
+                  )}
+                </div>
+                <Separator />
+              </>
+            )}
+
+            {/* Customer Information (Sale specific) */}
+            {modalTransaction.transaction_type === 'SALE' && modalTransaction.customer_name && (
+              <>
+                <div>
+                  <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                    <User className="h-5 w-5" />
+                    Customer Information
+                  </h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Customer Name</p>
+                      <p className="font-medium text-lg">{modalTransaction.customer_name}</p>
+                    </div>
+                    {modalTransaction.invoice_no && (
+                      <div>
+                        <p className="text-sm text-muted-foreground">Invoice Number</p>
+                        <p className="font-medium text-lg">{modalTransaction.invoice_no}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <Separator />
+              </>
+            )}
+
+            {/* Transaction Metadata */}
+            <div>
+              <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                <Info className="h-5 w-5" />
+                Transaction Metadata
+              </h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm text-muted-foreground">Transaction ID</p>
+                  <p className="font-medium">{modalTransaction.id}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Transaction Type</p>
+                  <Badge variant={modalTransaction.transaction_type === 'PRODUCTION' ? 'default' : 'secondary'}>
+                    {modalTransaction.transaction_type}
+                  </Badge>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Created By</p>
+                  <p className="font-medium">{modalTransaction.created_by_name || modalTransaction.created_by_username || modalTransaction.created_by_email || 'Unknown'}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Created At</p>
+                  <p className="font-medium">{format(new Date(modalTransaction.created_at), 'PPp')}</p>
+                </div>
+                {modalTransaction.notes && (
+                  <div className="col-span-2">
+                    <p className="text-sm text-muted-foreground">Notes</p>
+                    <p className="font-medium">{modalTransaction.notes}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-muted-foreground">Loading transactions...</p>
+      </div>
+    );
+  }
 
   return (
     <Layout>
-      <div className="space-y-6 p-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">Transaction History</h1>
-            <p className="text-muted-foreground">Complete history of production and sales</p>
-          </div>
-          <FileText className="h-8 w-8 text-muted-foreground" />
+      <div className="container mx-auto py-6 space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold mb-2">Transaction History</h1>
+          <p className="text-muted-foreground">View all production and sales transactions</p>
         </div>
 
-        {/* Summary Cards */}
-        <div className="grid gap-4 md:grid-cols-4">
+        {/* Show Total Production Weight when no transaction is selected */}
+        {!selectedTransaction && (
           <Card>
-            <CardHeader className="pb-2">
-              <CardDescription>Total Production</CardDescription>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Weight className="h-5 w-5" />
+                Total Production Weight
+              </CardTitle>
+              <CardDescription>Cumulative weight of all production transactions</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{summary.totalProduction.toFixed(2)}</div>
-              <p className="text-xs text-muted-foreground">{summary.productionCount} batches</p>
+              <div className="text-4xl font-bold">{formatWeight(getTotalProductionWeight())}</div>
             </CardContent>
           </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription>Total Sales</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{summary.totalSales.toFixed(2)}</div>
-              <p className="text-xs text-muted-foreground">{summary.salesCount} transactions</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription>Total Weight</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{(summary.totalWeight / 1000).toFixed(2)} kg</div>
-              <p className="text-sm font-bold text-primary bg-primary/10 px-2 py-1 rounded mt-1 inline-block">
-                {(summary.totalWeight / 1000000).toFixed(3)} tons
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription>Net Balance</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{(summary.totalProduction - summary.totalSales).toFixed(2)}</div>
-              <p className="text-xs text-muted-foreground">In stock</p>
-            </CardContent>
-          </Card>
-        </div>
+        )}
 
-        {/* Filters */}
+        {/* Show transaction summary cards when a transaction is selected */}
+        {selectedTransaction && renderTransactionSummaryCards(selectedTransaction)}
+
+        {/* Filters Section */}
         <Card>
-          <CardHeader className="pb-3">
+          <CardHeader>
             <div className="flex items-center justify-between">
-              <CardTitle className="text-lg">Filters</CardTitle>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Filter className="h-5 w-5" />
+                Filters
+              </CardTitle>
               <div className="flex gap-2">
-                <Button variant="ghost" size="sm" onClick={clearFilters}>
-                  <X className="h-4 w-4 mr-1" />
-                  Clear
-                </Button>
-                <Button variant="outline" size="sm" onClick={exportToCSV}>
-                  <Download className="h-4 w-4 mr-1" />
-                  Export CSV
+                {hasActiveFilters && (
+                  <Button variant="ghost" size="sm" onClick={clearFilters}>
+                    <X className="h-4 w-4 mr-1" />
+                    Clear Filters
+                  </Button>
+                )}
+                <Button variant="ghost" size="sm" onClick={() => setShowFilters(!showFilters)}>
+                  {showFilters ? 'Hide' : 'Show'} Filters
                 </Button>
               </div>
             </div>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              {/* Transaction Type */}
-              <div className="space-y-2">
-                <Label>Type</Label>
-                <Select value={filterType} onValueChange={setFilterType}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Types</SelectItem>
-                    <SelectItem value="PRODUCTION">Production</SelectItem>
-                    <SelectItem value="SALE">Sales</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Product Type */}
-              <div className="space-y-2">
-                <Label>Product Type</Label>
-                <Select value={filterProductType} onValueChange={setFilterProductType}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Products</SelectItem>
-                    {productTypes.map(pt => (
-                      <SelectItem key={pt.id} value={pt.name}>{pt.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Brand */}
-              <div className="space-y-2">
-                <Label>Brand</Label>
-                <Select value={filterBrand} onValueChange={setFilterBrand}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Brands</SelectItem>
-                    {brands.map(brand => (
-                      <SelectItem key={brand.id} value={brand.name}>{brand.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Customer (for sales) */}
-              <div className="space-y-2">
-                <Label>Customer</Label>
-                <Select value={filterCustomer} onValueChange={setFilterCustomer}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Customers</SelectItem>
-                    {customers.map(customer => (
-                      <SelectItem key={customer.id} value={customer.name}>{customer.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {/* Date Range */}
-            <div className="space-y-4 pt-2 border-t">
-              <div className="space-y-2">
-                <Label>Date Range Preset</Label>
-                <Select
-                  value={dateRangePreset}
-                  onValueChange={(value) => applyDateRangePreset(value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="custom">Custom Range</SelectItem>
-                    <SelectItem value="last24h">Last 24 Hours</SelectItem>
-                    <SelectItem value="last3days">Last 3 Days</SelectItem>
-                    <SelectItem value="last7days">Last 7 Days</SelectItem>
-                    <SelectItem value="last2weeks">Last 2 Weeks</SelectItem>
-                    <SelectItem value="last30days">Last 30 Days</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {showFilters && (
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {/* Search */}
                 <div className="space-y-2">
-                  <Label>From Date & Time</Label>
-                  <Input
-                    type="datetime-local"
-                    value={filterDateFrom}
-                    onChange={(e) => {
-                      setFilterDateFrom(e.target.value);
-                      setDateRangePreset('custom');
-                    }}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>To Date & Time</Label>
-                  <Input
-                    type="datetime-local"
-                    value={filterDateTo}
-                    onChange={(e) => {
-                      setFilterDateTo(e.target.value);
-                      setDateRangePreset('custom');
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Parameter Filters */}
-            {availableParamNames.length > 0 && (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 border-t">
-                {paramOrder.filter(key => availableParamNames.includes(key)).map(paramKey => (
-                  <div key={paramKey} className="space-y-2">
-                    <Label>{paramKey}</Label>
-                    <Select
-                      value={filterParameters[paramKey] || 'all'}
-                      onValueChange={(value) => setFilterParameters({ ...filterParameters, [paramKey]: value })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All {paramKey}</SelectItem>
-                        {(parameterOptions[paramKey] || []).map((option: any) => (
-                          <SelectItem key={option.id} value={option.value}>
-                            {option.value}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                  <Label>Search</Label>
+                  <div className="relative">
+                    <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Batch, customer, invoice..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-8"
+                    />
                   </div>
-                ))}
-              </div>
-            )}
+                </div>
 
-            {/* Search */}
-            <div className="space-y-2">
-              <Label>Search</Label>
-              <Input
-                placeholder="Search by batch code, invoice, customer, notes..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
-          </CardContent>
+                {/* Transaction Type */}
+                <div className="space-y-2">
+                  <Label>Transaction Type</Label>
+                  <Select value={typeFilter} onValueChange={setTypeFilter}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Types</SelectItem>
+                      <SelectItem value="PRODUCTION">Production</SelectItem>
+                      <SelectItem value="SALE">Sale</SelectItem>
+                      <SelectItem value="ADJUSTMENT">Adjustment</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Product Type */}
+                <div className="space-y-2">
+                  <Label>Product Type</Label>
+                  <Select value={productTypeFilter} onValueChange={setProductTypeFilter}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Product Types</SelectItem>
+                      {productTypes.map(pt => (
+                        <SelectItem key={pt.id} value={pt.name}>{pt.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Brand */}
+                <div className="space-y-2">
+                  <Label>Brand</Label>
+                  <Select value={brandFilter} onValueChange={setBrandFilter}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Brands</SelectItem>
+                      {brands.map(brand => (
+                        <SelectItem key={brand.id} value={brand.name}>{brand.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Start Date */}
+                <div className="space-y-2">
+                  <Label>Start Date</Label>
+                  <Input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                  />
+                </div>
+
+                {/* End Date */}
+                <div className="space-y-2">
+                  <Label>End Date</Label>
+                  <Input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* Results count */}
+              <div className="mt-4 text-sm text-muted-foreground">
+                Showing {filteredTransactions.length} of {transactions.length} transactions
+              </div>
+            </CardContent>
+          )}
         </Card>
 
         {/* Transactions Table */}
         <Card>
-          <CardHeader>
-            <CardTitle>Transactions ({filteredTransactions.length})</CardTitle>
-            <CardDescription>
-              {filterType !== 'all' && `Showing ${filterType === 'PRODUCTION' ? 'production' : 'sales'} transactions`}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <div className="text-center py-8">Loading...</div>
-            ) : filteredTransactions.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">No transactions found</div>
-            ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Date & Time (IST)</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Product</TableHead>
-                      <TableHead>Brand</TableHead>
-                      <TableHead>Parameters</TableHead>
-                      <TableHead>Customer</TableHead>
-                      <TableHead className="text-right">Quantity</TableHead>
-                      <TableHead className="text-right">Weight/m</TableHead>
-                      <TableHead className="text-right">Total Weight</TableHead>
-                      <TableHead>Attachment</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredTransactions.map((txn) => {
-                      // DB already stores IST time - format directly
-                      const date = new Date(txn.transaction_date);
-                      const timeStr = date.toLocaleTimeString('en-IN', {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        hour12: true
-                      });                      return (
-                      <TableRow key={txn.id}>
-                        <TableCell className="whitespace-nowrap">
-                          <div className="flex flex-col">
-                            <span>{formatDate(txn.transaction_date)}</span>
-                            <span className="text-xs text-muted-foreground">{timeStr}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={txn.transaction_type === 'PRODUCTION' ? 'default' : 'destructive'}>
-                            {txn.transaction_type}
+        <CardHeader>
+          <CardTitle>All Transactions</CardTitle>
+          <CardDescription>
+            Click on a row to view summary cards, or use the detail button for complete information
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Date & Time</TableHead>
+                <TableHead>Product Type & Brand</TableHead>
+                <TableHead>Parameters</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Length (m)</TableHead>
+                <TableHead>Weight</TableHead>
+                <TableHead>Customer</TableHead>
+                <TableHead>Attachment</TableHead>
+                <TableHead>Created By</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredTransactions.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
+                    No transactions found
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filteredTransactions.map((transaction) => (
+                <TableRow
+                  key={transaction.id}
+                  className={`cursor-pointer transition-colors ${
+                    selectedTransaction?.id === transaction.id
+                      ? 'bg-primary/5'
+                      : 'hover:bg-muted/50'
+                  }`}
+                  onClick={() => setSelectedTransaction(selectedTransaction?.id === transaction.id ? null : transaction)}
+                >
+                  <TableCell className="font-medium">
+                    <div>{format(new Date(transaction.created_at), 'PP')}</div>
+                    <div className="text-xs text-muted-foreground">{format(new Date(transaction.created_at), 'p')}</div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="font-medium text-base">{transaction.product_type}</div>
+                    <div className="text-sm text-muted-foreground">{transaction.brand}</div>
+                  </TableCell>
+                  <TableCell>
+                    {transaction.parameters && typeof transaction.parameters === 'object' && Object.keys(transaction.parameters).length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
+                        {transaction.parameters.PE && (
+                          <Badge variant="secondary" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+                            PE: {transaction.parameters.PE}
                           </Badge>
-                        </TableCell>
-                        <TableCell>{txn.product_type}</TableCell>
-                        <TableCell>{txn.brand}</TableCell>
-                        <TableCell>
-                          <div className="flex flex-wrap gap-1">
-                            {Object.entries(txn.parameters)
-                              .sort(([a], [b]) => {
-                                const idxA = paramOrder.indexOf(a);
-                                const idxB = paramOrder.indexOf(b);
-                                return (idxA === -1 ? 999 : idxA) - (idxB === -1 ? 999 : idxB);
-                              })
-                              .map(([key, value]) => (
-                                <Badge key={key} variant="outline" className="text-xs">
-                                  {key}: {value}
-                                </Badge>
-                              ))}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          {txn.transaction_type === 'SALE' && txn.customer_name ? (
-                            <span className="text-sm">{txn.customer_name}</span>
-                          ) : (
-                            <span className="text-muted-foreground">-</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right font-medium">
-                          {txn.quantity.toFixed(2)} {txn.unit}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {txn.weight_per_meter ? `${parseFloat(txn.weight_per_meter.toString()).toFixed(2)} g` : '-'}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {txn.total_weight ? `${(parseFloat(txn.total_weight.toString()) / 1000).toFixed(2)} kg` : '-'}
-                        </TableCell>
-                        <TableCell>
-                          {txn.attachment_url ? (
-                            <a
-                              href={`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}${txn.attachment_url}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-blue-600 hover:underline text-sm"
-                            >
-                              View
-                            </a>
-                          ) : '-'}
-                        </TableCell>
-                      </TableRow>
-                    );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
+                        )}
+                        {transaction.parameters.OD && (
+                          <Badge variant="secondary" className="text-xs bg-green-50 text-green-700 border-green-200">
+                            OD: {transaction.parameters.OD}
+                          </Badge>
+                        )}
+                        {transaction.parameters.PN && (
+                          <Badge variant="secondary" className="text-xs bg-purple-50 text-purple-700 border-purple-200">
+                            PN: {transaction.parameters.PN}
+                          </Badge>
+                        )}
+                        {transaction.parameters.Type && (
+                          <Badge variant="secondary" className="text-xs bg-orange-50 text-orange-700 border-orange-200">
+                            Type: {transaction.parameters.Type}
+                          </Badge>
+                        )}
+                        {transaction.parameters.size && (
+                          <Badge variant="secondary" className="text-xs bg-pink-50 text-pink-700 border-pink-200">
+                            Size: {transaction.parameters.size}
+                          </Badge>
+                        )}
+                        {transaction.parameters.quality && (
+                          <Badge variant="secondary" className="text-xs bg-cyan-50 text-cyan-700 border-cyan-200">
+                            Quality: {transaction.parameters.quality}
+                          </Badge>
+                        )}
+                        {transaction.parameters.color && (
+                          <Badge variant="secondary" className="text-xs bg-yellow-50 text-yellow-700 border-yellow-200">
+                            Color: {transaction.parameters.color}
+                          </Badge>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">-</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <Badge
+                      variant={transaction.transaction_type === 'PRODUCTION' ? 'default' : 'secondary'}
+                    >
+                      {transaction.transaction_type}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    {/* For production: show total meters from quantity_change */}
+                    {/* For sales with specific roll: show roll length */}
+                    {/* Otherwise: show quantity change as meters or pieces */}
+                    {transaction.transaction_type === 'PRODUCTION' ? (
+                      <span className="text-green-600">
+                        {Math.abs(transaction.quantity_change || 0).toFixed(2)} m
+                      </span>
+                    ) : transaction.roll_length_meters ? (
+                      <span className="text-red-600">
+                        {Number(transaction.roll_length_meters).toFixed(2)} m
+                      </span>
+                    ) : (
+                      <span className={transaction.quantity_change > 0 ? 'text-green-600' : 'text-red-600'}>
+                        {Math.abs(transaction.quantity_change || 0).toFixed(2)} {transaction.unit_abbreviation || 'm'}
+                      </span>
+                    )}
+                  </TableCell>
+                  <TableCell>{formatWeight(transaction.total_weight || 0)}</TableCell>
+                  <TableCell>{transaction.customer_name || '-'}</TableCell>
+                  <TableCell>
+                    {transaction.attachment_url ? (
+                      <a
+                        href={transaction.attachment_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="flex items-center gap-1 text-blue-600 hover:underline"
+                      >
+                        <Paperclip className="h-4 w-4" />
+                        View
+                      </a>
+                    ) : (
+                      '-'
+                    )}
+                  </TableCell>
+                  <TableCell>{transaction.created_by_name || transaction.created_by_username || transaction.created_by_email || '-'}</TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openDetailModal(transaction);
+                      }}
+                    >
+                      <FileText className="h-4 w-4 mr-1" />
+                      Details
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))
             )}
-          </CardContent>
-        </Card>
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+        {/* Detail Modal */}
+        {renderDetailModal()}
       </div>
     </Layout>
   );
-};
-
-export default Transactions;
+}

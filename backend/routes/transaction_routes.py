@@ -174,7 +174,13 @@ def get_transactions():
             c.name as customer_name,
             u.email as created_by_email,
             u.username as created_by_username,
-            u.full_name as created_by_name
+            u.full_name as created_by_name,
+            rc.standard_rolls_count,
+            rc.cut_rolls_count,
+            rc.bundles_count,
+            rc.spare_pieces_count,
+            rc.avg_standard_roll_length,
+            rc.cut_rolls_details
         FROM transactions t
         JOIN batches b ON t.batch_id = b.id
         JOIN product_variants pv ON b.product_variant_id = pv.id
@@ -184,6 +190,17 @@ def get_transactions():
         LEFT JOIN units u_unit ON pt.unit_id = u_unit.id
         LEFT JOIN customers c ON t.customer_id = c.id
         LEFT JOIN users u ON t.created_by = u.id
+        LEFT JOIN LATERAL (
+            SELECT
+                COUNT(*) FILTER (WHERE is_cut_roll = FALSE AND (roll_type IS NULL OR roll_type = 'standard')) as standard_rolls_count,
+                COUNT(*) FILTER (WHERE is_cut_roll = TRUE OR roll_type = 'cut') as cut_rolls_count,
+                COUNT(*) FILTER (WHERE roll_type LIKE 'bundle_%%') as bundles_count,
+                COUNT(*) FILTER (WHERE roll_type = 'spare') as spare_pieces_count,
+                AVG(length_meters) FILTER (WHERE is_cut_roll = FALSE AND (roll_type IS NULL OR roll_type = 'standard')) as avg_standard_roll_length,
+                array_agg(length_meters ORDER BY length_meters DESC) FILTER (WHERE is_cut_roll = TRUE OR roll_type = 'cut') as cut_rolls_details
+            FROM rolls
+            WHERE batch_id = b.id AND deleted_at IS NULL
+        ) rc ON true
         WHERE t.deleted_at IS NULL{date_filter}
         ORDER BY t.created_at DESC
         LIMIT 1000
@@ -201,6 +218,12 @@ def get_transactions():
         all_records.sort(key=lambda x: x['created_at'], reverse=True)
         sample_ids = [r['id'] for r in all_records[:3]]
         print(f"  Sample IDs: {sample_ids}")
+        # Debug: Check parameters
+        if len(all_records) > 0:
+            sample = all_records[0]
+            print(f"  Sample parameters type: {type(sample.get('parameters'))}")
+            print(f"  Sample parameters value: {sample.get('parameters')}")
+            print(f"  Sample batch_code: {sample.get('batch_code')}")
 
     print(f"  Total records returned: {len(all_records)}")
 

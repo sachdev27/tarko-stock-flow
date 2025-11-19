@@ -2,102 +2,58 @@ import { useState, useEffect } from 'react';
 import { Layout } from '@/components/Layout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
-import { ArrowRightLeft, Plus, Filter, X, Trash2, ShoppingCart } from 'lucide-react';
+import { ArrowRightLeft, Package, Weight, FileText, User, Calendar, Truck, Scale, Ruler } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { inventory as inventoryAPI, transactions as transactionsAPI } from '@/lib/api';
+import { transactions as transactionsAPI } from '@/lib/api';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
-interface SelectedItem {
-  batchId: string;
-  rollId: string | null;
-  batchCode: string;
-  rollLabel: string;
-  productType: string;
+interface TransactionRecord {
+  id: string;
+  transaction_type: string;
+  quantity_change: number;
+  transaction_date: string;
+  invoice_no?: string;
+  notes?: string;
+  created_at: string;
+  batch_code: string;
+  batch_no: string;
+  initial_quantity: number;
+  weight_per_meter?: number;
+  total_weight?: number;
+  attachment_url?: string;
+  production_date: string;
+  product_type: string;
+  product_type_id: string;
+  brand_id: string;
+  product_variant_id: string | number;
   brand: string;
-  availableQuantity: number;
-  quantity: number;
-  unit: string;
-}
-
-interface TransactionFormData {
-  type: string;
-  customerId: string;
-  invoiceNo: string;
-  notes: string;
+  parameters: Record<string, string>;
+  roll_length_meters?: number;
+  roll_initial_length_meters?: number;
+  roll_is_cut?: boolean;
+  roll_type?: string;
+  roll_bundle_size?: number;
+  roll_weight?: number;
+  unit_abbreviation?: string;
+  customer_name?: string;
+  created_by_email?: string;
+  created_by_username?: string;
+  created_by_name?: string;
 }
 
 const Transactions = () => {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
-  const [dialogOpen, setDialogOpen] = useState(false);
-
-  // Filter states
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [productTypes, setProductTypes] = useState<any[]>([]);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [brands, setBrands] = useState<any[]>([]);
-  const [selectedProductType, setSelectedProductType] = useState<string>('all');
-  const [selectedBrand, setSelectedBrand] = useState<string>('all');
-  const [parameterFilters, setParameterFilters] = useState<Record<string, string>>({});
-
-  // Master data
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [batches, setBatches] = useState<any[]>([]);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [filteredBatches, setFilteredBatches] = useState<any[]>([]);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [customers, setCustomers] = useState<any[]>([]);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [transactions, setTransactions] = useState<any[]>([]);
-
-  // Cart for multi-item selection
-  const [cart, setCart] = useState<SelectedItem[]>([]);
-
-  const [formData, setFormData] = useState<TransactionFormData>({
-    type: 'SALE',
-    customerId: '',
-    invoiceNo: '',
-    notes: '',
-  });
+  const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
+  const [selectedTransaction, setSelectedTransaction] = useState<TransactionRecord | null>(null);
+  const [detailDialogOpen, setDetailDialogOpen] = useState(false);
 
   useEffect(() => {
-    fetchMasterData();
     fetchTransactions();
   }, []);
-
-  useEffect(() => {
-    // Filter batches based on selections
-    let filtered = batches;
-
-    if (selectedProductType !== 'all') {
-      filtered = filtered.filter(b => b.product_type_id === parseInt(selectedProductType));
-    }
-
-    if (selectedBrand !== 'all') {
-      filtered = filtered.filter(b => b.brand_id === parseInt(selectedBrand));
-    }
-
-
-
-    // Apply parameter filters
-    Object.entries(parameterFilters).forEach(([param, value]) => {
-      if (value && value !== 'all') {
-        filtered = filtered.filter(b => {
-          const paramValue = b.parameters?.[param];
-          return paramValue === value;
-        });
-      }
-    });
-
-    setFilteredBatches(filtered);
-  }, [batches, selectedProductType, selectedBrand, parameterFilters]);
 
   const fetchMasterData = async () => {
     try {
