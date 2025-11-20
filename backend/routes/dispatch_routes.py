@@ -619,12 +619,22 @@ def create_dispatch():
                 if not roll_id or dispatch_quantity <= 0:
                     return jsonify({'error': 'Invalid item data'}), 400
 
-                # Get roll details
+                # Get roll details with batch and product info
                 cursor.execute("""
-                    SELECT r.*, r.batch_id, pv.id as product_variant_id
+                    SELECT
+                        r.*,
+                        r.batch_id,
+                        pv.id as product_variant_id,
+                        b.batch_code,
+                        b.batch_no,
+                        pt.name as product_type_name,
+                        br.name as brand_name,
+                        pv.parameters
                     FROM rolls r
                     JOIN batches b ON r.batch_id = b.id
                     JOIN product_variants pv ON b.product_variant_id = pv.id
+                    JOIN product_types pt ON pv.product_type_id = pt.id
+                    JOIN brands br ON pv.brand_id = br.id
                     WHERE r.id = %s AND r.deleted_at IS NULL
                 """, (roll_id,))
 
@@ -676,10 +686,15 @@ def create_dispatch():
                 else:
                     return jsonify({'error': f'Invalid item type: {item_type}'}), 400
 
-                # Collect roll snapshot for this roll
+                # Collect roll snapshot for this roll with batch and product info
                 roll_snapshots.append({
                     'roll_id': str(roll_id),
                     'batch_id': str(roll['batch_id']),
+                    'batch_code': roll['batch_code'],
+                    'batch_no': roll['batch_no'],
+                    'product_type': roll['product_type_name'],
+                    'brand': roll['brand_name'],
+                    'parameters': roll['parameters'],
                     'quantity_dispatched': quantity_dispatched,
                     'length_meters': float(roll['length_meters']),
                     'initial_length_meters': float(roll['initial_length_meters']),
