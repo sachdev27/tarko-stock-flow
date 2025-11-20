@@ -75,10 +75,12 @@ const Reports = () => {
     return <Minus className="h-4 w-4 text-gray-600" />;
   };
 
-  const formatNumber = (num: number) => {
-    if (num >= 1000000) return (num / 1000000).toFixed(2) + 'M';
-    if (num >= 1000) return (num / 1000).toFixed(2) + 'K';
-    return num.toFixed(0);
+  const formatNumber = (num: number | string | null | undefined) => {
+    const value = typeof num === 'string' ? parseFloat(num) : (num || 0);
+    if (isNaN(value)) return '0';
+    if (value >= 1000000) return (value / 1000000).toFixed(2) + 'M';
+    if (value >= 1000) return (value / 1000).toFixed(2) + 'K';
+    return value.toFixed(0);
   };
 
   if (loading || !analyticsData) {

@@ -24,6 +24,7 @@ def get_batches():
         SELECT DISTINCT
             b.id, b.batch_code, b.batch_no, b.current_quantity,
             b.production_date, b.attachment_url, b.created_at,
+            b.product_variant_id,
             pv.parameters,
             pt.id as product_type_id,
             pt.name as product_type_name,

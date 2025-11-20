@@ -143,6 +143,7 @@ const Inventory = () => {
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importing, setImporting] = useState(false);
+  const [templateType, setTemplateType] = useState<'hdpe' | 'sprinkler'>('hdpe');
 
   // WhatsApp sharing
   const [whatsappDialogOpen, setWhatsappDialogOpen] = useState(false);
@@ -685,36 +686,84 @@ const Inventory = () => {
   };
 
   const downloadTemplate = () => {
-    const template = [
-      {
-        product_type: 'HDPE Pipe',
-        brand: 'Tarko Gold',
-        'OD (mm)': '32',
-        'PN (bar)': '6',
-        'PE (SDR)': '100',
-        batch_code: 'TG-HDPE',
-        batch_no: '001',
-        production_date: '2025-11-20',
-        'roll_length (m)': '100',
-        number_of_rolls: '10',
-        'weight_per_meter (kg/m)': '0.5',
-        notes: 'Initial inventory'
-      },
-      {
-        product_type: 'Sprinkler Pipe',
-        brand: 'Tarko Premium',
-        'OD (mm)': '50',
-        'PN (bar)': '10',
-        Type: 'L',
-        batch_code: 'TP-SPR',
-        batch_no: '001',
-        production_date: '2025-11-20',
-        'bundle_size (pcs)': '10',
-        'piece_length (m)': '6',
-        number_of_bundles: '5',
-        notes: 'Initial sprinkler inventory'
-      }
-    ];
+    let template: any[];
+    let filename: string;
+
+    if (templateType === 'hdpe') {
+      template = [
+        {
+          'Product Type': 'HDPE Pipe',
+          'Brand': 'Tarko',
+          'Production Date': '2025-01-15',
+          'Roll Length (m)': '100',
+          'Number of Rolls': '10',
+          'Weight per Meter': '0.85',
+          'PE (SDR)': '100',
+          'OD (mm)': '32',
+          'PN (bar)': '10'
+        },
+        {
+          'Product Type': 'HDPE Pipe',
+          'Brand': 'Tarko',
+          'Production Date': '2025-01-20',
+          'Roll Length (m)': '100',
+          'Number of Rolls': '8',
+          'Weight per Meter': '1.20',
+          'PE (SDR)': '100',
+          'OD (mm)': '40',
+          'PN (bar)': '10'
+        },
+        {
+          'Product Type': 'HDPE Pipe',
+          'Brand': 'Tarko',
+          'Production Date': '2025-01-25',
+          'Roll Length (m)': '100',
+          'Number of Rolls': '6',
+          'Weight per Meter': '1.85',
+          'PE (SDR)': '100',
+          'OD (mm)': '50',
+          'PN (bar)': '10'
+        }
+      ];
+      filename = 'hdpe_import_template.csv';
+    } else {
+      template = [
+        {
+          'Product Type': 'Sprinkler Pipe',
+          'Brand': 'Tarko',
+          'Production Date': '2025-01-10',
+          'Bundle Size (pcs)': '10',
+          'Piece Length (m)': '6',
+          'Number of Bundles': '20',
+          'OD (mm)': '16',
+          'PN (bar)': '4',
+          'Type/PE': 'L'
+        },
+        {
+          'Product Type': 'Sprinkler Pipe',
+          'Brand': 'Tarko',
+          'Production Date': '2025-01-15',
+          'Bundle Size (pcs)': '20',
+          'Piece Length (m)': '6',
+          'Number of Bundles': '15',
+          'OD (mm)': '20',
+          'PN (bar)': '4',
+          'Type/PE': 'L'
+        },
+        {
+          'Product Type': 'Sprinkler Pipe',
+          'Brand': 'Tarko',
+          'Production Date': '2025-01-20',
+          'Bundle Size (pcs)': '10',
+          'Piece Length (m)': '6',
+          'Number of Bundles': '25',
+          'OD (mm)': '16',
+          'PN (bar)': '4',
+          'Type/PE': 'C'
+        }
+      ];
+      filename = 'sprinkler_import_template.csv';
+    }
 
     const csv = [
       Object.keys(template[0]).join(','),
@@ -725,10 +774,10 @@ const Inventory = () => {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'inventory_template.csv';
+    a.download = filename;
     a.click();
     window.URL.revokeObjectURL(url);
-    toast.success('Template downloaded');
+    toast.success(`${templateType.toUpperCase()} template downloaded`);
   };
 
   const exportInventory = () => {
@@ -1107,7 +1156,7 @@ const Inventory = () => {
         } else {
           rollLength = parseFloat(getValue('roll_length (m)', ['roll_length_meters', 'Roll Length (m)']) || '100');
           numRolls = parseInt(getValue('number_of_rolls', ['Number of Rolls']) || '1');
-          weightPerMeter = parseFloat(getValue('weight_per_meter (kg/m)', ['weight_per_meter']) || '0');
+          weightPerMeter = parseFloat(getValue('weight_per_meter (kg/m)', ['weight_per_meter', 'Weight per Meter']) || '0');
           initialQuantity = rollLength * numRolls;
         }
 
@@ -1122,6 +1171,8 @@ const Inventory = () => {
           weight_per_meter: weightPerMeter || 0,
           notes: getValue('notes', ['Notes']) || 'Imported from CSV',
           // Roll configuration
+          roll_config_type: isSprinkler ? 'bundles' : 'standard_rolls',
+          quantity_based: isSprinkler ? 'true' : 'false',
           roll_length: isSprinkler ? null : rollLength,
           number_of_rolls: isSprinkler ? null : numRolls,
           bundle_size: isSprinkler ? bundleSize : null,
@@ -1166,10 +1217,6 @@ const Inventory = () => {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={downloadTemplate}>
-              <FileSpreadsheet className="h-4 w-4 mr-2" />
-              Download Template
-            </Button>
             <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
               <Upload className="h-4 w-4 mr-2" />
               Import
@@ -2466,15 +2513,29 @@ const Inventory = () => {
                   💡 Units are shown in parentheses (mm, bar, m, kg/m, pcs) to help you enter correct values
                 </p>
               </div>
-              <Button
-                variant="link"
-                size="sm"
-                onClick={downloadTemplate}
-                className="mt-2 h-auto p-0 text-xs"
-              >
-                <Download className="h-3 w-3 mr-1" />
-                Download example template with units
-              </Button>
+              <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                <p className="text-sm font-medium mb-3 text-blue-900 dark:text-blue-100">📥 Download Template</p>
+                <div className="flex items-center gap-2">
+                  <Select value={templateType} onValueChange={(value: 'hdpe' | 'sprinkler') => setTemplateType(value)}>
+                    <SelectTrigger className="w-[180px] h-9 bg-white dark:bg-gray-800">
+                      <SelectValue placeholder="Select template type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="hdpe">HDPE Template</SelectItem>
+                      <SelectItem value="sprinkler">Sprinkler Template</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={downloadTemplate}
+                    className="h-9"
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Download Template
+                  </Button>
+                </div>
+              </div>
             </div>
           </div>
 
