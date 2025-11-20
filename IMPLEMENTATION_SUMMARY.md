@@ -96,6 +96,7 @@ snapshots/
 - JWT secret key
 - API URL configuration
 - Backup retention settings
+- Default admin credentials
 - Optional SMTP for notifications
 
 **`.dockerignore`** - Optimized builds:
@@ -103,7 +104,47 @@ snapshots/
 - Reduces image size
 - Separates frontend/backend
 
-### 8. Deployment Scripts
+### 8. Admin User Initialization (`backend/init_admin.py`)
+
+**Functionality:**
+- Automatically creates default admin user on first deployment
+- Idempotent operation (checks if admin exists before creating)
+- Environment variable configuration
+- Secure password hashing with bcrypt
+- Integration with application startup
+
+**Environment Variables:**
+- `DEFAULT_ADMIN_USERNAME` (default: 'admin')
+- `DEFAULT_ADMIN_EMAIL` (default: 'admin@tarko.local')
+- `DEFAULT_ADMIN_PASSWORD` (default: 'Admin@123')
+- `DEFAULT_ADMIN_FULLNAME` (default: 'System Administrator')
+
+**Security Features:**
+- Uses same bcrypt pattern as existing authentication
+- Clear warnings to change default password
+- No duplicate admin creation
+- PostgreSQL transaction handling
+
+**Integration Points:**
+- `docker-entrypoint.sh`: Runs before Flask starts in Docker
+- `app.py`: Startup initialization for local development
+- Works with existing authentication system
+
+### 9. Docker Entrypoint Script (`backend/docker-entrypoint.sh`)
+
+**Startup Sequence:**
+1. Wait for PostgreSQL to be ready
+2. Initialize database schema (if needed)
+3. Create default admin user
+4. Start Flask application
+
+**Features:**
+- Proper service dependency handling
+- Clear startup logging
+- Graceful error handling
+- PostgreSQL connection check with netcat
+
+### 10. Deployment Scripts
 
 **`deploy.sh`** - One-command deployment:
 - Checks Docker installation

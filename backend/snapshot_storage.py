@@ -17,8 +17,18 @@ class SnapshotStorage:
     """Manages snapshot storage in local file system"""
 
     def __init__(self, storage_path: str = None):
-        self.storage_path = Path(storage_path or os.getenv('SNAPSHOT_STORAGE_PATH', '/app/snapshots'))
-        self.storage_path.mkdir(parents=True, exist_ok=True)
+        # Use local snapshots directory for development, /app/snapshots for Docker
+        default_path = os.getenv('SNAPSHOT_STORAGE_PATH', './snapshots')
+        self.storage_path = Path(storage_path or default_path)
+
+        # Create directory with proper error handling
+        try:
+            self.storage_path.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            logger.warning(f"Could not create snapshot directory at {self.storage_path}: {e}")
+            # Fallback to current directory
+            self.storage_path = Path('./snapshots')
+            self.storage_path.mkdir(parents=True, exist_ok=True)
 
     def save_snapshot(self, snapshot_id: str, snapshot_data: Dict, metadata: Dict) -> bool:
         """

@@ -53,9 +53,26 @@ docker-compose logs -f
 - **Backend API**: http://localhost:5500
 - **Health Check**: http://localhost:5500/api/health
 
-### Default Admin Login
+### Default Admin Credentials
+
+⚠️ **SECURITY NOTICE**: A default admin account is automatically created on first deployment.
+
+**Default Login:**
 - Username: `admin`
-- Password: (as configured during initial setup)
+- Password: `Admin@123`
+- Email: `admin@tarko.local`
+
+**⚠️ IMPORTANT: Change the default password immediately after first login!**
+
+To customize default admin credentials before deployment, edit `.env`:
+```bash
+DEFAULT_ADMIN_USERNAME=admin
+DEFAULT_ADMIN_EMAIL=admin@tarko.local
+DEFAULT_ADMIN_PASSWORD=Admin@123
+DEFAULT_ADMIN_FULLNAME=System Administrator
+```
+
+The admin account is created automatically when the backend starts. If an admin already exists, it will not create a duplicate.
 
 ---
 

@@ -47,13 +47,15 @@ def create_snapshot():
 
     logger.info(f"Creating snapshot: {snapshot_name}")
 
+    conn = None
     try:
         conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
 
         # Get database info
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
         cursor.execute("SELECT version() as version")
         db_version = cursor.fetchone()['version']
+        cursor.close()
 
         # Tables to backup
         tables = [
@@ -73,9 +75,11 @@ def create_snapshot():
             'stats': {}
         }
 
-        # Backup each table
+        # Backup each table with separate cursor to avoid transaction issues
         for table in tables:
+            cursor = None
             try:
+                cursor = conn.cursor(cursor_factory=RealDictCursor)
                 cursor.execute(f"SELECT * FROM {table}")
                 rows = cursor.fetchall()
 
@@ -96,46 +100,68 @@ def create_snapshot():
                 logger.info(f"  Backed up {table}: {len(table_data)} rows")
 
             except Exception as e:
+                # Log error but continue with other tables
                 logger.error(f"  Failed to backup {table}: {e}")
                 snapshot_data['tables'][table] = f"ERROR: {str(e)}"
+                # Rollback failed transaction and continue
+                if cursor:
+                    cursor.close()
+                conn.rollback()
+            finally:
+                if cursor:
+                    cursor.close()
 
         # Save metadata
         metadata_file = snapshot_dir / 'metadata.json'
         with open(metadata_file, 'w') as f:
             json.dump(snapshot_data, f, indent=2, default=str)
 
-        # Create SQL dump as well
-        sql_dump_file = snapshot_dir / f"{snapshot_name}.sql"
-        dump_command = f"pg_dump {DATABASE_URL} > {sql_dump_file}"
-        subprocess.run(dump_command, shell=True, check=True)
+        # Create SQL dump as well (only if pg_dump is available)
+        try:
+            sql_dump_file = snapshot_dir / f"{snapshot_name}.sql"
+            dump_command = f"pg_dump {DATABASE_URL} > {sql_dump_file}"
+            subprocess.run(dump_command, shell=True, check=True, timeout=300)
+        except Exception as e:
+            logger.warning(f"  Could not create SQL dump: {e}")
+
+        # Count successful backups
+        successful_tables = [t for t in snapshot_data['tables'].values() if not isinstance(t, str) or not t.startswith('ERROR')]
+        total_size = sum(s.get('file_size', 0) for s in snapshot_data['stats'].values()) / 1024 / 1024
 
         logger.info(f"✅ Snapshot created successfully: {snapshot_name}")
         logger.info(f"   Location: {snapshot_dir}")
-        logger.info(f"   Total tables: {len(tables)}")
-        logger.info(f"   Total size: {sum(s['file_size'] for s in snapshot_data['stats'].values()) / 1024 / 1024:.2f} MB")
+        logger.info(f"   Successful tables: {len(successful_tables)}/{len(tables)}")
+        logger.info(f"   Total size: {total_size:.2f} MB")
 
-        # Record in database
-        cursor.execute("""
-            INSERT INTO snapshots (snapshot_name, description, created_at, created_by, status, metadata)
-            VALUES (%s, %s, %s, %s, %s, %s)
-        """, (
-            snapshot_name,
-            'Automated daily backup',
-            datetime.now(),
-            'system',
-            'completed',
-            json.dumps(snapshot_data['stats'])
-        ))
-        conn.commit()
-
-        cursor.close()
-        conn.close()
+        # Record in database (optional, may fail if snapshots table doesn't exist)
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO snapshots (snapshot_name, description, created_at, created_by, status, metadata)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """, (
+                snapshot_name,
+                'Automated daily backup',
+                datetime.now(),
+                'system',
+                'completed',
+                json.dumps(snapshot_data['stats'])
+            ))
+            conn.commit()
+            cursor.close()
+        except Exception as e:
+            logger.warning(f"  Could not record snapshot in database: {e}")
+            conn.rollback()
 
         return snapshot_name
 
     except Exception as e:
         logger.error(f"❌ Failed to create snapshot: {e}")
         raise
+    finally:
+        # Ensure connection is closed
+        if conn:
+            conn.close()
 
 def cleanup_old_snapshots():
     """Remove snapshots older than retention period"""

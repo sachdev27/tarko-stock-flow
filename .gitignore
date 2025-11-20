@@ -69,6 +69,11 @@ bun.lockb
 # Google Drive credentials (SECURITY: Never commit!)
 backend/google_drive_credentials.json
 
+# Snapshots and Backups (user data)
+snapshots/
+backups/
+backend/uploads/
+
 # Images and pdf
 *.png
 *.jpg

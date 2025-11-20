@@ -1,18 +1,42 @@
 {
   "rootFolder": "/Users/sachdevs/Projects/Tarko-Inv/tarko-stock-flow",
-  "analyzedAt": "2025-11-20T13:41:09.021Z",
+  "analyzedAt": "2025-11-20T14:40:55.051Z",
   "rootStructure": [
     {
       "name": ".gitignore",
       "type": "file",
-      "size": 970,
-      "lines": 78
+      "size": 1044,
+      "lines": 83
+    },
+    {
+      "name": "DEPLOYMENT.md",
+      "type": "file",
+      "size": 8162,
+      "lines": 413
+    },
+    {
+      "name": "DOCKER_README.md",
+      "type": "file",
+      "size": 7197,
+      "lines": 384
+    },
+    {
+      "name": "Dockerfile.frontend",
+      "type": "file",
+      "size": 610,
+      "lines": 35
     },
     {
       "name": "EXPORT_GUIDE.md",
       "type": "file",
       "size": 7055,
       "lines": 273
+    },
+    {
+      "name": "IMPLEMENTATION_SUMMARY.md",
+      "type": "file",
+      "size": 7168,
+      "lines": 307
     },
     {
       "name": "README.md",
@@ -31,6 +55,10 @@
       "type": "dir"
     },
     {
+      "name": "backups",
+      "type": "dir"
+    },
+    {
       "name": "bun.lockb",
       "type": "file",
       "size": 201126,
@@ -41,6 +69,22 @@
       "type": "file",
       "size": 414,
       "lines": 21
+    },
+    {
+      "name": "deploy.sh",
+      "type": "file",
+      "size": 3641,
+      "lines": 103
+    },
+    {
+      "name": "dist",
+      "type": "dir"
+    },
+    {
+      "name": "docker-compose.yml",
+      "type": "file",
+      "size": 2735,
+      "lines": 106
     },
     {
       "name": "eslint.config.js",
@@ -55,14 +99,20 @@
       "lines": 25
     },
     {
+      "name": "nginx.conf",
+      "type": "file",
+      "size": 1429,
+      "lines": 51
+    },
+    {
       "name": "node_modules",
       "type": "dir"
     },
     {
       "name": "overview.json",
       "type": "file",
-      "size": 20655,
-      "lines": 688
+      "size": 27296,
+      "lines": 918
     },
     {
       "name": "package-lock.json",
@@ -87,8 +137,18 @@
       "type": "dir"
     },
     {
+      "name": "snapshots",
+      "type": "dir"
+    },
+    {
       "name": "src",
       "type": "dir"
+    },
+    {
+      "name": "status.sh",
+      "type": "file",
+      "size": 2165,
+      "lines": 67
     },
     {
       "name": "tailwind.config.ts",
@@ -122,6 +182,42 @@
     }
   ],
   "rootFileSnippets": {
+    "DEPLOYMENT.md": [
+      "# Tarko Inventory - Production Deployment Guide",
+      "",
+      "## Quick Start with Docker Compose",
+      "",
+      "### Prerequisites",
+      "- Docker Engine 20.10+",
+      "- Docker Compose 2.0+",
+      "- At least 2GB free disk space",
+      "- Open ports: 80, 5432, 5500",
+      ""
+    ],
+    "DOCKER_README.md": [
+      "# Tarko Inventory - Production Docker Setup",
+      "",
+      "Complete production-ready deployment with Docker Compose, automated backups, and snapshot management.",
+      "",
+      "## 🚀 Quick Start",
+      "",
+      "### Prerequisites",
+      "- Docker Engine 20.10+",
+      "- Docker Compose 2.0+",
+      "- 2GB free disk space"
+    ],
+    "Dockerfile.frontend": [
+      "# Build stage",
+      "FROM node:20-alpine AS builder",
+      "",
+      "WORKDIR /app",
+      "",
+      "# Copy package files",
+      "COPY package*.json ./",
+      "",
+      "# Install dependencies",
+      "RUN npm ci"
+    ],
     "EXPORT_GUIDE.md": [
       "# Export & Database Management Guide",
       "",
@@ -133,6 +229,18 @@
       "### 1. Database Clearing Script",
       "Location: `backend/clear_inventory.py`",
       ""
+    ],
+    "IMPLEMENTATION_SUMMARY.md": [
+      "# Docker Production Setup - Implementation Summary",
+      "",
+      "## ✅ What Has Been Implemented",
+      "",
+      "### 1. Docker Compose Configuration (`docker-compose.yml`)",
+      "",
+      "**Services:**",
+      "- **PostgreSQL Database**: Persistent data with volume, health checks, automatic schema initialization",
+      "- **Flask Backend**: REST API with JWT authentication, health endpoints",
+      "- **React Frontend**: Nginx-served production build with API proxy"
     ],
     "README.md": [
       "# Tarko Inventory Management System",
@@ -182,6 +290,30 @@
       "\"baseColor\": \"slate\",",
       "\"cssVariables\": true,"
     ],
+    "deploy.sh": [
+      "#!/bin/bash",
+      "",
+      "echo \"╔════════════════════════════════════════════════════════════════╗\"",
+      "echo \"║         Tarko Inventory - Docker Deployment Setup             ║\"",
+      "echo \"╚════════════════════════════════════════════════════════════════╝\"",
+      "echo \"\"",
+      "",
+      "# Check if Docker is installed",
+      "if ! command -v docker &> /dev/null; then",
+      "echo \"❌ Docker is not installed. Please install Docker first.\""
+    ],
+    "docker-compose.yml": [
+      "version: '3.8'",
+      "",
+      "services:",
+      "postgres:",
+      "image: postgres:15-alpine",
+      "container_name: tarko-postgres",
+      "restart: unless-stopped",
+      "environment:",
+      "POSTGRES_DB: tarko_inventory",
+      "POSTGRES_USER: tarko_user"
+    ],
     "eslint.config.js": [
       "import js from \"@eslint/js\";",
       "import globals from \"globals\";",
@@ -206,16 +338,28 @@
       "",
       "<meta property=\"og:title\" content=\"Tarko Inventory - Manufacturing Management\" />"
     ],
+    "nginx.conf": [
+      "server {",
+      "listen 80;",
+      "server_name _;",
+      "",
+      "root /usr/share/nginx/html;",
+      "index index.html;",
+      "",
+      "# Gzip compression",
+      "gzip on;",
+      "gzip_vary on;"
+    ],
     "overview.json": [
       "{",
       "\"rootFolder\": \"/Users/sachdevs/Projects/Tarko-Inv/tarko-stock-flow\",",
-      "\"analyzedAt\": \"2025-11-20T13:38:42.229Z\",",
+      "\"analyzedAt\": \"2025-11-20T14:40:40.605Z\",",
       "\"rootStructure\": [",
       "{",
       "\"name\": \".gitignore\",",
       "\"type\": \"file\",",
-      "\"size\": 970,",
-      "\"lines\": 78",
+      "\"size\": 1044,",
+      "\"lines\": 83",
       "},"
     ],
     "package-lock.json": [
@@ -250,6 +394,18 @@
       "},",
       "};",
       ""
+    ],
+    "status.sh": [
+      "#!/bin/bash",
+      "",
+      "echo \"╔════════════════════════════════════════════════════════════════╗\"",
+      "echo \"║         Tarko Inventory - Deployment Status Check             ║\"",
+      "echo \"╚════════════════════════════════════════════════════════════════╝\"",
+      "echo \"\"",
+      "",
+      "# Check if services are running",
+      "echo \"📊 Service Status:\"",
+      "docker-compose ps"
     ],
     "tailwind.config.ts": [
       "import type { Config } from \"tailwindcss\";",
@@ -316,7 +472,7 @@
     {
       "path": "backend",
       "category": "backend",
-      "fileCount": 55,
+      "fileCount": 48,
       "primaryLanguage": "Python"
     },
     {
@@ -354,28 +510,28 @@
     "root": "# Tarko Inventory Management System"
   },
   "totals": {
-    "numFiles": 154,
-    "numDirs": 16,
-    "totalSizeBytes": 2274096,
-    "totalLinesOfCode": 25569
+    "numFiles": 224,
+    "numDirs": 30,
+    "totalSizeBytes": 2495618,
+    "totalLinesOfCode": 22943
   },
   "fileCategories": {
-    "other": 36,
-    "documentation": 10,
-    "source": 100,
-    "config": 8
+    "other": 48,
+    "documentation": 11,
+    "source": 96,
+    "config": 69
   },
   "linesOfCodePerLanguage": {
-    "Python": 5141,
-    "Shell": 146,
+    "Python": 5032,
+    "Shell": 255,
     "JavaScript": 34,
-    "TypeScript": 20248
+    "TypeScript": 17622
   },
   "filesPerLanguage": {
-    "Python": 18,
-    "Shell": 3,
+    "Python": 17,
+    "Shell": 4,
     "JavaScript": 2,
-    "TypeScript": 77
+    "TypeScript": 73
   },
   "projectTypes": [
     "Python (requirements)",
@@ -387,31 +543,39 @@
     "Vite"
   ],
   "entryPoints": [
-    "backend/clear_inventory.py",
-    "backend/run_customer_migration.sh",
-    "backend/setup_backup_system.sh",
-    "backend/setup_db.sh"
+    "backend/backup_scheduler.py",
+    "backend/docker-entrypoint-scheduler.sh",
+    "backend/setup_db.sh",
+    "deploy.sh",
+    "status.sh"
   ],
-  "ciCdTools": [],
+  "ciCdTools": [
+    "Docker"
+  ],
   "packageManagers": [
     "npm/yarn"
   ],
   "topLevelDirectories": [
     {
       "name": "src",
-      "numFiles": 77,
-      "totalLoc": 20133,
+      "numFiles": 73,
+      "totalLoc": 17507,
       "dominantLanguage": "TypeScript"
     },
     {
       "name": "backend",
-      "numFiles": 55,
-      "totalLoc": 5287,
+      "numFiles": 48,
+      "totalLoc": 5117,
       "dominantLanguage": "Python"
     },
     {
       "name": "public",
       "numFiles": 3,
+      "totalLoc": 0
+    },
+    {
+      "name": "snapshots",
+      "numFiles": 70,
       "totalLoc": 0
     }
   ],
@@ -420,21 +584,21 @@
       "path": "src",
       "name": "src",
       "level": 1,
-      "numFiles": 77,
-      "totalLoc": 20133,
+      "numFiles": 73,
+      "totalLoc": 17507,
       "dominantLanguage": "TypeScript",
       "category": "General",
-      "description": "General module with 77 files (TypeScript)",
+      "description": "General module with 73 files (TypeScript)",
       "subdirectories": [
         {
           "path": "src/pages",
           "name": "pages",
           "level": 2,
-          "numFiles": 15,
-          "totalLoc": 15095,
+          "numFiles": 11,
+          "totalLoc": 12469,
           "dominantLanguage": "TypeScript",
           "category": "General",
-          "description": "General module with 15 files (TypeScript)",
+          "description": "General module with 11 files (TypeScript)",
           "subdirectories": []
         },
         {
@@ -499,8 +663,8 @@
       "path": "backend",
       "name": "backend",
       "level": 1,
-      "numFiles": 55,
-      "totalLoc": 5287,
+      "numFiles": 48,
+      "totalLoc": 5117,
       "dominantLanguage": "Python",
       "category": "General",
       "description": "# Tarko Inventory - Backend API",
@@ -510,7 +674,7 @@
           "name": "routes",
           "level": 2,
           "numFiles": 11,
-          "totalLoc": 4327,
+          "totalLoc": 4292,
           "dominantLanguage": "Python",
           "category": "General",
           "description": "General module with 11 files (Python)",
@@ -550,6 +714,67 @@
       ]
     },
     {
+      "path": "snapshots",
+      "name": "snapshots",
+      "level": 1,
+      "numFiles": 70,
+      "totalLoc": 0,
+      "category": "General",
+      "description": "General module with 70 files",
+      "subdirectories": [
+        {
+          "path": "snapshots/daily_backup_20251120_143806",
+          "name": "daily_backup_20251120_143806",
+          "level": 2,
+          "numFiles": 7,
+          "totalLoc": 0,
+          "category": "General",
+          "description": "General module with 7 files",
+          "subdirectories": []
+        },
+        {
+          "path": "snapshots/daily_backup_20251120_143807",
+          "name": "daily_backup_20251120_143807",
+          "level": 2,
+          "numFiles": 7,
+          "totalLoc": 0,
+          "category": "General",
+          "description": "General module with 7 files",
+          "subdirectories": []
+        },
+        {
+          "path": "snapshots/daily_backup_20251120_143808",
+          "name": "daily_backup_20251120_143808",
+          "level": 2,
+          "numFiles": 7,
+          "totalLoc": 0,
+          "category": "General",
+          "description": "General module with 7 files",
+          "subdirectories": []
+        },
+        {
+          "path": "snapshots/daily_backup_20251120_143810",
+          "name": "daily_backup_20251120_143810",
+          "level": 2,
+          "numFiles": 7,
+          "totalLoc": 0,
+          "category": "General",
+          "description": "General module with 7 files",
+          "subdirectories": []
+        },
+        {
+          "path": "snapshots/daily_backup_20251120_143814",
+          "name": "daily_backup_20251120_143814",
+          "level": 2,
+          "numFiles": 7,
+          "totalLoc": 0,
+          "category": "General",
+          "description": "General module with 7 files",
+          "subdirectories": []
+        }
+      ]
+    },
+    {
       "path": "public",
       "name": "public",
       "level": 1,
@@ -564,22 +789,27 @@
     "coreApplications": [],
     "entryPointDetails": [
       {
-        "path": "../../../../../backend/clear_inventory.py",
+        "path": "../../../../../backend/backup_scheduler.py",
         "type": "Unknown",
         "description": ""
       },
       {
-        "path": "../../../../../backend/run_customer_migration.sh",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/setup_backup_system.sh",
+        "path": "../../../../../backend/docker-entrypoint-scheduler.sh",
         "type": "Unknown",
         "description": ""
       },
       {
         "path": "../../../../../backend/setup_db.sh",
+        "type": "Unknown",
+        "description": ""
+      },
+      {
+        "path": "../../../../../deploy.sh",
+        "type": "Unknown",
+        "description": ""
+      },
+      {
+        "path": "../../../../../status.sh",
         "type": "Unknown",
         "description": ""
       }
@@ -671,14 +901,14 @@
     "total": 66
   },
   "complexity": {
-    "averageFileSize": 166.03246753246754,
+    "averageFileSize": 102.42410714285714,
     "maxFileSize": 0,
     "nestedDepth": 0,
     "estimatedComplexity": "high"
   },
   "gitRepo": {
     "firstCommitDate": "2025-11-20",
-    "totalCommits": 20,
+    "totalCommits": 24,
     "numContributors": 0,
     "currentBranch": "sachdevs/ready_for_prod",
     "remoteUrls": [

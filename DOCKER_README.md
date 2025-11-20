@@ -38,6 +38,27 @@ docker-compose ps
 docker-compose logs -f
 ```
 
+## 🔐 Default Admin Access
+
+After first deployment, a default admin account is automatically created:
+
+**Default Credentials:**
+- Username: `admin`
+- Password: `Admin@123`
+- Email: `admin@tarko.local`
+
+⚠️ **CRITICAL SECURITY STEP**: Change the default password immediately after first login!
+
+**To customize before deployment**, edit `.env`:
+```bash
+DEFAULT_ADMIN_USERNAME=admin
+DEFAULT_ADMIN_EMAIL=admin@tarko.local
+DEFAULT_ADMIN_PASSWORD=YourSecurePassword123
+DEFAULT_ADMIN_FULLNAME=System Administrator
+```
+
+The admin account is created automatically on container startup. If an admin already exists, no duplicate will be created.
+
 ## 📦 What's Included
 
 ### Services
