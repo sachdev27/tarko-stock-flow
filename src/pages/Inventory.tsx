@@ -18,6 +18,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { inventory as inventoryAPI, transactions as transactionsAPI, production as productionAPI, ledger as ledgerAPI } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { toISTDateTimeLocal, fromISTDateTimeLocal } from '@/lib/utils';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { Separator } from '@/components/ui/separator';
 
 interface ProductInventory {
   product_type: string;
@@ -96,6 +98,7 @@ interface TransactionDiagnostic {
 const Inventory = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const [loading, setLoading] = useState(true);
   const [inventory, setInventory] = useState<ProductInventory[]>([]);
   const [productTypes, setProductTypes] = useState<any[]>([]);
@@ -1161,7 +1164,7 @@ const Inventory = () => {
     <Layout>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center space-x-3">
             <div className="h-10 w-10 rounded-lg bg-primary flex items-center justify-center">
               <Package className="h-6 w-6 text-primary-foreground" />
@@ -1171,18 +1174,18 @@ const Inventory = () => {
               <p className="text-muted-foreground">Track stock across products, batches, and rolls</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             {user?.role === 'admin' && (
               <>
-                <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
+                <Button variant="outline" onClick={() => setImportDialogOpen(true)} className="flex-1 sm:flex-initial">
                   <Upload className="h-4 w-4 mr-2" />
-                  Import
+                  {isMobile ? '' : 'Import'}
                 </Button>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="outline">
+                    <Button variant="outline" className="flex-1 sm:flex-initial">
                       <Download className="h-4 w-4 mr-2" />
-                      Export
+                      {isMobile ? '' : 'Export'}
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
@@ -1198,9 +1201,9 @@ const Inventory = () => {
                 </DropdownMenu>
               </>
             )}
-            <Button variant="outline" onClick={openWhatsAppDialog} className="bg-green-50 hover:bg-green-100 border-green-200">
+            <Button variant="outline" onClick={openWhatsAppDialog} className="flex-1 sm:flex-initial bg-green-50 hover:bg-green-100 border-green-200">
               <MessageCircle className="h-4 w-4 mr-2 text-green-600" />
-              <span className="text-green-700">Share on WhatsApp</span>
+              <span className="text-green-700">{isMobile ? 'WhatsApp' : 'Share on WhatsApp'}</span>
             </Button>
           </div>
         </div>
@@ -1460,54 +1463,108 @@ const Inventory = () => {
               return (
                 <Card key={idx}>
                   <Collapsible>
-                    <CardHeader>
-                      <div className="flex items-center justify-between w-full gap-4">
-                        <CollapsibleTrigger asChild>
-                          <div className="flex items-center justify-between flex-1 gap-3 cursor-pointer">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <Badge variant="secondary" className="text-base px-3 py-1">
-                                {product.brand}
-                              </Badge>
-                              {(() => {
-                                // Sort parameters in order: PE, PN, OD
-                                const paramOrder = ['PE', 'PN', 'OD'];
-                                const sortedParams = Object.entries(product.parameters).sort(([keyA], [keyB]) => {
-                                  const indexA = paramOrder.indexOf(keyA);
-                                  const indexB = paramOrder.indexOf(keyB);
-                                  if (indexA === -1 && indexB === -1) return 0;
-                                  if (indexA === -1) return 1;
-                                  if (indexB === -1) return -1;
-                                  return indexA - indexB;
-                                });
+                    <CardHeader className="pb-3">
+                      {isMobile ? (
+                        /* Mobile Layout - Stacked */
+                        <div className="space-y-3">
+                          {/* Badges */}
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <Badge variant="secondary" className="text-sm px-2 py-1">
+                              {product.brand}
+                            </Badge>
+                            {(() => {
+                              const paramOrder = ['PE', 'PN', 'OD'];
+                              const sortedParams = Object.entries(product.parameters).sort(([keyA], [keyB]) => {
+                                const indexA = paramOrder.indexOf(keyA);
+                                const indexB = paramOrder.indexOf(keyB);
+                                if (indexA === -1 && indexB === -1) return 0;
+                                if (indexA === -1) return 1;
+                                if (indexB === -1) return -1;
+                                return indexA - indexB;
+                              });
 
-                                return sortedParams.map(([key, value]) => (
-                                  <Badge key={key} variant="outline" className="text-base px-3 py-1">
-                                    {key}: {String(value)}
-                                  </Badge>
-                                ));
-                              })()}
-                            </div>
-                            <div className="flex items-center gap-3">
-                              <span className="text-2xl whitespace-nowrap">
-                                <span className="font-bold">{displayQty}</span> {unit}
-                              </span>
-                              <ChevronDown className="h-5 w-5 text-muted-foreground flex-shrink-0" />
-                            </div>
+                              return sortedParams.map(([key, value]) => (
+                                <Badge key={key} variant="outline" className="text-sm px-2 py-1">
+                                  {key}: {String(value)}
+                                </Badge>
+                              ));
+                            })()}
                           </div>
-                        </CollapsibleTrigger>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openProductHistory(product);
-                          }}
-                          className="ml-2"
-                        >
-                          <FileText className="h-4 w-4 mr-1" />
-                          History
-                        </Button>
-                      </div>
+
+                          {/* Quantity and Actions */}
+                          <div className="flex items-center justify-between gap-2">
+                            <CollapsibleTrigger asChild>
+                              <Button variant="ghost" className="p-0 h-auto hover:bg-transparent">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xl">
+                                    <span className="font-bold">{displayQty}</span> {unit}
+                                  </span>
+                                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                                </div>
+                              </Button>
+                            </CollapsibleTrigger>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openProductHistory(product);
+                              }}
+                            >
+                              <FileText className="h-4 w-4 mr-1" />
+                              History
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        /* Desktop Layout - Horizontal */
+                        <div className="flex items-center justify-between w-full gap-4">
+                          <CollapsibleTrigger asChild>
+                            <div className="flex items-center justify-between flex-1 gap-3 cursor-pointer">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <Badge variant="secondary" className="text-base px-3 py-1">
+                                  {product.brand}
+                                </Badge>
+                                {(() => {
+                                  const paramOrder = ['PE', 'PN', 'OD'];
+                                  const sortedParams = Object.entries(product.parameters).sort(([keyA], [keyB]) => {
+                                    const indexA = paramOrder.indexOf(keyA);
+                                    const indexB = paramOrder.indexOf(keyB);
+                                    if (indexA === -1 && indexB === -1) return 0;
+                                    if (indexA === -1) return 1;
+                                    if (indexB === -1) return -1;
+                                    return indexA - indexB;
+                                  });
+
+                                  return sortedParams.map(([key, value]) => (
+                                    <Badge key={key} variant="outline" className="text-base px-3 py-1">
+                                      {key}: {String(value)}
+                                    </Badge>
+                                  ));
+                                })()}
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <span className="text-2xl whitespace-nowrap">
+                                  <span className="font-bold">{displayQty}</span> {unit}
+                                </span>
+                                <ChevronDown className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+                              </div>
+                            </div>
+                          </CollapsibleTrigger>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openProductHistory(product);
+                            }}
+                            className="ml-2"
+                          >
+                            <FileText className="h-4 w-4 mr-1" />
+                            History
+                          </Button>
+                        </div>
+                      )}
                     </CardHeader>
 
                     <CollapsibleContent>
@@ -1527,9 +1584,9 @@ const Inventory = () => {
                                   return (
                                     <div
                                       key={length}
-                                      className="p-4 bg-secondary/50 rounded-lg flex items-center justify-between"
+                                      className="p-4 bg-secondary/50 rounded-lg flex items-center justify-between gap-3"
                                     >
-                                      <div className="flex-1">
+                                      <div className="flex-1 min-w-0">
                                         <div className="text-base font-semibold">
                                           <span className="font-bold">{parseFloat(length).toFixed(0)}m</span> × {rolls.length}
                                         </div>
@@ -1537,16 +1594,17 @@ const Inventory = () => {
                                           {rolls.length} roll{rolls.length > 1 ? 's' : ''}
                                         </div>
                                       </div>
-                                      <div className="text-3xl text-primary mr-4">
+                                      <div className={`text-primary mr-2 ${isMobile ? 'text-xl' : 'text-3xl'}`}>
                                         <span className="font-bold">{totalLength.toFixed(0)}m</span>
                                       </div>
                                       <Button
                                         size="sm"
                                         variant="outline"
                                         onClick={() => openCutDialogWithRolls(rolls)}
+                                        className="flex-shrink-0"
                                       >
                                         <ScissorsIcon className="h-4 w-4 mr-1" />
-                                        Cut
+                                        {isMobile ? '' : 'Cut'}
                                       </Button>
                                     </div>
                                   );
@@ -1567,9 +1625,9 @@ const Inventory = () => {
                                 .map((roll) => (
                                   <div
                                     key={roll.id}
-                                    className="p-3 bg-amber-50 dark:bg-amber-950 rounded-lg border border-amber-200 dark:border-amber-800 flex items-center justify-between"
+                                    className="p-3 bg-amber-50 dark:bg-amber-950 rounded-lg border border-amber-200 dark:border-amber-800 flex items-center justify-between gap-2"
                                   >
-                                    <div className="flex-1">
+                                    <div className="flex-1 min-w-0">
                                       <div className="text-base font-semibold text-amber-700 dark:text-amber-400">
                                         {roll.length_meters.toFixed(2)}m
                                       </div>
@@ -1578,10 +1636,10 @@ const Inventory = () => {
                                       size="sm"
                                       variant="outline"
                                       onClick={() => openCutDialog(roll)}
-                                      className="ml-2 border-amber-400 text-amber-700 hover:bg-amber-100 dark:border-amber-600 dark:text-amber-400 dark:hover:bg-amber-900"
+                                      className="flex-shrink-0 border-amber-400 text-amber-700 hover:bg-amber-100 dark:border-amber-600 dark:text-amber-400 dark:hover:bg-amber-900"
                                     >
                                       <ScissorsIcon className="h-4 w-4 mr-1" />
-                                      Cut
+                                      {isMobile ? '' : 'Cut'}
                                     </Button>
                                   </div>
                                 ))}
@@ -1592,14 +1650,14 @@ const Inventory = () => {
                         {/* Bundles */}
                         {Object.keys(bundlesBySize).length > 0 && (
                           <div>
-                            <div className="text-sm font-semibold text-muted-foreground mb-3 flex items-center justify-between">
+                            <div className="text-sm font-semibold text-muted-foreground mb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                               <span>Bundles ({bundleRolls.length} total)</span>
                               {bundleRolls.length > 0 && (
                                 <Button
                                   size="sm"
                                   variant="outline"
                                   onClick={() => openCutBundleDialogWithBundles(bundleRolls)}
-                                  className="text-orange-600 hover:text-orange-700 hover:bg-orange-50"
+                                  className="text-orange-600 hover:text-orange-700 hover:bg-orange-50 w-full sm:w-auto"
                                 >
                                   <ScissorsIcon className="h-3 w-3 mr-1" />
                                   Cut into Spares
@@ -1619,9 +1677,9 @@ const Inventory = () => {
                                   return (
                                     <div
                                       key={bundleSize}
-                                      className="p-4 bg-blue-50 dark:bg-blue-950 rounded-lg flex items-center justify-between border border-blue-200 dark:border-blue-800"
+                                      className="p-4 bg-blue-50 dark:bg-blue-950 rounded-lg flex items-center justify-between gap-3 border border-blue-200 dark:border-blue-800"
                                     >
-                                      <div className="flex-1">
+                                      <div className="flex-1 min-w-0">
                                         <div className="text-base font-semibold">
                                           Bundle of {bundleSize} × {rolls.length}
                                         </div>
@@ -1630,15 +1688,15 @@ const Inventory = () => {
                                           {!product.roll_config?.quantity_based && ` (${totalLength.toFixed(2)} m)`}
                                         </div>
                                       </div>
-                                      <div className="flex items-center gap-3">
-                                        <div className="text-3xl font-bold text-blue-600">
+                                      <div className="flex items-center gap-2">
+                                        <div className={`font-bold text-blue-600 ${isMobile ? 'text-xl' : 'text-3xl'}`}>
                                           {totalPieces} pcs
                                         </div>
                                         <Button
                                           size="sm"
                                           variant="ghost"
                                           onClick={() => openCutBundleDialog(rolls[0])}
-                                          className="text-orange-600 hover:text-orange-700 hover:bg-orange-50"
+                                          className="flex-shrink-0 text-orange-600 hover:text-orange-700 hover:bg-orange-50"
                                         >
                                           <ScissorsIcon className="h-4 w-4" />
                                         </Button>
@@ -1653,22 +1711,22 @@ const Inventory = () => {
                         {/* Spare Pipes */}
                         {spareRolls.length > 0 && (
                           <div>
-                            <div className="text-sm font-semibold text-muted-foreground mb-3 flex items-center justify-between">
+                            <div className="text-sm font-semibold text-muted-foreground mb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                               <span>Spare Pipes ({spareRolls.length} total)</span>
                               {spareRolls.length >= 1 && (
                                 <Button
                                   size="sm"
                                   variant="outline"
                                   onClick={() => openCombineSparesDialog(spareRolls)}
-                                  className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                                  className="text-green-600 hover:text-green-700 hover:bg-green-50 w-full sm:w-auto"
                                 >
                                   <PlusIcon className="h-3 w-3 mr-1" />
                                   Combine into Bundle
                                 </Button>
                               )}
                             </div>
-                            <div className="p-4 bg-purple-50 dark:bg-purple-950 rounded-lg flex items-center justify-between border border-purple-200 dark:border-purple-800">
-                              <div className="flex-1">
+                            <div className="p-4 bg-purple-50 dark:bg-purple-950 rounded-lg flex items-center justify-between gap-3 border border-purple-200 dark:border-purple-800">
+                              <div className="flex-1 min-w-0">
                                 <div className="text-base font-semibold">
                                   Spare Pipes × {spareRolls.length}
                                 </div>
@@ -1677,8 +1735,8 @@ const Inventory = () => {
                                   {!product.roll_config?.quantity_based && ` (${spareRolls.reduce((sum, r) => sum + r.length_meters, 0).toFixed(2)} m)`}
                                 </div>
                               </div>
-                              <div className="flex items-center gap-3">
-                                <div className="text-3xl font-bold text-purple-600">
+                              <div className="flex items-center gap-2">
+                                <div className={`font-bold text-purple-600 ${isMobile ? 'text-xl' : 'text-3xl'}`}>
                                   {spareRolls.reduce((sum, r) => sum + (r.bundle_size || 1), 0)} pcs
                                 </div>
                                 {spareRolls.length >= 1 && (
@@ -1686,7 +1744,7 @@ const Inventory = () => {
                                     size="sm"
                                     variant="ghost"
                                     onClick={() => openCombineSparesDialog(spareRolls)}
-                                    className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                                    className="flex-shrink-0 text-green-600 hover:text-green-700 hover:bg-green-50"
                                   >
                                     <PlusIcon className="h-4 w-4" />
                                   </Button>
@@ -1851,80 +1909,160 @@ const Inventory = () => {
                   </h3>
                 </div>
                 <div className="max-h-96 overflow-y-auto">
-                  <Table>
-                    <TableHeader className="sticky top-0 bg-background">
-                      <TableRow>
-                        <TableHead>Date & Time</TableHead>
-                        <TableHead>Type</TableHead>
-                        <TableHead>Batch</TableHead>
-                        <TableHead>Roll Details</TableHead>
-                        <TableHead className="text-right">Quantity</TableHead>
-                        <TableHead>Customer</TableHead>
-                        <TableHead>Invoice</TableHead>
-                        <TableHead>Notes</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
+                  {isMobile ? (
+                    /* Mobile Card View */
+                    <div className="divide-y">
                       {productHistory.map((txn) => (
-                        <TableRow key={txn.id}>
-                          <TableCell className="whitespace-nowrap">
-                            {new Date(txn.transaction_date).toLocaleString('en-IN', {
-                              dateStyle: 'short',
-                              timeStyle: 'short'
-                            })}
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant={txn.transaction_type === 'PRODUCTION' ? 'default' : 'destructive'}>
-                              {txn.transaction_type}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="font-mono text-sm">
-                            {txn.batch_code || '-'}
-                            {txn.batch_no && <div className="text-xs text-muted-foreground">#{txn.batch_no}</div>}
-                          </TableCell>
-                        <TableCell>
-                          {txn.roll_length_meters != null ? (
-                            <div className="text-sm">
-                              <div className="font-medium">{txn.roll_length_meters.toFixed(2)} m</div>
-                              <div className="text-xs text-muted-foreground">{formatWeight(txn.roll_weight)}</div>
-                              {txn.roll_type && <div className="text-xs text-muted-foreground">{txn.roll_type}{txn.roll_is_cut ? ' • Cut' : ''}</div>}
+                        <div key={txn.id} className="p-4 space-y-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-1">
+                                <Badge variant={txn.transaction_type === 'PRODUCTION' ? 'default' : 'destructive'}>
+                                  {txn.transaction_type}
+                                </Badge>
+                                <span className={`text-lg font-semibold ${txn.transaction_type === 'PRODUCTION' ? 'text-green-600' : 'text-red-600'}`}>
+                                  {txn.transaction_type === 'PRODUCTION' ? '+' : '-'}
+                                  {Math.abs(txn.quantity_change || 0).toFixed(2)} m
+                                </span>
+                              </div>
+                              <div className="text-sm text-muted-foreground">
+                                {new Date(txn.transaction_date).toLocaleString('en-IN', {
+                                  dateStyle: 'short',
+                                  timeStyle: 'short'
+                                })}
+                              </div>
                             </div>
-                          ) : (
-                            <div className="text-sm text-muted-foreground">-</div>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right font-medium">
-                          <span className={txn.transaction_type === 'PRODUCTION' ? 'text-green-600' : 'text-red-600'}>
-                            {txn.transaction_type === 'PRODUCTION' ? '+' : '-'}
-                            {Math.abs(txn.quantity_change || 0).toFixed(2)} m
-                          </span>
-                        </TableCell>
-                        <TableCell>{txn.customer_name || '-'}</TableCell>
-                        <TableCell className="font-mono text-sm">{txn.invoice_no || '-'}</TableCell>
-                        <TableCell className="max-w-xs">
-                          <div className="truncate" title={txn.notes || ''}>
-                            {txn.notes || '-'}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedTransaction(txn);
+                                setTransactionDetailDialogOpen(true);
+                              }}
+                            >
+                              <FileText className="h-4 w-4" />
+                            </Button>
                           </div>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedTransaction(txn);
-                              setTransactionDetailDialogOpen(true);
-                            }}
-                          >
-                            <FileText className="h-4 w-4 mr-1" />
-                            Details
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+
+                          <div className="grid grid-cols-2 gap-2 text-sm">
+                            <div>
+                              <div className="text-muted-foreground text-xs">Batch</div>
+                              <div className="font-mono">
+                                {txn.batch_code || '-'}
+                                {txn.batch_no && <span className="text-xs text-muted-foreground"> #{txn.batch_no}</span>}
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-muted-foreground text-xs">Invoice</div>
+                              <div className="font-mono">{txn.invoice_no || '-'}</div>
+                            </div>
+                          </div>
+
+                          {txn.roll_length_meters != null && (
+                            <div className="text-sm">
+                              <div className="text-muted-foreground text-xs mb-1">Roll Details</div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-medium">{txn.roll_length_meters.toFixed(2)} m</span>
+                                {txn.roll_weight && <span className="text-muted-foreground">{formatWeight(txn.roll_weight)}</span>}
+                                {txn.roll_type && <Badge variant="outline" className="text-xs">{txn.roll_type}{txn.roll_is_cut ? ' • Cut' : ''}</Badge>}
+                              </div>
+                            </div>
+                          )}
+
+                          {txn.customer_name && (
+                            <div className="text-sm">
+                              <div className="text-muted-foreground text-xs">Customer</div>
+                              <div>{txn.customer_name}</div>
+                            </div>
+                          )}
+
+                          {txn.notes && (
+                            <div className="text-sm">
+                              <div className="text-muted-foreground text-xs">Notes</div>
+                              <div className="line-clamp-2">{txn.notes}</div>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    /* Desktop Table View */
+                    <Table>
+                      <TableHeader className="sticky top-0 bg-background">
+                        <TableRow>
+                          <TableHead>Date & Time</TableHead>
+                          <TableHead>Type</TableHead>
+                          <TableHead>Batch</TableHead>
+                          <TableHead>Roll Details</TableHead>
+                          <TableHead className="text-right">Quantity</TableHead>
+                          <TableHead>Customer</TableHead>
+                          <TableHead>Invoice</TableHead>
+                          <TableHead>Notes</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {productHistory.map((txn) => (
+                          <TableRow key={txn.id}>
+                            <TableCell className="whitespace-nowrap">
+                              {new Date(txn.transaction_date).toLocaleString('en-IN', {
+                                dateStyle: 'short',
+                                timeStyle: 'short'
+                              })}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant={txn.transaction_type === 'PRODUCTION' ? 'default' : 'destructive'}>
+                                {txn.transaction_type}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="font-mono text-sm">
+                              {txn.batch_code || '-'}
+                              {txn.batch_no && <div className="text-xs text-muted-foreground">#{txn.batch_no}</div>}
+                            </TableCell>
+                            <TableCell>
+                              {txn.roll_length_meters != null ? (
+                                <div className="text-sm">
+                                  <div className="font-medium">{txn.roll_length_meters.toFixed(2)} m</div>
+                                  <div className="text-xs text-muted-foreground">{formatWeight(txn.roll_weight)}</div>
+                                  {txn.roll_type && <div className="text-xs text-muted-foreground">{txn.roll_type}{txn.roll_is_cut ? ' • Cut' : ''}</div>}
+                                </div>
+                              ) : (
+                                <div className="text-sm text-muted-foreground">-</div>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-right font-medium">
+                              <span className={txn.transaction_type === 'PRODUCTION' ? 'text-green-600' : 'text-red-600'}>
+                                {txn.transaction_type === 'PRODUCTION' ? '+' : '-'}
+                                {Math.abs(txn.quantity_change || 0).toFixed(2)} m
+                              </span>
+                            </TableCell>
+                            <TableCell>{txn.customer_name || '-'}</TableCell>
+                            <TableCell className="font-mono text-sm">{txn.invoice_no || '-'}</TableCell>
+                            <TableCell className="max-w-xs">
+                              <div className="truncate" title={txn.notes || ''}>
+                                {txn.notes || '-'}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedTransaction(txn);
+                                  setTransactionDetailDialogOpen(true);
+                                }}
+                              >
+                                <FileText className="h-4 w-4 mr-1" />
+                                Details
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
                 </div>
               </div>
             </div>

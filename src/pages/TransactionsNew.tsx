@@ -15,6 +15,7 @@ import { Checkbox } from '../components/ui/checkbox';
 import { Package, Weight, FileText, User, Calendar, Truck, Scale, Ruler, Info, Filter, X, Search, Download, Paperclip, Mail, Phone, MapPin, Building, Undo2, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { useIsMobile } from '../hooks/use-mobile';
 
 interface TransactionRecord {
   id: string;
@@ -94,6 +95,7 @@ interface TransactionRecord {
 
 export default function TransactionsNew() {
   const { user } = useAuth();
+  const isMobile = useIsMobile();
   const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
   const [filteredTransactions, setFilteredTransactions] = useState<TransactionRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -1887,6 +1889,140 @@ export default function TransactionsNew() {
           </div>
         </CardHeader>
         <CardContent>
+          {isMobile ? (
+            /* Mobile Card View */
+            <div className="space-y-3">
+              {filteredTransactions.length === 0 ? (
+                <div className="text-center text-muted-foreground py-12">
+                  <Package className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p>No transactions found</p>
+                </div>
+              ) : (
+                filteredTransactions
+                  .slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
+                  .map((transaction) => (
+                    <Card key={transaction.id} className="overflow-hidden">
+                      <div className="p-4 space-y-3">
+                        {/* Header */}
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-2 flex-wrap flex-1">
+                            <Badge
+                              variant={transaction.transaction_type === 'PRODUCTION' ? 'default' : 'secondary'}
+                              className={
+                                transaction.transaction_type === 'SALE'
+                                  ? 'bg-red-100 text-red-700'
+                                  : transaction.transaction_type === 'CUT'
+                                  ? 'bg-orange-100 text-orange-700'
+                                  : ''
+                              }
+                            >
+                              {transaction.transaction_type}
+                            </Badge>
+                            {user?.role === 'admin' && (
+                              <Checkbox
+                                checked={selectedTransactionIds.has(transaction.id)}
+                                onCheckedChange={() => toggleSelectTransaction(transaction.id)}
+                              />
+                            )}
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openDetailModal(transaction)}
+                          >
+                            <FileText className="h-4 w-4" />
+                          </Button>
+                        </div>
+
+                        {/* Date */}
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Calendar className="h-4 w-4" />
+                          <span>{format(new Date(transaction.transaction_date), 'PP p')}</span>
+                        </div>
+
+                        <Separator />
+
+                        {/* Product Info */}
+                        <div>
+                          <div className="font-medium text-base">{transaction.product_type}</div>
+                          <div className="text-sm text-muted-foreground">{transaction.brand}</div>
+                          <div className="text-xs font-mono text-muted-foreground mt-1">
+                            {transaction.batch_code} {transaction.batch_no && `#${transaction.batch_no}`}
+                          </div>
+                        </div>
+
+                        {/* Parameters */}
+                        {transaction.parameters && typeof transaction.parameters === 'object' && Object.keys(transaction.parameters).length > 0 && (
+                          <div className="flex flex-wrap gap-1">
+                            {Object.entries(transaction.parameters).map(([key, value]) => (
+                              <Badge key={key} variant="outline" className="text-xs">
+                                {key}: {String(value)}
+                              </Badge>
+                            ))}
+                          </div>
+                        )}
+
+                        <Separator />
+
+                        {/* Metrics */}
+                        <div className="grid grid-cols-2 gap-3 text-sm">
+                          <div>
+                            <div className="text-muted-foreground text-xs mb-1">Length</div>
+                            <div className="font-semibold">
+                              {Math.abs(transaction.quantity_change || 0).toFixed(2)} m
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-muted-foreground text-xs mb-1">Weight</div>
+                            <div className="font-semibold">
+                              {formatWeight(transaction.total_weight || 0)}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Customer & Attachment */}
+                        {(transaction.customer_name || transaction.attachment_url) && (
+                          <>
+                            <Separator />
+                            <div className="space-y-2 text-sm">
+                              {transaction.customer_name && (
+                                <Button
+                                  variant="link"
+                                  className="h-auto p-0 text-blue-600"
+                                  onClick={() => openCustomerModal(transaction.customer_name!)}
+                                >
+                                  <User className="h-4 w-4 mr-2" />
+                                  {transaction.customer_name}
+                                </Button>
+                              )}
+                              {transaction.attachment_url && (
+                                <a
+                                  href={transaction.attachment_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex items-center gap-2 text-blue-600"
+                                >
+                                  <Paperclip className="h-4 w-4" />
+                                  View Attachment
+                                </a>
+                              )}
+                            </div>
+                          </>
+                        )}
+
+                        {/* Created By */}
+                        {(transaction.created_by_name || transaction.created_by_username) && (
+                          <div className="text-xs text-muted-foreground">
+                            By: {transaction.created_by_name || transaction.created_by_username}
+                          </div>
+                        )}
+                      </div>
+                    </Card>
+                  ))
+              )}
+            </div>
+          ) : (
+            /* Desktop Table View */
           <Table>
             <TableHeader>
               <TableRow>
@@ -2192,6 +2328,7 @@ export default function TransactionsNew() {
             )}
             </TableBody>
           </Table>
+          )}
 
           {/* Pagination Controls */}
           {filteredTransactions.length > itemsPerPage && (
