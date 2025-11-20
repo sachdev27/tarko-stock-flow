@@ -12,6 +12,7 @@ import io
 import logging
 from datetime import datetime
 from database import execute_query, get_db_cursor
+from config import Config
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -19,9 +20,15 @@ logger = logging.getLogger(__name__)
 # Google Drive configuration
 SCOPES = ['https://www.googleapis.com/auth/drive.file']
 DRIVE_FOLDER_NAME = 'Tarko Inventory Backups'
+SHARED_DRIVE_ID = Config.GOOGLE_DRIVE_SHARED_DRIVE_ID
 
 def get_drive_service():
     """Initialize and return Google Drive service"""
+    # Check if Google Drive sync is enabled
+    if not Config.ENABLE_GOOGLE_DRIVE_SYNC:
+        logger.info("Google Drive sync is disabled")
+        return None
+
     # Check for service account credentials
     creds_path = os.getenv('GOOGLE_DRIVE_CREDENTIALS_PATH', 'google_drive_credentials.json')
 
@@ -41,9 +48,14 @@ def get_drive_service():
         return None
 
 def get_or_create_backup_folder(service):
-    """Get or create the backup folder in Google Drive"""
+    """Get or create the backup folder in Google Drive or Shared Drive"""
     try:
-        # Search for existing folder
+        # If Shared Drive ID is provided, use it directly
+        if SHARED_DRIVE_ID:
+            logger.info(f"Using Shared Drive: {SHARED_DRIVE_ID}")
+            return SHARED_DRIVE_ID
+
+        # Search for existing folder in My Drive
         query = f"name='{DRIVE_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false"
         results = service.files().list(q=query, spaces='drive', fields='files(id, name)').execute()
         folders = results.get('files', [])
@@ -53,7 +65,7 @@ def get_or_create_backup_folder(service):
             logger.info(f"Using existing backup folder: {folder_id}")
             return folder_id
 
-        # Create new folder
+        # Create new folder in My Drive
         file_metadata = {
             'name': DRIVE_FOLDER_NAME,
             'mimeType': 'application/vnd.google-apps.folder'
@@ -98,11 +110,16 @@ def upload_snapshot_to_drive(snapshot_id, snapshot_data, snapshot_name):
             resumable=True
         )
 
-        file = service.files().create(
-            body=file_metadata,
-            media_body=media,
-            fields='id, name, webViewLink, size'
-        ).execute()
+        # Add Shared Drive support
+        create_params = {
+            'body': file_metadata,
+            'media_body': media,
+            'fields': 'id, name, webViewLink, size'
+        }
+        if SHARED_DRIVE_ID:
+            create_params['supportsAllDrives'] = True
+
+        file = service.files().create(**create_params).execute()
 
         file_id = file.get('id')
         file_url = file.get('webViewLink')

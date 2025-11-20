@@ -16,6 +16,7 @@ from routes.reports_routes import reports_bp
 from routes.parameter_routes import parameter_bp
 from routes.dispatch_routes import dispatch_bp
 from routes.version_control_routes import version_control_bp
+from routes.ledger_routes import ledger_bp
 
 # Import scheduler
 from scheduler import init_scheduler, start_scheduler, shutdown_scheduler
@@ -50,6 +51,7 @@ app.register_blueprint(reports_bp)
 app.register_blueprint(parameter_bp)
 app.register_blueprint(dispatch_bp)
 app.register_blueprint(version_control_bp)
+app.register_blueprint(ledger_bp)
 
 @app.route('/api/health', methods=['GET'])
 def health_check():

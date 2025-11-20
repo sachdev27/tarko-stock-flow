@@ -9,14 +9,27 @@ from google_drive_sync import sync_snapshot_to_drive, test_drive_connection, syn
 version_control_bp = Blueprint('version_control', __name__, url_prefix='/api/version-control')
 
 # Tables to include in snapshots (excluding sensitive auth data)
+# Order matters for rollback - parent tables first to avoid FK violations
 SNAPSHOT_TABLES = [
-    'batches',
-    'rolls',
-    'transactions',
-    'product_variants',
-    'product_types',
     'brands',
     'customers',
+    'product_types',
+    'parameter_options',
+    'product_variants',
+    'batches',
+    'rolls',
+    'transactions'
+]
+
+# Tables that have soft delete (deleted_at column)
+SOFT_DELETE_TABLES = [
+    'batches',
+    'rolls',
+    'transactions'
+]
+
+# Tables without updated_at column
+TABLES_WITHOUT_UPDATED_AT = [
     'parameter_options'
 ]
 
@@ -63,13 +76,16 @@ def create_snapshot():
 
             # Capture data from each table
             for table in SNAPSHOT_TABLES:
+                # Add WHERE clause only for tables with soft delete
+                where_clause = "WHERE deleted_at IS NULL" if table in SOFT_DELETE_TABLES else ""
+
                 cursor.execute(f"""
-                    SELECT json_agg(row_to_json(t.*))
+                    SELECT json_agg(row_to_json(t.*)) as data
                     FROM {table} t
-                    WHERE deleted_at IS NULL
+                    {where_clause}
                 """)
                 result = cursor.fetchone()
-                table_data = result[0] if result and result[0] else []
+                table_data = result['data'] if result and result.get('data') else []
                 snapshot_data[table] = table_data
                 table_counts[table] = len(table_data) if table_data else 0
 
@@ -117,7 +133,13 @@ def create_snapshot():
             }), 201
 
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"Snapshot creation error: {error_details}")
+        return jsonify({
+            'error': f'Failed to create snapshot: {str(e) or type(e).__name__}',
+            'details': error_details
+        }), 500
 
 @version_control_bp.route('/snapshots/<uuid:snapshot_id>', methods=['DELETE'])
 @jwt_required_with_role('admin')
@@ -135,6 +157,11 @@ def delete_snapshot(snapshot_id):
             snapshot = cursor.fetchone()
             if not snapshot:
                 return jsonify({'error': 'Snapshot not found'}), 404
+
+            # Delete rollback history first (FK constraint)
+            cursor.execute("""
+                DELETE FROM rollback_history WHERE snapshot_id = %s
+            """, (str(snapshot_id),))
 
             # Delete the snapshot
             cursor.execute("""
@@ -189,27 +216,24 @@ def rollback_to_snapshot(snapshot_id):
             # Capture current state summary before rollback
             current_state = {}
             for table in SNAPSHOT_TABLES:
+                # Use WHERE clause only for soft-delete tables
+                where_clause = "WHERE deleted_at IS NULL" if table in SOFT_DELETE_TABLES else ""
                 cursor.execute(f"""
-                    SELECT COUNT(*) as count FROM {table} WHERE deleted_at IS NULL
+                    SELECT COUNT(*) as count FROM {table} {where_clause}
                 """)
                 result = cursor.fetchone()
                 current_state[table] = result['count']
 
-            # Perform rollback for each table
-            for table, data in snapshot_data.items():
-                if table not in SNAPSHOT_TABLES:
+            # Perform rollback for each table in correct order (parent tables first)
+            for table in SNAPSHOT_TABLES:
+                # Skip if table not in snapshot data
+                if table not in snapshot_data:
                     continue
 
+                data = snapshot_data[table]
                 affected_tables.append(table)
 
-                # Soft delete all current records
-                cursor.execute(f"""
-                    UPDATE {table}
-                    SET deleted_at = NOW()
-                    WHERE deleted_at IS NULL
-                """)
-
-                # Restore snapshot data
+                # Restore snapshot data first
                 if data and len(data) > 0:
                     # Get columns from first record
                     columns = list(data[0].keys())
@@ -218,19 +242,88 @@ def rollback_to_snapshot(snapshot_id):
                     exclude_cols = ['deleted_at']
                     columns = [c for c in columns if c not in exclude_cols]
 
-                    # Insert each record
+                    # Collect all IDs from snapshot
+                    snapshot_ids = [str(record.get('id')) for record in data]
+
+                    # Insert/Update each record from snapshot
                     for record in data:
                         placeholders = ', '.join(['%s'] * len(columns))
                         cols_str = ', '.join(columns)
-                        values = [record.get(col) for col in columns]
 
+                        # Convert dict/list values to JSON strings for PostgreSQL
+                        values = []
+                        for col in columns:
+                            val = record.get(col)
+                            if isinstance(val, (dict, list)):
+                                values.append(json.dumps(val))
+                            else:
+                                values.append(val)
+
+                        if table in SOFT_DELETE_TABLES:
+                            # For soft-delete tables, restore with deleted_at = NULL
+                            update_set = ', '.join([f"{col} = EXCLUDED.{col}" for col in columns if col not in ('id', 'updated_at')])
+                            if table in TABLES_WITHOUT_UPDATED_AT:
+                                cursor.execute(f"""
+                                    INSERT INTO {table} ({cols_str})
+                                    VALUES ({placeholders})
+                                    ON CONFLICT (id) DO UPDATE SET
+                                        {update_set},
+                                        deleted_at = NULL
+                                """, values)
+                            else:
+                                cursor.execute(f"""
+                                    INSERT INTO {table} ({cols_str})
+                                    VALUES ({placeholders})
+                                    ON CONFLICT (id) DO UPDATE SET
+                                        {update_set},
+                                        deleted_at = NULL,
+                                        updated_at = NOW()
+                                """, values)
+                        else:
+                            # For non-soft-delete tables, simple upsert
+                            update_set = ', '.join([f"{col} = EXCLUDED.{col}" for col in columns if col not in ('id', 'updated_at')])
+                            if table in TABLES_WITHOUT_UPDATED_AT:
+                                cursor.execute(f"""
+                                    INSERT INTO {table} ({cols_str})
+                                    VALUES ({placeholders})
+                                    ON CONFLICT (id) DO UPDATE SET
+                                        {update_set}
+                                """, values)
+                            else:
+                                cursor.execute(f"""
+                                    INSERT INTO {table} ({cols_str})
+                                    VALUES ({placeholders})
+                                    ON CONFLICT (id) DO UPDATE SET
+                                        {update_set},
+                                        updated_at = NOW()
+                                """, values)
+
+                    # After restoring, soft-delete records NOT in snapshot
+                    if table in SOFT_DELETE_TABLES:
+                        # Soft delete records that aren't in the snapshot
+                        # Cast snapshot_ids to UUID array for comparison
                         cursor.execute(f"""
-                            INSERT INTO {table} ({cols_str})
-                            VALUES ({placeholders})
-                            ON CONFLICT (id) DO UPDATE SET
-                                deleted_at = NULL,
-                                updated_at = NOW()
-                        """, values)
+                            UPDATE {table}
+                            SET deleted_at = NOW()
+                            WHERE deleted_at IS NULL
+                            AND id::text != ALL(%s)
+                        """, (snapshot_ids,))
+                    else:
+                        # For non-soft-delete tables, hard delete records not in snapshot
+                        cursor.execute(f"""
+                            DELETE FROM {table}
+                            WHERE id::text != ALL(%s)
+                        """, (snapshot_ids,))
+                else:
+                    # If snapshot has no data for this table, delete/soft-delete all
+                    if table in SOFT_DELETE_TABLES:
+                        cursor.execute(f"""
+                            UPDATE {table}
+                            SET deleted_at = NOW()
+                            WHERE deleted_at IS NULL
+                        """)
+                    else:
+                        cursor.execute(f"TRUNCATE TABLE {table} CASCADE")
 
             # Record rollback in history
             cursor.execute("""

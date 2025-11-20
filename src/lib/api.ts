@@ -263,4 +263,13 @@ export const versionControl = {
     api.post('/version-control/drive/configure', data),
 };
 
+// Ledger endpoints
+export const ledger = {
+  getProductLedger: (productVariantId: string, params?: { start_date?: string; end_date?: string; transaction_type?: string }) =>
+    api.get(`/ledger/product/${productVariantId}`, { params }),
+
+  getBatchLedger: (batchId: string) =>
+    api.get(`/ledger/batch/${batchId}`),
+};
+
 export default api;
