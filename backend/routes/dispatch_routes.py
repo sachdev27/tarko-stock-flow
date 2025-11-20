@@ -137,6 +137,8 @@ def get_available_rolls():
                 'parameters': roll['parameters'],
                 'standard_rolls': [],
                 'cut_rolls': [],
+                'bundles': [],
+                'spares': [],
                 'total_length': 0
             }
 
@@ -152,7 +154,12 @@ def get_available_rolls():
             'bundle_size': roll.get('bundle_size')
         }
 
-        if roll['is_cut_roll'] or roll['roll_type'] == 'cut':
+        # Categorize rolls by type
+        if roll['roll_type'] == 'spare':
+            product_groups[product_label]['spares'].append(roll_info)
+        elif roll['roll_type'] and roll['roll_type'].startswith('bundle_'):
+            product_groups[product_label]['bundles'].append(roll_info)
+        elif roll['is_cut_roll'] or roll['roll_type'] == 'cut':
             product_groups[product_label]['cut_rolls'].append(roll_info)
         else:
             product_groups[product_label]['standard_rolls'].append(roll_info)
@@ -168,6 +175,8 @@ def get_available_rolls():
             'parameters': group['parameters'],
             'standard_rolls': group['standard_rolls'],
             'cut_rolls': group['cut_rolls'],
+            'bundles': group['bundles'],
+            'spares': group['spares'],
             'total_available_meters': group['total_length']
         })
 

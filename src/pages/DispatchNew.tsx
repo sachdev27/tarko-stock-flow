@@ -33,6 +33,8 @@ interface ProductVariant {
   parameters: Record<string, any>;
   standard_rolls: Roll[];
   cut_rolls: Roll[];
+  bundles: Roll[];
+  spares: Roll[];
   total_available_meters: number;
 }
 
@@ -41,6 +43,8 @@ interface CartItem {
   product: ProductVariant;
   standard_roll_count: number;  // Number of standard rolls to dispatch
   cut_rolls: Roll[];  // Selected cut rolls
+  bundles: Roll[];  // Selected bundles (sprinkler)
+  spares: Roll[];  // Selected spare pieces (sprinkler)
 }
 
 const Dispatch = () => {
@@ -80,6 +84,19 @@ const Dispatch = () => {
   const [isCuttingFromCart, setIsCuttingFromCart] = useState(false);
   const [cutRollDialogOpen, setCutRollDialogOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<ProductVariant | null>(null);
+
+  // Cut bundle dialog (for sprinkler pipes)
+  const [cutBundleDialogOpen, setCutBundleDialogOpen] = useState(false);
+  const [bundleToCut, setBundleToCut] = useState<Roll | null>(null);
+  const [cutPiecesCount, setCutPiecesCount] = useState<string>('');
+  const [cuttingLoading, setCuttingLoading] = useState(false);
+
+  // Combine spares dialog (for sprinkler pipes)
+  const [combineSparesDialogOpen, setCombineSparesDialogOpen] = useState(false);
+  const [availableSpares, setAvailableSpares] = useState<Roll[]>([]);
+  const [newBundleSize, setNewBundleSize] = useState<string>('');
+  const [numberOfBundles, setNumberOfBundles] = useState<string>('');
+  const [combiningLoading, setCombiningLoading] = useState(false);
 
   useEffect(() => {
     fetchMasterData();
@@ -227,6 +244,8 @@ const Dispatch = () => {
         product: product,
         standard_roll_count: rollCount,
         cut_rolls: [],
+        bundles: [],
+        spares: [],
       };
       setCart([...cart, newItem]);
       toast.success(`Added ${product.product_label} to cart`);
@@ -261,6 +280,8 @@ const Dispatch = () => {
         product: product,
         standard_roll_count: 0,
         cut_rolls: [cutRoll],
+        bundles: [],
+        spares: [],
       };
       setCart([...cart, newItem]);
     }
@@ -274,7 +295,59 @@ const Dispatch = () => {
         return { ...item, cut_rolls: newCutRolls };
       }
       return item;
-    }).filter(item => item.standard_roll_count > 0 || item.cut_rolls.length > 0));
+    }).filter(item => item.standard_roll_count > 0 || item.cut_rolls.length > 0 || item.bundles.length > 0 || item.spares.length > 0));
+  };
+
+  const addBundlesToCart = (product: ProductVariant, bundleCount: number) => {
+    // Take the first bundleCount bundles from the product
+    const bundlesToAdd = product.bundles.slice(0, bundleCount);
+
+    const existingItem = cart.find(item => item.product_label === product.product_label);
+    if (existingItem) {
+      setCart(cart.map(item =>
+        item.product_label === product.product_label
+          ? { ...item, bundles: [...item.bundles, ...bundlesToAdd] }
+          : item
+      ));
+      toast.success(`Updated bundles to ${existingItem.bundles.length + bundlesToAdd.length}`);
+    } else {
+      const newItem: CartItem = {
+        product_label: product.product_label,
+        product: product,
+        standard_roll_count: 0,
+        cut_rolls: [],
+        bundles: bundlesToAdd,
+        spares: [],
+      };
+      setCart([...cart, newItem]);
+      toast.success(`Added ${bundlesToAdd.length} bundle(s) to cart`);
+    }
+  };
+
+  const addSparesToCart = (product: ProductVariant, spareCount: number) => {
+    // Take the first spareCount spares from the product
+    const sparesToAdd = product.spares.slice(0, spareCount);
+
+    const existingItem = cart.find(item => item.product_label === product.product_label);
+    if (existingItem) {
+      setCart(cart.map(item =>
+        item.product_label === product.product_label
+          ? { ...item, spares: [...item.spares, ...sparesToAdd] }
+          : item
+      ));
+      toast.success(`Updated spare pieces to ${existingItem.spares.length + sparesToAdd.length}`);
+    } else {
+      const newItem: CartItem = {
+        product_label: product.product_label,
+        product: product,
+        standard_roll_count: 0,
+        cut_rolls: [],
+        bundles: [],
+        spares: sparesToAdd,
+      };
+      setCart([...cart, newItem]);
+      toast.success(`Added ${sparesToAdd.length} spare piece(s) to cart`);
+    }
   };
 
   const removeFromCart = (product_label: string) => {
@@ -334,6 +407,113 @@ const Dispatch = () => {
     }
   };
 
+  // Cut bundle handler (for sprinkler pipes)
+  const openCutBundleDialog = (bundles: Roll[]) => {
+    if (bundles.length === 0) return;
+    setBundleToCut(bundles[0]);
+    setCutPiecesCount('');
+    setCutBundleDialogOpen(true);
+  };
+
+  const handleCutBundle = async () => {
+    if (!bundleToCut) return;
+
+    const piecesCount = parseInt(cutPiecesCount);
+    const bundleSize = bundleToCut.bundle_size || 0;
+
+    if (isNaN(piecesCount) || piecesCount <= 0) {
+      toast.error('Please enter a valid number of pieces');
+      return;
+    }
+
+    if (piecesCount >= bundleSize) {
+      toast.error(`Cut pieces must be less than bundle size (${bundleSize} pieces)`);
+      return;
+    }
+
+    const remainingPieces = bundleSize - piecesCount;
+
+    setCuttingLoading(true);
+    try {
+      await dispatchAPI.cutBundle({
+        roll_id: bundleToCut.id,
+        cuts: [
+          { pieces: piecesCount },
+          { pieces: remainingPieces }
+        ],
+      });
+
+      toast.success(`Bundle split: ${piecesCount} spare pieces + ${remainingPieces} spare pieces`);
+      setCutBundleDialogOpen(false);
+      setBundleToCut(null);
+
+      // Refresh products list
+      await searchRolls();
+    } catch (error: any) {
+      console.error('Error cutting bundle:', error);
+      toast.error(error.response?.data?.error || 'Failed to cut bundle');
+    } finally {
+      setCuttingLoading(false);
+    }
+  };
+
+  // Combine spares handler (for sprinkler pipes)
+  const openCombineSparesDialog = (spares: Roll[]) => {
+    setAvailableSpares(spares);
+    setNewBundleSize('');
+    setNumberOfBundles('');
+    setCombineSparesDialogOpen(true);
+  };
+
+  const handleCombineSpares = async () => {
+    const bundleSize = parseInt(newBundleSize);
+    if (isNaN(bundleSize) || bundleSize <= 0) {
+      toast.error('Please enter a valid bundle size');
+      return;
+    }
+
+    const totalPieces = availableSpares.reduce((sum, s) => sum + (s.bundle_size || 1), 0);
+    const numBundles = numberOfBundles && parseInt(numberOfBundles) > 0
+      ? parseInt(numberOfBundles)
+      : 1;
+
+    const totalPiecesNeeded = numBundles * bundleSize;
+
+    if (totalPiecesNeeded > totalPieces) {
+      toast.error(`Not enough pieces: need ${totalPiecesNeeded}, have ${totalPieces}`);
+      return;
+    }
+
+    setCombiningLoading(true);
+    try {
+      await dispatchAPI.combineSpares({
+        spare_roll_ids: availableSpares.map(s => s.id),
+        bundle_size: bundleSize,
+        number_of_bundles: numBundles,
+      });
+
+      const remainingPieces = totalPieces - totalPiecesNeeded;
+
+      if (numBundles > 1) {
+        toast.success(`Created ${numBundles} bundles of ${bundleSize} pieces each${remainingPieces > 0 ? `. ${remainingPieces} pieces remaining as spares` : ''}`);
+      } else {
+        toast.success(`Created bundle of ${bundleSize} pieces${remainingPieces > 0 ? `. ${remainingPieces} pieces remaining as spares` : ''}`);
+      }
+
+      setCombineSparesDialogOpen(false);
+      setNewBundleSize('');
+      setNumberOfBundles('');
+
+      // Refresh products list
+      await searchRolls();
+    } catch (error: any) {
+      console.error('Error combining spares:', error);
+      toast.error(error.response?.data?.error || 'Failed to combine spares');
+    } finally {
+      setCombiningLoading(false);
+    }
+  };
+
   const handleDispatch = async () => {
     if (cart.length === 0) {
       toast.error('Cart is empty');
@@ -363,7 +543,19 @@ const Dispatch = () => {
           quantity: roll.length_meters,
         }));
 
-        return [...standardRollItems, ...cutRollItems];
+        const bundleItems = item.bundles.map(roll => ({
+          roll_id: roll.id,
+          type: 'full_roll',
+          quantity: roll.length_meters || 0,
+        }));
+
+        const spareItems = item.spares.map(roll => ({
+          roll_id: roll.id,
+          type: 'full_roll',
+          quantity: roll.length_meters || 0,
+        }));
+
+        return [...standardRollItems, ...cutRollItems, ...bundleItems, ...spareItems];
       });
 
       await dispatchAPI.createDispatch({
@@ -403,7 +595,9 @@ const Dispatch = () => {
   const parameterSchema = selectedProductTypeData?.parameter_schema || [];
   const paramOrder = ['PE', 'PN', 'OD', 'Type'];
 
-  const totalRolls = cart.reduce((sum, item) => sum + item.standard_roll_count + item.cut_rolls.length, 0);
+  const totalRolls = cart.reduce((sum, item) =>
+    sum + item.standard_roll_count + item.cut_rolls.length + item.bundles.length + item.spares.length, 0
+  );
   const totalMeters = cart.reduce((sum, item) => {
     const standardMeters = item.standard_roll_count > 0 ?
       item.product.standard_rolls.slice(0, item.standard_roll_count).reduce((s, r) => s + r.length_meters, 0) : 0;
@@ -551,7 +745,10 @@ const Dispatch = () => {
                           <p className="text-sm text-muted-foreground">
                             {(() => {
                               const isSprinklerPipe = product.product_type?.toLowerCase().includes('sprinkler');
-                              const totalCount = product.standard_rolls.length + product.cut_rolls.length;
+                              const totalCount = (product.standard_rolls?.length || 0) +
+                                               (product.cut_rolls?.length || 0) +
+                                               (product.bundles?.length || 0) +
+                                               (product.spares?.length || 0);
                               const itemType = isSprinklerPipe ? 'bundles' : 'rolls';
 
                               return (
@@ -676,17 +873,57 @@ const Dispatch = () => {
                         </div>
                       )}
 
+                      {/* Bundles (Sprinkler Pipe only) */}
+                      {(product.bundles?.length || 0) > 0 && product.product_type?.toLowerCase().includes('sprinkler') && (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <div className="text-sm">
+                              <span className="font-bold text-base">{product.bundles.length}</span>
+                              <span className="text-muted-foreground ml-1">bundles available</span>
+                            </div>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openCutBundleDialog(product.bundles)}
+                            >
+                              <ScissorsIcon className="h-4 w-4 mr-1" />
+                              Cut Bundles
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Spare Pieces (Sprinkler Pipe only) */}
+                      {(product.spares?.length || 0) > 0 && product.product_type?.toLowerCase().includes('sprinkler') && (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <div className="text-sm">
+                              <span className="font-bold text-base">{product.spares.length}</span>
+                              <span className="text-muted-foreground ml-1">spare pieces available</span>
+                            </div>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openCombineSparesDialog(product.spares)}
+                            >
+                              <PlusIcon className="h-4 w-4 mr-1" />
+                              Combine into Bundles
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
                       {/* Add to Cart Controls */}
-                      <div className="flex items-center gap-3 pt-2 border-t">
-                        {/* Standard Rolls */}
+                      <div className="flex flex-col gap-3 pt-2 border-t">
+                        {/* Standard Rolls / Bundles (from standard_rolls for sprinkler) */}
                         {product.standard_rolls.length > 0 && (() => {
                           const isSprinklerPipe = product.product_type?.toLowerCase().includes('sprinkler');
                           const itemType = isSprinklerPipe ? 'Bundles' : 'Standard Rolls';
 
                           return (
-                            <div className="flex-1 flex items-center gap-2">
-                              <Label className="text-sm whitespace-nowrap">{itemType}:</Label>
-                              <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2">
+                              <Label className="text-sm whitespace-nowrap min-w-[100px]">{itemType}:</Label>
+                              <div className="flex items-center gap-2 flex-1">
                                 <Input
                                   type="number"
                                   min="0"
@@ -723,7 +960,85 @@ const Dispatch = () => {
                           );
                         })()}
 
+                        {/* Bundles (from bundles array for sprinkler) */}
+                        {(product.bundles?.length || 0) > 0 && product.product_type?.toLowerCase().includes('sprinkler') && (
+                          <div className="flex items-center gap-2">
+                            <Label className="text-sm whitespace-nowrap min-w-[100px]">Bundles:</Label>
+                            <div className="flex items-center gap-2 flex-1">
+                              <Input
+                                type="number"
+                                min="0"
+                                max={product.bundles.length}
+                                defaultValue="0"
+                                className="w-20 h-9"
+                                id={`bundle-count-${idx}`}
+                              />
+                              <span className="text-xs text-muted-foreground">/ {product.bundles.length}</span>
+                            </div>
+                            <Button
+                              size="sm"
+                              onClick={() => {
+                                const input = document.getElementById(`bundle-count-${idx}`) as HTMLInputElement;
+                                let count = parseInt(input.value) || 0;
+                                const maxAvailable = product.bundles.length;
 
+                                if (count > maxAvailable) {
+                                  toast.error(`Only ${maxAvailable} bundles available`);
+                                  input.value = maxAvailable.toString();
+                                  count = maxAvailable;
+                                }
+
+                                if (count > 0) {
+                                  addBundlesToCart(product, count);
+                                  input.value = '0';
+                                }
+                              }}
+                            >
+                              <PlusIcon className="h-4 w-4 mr-1" />
+                              Add
+                            </Button>
+                          </div>
+                        )}
+
+                        {/* Spare Pieces (for sprinkler) */}
+                        {(product.spares?.length || 0) > 0 && product.product_type?.toLowerCase().includes('sprinkler') && (
+                          <div className="flex items-center gap-2">
+                            <Label className="text-sm whitespace-nowrap min-w-[100px]">Spare Pieces:</Label>
+                            <div className="flex items-center gap-2 flex-1">
+                              <Input
+                                type="number"
+                                min="0"
+                                max={product.spares.length}
+                                defaultValue="0"
+                                className="w-20 h-9"
+                                id={`spare-count-${idx}`}
+                              />
+                              <span className="text-xs text-muted-foreground">/ {product.spares.length}</span>
+                            </div>
+                            <Button
+                              size="sm"
+                              onClick={() => {
+                                const input = document.getElementById(`spare-count-${idx}`) as HTMLInputElement;
+                                let count = parseInt(input.value) || 0;
+                                const maxAvailable = product.spares.length;
+
+                                if (count > maxAvailable) {
+                                  toast.error(`Only ${maxAvailable} spare pieces available`);
+                                  input.value = maxAvailable.toString();
+                                  count = maxAvailable;
+                                }
+
+                                if (count > 0) {
+                                  addSparesToCart(product, count);
+                                  input.value = '0';
+                                }
+                              }}
+                            >
+                              <PlusIcon className="h-4 w-4 mr-1" />
+                              Add
+                            </Button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -815,6 +1130,66 @@ const Dispatch = () => {
                                 </Button>
                               </div>
                             ))}
+                          </div>
+                        )}
+
+                        {/* Bundles */}
+                        {item.bundles.length > 0 && (
+                          <div className="flex items-center justify-between text-sm bg-purple-50 dark:bg-purple-900/30 p-2 rounded">
+                            <span className="text-muted-foreground">Bundles:</span>
+                            <div className="flex items-center gap-2">
+                              <Input
+                                type="number"
+                                min="0"
+                                max={item.product.bundles?.length || 0}
+                                value={item.bundles.length}
+                                onChange={(e) => {
+                                  const newCount = parseInt(e.target.value) || 0;
+                                  const newBundles = item.product.bundles.slice(0, newCount);
+                                  setCart(cart.map(cartItem =>
+                                    cartItem.product_label === item.product_label
+                                      ? { ...cartItem, bundles: newBundles }
+                                      : cartItem
+                                  ).filter(cartItem =>
+                                    cartItem.standard_roll_count > 0 ||
+                                    cartItem.cut_rolls.length > 0 ||
+                                    cartItem.bundles.length > 0 ||
+                                    cartItem.spares.length > 0
+                                  ));
+                                }}
+                                className="w-16 h-7 text-sm"
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Spare Pieces */}
+                        {item.spares.length > 0 && (
+                          <div className="flex items-center justify-between text-sm bg-amber-50 dark:bg-amber-900/30 p-2 rounded border border-amber-200">
+                            <span className="text-muted-foreground">Spare Pieces:</span>
+                            <div className="flex items-center gap-2">
+                              <Input
+                                type="number"
+                                min="0"
+                                max={item.product.spares?.length || 0}
+                                value={item.spares.length}
+                                onChange={(e) => {
+                                  const newCount = parseInt(e.target.value) || 0;
+                                  const newSpares = item.product.spares.slice(0, newCount);
+                                  setCart(cart.map(cartItem =>
+                                    cartItem.product_label === item.product_label
+                                      ? { ...cartItem, spares: newSpares }
+                                      : cartItem
+                                  ).filter(cartItem =>
+                                    cartItem.standard_roll_count > 0 ||
+                                    cartItem.cut_rolls.length > 0 ||
+                                    cartItem.bundles.length > 0 ||
+                                    cartItem.spares.length > 0
+                                  ));
+                                }}
+                                className="w-16 h-7 text-sm"
+                              />
+                            </div>
                           </div>
                         )}
                       </div>
@@ -1099,6 +1474,216 @@ const Dispatch = () => {
             <DialogFooter>
               <Button onClick={() => setCutRollDialogOpen(false)}>
                 Close
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Cut Bundle Dialog (for Sprinkler Pipes) */}
+        <Dialog open={cutBundleDialogOpen} onOpenChange={setCutBundleDialogOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="text-orange-600 flex items-center gap-2">
+                <ScissorsIcon className="h-5 w-5" />
+                Cut Bundle into Spare Pieces
+              </DialogTitle>
+              <DialogDescription>
+                Split this bundle into separate spare pieces
+              </DialogDescription>
+            </DialogHeader>
+
+            {bundleToCut && (
+              <div className="space-y-4">
+                <div className="p-3 bg-secondary/50 rounded-lg">
+                  <div className="text-sm text-muted-foreground">Bundle Size</div>
+                  <div className="font-bold text-lg">{bundleToCut.bundle_size || 0} pieces</div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="cut-pieces">Number of pieces to separate</Label>
+                  <Input
+                    id="cut-pieces"
+                    type="number"
+                    min="1"
+                    max={(bundleToCut.bundle_size || 1) - 1}
+                    value={cutPiecesCount}
+                    onChange={(e) => setCutPiecesCount(e.target.value)}
+                    placeholder="Enter number of pieces"
+                    autoFocus
+                  />
+                </div>
+
+                {cutPiecesCount && parseInt(cutPiecesCount) > 0 && parseInt(cutPiecesCount) < (bundleToCut.bundle_size || 0) && (
+                  <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
+                    <div className="text-sm font-medium text-blue-900 dark:text-blue-100 mb-2">Result:</div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="p-2 bg-white dark:bg-slate-800 rounded border">
+                        <div className="text-xs text-muted-foreground">Spare Pieces 1</div>
+                        <div className="font-bold text-lg">{cutPiecesCount} pcs</div>
+                      </div>
+                      <div className="p-2 bg-white dark:bg-slate-800 rounded border">
+                        <div className="text-xs text-muted-foreground">Spare Pieces 2</div>
+                        <div className="font-bold text-lg">{(bundleToCut.bundle_size || 0) - parseInt(cutPiecesCount)} pcs</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setCutBundleDialogOpen(false);
+                  setBundleToCut(null);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleCutBundle}
+                disabled={
+                  cuttingLoading ||
+                  !bundleToCut ||
+                  !cutPiecesCount ||
+                  parseInt(cutPiecesCount) <= 0 ||
+                  (bundleToCut && parseInt(cutPiecesCount) >= (bundleToCut.bundle_size || 0))
+                }
+                className="bg-orange-600 hover:bg-orange-700"
+              >
+                {cuttingLoading ? (
+                  <>
+                    <span className="animate-spin mr-2">⏳</span>
+                    Cutting...
+                  </>
+                ) : 'Cut Bundle'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Combine Spares Dialog (for Sprinkler Pipes) */}
+        <Dialog open={combineSparesDialogOpen} onOpenChange={setCombineSparesDialogOpen}>
+          <DialogContent className="max-w-2xl max-h-[80vh]">
+            <DialogHeader>
+              <DialogTitle className="text-green-600 flex items-center gap-2">
+                <PlusIcon className="h-5 w-5" />
+                Combine Spare Pieces into Bundle
+              </DialogTitle>
+              <DialogDescription>
+                Create custom-sized bundles from available spare pieces
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 overflow-y-auto max-h-[60vh]">
+              {availableSpares.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  No spare pieces available
+                </div>
+              ) : (
+                <>
+                  <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                    <div className="text-sm font-medium text-blue-900 dark:text-blue-100 mb-2">
+                      Available Spare Pieces
+                    </div>
+                    <div className="font-bold text-2xl text-blue-900 dark:text-blue-100">
+                      {availableSpares.reduce((sum, s) => sum + (s.bundle_size || 1), 0)} pieces
+                    </div>
+                    <div className="text-xs text-blue-700 dark:text-blue-300 mt-1">
+                      from {availableSpares.length} spare roll(s)
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="bundle-size">Bundle Size (pieces per bundle)</Label>
+                      <Input
+                        id="bundle-size"
+                        type="number"
+                        min="1"
+                        max={availableSpares.reduce((sum, s) => sum + (s.bundle_size || 1), 0)}
+                        value={newBundleSize}
+                        onChange={(e) => setNewBundleSize(e.target.value)}
+                        placeholder="e.g., 10"
+                        autoFocus
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="num-bundles">Number of Bundles (optional)</Label>
+                      <Input
+                        id="num-bundles"
+                        type="number"
+                        min="1"
+                        max={newBundleSize ? Math.floor(availableSpares.reduce((sum, s) => sum + (s.bundle_size || 1), 0) / parseInt(newBundleSize)) : 1}
+                        value={numberOfBundles}
+                        onChange={(e) => setNumberOfBundles(e.target.value)}
+                        placeholder="Leave empty for 1 bundle"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Default: 1 bundle. You can create multiple bundles at once.
+                      </p>
+                    </div>
+
+                    {newBundleSize && parseInt(newBundleSize) > 0 && (
+                      <div className="bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-lg p-3">
+                        <div className="text-sm font-medium text-green-900 dark:text-green-100 mb-2">Result:</div>
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm">Bundles to create:</span>
+                            <span className="font-bold">
+                              {numberOfBundles && parseInt(numberOfBundles) > 0 ? numberOfBundles : 1} × {newBundleSize} pieces
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm">Total pieces used:</span>
+                            <span className="font-bold">
+                              {parseInt(newBundleSize) * (numberOfBundles && parseInt(numberOfBundles) > 0 ? parseInt(numberOfBundles) : 1)} pieces
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm">Remaining spares:</span>
+                            <span className="font-bold">
+                              {availableSpares.reduce((sum, s) => sum + (s.bundle_size || 1), 0) -
+                                (parseInt(newBundleSize) * (numberOfBundles && parseInt(numberOfBundles) > 0 ? parseInt(numberOfBundles) : 1))} pieces
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setCombineSparesDialogOpen(false);
+                  setNewBundleSize('');
+                  setNumberOfBundles('');
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleCombineSpares}
+                disabled={
+                  combiningLoading ||
+                  !newBundleSize ||
+                  parseInt(newBundleSize) <= 0 ||
+                  parseInt(newBundleSize) > availableSpares.reduce((sum, s) => sum + (s.bundle_size || 1), 0)
+                }
+                className="bg-green-600 hover:bg-green-700"
+              >
+                {combiningLoading ? (
+                  <>
+                    <span className="animate-spin mr-2">⏳</span>
+                    Creating...
+                  </>
+                ) : 'Create Bundle(s)'}
               </Button>
             </DialogFooter>
           </DialogContent>
