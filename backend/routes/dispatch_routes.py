@@ -15,12 +15,16 @@ def get_available_rolls():
     Request body: { product_type_id, brand_id, parameters }
     """
     # Cleanup any rolls with zero length before fetching
+    # Exclude spare pieces and bundles which may have legitimate 0 length_meters
+    # (for quantity-based products, piece count is stored in bundle_size, not length_meters)
     execute_query("""
         UPDATE rolls
         SET deleted_at = NOW(), status = 'SOLD_OUT'
         WHERE length_meters = 0
+        AND roll_type NOT IN ('spare', 'bundle_10', 'bundle_20', 'bundle_50')
+        AND roll_type NOT LIKE 'bundle_%%'
         AND deleted_at IS NULL
-    """, fetch_all=False)
+    """, params=None, fetch_all=False)
 
     data = request.json
     product_type_id = data.get('product_type_id')
@@ -367,11 +371,13 @@ def cut_bundle():
                         batch_id, product_variant_id, length_meters,
                         initial_length_meters, status, roll_type, bundle_size
                     )
-                    VALUES (%s, %s, 0, 0, 'AVAILABLE', 'spare', %s)
+                    VALUES (%s, %s, %s, %s, 'AVAILABLE', 'spare', %s)
                     RETURNING id, bundle_size
                 """, (
                     bundle['batch_id'],
                     bundle['product_variant_id'],
+                    pieces_count,  # length_meters stores the piece count for spares
+                    pieces_count,  # initial_length_meters stores the piece count for spares
                     pieces_count
                 ))
                 new_roll = cursor.fetchone()
@@ -485,11 +491,13 @@ def combine_spares():
                         batch_id, product_variant_id, length_meters,
                         initial_length_meters, status, roll_type, bundle_size
                     )
-                    VALUES (%s, %s, 0, 0, 'AVAILABLE', %s, %s)
+                    VALUES (%s, %s, %s, %s, 'AVAILABLE', %s, %s)
                     RETURNING id
                 """, (
                     batch_id,
                     product_variant_id,
+                    bundle_size,  # length_meters stores the piece count for bundles
+                    bundle_size,  # initial_length_meters stores the piece count for bundles
                     f'bundle_{bundle_size}',
                     bundle_size
                 ))
@@ -505,11 +513,13 @@ def combine_spares():
                         batch_id, product_variant_id, length_meters,
                         initial_length_meters, status, roll_type, bundle_size
                     )
-                    VALUES (%s, %s, 0, 0, 'AVAILABLE', 'spare', %s)
+                    VALUES (%s, %s, %s, %s, 'AVAILABLE', 'spare', %s)
                     RETURNING id
                 """, (
                     batch_id,
                     product_variant_id,
+                    remaining_pieces,  # length_meters stores the piece count for spares
+                    remaining_pieces,  # initial_length_meters stores the piece count for spares
                     remaining_pieces
                 ))
 

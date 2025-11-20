@@ -610,42 +610,63 @@ const Dispatch = () => {
               {(availableRolls.bundles?.length ?? 0) > 0 && (
                 <div className="space-y-3">
                   <h3 className="font-semibold flex items-center gap-2">
-                    <Badge variant="outline">Bundles ({availableRolls.bundles?.length ?? 0})</Badge>
+                    <Badge variant="outline">
+                      Bundles ({availableRolls.bundles?.reduce((sum, b) => sum + (b.bundle_size || 0), 0) ?? 0} pieces total from {availableRolls.bundles?.length ?? 0} bundles)
+                    </Badge>
                   </h3>
                   <div className="grid gap-3">
-                    {availableRolls.bundles?.map((roll) => (
-                      <Card key={roll.id} className="p-4">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="font-medium">{roll.batch_code} - Bundle of {roll.bundle_size}</p>
-                            <p className="text-sm text-muted-foreground">
-                              {roll.bundle_size} pieces per bundle
-                            </p>
+                    {(() => {
+                      // Group bundles by size
+                      const bundlesBySize = availableRolls.bundles?.reduce((acc, roll) => {
+                        const size = roll.bundle_size || 0;
+                        if (!acc[size]) {
+                          acc[size] = [];
+                        }
+                        acc[size].push(roll);
+                        return acc;
+                      }, {} as Record<number, typeof availableRolls.bundles>);
+
+                      return Object.entries(bundlesBySize || {}).map(([size, bundles]) => (
+                        <div key={size} className="space-y-2">
+                          <div className="text-sm font-medium text-muted-foreground">
+                            Bundle Size: {size} pieces ({bundles.length} bundle{bundles.length > 1 ? 's' : ''})
                           </div>
-                          <div className="flex gap-2">
-                            {availableRolls.product_type === 'Sprinkler Pipe' && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => {
-                                  setBundleToCut(roll);
-                                  setCutBundleDialogOpen(true);
-                                }}
-                              >
-                                <ScissorsIcon className="h-4 w-4 mr-1" />
-                                Cut Bundle
-                              </Button>
-                            )}
-                            <Button
-                              size="sm"
-                              onClick={() => addFullRollToDispatch(roll)}
-                            >
-                              Add Bundle
-                            </Button>
-                          </div>
+                          {bundles.map((roll) => (
+                            <Card key={roll.id} className="p-4">
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <p className="font-medium">{roll.batch_code} - Bundle of {roll.bundle_size}</p>
+                                  <p className="text-sm text-muted-foreground">
+                                    {roll.bundle_size} pieces per bundle
+                                  </p>
+                                </div>
+                                <div className="flex gap-2">
+                                  {availableRolls.product_type === 'Sprinkler Pipe' && (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => {
+                                        setBundleToCut(roll);
+                                        setCutBundleDialogOpen(true);
+                                      }}
+                                    >
+                                      <ScissorsIcon className="h-4 w-4 mr-1" />
+                                      Cut Bundle
+                                    </Button>
+                                  )}
+                                  <Button
+                                    size="sm"
+                                    onClick={() => addFullRollToDispatch(roll)}
+                                  >
+                                    Add Bundle
+                                  </Button>
+                                </div>
+                              </div>
+                            </Card>
+                          ))}
                         </div>
-                      </Card>
-                    ))}
+                      ));
+                    })()}
                   </div>
                 </div>
               )}
@@ -655,7 +676,7 @@ const Dispatch = () => {
                 <div className="space-y-3">
                   <h3 className="font-semibold flex items-center gap-2">
                     <Badge variant="secondary" className="bg-amber-100 text-amber-700 border-amber-300">
-                      Spare Pieces ({availableRolls.spares?.length ?? 0})
+                      Spare Pieces ({availableRolls.spares?.reduce((sum, s) => sum + (s.bundle_size || 0), 0) ?? 0} pieces total)
                     </Badge>
                     {availableRolls.product_type === 'Sprinkler Pipe' && availableRolls.spares.length > 0 && (
                       <Button
