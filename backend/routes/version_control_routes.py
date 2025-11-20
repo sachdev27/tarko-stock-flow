@@ -1,9 +1,11 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, send_file
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from database import execute_query, execute_insert, get_db_cursor
 from auth import jwt_required_with_role, get_user_identity_details
+from snapshot_storage import snapshot_storage
 import json
 from datetime import datetime
+import os
 
 version_control_bp = Blueprint('version_control', __name__, url_prefix='/api/version-control')
 
@@ -112,6 +114,26 @@ def create_snapshot():
             ))
 
             snapshot = cursor.fetchone()
+            snapshot_id = str(snapshot['id'])
+            
+            # Save snapshot to local storage
+            metadata = {
+                'snapshot_id': snapshot_id,
+                'snapshot_name': snapshot_name,
+                'description': description,
+                'created_at': snapshot['created_at'].isoformat() if snapshot['created_at'] else None,
+                'created_by': user_id,
+                'table_counts': table_counts,
+                'file_size_mb': file_size_mb,
+                'is_automatic': is_automatic,
+                'tags': tags
+            }
+            
+            storage_success = snapshot_storage.save_snapshot(snapshot_id, snapshot_data, metadata)
+            if not storage_success:
+                # Log warning but don't fail the operation
+                import logging
+                logging.warning(f"Failed to save snapshot {snapshot_id} to local storage")
 
             # Create audit log
             actor = get_user_identity_details(user_id)
@@ -122,13 +144,14 @@ def create_snapshot():
                 ) VALUES (%s, 'CREATE_SNAPSHOT', 'SNAPSHOT', %s, %s, NOW())
             """, (
                 user_id,
-                str(snapshot['id']),
+                snapshot_id,
                 f"{actor['name']} created snapshot '{snapshot_name}'"
             ))
 
             return jsonify({
                 'message': 'Snapshot created successfully',
-                'snapshot': dict(snapshot)
+                'snapshot': dict(snapshot),
+                'storage_saved': storage_success
             }), 201
 
     except Exception as e:
@@ -457,5 +480,77 @@ def configure_drive():
             'message': 'Google Drive integration has been disabled'
         }), 501
 
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@version_control_bp.route('/snapshots/local', methods=['GET'])
+@jwt_required_with_role(['admin'])
+def list_local_snapshots():
+    """List all snapshots available in local storage"""
+    try:
+        local_snapshots = snapshot_storage.list_snapshots()
+        return jsonify({
+            'snapshots': local_snapshots,
+            'storage_path': str(snapshot_storage.storage_path),
+            'total_count': len(local_snapshots)
+        }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@version_control_bp.route('/snapshots/<snapshot_id>/download', methods=['GET'])
+@jwt_required_with_role(['admin'])
+def download_snapshot(snapshot_id):
+    """Download a snapshot as a zip file"""
+    try:
+        import tempfile
+        import shutil
+        from pathlib import Path
+        
+        snapshot_dir = snapshot_storage.storage_path / snapshot_id
+        
+        if not snapshot_dir.exists():
+            return jsonify({'error': 'Snapshot not found in local storage'}), 404
+        
+        # Create temporary zip file
+        temp_dir = tempfile.mkdtemp()
+        zip_path = Path(temp_dir) / f"{snapshot_id}.zip"
+        
+        shutil.make_archive(
+            str(zip_path.with_suffix('')),
+            'zip',
+            snapshot_dir
+        )
+        
+        return send_file(
+            str(zip_path),
+            as_attachment=True,
+            download_name=f"snapshot_{snapshot_id}.zip",
+            mimetype='application/zip'
+        )
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@version_control_bp.route('/snapshots/<snapshot_id>/export', methods=['POST'])
+@jwt_required_with_role(['admin'])
+def export_snapshot_to_path(snapshot_id):
+    """Export snapshot to external path"""
+    try:
+        data = request.json
+        export_path = data.get('export_path')
+        
+        if not export_path:
+            return jsonify({'error': 'export_path is required'}), 400
+        
+        success = snapshot_storage.export_snapshot(snapshot_id, export_path)
+        
+        if success:
+            return jsonify({
+                'message': 'Snapshot exported successfully',
+                'export_path': export_path
+            }), 200
+        else:
+            return jsonify({'error': 'Failed to export snapshot'}), 500
+            
     except Exception as e:
         return jsonify({'error': str(e)}), 500

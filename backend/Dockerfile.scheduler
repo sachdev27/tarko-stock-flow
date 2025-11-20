@@ -1,0 +1,33 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies including cron
+RUN apt-get update && apt-get install -y \
+    postgresql-client \
+    cron \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements and install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy backup scripts
+COPY backup_scheduler.py .
+COPY database.py .
+COPY config.py .
+
+# Create necessary directories
+RUN mkdir -p /app/snapshots /backups
+
+# Create cron job file
+RUN echo "0 2 * * * cd /app && python backup_scheduler.py >> /var/log/cron.log 2>&1" > /etc/cron.d/backup-cron && \
+    chmod 0644 /etc/cron.d/backup-cron && \
+    crontab /etc/cron.d/backup-cron && \
+    touch /var/log/cron.log
+
+# Entrypoint script
+COPY docker-entrypoint-scheduler.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+CMD ["/entrypoint.sh"]
