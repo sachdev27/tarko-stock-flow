@@ -11,6 +11,7 @@ interface User {
 interface AuthContextType {
   user: User | null;
   session: string | null;
+  token: string | null; // Alias for session
   loading: boolean;
   userRole: string | null;
   signIn: (email: string, password: string) => Promise<{ error: any }>;
@@ -92,6 +93,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     <AuthContext.Provider value={{
       user,
       session,
+      token: session, // Alias for session
       loading,
       userRole,
       signIn,

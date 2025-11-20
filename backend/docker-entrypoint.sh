@@ -10,15 +10,40 @@ while ! nc -z postgres 5432; do
 done
 echo "PostgreSQL is ready"
 
-# Initialize database schema if needed
-echo "Initializing database schema..."
+# Initialize database schema
+echo "Checking database schema..."
 python -c "
-from database import init_db
+import psycopg2
+import os
+
+DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://tarko_user:tarko_pass@postgres:5432/tarko_inventory')
 try:
-    init_db()
-    print('Database schema initialized')
+    conn = psycopg2.connect(DATABASE_URL)
+    cursor = conn.cursor()
+
+    # Check if users table exists
+    cursor.execute(\"\"\"
+        SELECT EXISTS (
+            SELECT FROM information_schema.tables
+            WHERE table_name = 'users'
+        );
+    \"\"\")
+
+    exists = cursor.fetchone()[0]
+
+    if not exists:
+        print('Initializing database schema...')
+        with open('schema.sql', 'r') as f:
+            cursor.execute(f.read())
+        conn.commit()
+        print('✅ Database schema initialized')
+    else:
+        print('✅ Database schema already exists')
+
+    cursor.close()
+    conn.close()
 except Exception as e:
-    print(f'Database schema initialization: {e}')
+    print(f'Schema check: {e}')
 "
 
 # Initialize default admin user

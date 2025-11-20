@@ -32,15 +32,16 @@ def create_default_admin():
 
         # Check if admin user already exists
         cursor.execute("""
-            SELECT id, username, email FROM users
-            WHERE username = %s OR email = %s
-        """, (DEFAULT_ADMIN_USERNAME, DEFAULT_ADMIN_EMAIL))
+            SELECT u.id, u.email, ur.role
+            FROM users u
+            LEFT JOIN user_roles ur ON u.id = ur.user_id
+            WHERE u.email = %s AND ur.role = 'admin'
+        """, (DEFAULT_ADMIN_EMAIL,))
 
         existing_user = cursor.fetchone()
 
         if existing_user:
             print(f"✅ Admin user already exists:")
-            print(f"   Username: {existing_user['username']}")
             print(f"   Email: {existing_user['email']}")
             print(f"   ID: {existing_user['id']}")
             cursor.close()
@@ -50,38 +51,30 @@ def create_default_admin():
         # Create admin user
         password_hash = hash_password(DEFAULT_ADMIN_PASSWORD)
 
+        # Insert into users table
         cursor.execute("""
-            INSERT INTO users (
-                email,
-                username,
-                full_name,
-                password_hash,
-                role,
-                is_active,
-                created_at
-            )
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-            RETURNING id, username, email, role
-        """, (
-            DEFAULT_ADMIN_EMAIL,
-            DEFAULT_ADMIN_USERNAME,
-            DEFAULT_ADMIN_FULLNAME,
-            password_hash,
-            'admin',
-            True,
-            datetime.now()
-        ))
+            INSERT INTO users (email, password_hash)
+            VALUES (%s, %s)
+            RETURNING id, email
+        """, (DEFAULT_ADMIN_EMAIL, password_hash))
 
         new_user = cursor.fetchone()
+        user_id = new_user['id']
+
+        # Insert admin role
+        cursor.execute("""
+            INSERT INTO user_roles (user_id, role)
+            VALUES (%s, 'admin')
+        """, (user_id,))
+
         conn.commit()
 
         print("=" * 60)
         print("✅ DEFAULT ADMIN USER CREATED SUCCESSFULLY")
         print("=" * 60)
-        print(f"Username: {new_user['username']}")
         print(f"Email:    {new_user['email']}")
         print(f"Password: {DEFAULT_ADMIN_PASSWORD}")
-        print(f"Role:     {new_user['role']}")
+        print(f"Role:     admin")
         print(f"User ID:  {new_user['id']}")
         print("=" * 60)
         print("⚠️  IMPORTANT: Change the admin password after first login!")

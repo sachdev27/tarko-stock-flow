@@ -10,9 +10,10 @@ import Dashboard from "./pages/DashboardNew";
 import Production from "./pages/Production";
 import Inventory from "./pages/Inventory";
 import Transactions from "./pages/TransactionsNew";
-import Dispatch from "./pages/DispatchNew";
+import Dispatch from "./pages/DispatchNewModular";
 import Reports from "./pages/ReportsNew";
 import Admin from "./pages/Admin";
+import Details from "./pages/Details";
 import ExportHDPE from "./pages/ExportHDPE";
 import ExportSprinkler from "./pages/ExportSprinkler";
 import NotFound from "./pages/NotFound";
@@ -82,6 +83,14 @@ const App = () => (
               element={
                 <ProtectedRoute requireAdmin>
                   <Admin />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/details"
+              element={
+                <ProtectedRoute requireUser>
+                  <Details />
                 </ProtectedRoute>
               }
             />

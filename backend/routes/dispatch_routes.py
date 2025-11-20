@@ -948,3 +948,172 @@ def get_product_rolls(variant_id):
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@dispatch_bp.route('/dispatch-sale', methods=['POST'])
+@jwt_required()
+def dispatch_sale():
+    """
+    Create a dispatch sale with enhanced fields.
+    Request body: {
+        customer_id: UUID,
+        bill_to_id: UUID (optional),
+        transport_id: UUID (optional),
+        vehicle_id: UUID (optional),
+        invoice_number: string (optional),
+        notes: string (optional),
+        rolls: [
+            {
+                roll_id: UUID,
+                quantity: float (length in meters or count)
+            }
+        ]
+    }
+    """
+    user_id = get_jwt_identity()
+    data = request.json
+
+    customer_id = data.get('customer_id')
+    bill_to_id = data.get('bill_to_id')
+    transport_id = data.get('transport_id')
+    vehicle_id = data.get('vehicle_id')
+    invoice_number = data.get('invoice_number')
+    notes = data.get('notes', '')
+    rolls = data.get('rolls', [])
+
+    if not customer_id:
+        return jsonify({'error': 'customer_id is required'}), 400
+
+    if not rolls or len(rolls) == 0:
+        return jsonify({'error': 'At least one roll is required'}), 400
+
+    try:
+        with get_db_cursor() as cursor:
+            # Generate dispatch_id
+            cursor.execute("SELECT gen_random_uuid() as dispatch_id")
+            dispatch_id = cursor.fetchone()['dispatch_id']
+
+            total_quantity = 0
+            roll_snapshots = []
+            first_batch_id = None
+            first_roll_id = None
+
+            for roll_item in rolls:
+                roll_id = roll_item.get('roll_id')
+                dispatch_quantity = float(roll_item.get('quantity', 0))
+
+                if not roll_id or dispatch_quantity <= 0:
+                    return jsonify({'error': 'Invalid roll data'}), 400
+
+                # Get roll details
+                cursor.execute("""
+                    SELECT
+                        r.*,
+                        r.batch_id,
+                        pv.id as product_variant_id,
+                        b.batch_code,
+                        b.batch_no,
+                        pt.name as product_type_name,
+                        br.name as brand_name,
+                        pv.parameters
+                    FROM rolls r
+                    JOIN batches b ON r.batch_id = b.id
+                    JOIN product_variants pv ON b.product_variant_id = pv.id
+                    JOIN product_types pt ON pv.product_type_id = pt.id
+                    JOIN brands br ON pv.brand_id = br.id
+                    WHERE r.id = %s AND r.deleted_at IS NULL
+                """, (roll_id,))
+
+                roll = cursor.fetchone()
+                if not roll:
+                    return jsonify({'error': f'Roll {roll_id} not found'}), 404
+
+                if first_batch_id is None:
+                    first_batch_id = roll['batch_id']
+                    first_roll_id = roll_id
+
+                available_length = float(roll['length_meters'])
+
+                # Determine if full or partial dispatch
+                if dispatch_quantity >= available_length:
+                    # Full roll dispatch
+                    quantity_dispatched = available_length
+                    cursor.execute("""
+                        UPDATE rolls
+                        SET length_meters = 0, status = 'SOLD_OUT', deleted_at = NOW(), updated_at = NOW()
+                        WHERE id = %s
+                    """, (roll_id,))
+                else:
+                    # Partial dispatch
+                    quantity_dispatched = dispatch_quantity
+                    remaining = available_length - dispatch_quantity
+
+                    if remaining == 0:
+                        cursor.execute("""
+                            UPDATE rolls
+                            SET length_meters = 0, status = 'SOLD_OUT', deleted_at = NOW(), updated_at = NOW()
+                            WHERE id = %s
+                        """, (roll_id,))
+                    else:
+                        cursor.execute("""
+                            UPDATE rolls
+                            SET length_meters = %s, status = 'PARTIAL', updated_at = NOW()
+                            WHERE id = %s
+                        """, (remaining, roll_id))
+
+                # Update batch quantity
+                cursor.execute("""
+                    UPDATE batches
+                    SET current_quantity = current_quantity - %s, updated_at = NOW()
+                    WHERE id = %s
+                """, (quantity_dispatched, roll['batch_id']))
+
+                # Create transaction record
+                cursor.execute("""
+                    INSERT INTO transactions (
+                        batch_id,
+                        roll_id,
+                        transaction_type,
+                        quantity_change,
+                        customer_id,
+                        bill_to_id,
+                        transport_id,
+                        vehicle_id,
+                        invoice_no,
+                        notes,
+                        roll_snapshot,
+                        dispatch_id,
+                        created_by
+                    )
+                    VALUES (%s, %s, 'SALE', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                """, (
+                    roll['batch_id'],
+                    roll_id,
+                    -quantity_dispatched,
+                    customer_id,
+                    bill_to_id,
+                    transport_id,
+                    vehicle_id,
+                    invoice_number,
+                    notes,
+                    json.dumps({
+                        'roll_id': str(roll_id),
+                        'batch_code': roll['batch_code'],
+                        'quantity': quantity_dispatched
+                    }),
+                    dispatch_id,
+                    user_id
+                ))
+
+                total_quantity += quantity_dispatched
+
+            return jsonify({
+                'success': True,
+                'dispatch_id': str(dispatch_id),
+                'total_quantity': total_quantity,
+                'rolls_dispatched': len(rolls)
+            }), 201
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
