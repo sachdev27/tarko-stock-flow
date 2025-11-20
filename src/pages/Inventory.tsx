@@ -1932,17 +1932,6 @@ const Inventory = () => {
                                 })}
                               </div>
                             </div>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedTransaction(txn);
-                                setTransactionDetailDialogOpen(true);
-                              }}
-                            >
-                              <FileText className="h-4 w-4" />
-                            </Button>
                           </div>
 
                           <div className="grid grid-cols-2 gap-2 text-sm">
@@ -1958,17 +1947,6 @@ const Inventory = () => {
                               <div className="font-mono">{txn.invoice_no || '-'}</div>
                             </div>
                           </div>
-
-                          {txn.roll_length_meters != null && (
-                            <div className="text-sm">
-                              <div className="text-muted-foreground text-xs mb-1">Roll Details</div>
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className="font-medium">{txn.roll_length_meters.toFixed(2)} m</span>
-                                {txn.roll_weight && <span className="text-muted-foreground">{formatWeight(txn.roll_weight)}</span>}
-                                {txn.roll_type && <Badge variant="outline" className="text-xs">{txn.roll_type}{txn.roll_is_cut ? ' • Cut' : ''}</Badge>}
-                              </div>
-                            </div>
-                          )}
 
                           {txn.customer_name && (
                             <div className="text-sm">
@@ -1994,12 +1972,10 @@ const Inventory = () => {
                           <TableHead>Date & Time</TableHead>
                           <TableHead>Type</TableHead>
                           <TableHead>Batch</TableHead>
-                          <TableHead>Roll Details</TableHead>
                           <TableHead className="text-right">Quantity</TableHead>
                           <TableHead>Customer</TableHead>
                           <TableHead>Invoice</TableHead>
                           <TableHead>Notes</TableHead>
-                          <TableHead className="text-right">Actions</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -2020,17 +1996,6 @@ const Inventory = () => {
                               {txn.batch_code || '-'}
                               {txn.batch_no && <div className="text-xs text-muted-foreground">#{txn.batch_no}</div>}
                             </TableCell>
-                            <TableCell>
-                              {txn.roll_length_meters != null ? (
-                                <div className="text-sm">
-                                  <div className="font-medium">{txn.roll_length_meters.toFixed(2)} m</div>
-                                  <div className="text-xs text-muted-foreground">{formatWeight(txn.roll_weight)}</div>
-                                  {txn.roll_type && <div className="text-xs text-muted-foreground">{txn.roll_type}{txn.roll_is_cut ? ' • Cut' : ''}</div>}
-                                </div>
-                              ) : (
-                                <div className="text-sm text-muted-foreground">-</div>
-                              )}
-                            </TableCell>
                             <TableCell className="text-right font-medium">
                               <span className={txn.transaction_type === 'PRODUCTION' ? 'text-green-600' : 'text-red-600'}>
                                 {txn.transaction_type === 'PRODUCTION' ? '+' : '-'}
@@ -2043,20 +2008,6 @@ const Inventory = () => {
                               <div className="truncate" title={txn.notes || ''}>
                                 {txn.notes || '-'}
                               </div>
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setSelectedTransaction(txn);
-                                  setTransactionDetailDialogOpen(true);
-                                }}
-                              >
-                                <FileText className="h-4 w-4 mr-1" />
-                                Details
-                              </Button>
                             </TableCell>
                           </TableRow>
                         ))}
