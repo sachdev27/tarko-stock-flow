@@ -1,12 +1,18 @@
 {
   "rootFolder": "/Users/sachdevs/Projects/Tarko-Inv/tarko-stock-flow",
-  "analyzedAt": "2025-11-19T23:26:19.925Z",
+  "analyzedAt": "2025-11-20T12:23:43.262Z",
   "rootStructure": [
     {
       "name": ".gitignore",
       "type": "file",
       "size": 970,
       "lines": 78
+    },
+    {
+      "name": "EXPORT_GUIDE.md",
+      "type": "file",
+      "size": 7055,
+      "lines": 273
     },
     {
       "name": "README.md",
@@ -55,8 +61,8 @@
     {
       "name": "overview.json",
       "type": "file",
-      "size": 19860,
-      "lines": 658
+      "size": 18657,
+      "lines": 616
     },
     {
       "name": "package-lock.json",
@@ -116,6 +122,18 @@
     }
   ],
   "rootFileSnippets": {
+    "EXPORT_GUIDE.md": [
+      "# Export & Database Management Guide",
+      "",
+      "## Overview",
+      "This guide covers the new database management and export features added to the Tarko Inventory System.",
+      "",
+      "## Features",
+      "",
+      "### 1. Database Clearing Script",
+      "Location: `backend/clear_inventory.py`",
+      ""
+    ],
     "README.md": [
       "# Tarko Inventory Management System",
       "",
@@ -191,13 +209,13 @@
     "overview.json": [
       "{",
       "\"rootFolder\": \"/Users/sachdevs/Projects/Tarko-Inv/tarko-stock-flow\",",
-      "\"analyzedAt\": \"2025-11-19T23:21:37.937Z\",",
+      "\"analyzedAt\": \"2025-11-20T12:23:28.698Z\",",
       "\"rootStructure\": [",
       "{",
       "\"name\": \".gitignore\",",
       "\"type\": \"file\",",
-      "\"size\": 970,",
-      "\"lines\": 78",
+      "\"size\": 879,",
+      "\"lines\": 76",
       "},"
     ],
     "package-lock.json": [
@@ -298,7 +316,7 @@
     {
       "path": "backend",
       "category": "backend",
-      "fileCount": 47,
+      "fileCount": 52,
       "primaryLanguage": "Python"
     },
     {
@@ -336,28 +354,28 @@
     "root": "# Tarko Inventory Management System"
   },
   "totals": {
-    "numFiles": 139,
+    "numFiles": 150,
     "numDirs": 16,
-    "totalSizeBytes": 1906261,
-    "totalLinesOfCode": 17775
+    "totalSizeBytes": 2210075,
+    "totalLinesOfCode": 24377
   },
   "fileCategories": {
-    "other": 33,
-    "documentation": 8,
-    "source": 91,
+    "other": 36,
+    "documentation": 9,
+    "source": 98,
     "config": 7
   },
   "linesOfCodePerLanguage": {
-    "Python": 3750,
-    "Shell": 130,
+    "Python": 4709,
+    "Shell": 146,
     "JavaScript": 34,
-    "TypeScript": 13861
+    "TypeScript": 19488
   },
   "filesPerLanguage": {
-    "Python": 16,
-    "Shell": 2,
+    "Python": 17,
+    "Shell": 3,
     "JavaScript": 2,
-    "TypeScript": 71
+    "TypeScript": 76
   },
   "projectTypes": [
     "Python (requirements)",
@@ -369,6 +387,8 @@
     "Vite"
   ],
   "entryPoints": [
+    "backend/clear_inventory.py",
+    "backend/run_customer_migration.sh",
     "backend/setup_backup_system.sh",
     "backend/setup_db.sh"
   ],
@@ -379,14 +399,14 @@
   "topLevelDirectories": [
     {
       "name": "src",
-      "numFiles": 71,
-      "totalLoc": 13746,
+      "numFiles": 76,
+      "totalLoc": 19373,
       "dominantLanguage": "TypeScript"
     },
     {
       "name": "backend",
-      "numFiles": 47,
-      "totalLoc": 3880,
+      "numFiles": 52,
+      "totalLoc": 4855,
       "dominantLanguage": "Python"
     },
     {
@@ -400,21 +420,21 @@
       "path": "src",
       "name": "src",
       "level": 1,
-      "numFiles": 71,
-      "totalLoc": 13746,
+      "numFiles": 76,
+      "totalLoc": 19373,
       "dominantLanguage": "TypeScript",
       "category": "General",
-      "description": "General module with 71 files (TypeScript)",
+      "description": "General module with 76 files (TypeScript)",
       "subdirectories": [
         {
           "path": "src/pages",
           "name": "pages",
           "level": 2,
-          "numFiles": 9,
-          "totalLoc": 8750,
+          "numFiles": 14,
+          "totalLoc": 14344,
           "dominantLanguage": "TypeScript",
           "category": "General",
-          "description": "General module with 9 files (TypeScript)",
+          "description": "General module with 14 files (TypeScript)",
           "subdirectories": []
         },
         {
@@ -445,7 +465,7 @@
           "name": "lib",
           "level": 2,
           "numFiles": 2,
-          "totalLoc": 294,
+          "totalLoc": 309,
           "dominantLanguage": "TypeScript",
           "category": "Library",
           "description": "Library module with 2 files (TypeScript)",
@@ -479,8 +499,8 @@
       "path": "backend",
       "name": "backend",
       "level": 1,
-      "numFiles": 47,
-      "totalLoc": 3880,
+      "numFiles": 52,
+      "totalLoc": 4855,
       "dominantLanguage": "Python",
       "category": "General",
       "description": "# Tarko Inventory - Backend API",
@@ -490,7 +510,7 @@
           "name": "routes",
           "level": 2,
           "numFiles": 10,
-          "totalLoc": 3028,
+          "totalLoc": 3918,
           "dominantLanguage": "Python",
           "category": "General",
           "description": "General module with 10 files (Python)",
@@ -500,10 +520,10 @@
           "path": "backend/migrations",
           "name": "migrations",
           "level": 2,
-          "numFiles": 15,
+          "numFiles": 16,
           "totalLoc": 0,
           "category": "General",
-          "description": "General module with 15 files",
+          "description": "General module with 16 files",
           "subdirectories": []
         },
         {
@@ -543,6 +563,16 @@
   "architecturalInsights": {
     "coreApplications": [],
     "entryPointDetails": [
+      {
+        "path": "../../../../../backend/clear_inventory.py",
+        "type": "Unknown",
+        "description": ""
+      },
+      {
+        "path": "../../../../../backend/run_customer_migration.sh",
+        "type": "Unknown",
+        "description": ""
+      },
       {
         "path": "../../../../../backend/setup_backup_system.sh",
         "type": "Unknown",
@@ -641,16 +671,16 @@
     "total": 66
   },
   "complexity": {
-    "averageFileSize": 127.87769784172662,
+    "averageFileSize": 162.51333333333332,
     "maxFileSize": 0,
     "nestedDepth": 0,
     "estimatedComplexity": "high"
   },
   "gitRepo": {
     "firstCommitDate": "2025-11-20",
-    "totalCommits": 18,
+    "totalCommits": 19,
     "numContributors": 0,
-    "currentBranch": "sachdevs/version_control",
+    "currentBranch": "sachdevs/transaction_history",
     "remoteUrls": [
       "https://github.com/sachdev27/tarko-stock-flow.git"
     ]

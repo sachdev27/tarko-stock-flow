@@ -1824,7 +1824,7 @@ const Admin = () => {
                           <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
                             <span>Created: {formatDate(snapshot.created_at)}</span>
                             <span>By: {snapshot.created_by_name || snapshot.created_by_username}</span>
-                            <span>Size: {snapshot.file_size_mb?.toFixed(2)} MB</span>
+                            <span>Size: {parseFloat(snapshot.file_size_mb || 0).toFixed(2)} MB</span>
                             {snapshot.table_counts && (
                               <span>
                                 Tables: {String(Object.values(snapshot.table_counts).reduce((sum: number, count: any) => sum + (count || 0), 0))} records
@@ -2423,7 +2423,7 @@ const Admin = () => {
                   <div className="space-y-1 text-sm">
                     <div><span className="text-muted-foreground">Name:</span> <span className="font-medium">{selectedSnapshot.snapshot_name}</span></div>
                     <div><span className="text-muted-foreground">Created:</span> {formatDate(selectedSnapshot.created_at)}</div>
-                    <div><span className="text-muted-foreground">Size:</span> {selectedSnapshot.file_size_mb?.toFixed(2)} MB</div>
+                    <div><span className="text-muted-foreground">Size:</span> {parseFloat(selectedSnapshot.file_size_mb || 0).toFixed(2)} MB</div>
                     {selectedSnapshot.description && (
                       <div className="mt-2">
                         <span className="text-muted-foreground">Description:</span>
