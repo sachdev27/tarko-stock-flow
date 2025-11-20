@@ -558,16 +558,23 @@ const Dispatch = () => {
         const bundleItems = item.bundles.map(roll => ({
           roll_id: roll.id,
           type: 'full_roll',
-          quantity: roll.length_meters || 0,
+          quantity: roll.bundle_size || roll.length_meters || 0,
         }));
 
-        const spareItems = item.spares.map(roll => ({
-          roll_id: roll.id,
-          type: 'full_roll',
-          quantity: roll.length_meters || 0,
-        }));
+        const spareItems = item.spares.map(spare => {
+          // Check if this is a partial spare by comparing cart size with original size
+          const originalSize = (spare as any).original_bundle_size || spare.bundle_size || spare.length_meters || 0;
+          const cartSize = spare.bundle_size || spare.length_meters || 0;
 
-        return [...standardRollItems, ...cutRollItems, ...bundleItems, ...spareItems];
+          // If cart size is less than original, this is a partial dispatch
+          const isPartial = cartSize < originalSize;
+
+          return {
+            roll_id: spare.id,
+            type: isPartial ? 'partial_roll' : 'full_roll',
+            quantity: cartSize,
+          };
+        });        return [...standardRollItems, ...cutRollItems, ...bundleItems, ...spareItems];
       });
 
       await dispatchAPI.createDispatch({
@@ -736,7 +743,69 @@ const Dispatch = () => {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {products.map((product, idx) => (
+                  {products.map((product, idx) => {
+                    // Filter out items already in cart for this product
+                    const cartItem = cart.find(item => item.product_label === product.product_label);
+
+                    // Get IDs of items already in cart
+                    const cartRollIds = new Set<string>();
+                    const cartBundleIds = new Set<string>();
+                    const cartSpareUsage = new Map<string, number>(); // spare_id -> pieces used
+                    const cartCutRollIds = new Set<string>();
+
+                    if (cartItem) {
+                      // Collect standard roll IDs
+                      if (cartItem.standard_roll_count > 0) {
+                        product.standard_rolls.slice(0, cartItem.standard_roll_count).forEach(roll => {
+                          cartRollIds.add(roll.id);
+                        });
+                      }
+                      // Collect bundle IDs
+                      cartItem.bundles.forEach(bundle => cartBundleIds.add(bundle.id));
+                      // Collect spare usage (ID -> pieces used)
+                      cartItem.spares.forEach(spare => {
+                        const usedPieces = spare.bundle_size || spare.length_meters || 0;
+                        cartSpareUsage.set(spare.id, usedPieces);
+                      });
+                      // Collect cut roll IDs
+                      cartItem.cut_rolls.forEach(roll => cartCutRollIds.add(roll.id));
+                    }
+
+                    // Filter available items
+                    const availableStandardRolls = product.standard_rolls.filter(roll => !cartRollIds.has(roll.id));
+                    const availableBundles = product.bundles.filter(bundle => !cartBundleIds.has(bundle.id));
+
+                    // For spares, adjust bundle_size for partial usage or filter out if fully used
+                    const availableSpares = product.spares
+                      .map(spare => {
+                        const usedPieces = cartSpareUsage.get(spare.id) || 0;
+                        if (usedPieces === 0) return spare; // Not in cart at all
+
+                        const totalPieces = spare.bundle_size || spare.length_meters || 0;
+                        const remainingPieces = totalPieces - usedPieces;
+
+                        if (remainingPieces <= 0) return null; // Fully used
+
+                        // Return spare with adjusted piece count
+                        return {
+                          ...spare,
+                          bundle_size: remainingPieces,
+                          length_meters: remainingPieces
+                        };
+                      })
+                      .filter((spare): spare is Roll => spare !== null);
+
+                    const availableCutRolls = product.cut_rolls.filter(roll => !cartCutRollIds.has(roll.id));
+
+                    // Calculate available totals
+                    const isSprinklerPipe = product.product_type?.toLowerCase().includes('sprinkler');
+                    const totalAvailableCount = availableStandardRolls.length + availableCutRolls.length +
+                                              availableBundles.length + availableSpares.length;
+
+                    // Skip products with nothing available
+                    if (totalAvailableCount === 0) return null;
+
+                    return (
                     <div key={idx} className="border rounded-lg p-4 space-y-3 hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors">
                       {/* Product Header */}
                       <div className="flex items-start justify-between">
@@ -755,40 +824,27 @@ const Dispatch = () => {
                             ))}
                           </div>
                           <p className="text-sm text-muted-foreground">
-                            {(() => {
-                              const isSprinklerPipe = product.product_type?.toLowerCase().includes('sprinkler');
-                              const totalCount = (product.standard_rolls?.length || 0) +
-                                               (product.cut_rolls?.length || 0) +
-                                               (product.bundles?.length || 0) +
-                                               (product.spares?.length || 0);
-                              const itemType = isSprinklerPipe ? 'bundles' : 'rolls';
-
-                              return (
-                                <>
-                                  <span className="font-bold text-lg">{totalCount} {itemType}</span>
-                                  {!isSprinklerPipe && (
-                                    <span className="text-xs ml-2">({product.total_available_meters}m available)</span>
-                                  )}
-                                </>
-                              );
-                            })()}
+                            <span className="font-bold text-lg">{totalAvailableCount} {isSprinklerPipe ? 'bundles' : 'rolls'}</span>
+                            {!isSprinklerPipe && (
+                              <span className="text-xs ml-2">available</span>
+                            )}
                           </p>
                         </div>
                       </div>
 
                       {/* Standard Rolls - Grouped by Length (HDPE) or Bundle Size (Sprinkler) */}
-                      {product.standard_rolls.length > 0 && (() => {
+                      {availableStandardRolls.length > 0 && (() => {
                         const isSprinklerPipe = product.product_type?.toLowerCase().includes('sprinkler');
 
                         // Group by length (HDPE) or bundle_size (Sprinkler)
-                        const grouped = product.standard_rolls.reduce((acc, roll) => {
+                        const grouped = availableStandardRolls.reduce((acc, roll) => {
                           const key = isSprinklerPipe ? (roll.bundle_size || 0).toString() : roll.initial_length_meters.toString();
                           if (!acc[key]) {
                             acc[key] = [];
                           }
                           acc[key].push(roll);
                           return acc;
-                        }, {} as Record<string, typeof product.standard_rolls>);
+                        }, {} as Record<string, typeof availableStandardRolls>);
 
                         return (
                           <div className="space-y-2">
@@ -887,23 +943,23 @@ const Dispatch = () => {
                       })()}
 
                       {/* Cut Rolls - Grouped by Length - Hidden for Sprinkler Pipe */}
-                      {product.cut_rolls.length > 0 && !product.product_type?.toLowerCase().includes('sprinkler') && (
+                      {availableCutRolls.length > 0 && !product.product_type?.toLowerCase().includes('sprinkler') && (
                         <div className="space-y-2">
                           <div className="text-sm">
-                            <span className="font-bold text-base">{product.cut_rolls.length}</span>
+                            <span className="font-bold text-base">{availableCutRolls.length}</span>
                             <span className="text-muted-foreground ml-1">cut rolls available</span>
                           </div>
                           <div className="space-y-1">
                             {(() => {
                               // Group cut rolls by length
-                              const grouped = product.cut_rolls.reduce((acc, roll) => {
+                              const grouped = availableCutRolls.reduce((acc, roll) => {
                                 const key = roll.length_meters.toString();
                                 if (!acc[key]) {
                                   acc[key] = [];
                                 }
                                 acc[key].push(roll);
                                 return acc;
-                              }, {} as Record<string, typeof product.cut_rolls>);
+                              }, {} as Record<string, typeof availableCutRolls>);
 
                               return Object.entries(grouped).map(([length, rolls]) => {
                                 const allInCart = rolls.every(roll =>
@@ -968,7 +1024,7 @@ const Dispatch = () => {
                       )}
 
                       {/* Bundles (Sprinkler Pipe only - from bundles array) */}
-                      {(product.bundles?.length || 0) > 0 && product.product_type?.toLowerCase().includes('sprinkler') && (
+                      {(availableBundles?.length || 0) > 0 && product.product_type?.toLowerCase().includes('sprinkler') && (
                         <div className="space-y-2">
                           <div className="flex items-center justify-between">
                             <div className="text-sm font-medium text-muted-foreground">Additional Bundles</div>
@@ -984,14 +1040,14 @@ const Dispatch = () => {
 
                           {/* Group bundles by size */}
                           {(() => {
-                            const bundlesBySize = product.bundles.reduce((acc, roll) => {
+                            const bundlesBySize = availableBundles.reduce((acc, roll) => {
                               const size = roll.bundle_size || 0;
                               if (!acc[size]) {
                                 acc[size] = [];
                               }
                               acc[size].push(roll);
                               return acc;
-                            }, {} as Record<number, typeof product.bundles>);
+                            }, {} as Record<number, typeof availableBundles>);
 
                             return Object.entries(bundlesBySize).map(([size, bundles]) => (
                               <div key={size} className="bg-purple-50 dark:bg-purple-950/30 rounded p-3 space-y-2">
@@ -1061,112 +1117,85 @@ const Dispatch = () => {
                       )}
 
                       {/* Spare Pieces (Sprinkler Pipe only) */}
-                      {(product.spares?.length || 0) > 0 && product.product_type?.toLowerCase().includes('sprinkler') && (
+                      {(availableSpares?.length || 0) > 0 && product.product_type?.toLowerCase().includes('sprinkler') && (
                         <div className="space-y-2">
                           <div className="flex items-center justify-between">
-                            <div className="text-sm font-medium text-muted-foreground">Spare Pieces</div>
+                            <div className="text-sm font-medium text-muted-foreground">
+                              Spare Pieces ({availableSpares.reduce((sum, s) => sum + (s.bundle_size || 0), 0)} pieces total)
+                            </div>
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => openCombineSparesDialog(product.spares)}
+                              onClick={() => openCombineSparesDialog(availableSpares)}
                             >
                               <PlusIcon className="h-4 w-4 mr-1" />
                               Combine into Bundles
                             </Button>
                           </div>
 
-                          <div className="bg-orange-50 dark:bg-orange-950/30 rounded p-3 space-y-2">
-                            <div className="flex items-center justify-between">
-                              <div>
-                                <span className="font-bold text-lg">{product.spares.reduce((sum, s) => sum + (s.bundle_size || 0), 0)}</span>
-                                <span className="text-sm text-muted-foreground ml-2">pieces available</span>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Input
-                                type="number"
-                                min="0"
-                                max={product.spares.reduce((sum, s) => sum + (s.bundle_size || 0), 0)}
-                                defaultValue="0"
-                                className="w-20 h-9"
-                                id={`spares-${idx}`}
-                              />
-                              <span className="text-xs text-muted-foreground">/ {product.spares.reduce((sum, s) => sum + (s.bundle_size || 0), 0)} pieces</span>
-                              <Button
-                                size="sm"
-                                onClick={() => {
-                                  const input = document.getElementById(`spares-${idx}`) as HTMLInputElement;
-                                  let piecesNeeded = parseInt(input.value) || 0;
-                                  const totalAvailable = product.spares.reduce((sum, s) => sum + (s.bundle_size || 0), 0);
+                          {/* Show each spare roll individually */}
+                          <div className="space-y-1">
+                            {availableSpares.map((spare, spareIdx) => (
+                              <div key={spare.id} className="bg-orange-50 dark:bg-orange-950/30 rounded p-2 border border-orange-200">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex-1">
+                                    <div className="text-xs text-muted-foreground">{spare.batch_code}</div>
+                                    <div className="font-semibold text-sm">
+                                      <span className="text-orange-600 dark:text-orange-400">{spare.bundle_size || 0} pieces</span>
+                                      <span className="text-xs text-muted-foreground ml-2">
+                                        ({((spare.bundle_size || 0) * 6)}m total)
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-8"
+                                    onClick={() => {
+                                      // Find the original unfiltered spare to get true original size
+                                      const originalSpare = product.spares.find(s => s.id === spare.id);
+                                      const trueOriginalSize = originalSpare?.bundle_size || originalSpare?.length_meters || spare.bundle_size || 0;
 
-                                  if (piecesNeeded > totalAvailable) {
-                                    toast.error(`Only ${totalAvailable} pieces available`);
-                                    piecesNeeded = totalAvailable;
-                                    input.value = piecesNeeded.toString();
-                                  }
+                                      const spareToAdd = {
+                                        ...spare,
+                                        original_bundle_size: trueOriginalSize
+                                      } as any;
 
-                                  if (piecesNeeded > 0) {
-                                    // Collect spares until we have enough pieces
-                                    const sparesToAdd: Roll[] = [];
-                                    let piecesCollected = 0;
+                                      const existingItem = cart.find(item => item.product_label === product.product_label);
 
-                                    for (const spare of product.spares) {
-                                      if (piecesCollected >= piecesNeeded) break;
-
-                                      const sparePieceCount = spare.bundle_size || 0;
-                                      const piecesRemaining = piecesNeeded - piecesCollected;
-
-                                      if (piecesRemaining >= sparePieceCount) {
-                                        // Take the whole spare entry
-                                        sparesToAdd.push(spare);
-                                        piecesCollected += sparePieceCount;
+                                      if (existingItem) {
+                                        setCart(cart.map(item =>
+                                          item.product_label === product.product_label
+                                            ? { ...item, spares: [...item.spares, spareToAdd] }
+                                            : item
+                                        ));
                                       } else {
-                                        // Take only part of this spare entry
-                                        // Create a modified spare with reduced count
-                                        sparesToAdd.push({
-                                          ...spare,
-                                          bundle_size: piecesRemaining,
-                                          length_meters: piecesRemaining
-                                        });
-                                        piecesCollected += piecesRemaining;
-                                        break;
+                                        setCart([...cart, {
+                                          product_label: product.product_label,
+                                          product: product,
+                                          standard_roll_count: 0,
+                                          cut_rolls: [],
+                                          bundles: [],
+                                          spares: [spareToAdd]
+                                        }]);
                                       }
-                                    }
 
-                                    const existingItem = cart.find(item => item.product_label === product.product_label);
-
-                                    if (existingItem) {
-                                      setCart(cart.map(item =>
-                                        item.product_label === product.product_label
-                                          ? { ...item, spares: [...item.spares, ...sparesToAdd] }
-                                          : item
-                                      ));
-                                    } else {
-                                      setCart([...cart, {
-                                        product_label: product.product_label,
-                                        product: product,
-                                        standard_roll_count: 0,
-                                        cut_rolls: [],
-                                        bundles: [],
-                                        spares: sparesToAdd
-                                      }]);
-                                    }
-
-                                    input.value = '0';
-                                    toast.success(`Added exactly ${piecesCollected} spare pieces`);
-                                  }
-                                }}
-                              >
-                                <PlusIcon className="h-4 w-4 mr-1" />
-                                Add
-                              </Button>
-                            </div>
+                                      toast.success(`Added ${spare.bundle_size || 0} spare pieces to cart`);
+                                    }}
+                                  >
+                                    <PlusIcon className="h-4 w-4 mr-1" />
+                                    Add
+                                  </Button>
+                                </div>
+                              </div>
+                            ))}
                           </div>
                         </div>
                       )}
 
                     </div>
-                  ))}
+                    );
+                  })}
                 </CardContent>
               </Card>
             )}
