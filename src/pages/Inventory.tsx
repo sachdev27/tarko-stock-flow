@@ -1182,10 +1182,6 @@ const Inventory = () => {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={exportInventory}>
-                  <Download className="h-4 w-4 mr-2" />
-                  Quick Export (Mixed)
-                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => navigate('/export/hdpe')}>
                   <FileSpreadsheet className="h-4 w-4 mr-2" />
                   Export HDPE Inventory
