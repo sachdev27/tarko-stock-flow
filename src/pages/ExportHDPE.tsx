@@ -150,41 +150,67 @@ export default function ExportHDPE() {
       return;
     }
 
+    // Group by batch to consolidate rolls per batch
+    const batchMap = new Map<string, HDPEExportRow[]>();
+    exportData.forEach(row => {
+      const key = row.batch_code;
+      if (!batchMap.has(key)) batchMap.set(key, []);
+      batchMap.get(key)!.push(row);
+    });
+
     const headers = [
-      'Batch Code',
-      'Batch No',
       'Product Type',
       'Brand',
       'Production Date',
-      'PE',
+      'Roll Length (m)',
+      'Number of Rolls',
+      'Weight per Meter',
+      'PE (SDR)',
       'OD (mm)',
-      'PN (bar)',
-      'Item Type',
-      'Original Length (m)',
-      'Current Length (m)',
-      'Roll Count',
-      'Total Meters',
-      'Weight per Meter (kg)',
-      'Total Weight (kg)'
+      'PN (bar)'
     ];
 
-    const rows = exportData.map(row => [
-      row.batch_code,
-      row.batch_no,
-      row.product_type,
-      row.brand,
-      row.production_date,
-      row.pe,
-      row.od,
-      row.pn,
-      row.item_type,
-      row.original_length?.toFixed(2) || '',
-      row.current_length?.toFixed(2) || '',
-      row.roll_count,
-      row.total_meters.toFixed(2),
-      row.weight_per_meter?.toFixed(3) || '',
-      row.total_weight?.toFixed(2) || ''
-    ]);
+    const rows: string[][] = [];
+    batchMap.forEach((batchRows) => {
+      const firstRow = batchRows[0];
+
+      // Calculate totals for standard rolls
+      const standardRolls = batchRows.filter(r => r.item_type === 'Standard Roll');
+      if (standardRolls.length > 0) {
+        const totalRolls = standardRolls.reduce((sum, r) => sum + r.roll_count, 0);
+        const avgLength = standardRolls.length > 0
+          ? standardRolls.reduce((sum, r) => sum + (r.original_length || 0), 0) / standardRolls.length
+          : 0;
+
+        rows.push([
+          firstRow.product_type,
+          firstRow.brand,
+          firstRow.production_date,
+          avgLength.toFixed(0),
+          totalRolls.toString(),
+          firstRow.weight_per_meter ? (firstRow.weight_per_meter / 1000).toFixed(3) : '0', // Convert g/m to kg/m
+          firstRow.pe,
+          firstRow.od,
+          firstRow.pn
+        ]);
+      }
+
+      // Add cut rolls as separate entries if any
+      const cutRolls = batchRows.filter(r => r.item_type === 'Cut Roll');
+      cutRolls.forEach(cutRow => {
+        rows.push([
+          cutRow.product_type,
+          cutRow.brand,
+          cutRow.production_date,
+          (cutRow.original_length || 0).toFixed(2),
+          '1', // Cut rolls are individual
+          cutRow.weight_per_meter ? (cutRow.weight_per_meter / 1000).toFixed(3) : '0',
+          cutRow.pe,
+          cutRow.od,
+          cutRow.pn
+        ]);
+      });
+    });
 
     const csv = [
       headers.join(','),
@@ -195,7 +221,7 @@ export default function ExportHDPE() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `hdpe_inventory_${new Date().toISOString().split('T')[0]}.csv`;
+    link.download = `hdpe_inventory_export_${new Date().toISOString().split('T')[0]}.csv`;
     link.click();
     URL.revokeObjectURL(url);
 

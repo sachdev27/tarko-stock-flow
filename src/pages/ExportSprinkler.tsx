@@ -128,37 +128,74 @@ export default function ExportSprinkler() {
       return;
     }
 
+    // Group by batch
+    const batchMap = new Map<string, SprinklerExportRow[]>();
+    exportData.forEach(row => {
+      const key = row.batch_code;
+      if (!batchMap.has(key)) batchMap.set(key, []);
+      batchMap.get(key)!.push(row);
+    });
+
     const headers = [
-      'Batch Code',
-      'Batch No',
       'Product Type',
       'Brand',
       'Production Date',
+      'Bundle Size (pcs)',
+      'Piece Length (m)',
+      'Number of Bundles',
       'OD (mm)',
       'PN (bar)',
-      'Type',
-      'Item Type',
-      'Bundle Size',
-      'Bundle Count',
-      'Spare Count',
-      'Total Pieces'
+      'Type/PE'
     ];
 
-    const rows = exportData.map(row => [
-      row.batch_code,
-      row.batch_no,
-      row.product_type,
-      row.brand,
-      row.production_date,
-      row.od,
-      row.pn,
-      row.type,
-      row.item_type,
-      row.bundle_size || '',
-      row.bundle_count,
-      row.spare_count,
-      row.total_pieces
-    ]);
+    const rows: string[][] = [];
+    batchMap.forEach((batchRows) => {
+      const firstRow = batchRows[0];
+
+      // Group bundles by size
+      const bundlesBySize = new Map<number, SprinklerExportRow[]>();
+      batchRows.filter(r => r.item_type.startsWith('Bundle')).forEach(row => {
+        const size = row.bundle_size || 0;
+        if (!bundlesBySize.has(size)) bundlesBySize.set(size, []);
+        bundlesBySize.get(size)!.push(row);
+      });
+
+      // Add each bundle size group
+      bundlesBySize.forEach((bundleRows, bundleSize) => {
+        const totalBundles = bundleRows.reduce((sum, r) => sum + r.bundle_count, 0);
+        // Assume piece length of 6m (standard for sprinkler)
+        const pieceLength = 6;
+
+        rows.push([
+          firstRow.product_type,
+          firstRow.brand,
+          firstRow.production_date,
+          bundleSize.toString(),
+          pieceLength.toString(),
+          totalBundles.toString(),
+          firstRow.od,
+          firstRow.pn,
+          firstRow.type
+        ]);
+      });
+
+      // Add spare pieces as a separate row if any
+      const spareRows = batchRows.filter(r => r.item_type === 'Spare Pieces');
+      if (spareRows.length > 0) {
+        const totalSpares = spareRows.reduce((sum, r) => sum + r.spare_count, 0);
+        rows.push([
+          firstRow.product_type,
+          firstRow.brand,
+          firstRow.production_date,
+          totalSpares.toString(), // Spare count as bundle size
+          '6', // Standard piece length
+          '1', // Treat as 1 "bundle" of spares
+          firstRow.od,
+          firstRow.pn,
+          firstRow.type
+        ]);
+      }
+    });
 
     const csv = [
       headers.join(','),
@@ -169,7 +206,7 @@ export default function ExportSprinkler() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `sprinkler_inventory_${new Date().toISOString().split('T')[0]}.csv`;
+    link.download = `sprinkler_inventory_export_${new Date().toISOString().split('T')[0]}.csv`;
     link.click();
     URL.revokeObjectURL(url);
 
