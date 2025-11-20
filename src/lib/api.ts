@@ -95,6 +95,9 @@ export const transactions = {
 
   getAll: (params?: { start_date?: string; end_date?: string }) =>
     api.get('/transactions/', { params }),
+
+  revert: (transactionIds: string[]) =>
+    api.post('/transactions/revert', { transaction_ids: transactionIds }),
 };
 
 // Stats endpoints

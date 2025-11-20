@@ -268,3 +268,102 @@ def get_transactions():
     print(f"  Total records returned: {len(all_records)}")
 
     return jsonify(all_records), 200
+
+
+@transaction_bp.route('/revert', methods=['POST'])
+@jwt_required_with_role('user')
+def revert_transactions():
+    """Revert one or more transactions"""
+    user_id = get_jwt_identity()
+    data = request.get_json()
+
+    transaction_ids = data.get('transaction_ids', [])
+
+    if not transaction_ids or not isinstance(transaction_ids, list):
+        return jsonify({'error': 'transaction_ids array is required'}), 400
+
+    actor = get_user_identity_details(user_id)
+    reverted_count = 0
+    failed_transactions = []
+
+    with get_db_cursor() as cursor:
+        for transaction_id in transaction_ids:
+            try:
+                # Get transaction details
+                cursor.execute("""
+                    SELECT t.*, b.product_variant_id, b.current_quantity as batch_current_quantity,
+                           r.id as roll_id, r.length_meters as roll_length, r.status as roll_status
+                    FROM transactions t
+                    JOIN batches b ON t.batch_id = b.id
+                    LEFT JOIN rolls r ON t.roll_id = r.id
+                    WHERE t.id = %s AND t.deleted_at IS NULL
+                """, (transaction_id,))
+
+                transaction = cursor.fetchone()
+
+                if not transaction:
+                    failed_transactions.append({'id': transaction_id, 'error': 'Transaction not found'})
+                    continue
+
+                # Calculate revert quantity (opposite of original change)
+                revert_quantity = -float(transaction['quantity_change'])
+
+                # Update batch quantity
+                cursor.execute("""
+                    UPDATE batches
+                    SET current_quantity = current_quantity + %s,
+                        updated_at = NOW()
+                    WHERE id = %s
+                """, (revert_quantity, transaction['batch_id']))
+
+                # Update roll if it was involved
+                if transaction['roll_id']:
+                    roll_length = float(transaction['roll_length'] or 0)
+                    new_roll_length = roll_length + revert_quantity
+
+                    # Determine new status
+                    new_status = 'AVAILABLE' if new_roll_length > 0 else 'SOLD_OUT'
+
+                    cursor.execute("""
+                        UPDATE rolls
+                        SET length_meters = %s,
+                            status = %s,
+                            updated_at = NOW()
+                        WHERE id = %s
+                    """, (new_roll_length, new_status, transaction['roll_id']))
+
+                # Mark transaction as deleted (soft delete)
+                cursor.execute("""
+                    UPDATE transactions
+                    SET deleted_at = NOW()
+                    WHERE id = %s
+                """, (transaction_id,))
+
+                # Create audit log
+                actor_label = f"{actor['name']} ({actor['role']})"
+                log_msg = f"{actor_label} reverted transaction {transaction_id} - {transaction['transaction_type']}: {abs(float(transaction['quantity_change']))} units"
+
+                cursor.execute("""
+                    INSERT INTO audit_logs (
+                        user_id, action_type, entity_type, entity_id,
+                        description, created_at
+                    ) VALUES (%s, 'REVERT_TRANSACTION', 'TRANSACTION', %s, %s, NOW())
+                """, (user_id, transaction_id, log_msg))
+
+                reverted_count += 1
+
+            except Exception as e:
+                print(f"Error reverting transaction {transaction_id}: {str(e)}")
+                failed_transactions.append({'id': transaction_id, 'error': str(e)})
+                continue
+
+    response = {
+        'reverted_count': reverted_count,
+        'total_requested': len(transaction_ids),
+        'failed_transactions': failed_transactions
+    }
+
+    if reverted_count > 0:
+        return jsonify(response), 200
+    else:
+        return jsonify(response), 400

@@ -737,6 +737,7 @@ const Inventory = () => {
           'Number of Bundles': '20',
           'OD (mm)': '16',
           'PN (bar)': '4',
+          'Weight per Meter': '0.15',
           'Type/PE': 'L'
         },
         {
@@ -748,6 +749,7 @@ const Inventory = () => {
           'Number of Bundles': '15',
           'OD (mm)': '20',
           'PN (bar)': '4',
+          'Weight per Meter': '0.20',
           'Type/PE': 'L'
         },
         {
@@ -759,6 +761,7 @@ const Inventory = () => {
           'Number of Bundles': '25',
           'OD (mm)': '16',
           'PN (bar)': '4',
+          'Weight per Meter': '0.15',
           'Type/PE': 'C'
         }
       ];
@@ -1152,6 +1155,7 @@ const Inventory = () => {
           bundleSize = parseFloat(getValue('bundle_size (pcs)', ['bundle_size', 'Bundle Size (pcs)']) || '10');
           pieceLength = parseFloat(getValue('piece_length (m)', ['piece_length', 'Piece Length (m)']) || '6');
           numBundles = parseInt(getValue('number_of_bundles', ['Number of Bundles']) || '1');
+          weightPerMeter = parseFloat(getValue('weight_per_meter (kg/m)', ['weight_per_meter', 'Weight per Meter']) || '0');
           initialQuantity = numBundles * bundleSize * pieceLength;
         } else {
           rollLength = parseFloat(getValue('roll_length (m)', ['roll_length_meters', 'Roll Length (m)']) || '100');

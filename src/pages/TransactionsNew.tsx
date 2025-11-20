@@ -5,13 +5,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../co
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../components/ui/dialog';
 import { Separator } from '../components/ui/separator';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { Package, Weight, FileText, User, Calendar, Truck, Scale, Ruler, Info, Filter, X, Search, Download, Paperclip, Mail, Phone, MapPin, Building } from 'lucide-react';
+import { Checkbox } from '../components/ui/checkbox';
+import { Package, Weight, FileText, User, Calendar, Truck, Scale, Ruler, Info, Filter, X, Search, Download, Paperclip, Mail, Phone, MapPin, Building, Undo2, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
+import { toast } from 'sonner';
 
 interface TransactionRecord {
   id: string;
@@ -98,6 +100,11 @@ export default function TransactionsNew() {
   const [customerModalOpen, setCustomerModalOpen] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
   const [batchDetailsCache, setBatchDetailsCache] = useState<Record<string, any>>({});
+
+  // Revert functionality states
+  const [selectedTransactionIds, setSelectedTransactionIds] = useState<Set<string>>(new Set());
+  const [revertDialogOpen, setRevertDialogOpen] = useState(false);
+  const [reverting, setReverting] = useState(false);
 
   // Filter states
   const [searchQuery, setSearchQuery] = useState('');
@@ -301,6 +308,56 @@ export default function TransactionsNew() {
       setIsLoading(false);
     }
   };
+
+  const toggleSelectTransaction = (id: string) => {
+    const newSelected = new Set(selectedTransactionIds);
+    if (newSelected.has(id)) {
+      newSelected.delete(id);
+    } else {
+      newSelected.add(id);
+    }
+    setSelectedTransactionIds(newSelected);
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedTransactionIds.size === filteredTransactions.length) {
+      setSelectedTransactionIds(new Set());
+    } else {
+      setSelectedTransactionIds(new Set(filteredTransactions.map(t => t.id)));
+    }
+  };
+
+  const handleRevertTransactions = async () => {
+    if (selectedTransactionIds.size === 0) {
+      toast.error('No transactions selected');
+      return;
+    }
+
+    setReverting(true);
+    try {
+      const { data } = await transactionsAPI.revert(Array.from(selectedTransactionIds));
+
+      const { reverted_count, total_requested, failed_transactions } = data;
+
+      if (reverted_count > 0) {
+        toast.success(`Successfully reverted ${reverted_count} transaction${reverted_count > 1 ? 's' : ''}`);
+        if (failed_transactions && failed_transactions.length > 0) {
+          toast.warning(`Failed to revert ${failed_transactions.length} transaction${failed_transactions.length > 1 ? 's' : ''}`);
+        }
+        await loadTransactions();
+        setSelectedTransactionIds(new Set());
+        setRevertDialogOpen(false);
+      } else {
+        toast.error('Failed to revert transactions');
+      }
+    } catch (error: any) {
+      console.error('Error reverting transactions:', error);
+      toast.error(error.response?.data?.error || 'Failed to revert transactions');
+    } finally {
+      setReverting(false);
+    }
+  };
+
 
   const loadMasterData = async () => {
     try {
@@ -1802,15 +1859,41 @@ export default function TransactionsNew() {
         {/* Transactions Table */}
         <Card>
         <CardHeader>
-          <CardTitle>All Transactions</CardTitle>
-          <CardDescription>
-            View all transactions or click the detail button for complete information
-          </CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>All Transactions</CardTitle>
+              <CardDescription>
+                View all transactions or click the detail button for complete information
+              </CardDescription>
+            </div>
+            {selectedTransactionIds.size > 0 && (
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary" className="text-sm">
+                  {selectedTransactionIds.size} selected
+                </Badge>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => setRevertDialogOpen(true)}
+                  disabled={reverting}
+                >
+                  <Undo2 className="h-4 w-4 mr-2" />
+                  Revert Selected
+                </Button>
+              </div>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-[50px]">
+                  <Checkbox
+                    checked={selectedTransactionIds.size === filteredTransactions.length && filteredTransactions.length > 0}
+                    onCheckedChange={toggleSelectAll}
+                  />
+                </TableHead>
                 <TableHead>Date & Time</TableHead>
                 <TableHead>Batch</TableHead>
                 <TableHead>Product Type & Brand</TableHead>
@@ -1827,7 +1910,7 @@ export default function TransactionsNew() {
             <TableBody>
               {filteredTransactions.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={11} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={12} className="text-center text-muted-foreground py-8">
                     No transactions found
                   </TableCell>
                 </TableRow>
@@ -1839,6 +1922,12 @@ export default function TransactionsNew() {
                   key={transaction.id}
                   className="hover:bg-muted/50 transition-colors"
                 >
+                  <TableCell>
+                    <Checkbox
+                      checked={selectedTransactionIds.has(transaction.id)}
+                      onCheckedChange={() => toggleSelectTransaction(transaction.id)}
+                    />
+                  </TableCell>
                   <TableCell className="font-medium">
                     <div>{format(new Date(transaction.transaction_date), 'PP')}</div>
                     <div className="text-xs text-muted-foreground">{format(new Date(transaction.transaction_date), 'p')}</div>
@@ -2252,6 +2341,65 @@ export default function TransactionsNew() {
                 </div>
               </div>
             )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Revert Dialog */}
+        <Dialog open={revertDialogOpen} onOpenChange={setRevertDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Revert Transactions</DialogTitle>
+              <DialogDescription>
+                Are you sure you want to revert {selectedTransactionIds.size} transaction{selectedTransactionIds.size > 1 ? 's' : ''}?
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-4">
+              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
+                <div className="flex gap-2">
+                  <Undo2 className="h-5 w-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                  <div className="text-sm space-y-2">
+                    <p className="font-medium text-amber-900 dark:text-amber-100">
+                      This will:
+                    </p>
+                    <ul className="list-disc list-inside space-y-1 text-amber-800 dark:text-amber-200">
+                      <li>Reverse the inventory changes</li>
+                      <li>Restore affected rolls and batches</li>
+                      <li>Mark transactions as deleted</li>
+                      <li>Create audit log entries</li>
+                    </ul>
+                    <p className="text-amber-700 dark:text-amber-300 mt-2 font-medium">
+                      ⚠️ This action cannot be undone!
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setRevertDialogOpen(false)}
+                disabled={reverting}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleRevertTransactions}
+                disabled={reverting}
+              >
+                {reverting ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                    Reverting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Revert {selectedTransactionIds.size} Transaction{selectedTransactionIds.size > 1 ? 's' : ''}
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>
