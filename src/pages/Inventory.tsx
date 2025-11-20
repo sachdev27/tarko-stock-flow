@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Layout } from '@/components/Layout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -93,6 +95,7 @@ interface TransactionDiagnostic {
 
 const Inventory = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [inventory, setInventory] = useState<ProductInventory[]>([]);
   const [productTypes, setProductTypes] = useState<any[]>([]);
@@ -1171,10 +1174,28 @@ const Inventory = () => {
               <Upload className="h-4 w-4 mr-2" />
               Import
             </Button>
-            <Button variant="outline" onClick={exportInventory}>
-              <Download className="h-4 w-4 mr-2" />
-              Export
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline">
+                  <Download className="h-4 w-4 mr-2" />
+                  Export
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={exportInventory}>
+                  <Download className="h-4 w-4 mr-2" />
+                  Quick Export (Mixed)
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate('/export/hdpe')}>
+                  <FileSpreadsheet className="h-4 w-4 mr-2" />
+                  Export HDPE Inventory
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate('/export/sprinkler')}>
+                  <FileSpreadsheet className="h-4 w-4 mr-2" />
+                  Export Sprinkler Inventory
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Button variant="outline" onClick={openWhatsAppDialog} className="bg-green-50 hover:bg-green-100 border-green-200">
               <MessageCircle className="h-4 w-4 mr-2 text-green-600" />
               <span className="text-green-700">Share on WhatsApp</span>

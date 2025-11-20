@@ -13,6 +13,8 @@ import Transactions from "./pages/TransactionsNew";
 import Dispatch from "./pages/DispatchNew";
 import Reports from "./pages/ReportsNew";
 import Admin from "./pages/Admin";
+import ExportHDPE from "./pages/ExportHDPE";
+import ExportSprinkler from "./pages/ExportSprinkler";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -80,6 +82,22 @@ const App = () => (
               element={
                 <ProtectedRoute requireAdmin>
                   <Admin />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/export/hdpe"
+              element={
+                <ProtectedRoute>
+                  <ExportHDPE />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/export/sprinkler"
+              element={
+                <ProtectedRoute>
+                  <ExportSprinkler />
                 </ProtectedRoute>
               }
             />
