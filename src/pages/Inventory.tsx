@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Layout } from '@/components/Layout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -93,6 +95,7 @@ interface TransactionDiagnostic {
 
 const Inventory = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [inventory, setInventory] = useState<ProductInventory[]>([]);
   const [productTypes, setProductTypes] = useState<any[]>([]);
@@ -102,6 +105,7 @@ const Inventory = () => {
   const [parameterFilters, setParameterFilters] = useState<Record<string, string>>({});
   const [searchQuery, setSearchQuery] = useState('');
   const [showOnlyCutRolls, setShowOnlyCutRolls] = useState(false);
+  const [showOnlySpares, setShowOnlySpares] = useState(false);
 
   // Edit dialogs
   const [editingBatch, setEditingBatch] = useState<any>(null);
@@ -121,10 +125,30 @@ const Inventory = () => {
   const [cuttingLoading, setCuttingLoading] = useState(false);
   const [availableRolls, setAvailableRolls] = useState<RollInventory[]>([]);
 
+  // Cut bundle dialog (for sprinkler pipes)
+  const [cutBundleDialogOpen, setCutBundleDialogOpen] = useState(false);
+  const [bundleToCut, setBundleToCut] = useState<RollInventory | null>(null);
+  const [cutPiecesCount, setCutPiecesCount] = useState<string>('');
+  const [availableBundles, setAvailableBundles] = useState<RollInventory[]>([]);
+
+  // Combine spares dialog (for sprinkler pipes)
+  const [combineSparesDialogOpen, setCombineSparesDialogOpen] = useState(false);
+  const [selectedSparesToCombine, setSelectedSparesToCombine] = useState<Set<string>>(new Set());
+  const [newBundleSize, setNewBundleSize] = useState<string>('');
+  const [numberOfBundles, setNumberOfBundles] = useState<string>('');
+  const [availableSpares, setAvailableSpares] = useState<RollInventory[]>([]);
+  const [combiningLoading, setCombiningLoading] = useState(false);
+
   // Import/Export
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importing, setImporting] = useState(false);
+  const [templateType, setTemplateType] = useState<'hdpe' | 'sprinkler'>('hdpe');
+
+  // WhatsApp sharing
+  const [whatsappDialogOpen, setWhatsappDialogOpen] = useState(false);
+  const [selectedRollsForWhatsApp, setSelectedRollsForWhatsApp] = useState<Set<string>>(new Set());
+  const [expandedProductsInWhatsApp, setExpandedProductsInWhatsApp] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     fetchProductTypes();
@@ -236,50 +260,83 @@ const Inventory = () => {
 
   const fetchProductHistory = async (product: ProductInventory) => {
     setLoadingHistory(true);
+    setProductHistory([]);
+    setProductHistoryDiagnostics([]);
+
     try {
       // Fetch all transactions
       const { data } = await transactionsAPI.getAll();
 
-      // Diagnostic log to see raw transactions returned by the API
-      console.log('fetchProductHistory - raw transactions:', data);
+      if (!data || data.length === 0) {
+        toast.info('No transactions found in the system');
+        setLoadingHistory(false);
+        return;
+      }
 
-      const normalizeVariantId = (value: string | number | null | undefined) =>
-        value === null || value === undefined ? '' : String(value);
+      console.log('📊 Fetching history for product:', {
+        product_type: product.product_type,
+        brand: product.brand,
+        product_variant_id: product.product_variant_id,
+        parameters: product.parameters
+      });
 
-      const targetVariantId = normalizeVariantId(product.product_variant_id);
-      console.log('Target product_variant_id:', targetVariantId);
+      // Normalize variant ID for comparison
+      const normalizeId = (val: any) => {
+        if (val === null || val === undefined) return '';
+        return String(val).trim();
+      };
 
-      // EXACT MATCH ONLY using product_variant_id - no complex comparisons needed!
-      const allTxns = (data || []) as TransactionRecord[];
+      const targetVariantId = normalizeId(product.product_variant_id);
+
+      // Filter transactions that match this product variant
+      const matchedTransactions: TransactionRecord[] = [];
       const diagnostics: TransactionDiagnostic[] = [];
-      const filtered: TransactionRecord[] = [];
 
-      for (const txn of allTxns) {
-        // Simple exact match on product_variant_id
-        const txnVariantId = normalizeVariantId(txn.product_variant_id);
-        const isExactMatch = txnVariantId === targetVariantId;
-        console.log('Comparing:', { txnVariantId, targetVariantId, isExactMatch, txnId: txn.id });
+      data.forEach((txn: TransactionRecord) => {
+        const txnVariantId = normalizeId(txn.product_variant_id);
+        const isMatch = txnVariantId === targetVariantId && targetVariantId !== '';
+
+        // Log first few for debugging
+        if (matchedTransactions.length < 3 || isMatch) {
+          console.log('Transaction check:', {
+            txn_id: txn.id,
+            txn_variant_id: txnVariantId,
+            target_variant_id: targetVariantId,
+            isMatch,
+            type: txn.transaction_type,
+            date: txn.transaction_date
+          });
+        }
 
         diagnostics.push({
           id: txn.id,
-          matchType: true,  // Not needed with product_variant_id
-          matchBrand: true, // Not needed with product_variant_id
-          matchParams: isExactMatch,
-          txnParams: txn.parameters
+          matchType: txn.product_type === product.product_type,
+          matchBrand: txn.brand === product.brand,
+          matchParams: isMatch,
+          txnParams: txn.parameters || {}
         });
 
-        if (isExactMatch) {
-          filtered.push(txn);
+        if (isMatch) {
+          matchedTransactions.push(txn);
         }
-      }
+      });
 
-      console.log('fetchProductHistory - per-transaction diagnostics:', diagnostics);
-      console.log('fetchProductHistory - filtered transactions:', filtered);
+      // Sort by date descending (most recent first)
+      matchedTransactions.sort((a, b) =>
+        new Date(b.transaction_date).getTime() - new Date(a.transaction_date).getTime()
+      );
+
+      console.log(`✅ Found ${matchedTransactions.length} matching transactions out of ${data.length} total`);
+
+      setProductHistory(matchedTransactions);
       setProductHistoryDiagnostics(diagnostics);
-      setProductHistory(filtered);
-    } catch (error) {
-      console.error('Error fetching product history:', error);
-      toast.error('Failed to load product history');
+
+      if (matchedTransactions.length === 0) {
+        toast.info('No transactions found for this product variant');
+      }
+    } catch (error: any) {
+      console.error('❌ Error fetching product history:', error);
+      toast.error(`Failed to load product history: ${error.message || 'Unknown error'}`);
     } finally {
       setLoadingHistory(false);
     }
@@ -342,6 +399,160 @@ const Inventory = () => {
     } finally {
       setCuttingLoading(false);
     }
+  };
+
+  // Bundle cutting functions (for sprinkler pipes)
+  const openCutBundleDialog = (bundle: RollInventory) => {
+    setBundleToCut(bundle);
+    setCutPiecesCount('');
+    setAvailableBundles([]);
+    setCutBundleDialogOpen(true);
+  };
+
+  const openCutBundleDialogWithBundles = (bundles: RollInventory[]) => {
+    setBundleToCut(bundles[0]);
+    setAvailableBundles([]);
+    setCutPiecesCount('');
+    setCutBundleDialogOpen(true);
+  };
+
+  const handleCutBundle = async () => {
+    if (!bundleToCut) return;
+
+    const piecesCount = parseInt(cutPiecesCount);
+    const bundleSize = bundleToCut.bundle_size || 0;
+
+    if (isNaN(piecesCount) || piecesCount <= 0) {
+      toast.error('Please enter a valid number of pieces');
+      return;
+    }
+
+    if (piecesCount >= bundleSize) {
+      toast.error(`Cut pieces must be less than bundle size (${bundleSize} pieces)`);
+      return;
+    }
+
+    const remainingPieces = bundleSize - piecesCount;
+
+    setCuttingLoading(true);
+    try {
+      const { dispatch } = await import('@/lib/api');
+      await dispatch.cutBundle({
+        roll_id: bundleToCut.id,
+        cuts: [
+          { pieces: piecesCount },
+          { pieces: remainingPieces }
+        ],
+      });
+
+      toast.success(`Bundle split: ${piecesCount} spare pieces + ${remainingPieces} spare pieces`);
+      setCutBundleDialogOpen(false);
+      setBundleToCut(null);
+
+      await fetchInventory();
+    } catch (error: any) {
+      console.error('Error cutting bundle:', error);
+      toast.error(error.response?.data?.error || 'Failed to cut bundle');
+    } finally {
+      setCuttingLoading(false);
+    }
+  };
+
+  // Combine spares functions (for sprinkler pipes)
+  const openCombineSparesDialog = (spares: RollInventory[]) => {
+    setAvailableSpares(spares);
+    setSelectedSparesToCombine(new Set());
+    setNewBundleSize('');
+    setCombineSparesDialogOpen(true);
+  };
+
+  const handleCombineSpares = async () => {
+    const bundleSize = parseInt(newBundleSize);
+    if (isNaN(bundleSize) || bundleSize <= 0) {
+      toast.error('Please enter a valid bundle size');
+      return;
+    }
+
+    // Use all available spare pieces
+    const totalPieces = availableSpares.reduce((sum, s) => sum + (s.bundle_size || 1), 0);
+
+    // Calculate number of bundles to create (default to 1 if not specified)
+    const numBundles = numberOfBundles && parseInt(numberOfBundles) > 0
+      ? parseInt(numberOfBundles)
+      : 1;
+
+    const totalPiecesNeeded = numBundles * bundleSize;
+
+    if (totalPiecesNeeded > totalPieces) {
+      toast.error(`Not enough pieces: need ${totalPiecesNeeded}, have ${totalPieces}`);
+      return;
+    }
+
+    setCombiningLoading(true);
+
+    try {
+      const { dispatch } = await import('@/lib/api');
+
+      // Create all bundles in one API call (creates one transaction)
+      await dispatch.combineSpares({
+        spare_roll_ids: availableSpares.map(s => s.id),
+        bundle_size: bundleSize,
+        number_of_bundles: numBundles,
+      });
+
+      const remainingPieces = totalPieces - totalPiecesNeeded;
+
+      if (numBundles > 1) {
+        toast.success(`Created ${numBundles} bundles of ${bundleSize} pieces each${remainingPieces > 0 ? `. ${remainingPieces} pieces remaining as spares` : ''}`);
+      } else {
+        toast.success(`Created bundle of ${bundleSize} pieces${remainingPieces > 0 ? `. ${remainingPieces} pieces remaining as spares` : ''}`);
+      }
+
+      setCombineSparesDialogOpen(false);
+      setNewBundleSize('');
+      setNumberOfBundles('');
+
+      await fetchInventory();
+    } catch (error: any) {
+      console.error('Error combining spares:', error);
+      toast.error(error.response?.data?.error || 'Failed to combine spares');
+    } finally {
+      setCombiningLoading(false);
+    }
+  };  // Helper function to fetch current spare rolls for a batch
+  const fetchCurrentSpareRolls = async (): Promise<RollInventory[]> => {
+    if (availableSpares.length === 0) return [];
+
+    const batchId = (availableSpares[0] as any).batch_id;
+    if (!batchId) {
+      console.error('No batch_id found on spare rolls');
+      return [];
+    }
+
+    const { inventory } = await import('@/lib/api');
+    const response = await inventory.getBatches();
+    const data = response.data || response;
+
+    const batch = data.find((b: any) => b.id === batchId);
+    if (!batch || !batch.rolls) {
+      console.log('Batch not found or has no rolls:', batchId);
+      return [];
+    }
+
+    const spares = batch.rolls.filter((r: any) => r.roll_type === 'spare').map((r: any) => ({
+      id: r.id,
+      length_meters: r.length_meters || 0,
+      weight: r.weight,
+      status: r.status,
+      roll_type: r.roll_type,
+      bundle_size: r.bundle_size,
+      batch_id: batchId,
+    }));
+
+    console.log(`Found ${spares.length} spare rolls in batch ${batchId}, total pieces:`,
+      spares.reduce((sum, s) => sum + (s.bundle_size || 1), 0));
+
+    return spares;
   };
 
   const formatWeight = (weightInGrams: number | null | undefined): string => {
@@ -413,6 +624,16 @@ const Inventory = () => {
       }
     }
 
+    // Spare pieces filter
+    if (showOnlySpares) {
+      const hasSpares = item.batches.some(batch =>
+        batch.rolls.some(roll => roll.roll_type === 'spare')
+      );
+      if (!hasSpares) {
+        return false;
+      }
+    }
+
     // Search query
     const searchLower = searchQuery.toLowerCase();
     if (searchQuery && !(
@@ -465,36 +686,87 @@ const Inventory = () => {
   };
 
   const downloadTemplate = () => {
-    const template = [
-      {
-        product_type: 'HDPE Pipe',
-        brand: 'Tarko Gold',
-        'OD (mm)': '32',
-        'PN (bar)': '6',
-        'PE (SDR)': '100',
-        batch_code: 'TG-HDPE',
-        batch_no: '001',
-        production_date: '2025-11-20',
-        'roll_length (m)': '100',
-        number_of_rolls: '10',
-        'weight_per_meter (kg/m)': '0.5',
-        notes: 'Initial inventory'
-      },
-      {
-        product_type: 'Sprinkler Pipe',
-        brand: 'Tarko Premium',
-        'OD (mm)': '50',
-        'PN (bar)': '10',
-        Type: 'L',
-        batch_code: 'TP-SPR',
-        batch_no: '001',
-        production_date: '2025-11-20',
-        'bundle_size (pcs)': '10',
-        'piece_length (m)': '6',
-        number_of_bundles: '5',
-        notes: 'Initial sprinkler inventory'
-      }
-    ];
+    let template: any[];
+    let filename: string;
+
+    if (templateType === 'hdpe') {
+      template = [
+        {
+          'Product Type': 'HDPE Pipe',
+          'Brand': 'Tarko',
+          'Production Date': '2025-01-15',
+          'Roll Length (m)': '100',
+          'Number of Rolls': '10',
+          'Weight per Meter': '0.85',
+          'PE (SDR)': '100',
+          'OD (mm)': '32',
+          'PN (bar)': '10'
+        },
+        {
+          'Product Type': 'HDPE Pipe',
+          'Brand': 'Tarko',
+          'Production Date': '2025-01-20',
+          'Roll Length (m)': '100',
+          'Number of Rolls': '8',
+          'Weight per Meter': '1.20',
+          'PE (SDR)': '100',
+          'OD (mm)': '40',
+          'PN (bar)': '10'
+        },
+        {
+          'Product Type': 'HDPE Pipe',
+          'Brand': 'Tarko',
+          'Production Date': '2025-01-25',
+          'Roll Length (m)': '100',
+          'Number of Rolls': '6',
+          'Weight per Meter': '1.85',
+          'PE (SDR)': '100',
+          'OD (mm)': '50',
+          'PN (bar)': '10'
+        }
+      ];
+      filename = 'hdpe_import_template.csv';
+    } else {
+      template = [
+        {
+          'Product Type': 'Sprinkler Pipe',
+          'Brand': 'Tarko',
+          'Production Date': '2025-01-10',
+          'Bundle Size (pcs)': '10',
+          'Piece Length (m)': '6',
+          'Number of Bundles': '20',
+          'OD (mm)': '16',
+          'PN (bar)': '4',
+          'Weight per Meter': '0.15',
+          'Type/PE': 'L'
+        },
+        {
+          'Product Type': 'Sprinkler Pipe',
+          'Brand': 'Tarko',
+          'Production Date': '2025-01-15',
+          'Bundle Size (pcs)': '20',
+          'Piece Length (m)': '6',
+          'Number of Bundles': '15',
+          'OD (mm)': '20',
+          'PN (bar)': '4',
+          'Weight per Meter': '0.20',
+          'Type/PE': 'L'
+        },
+        {
+          'Product Type': 'Sprinkler Pipe',
+          'Brand': 'Tarko',
+          'Production Date': '2025-01-20',
+          'Bundle Size (pcs)': '10',
+          'Piece Length (m)': '6',
+          'Number of Bundles': '25',
+          'OD (mm)': '16',
+          'PN (bar)': '4',
+          'Weight per Meter': '0.15',
+          'Type/PE': 'C'
+        }
+      ];
+      filename = 'sprinkler_import_template.csv';
+    }
 
     const csv = [
       Object.keys(template[0]).join(','),
@@ -505,10 +777,10 @@ const Inventory = () => {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'inventory_template.csv';
+    a.download = filename;
     a.click();
     window.URL.revokeObjectURL(url);
-    toast.success('Template downloaded');
+    toast.success(`${templateType.toUpperCase()} template downloaded`);
   };
 
   const exportInventory = () => {
@@ -646,40 +918,123 @@ const Inventory = () => {
     toast.success('Inventory exported successfully');
   };
 
-  const shareOnWhatsApp = () => {
-    // Generate inventory message from filtered inventory
-    let message = '📦 *Inventory Report*\n';
-    message += `Date: ${new Date().toLocaleDateString('en-IN')}\n\n`;
+  const openWhatsAppDialog = () => {
+    // Pre-select all rolls from visible products
+    const allRollIds = new Set<string>();
+    filteredInventory.forEach(product => {
+      product.batches.forEach(batch => {
+        batch.rolls.forEach(roll => {
+          allRollIds.add(roll.id);
+        });
+      });
+    });
+    setSelectedRollsForWhatsApp(allRollIds);
+    setWhatsappDialogOpen(true);
+  };
 
-    if (showOnlyCutRolls) {
-      message += '🔪 *Cut Rolls Only*\n\n';
+  const shareOnWhatsApp = () => {
+    if (selectedRollsForWhatsApp.size === 0) {
+      toast.error('Please select at least one item to share');
+      return;
     }
 
-    if (filteredInventory.length === 0) {
-      message += 'No items in inventory matching current filters.';
-    } else {
-      filteredInventory.forEach((product) => {
+    // Generate inventory message with improved formatting
+    let message = '📦 *INVENTORY REPORT*\n';
+    message += `📅 ${new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}\n`;
+    message += '━━━━━━━━━━━━━━━━━━━━\n\n';
+
+    // Group products by their selection type
+    const productGroups = new Map<string, {
+      product: ProductInventory;
+      standardRolls: RollInventory[];
+      cutRolls: RollInventory[];
+    }>();
+
+    filteredInventory.forEach((product) => {
+      const uniqueKey = `${product.product_type_id}_${product.brand_id}_${JSON.stringify(product.parameters)}`;
+      const allRolls = product.batches.flatMap(b => b.rolls);
+      const standardRolls = allRolls.filter(r => !r.is_cut_roll && r.roll_type !== 'cut');
+      const cutRolls = allRolls.filter(r => r.is_cut_roll || r.roll_type === 'cut');
+
+      // Check if this product (standard rolls) is selected
+      const isProductSelected = selectedRollsForWhatsApp.has(uniqueKey);
+
+      // Get selected cut rolls
+      const selectedCutRolls = cutRolls.filter(r => selectedRollsForWhatsApp.has(r.id));
+
+      if (isProductSelected || selectedCutRolls.length > 0) {
+        productGroups.set(uniqueKey, {
+          product,
+          standardRolls: isProductSelected ? standardRolls : [],
+          cutRolls: selectedCutRolls
+        });
+      }
+    });
+
+    // Group by product type
+    const groupedByType: Record<string, Array<{ product: ProductInventory; standardRolls: RollInventory[]; cutRolls: RollInventory[] }>> = {};
+    productGroups.forEach((data) => {
+      const productType = data.product.product_type;
+      if (!groupedByType[productType]) {
+        groupedByType[productType] = [];
+      }
+      groupedByType[productType].push(data);
+    });
+
+    Object.entries(groupedByType).forEach(([productType, productList]) => {
+      message += `🏷️ *${productType.toUpperCase()}*\n`;
+      message += '─────────────────\n';
+
+      productList.forEach(({ product, standardRolls, cutRolls }) => {
         const params = product.parameters || {};
-        const productLine = `*${product.product_type}* - ${product.brand}`;
         const paramsLine = Object.entries(params)
           .filter(([k, v]) => v && k !== 'Type' && k !== 'type')
           .map(([k, v]) => `${k}: ${v}`)
-          .join(', ');
+          .join(' | ');
 
-        message += `${productLine}\n`;
-        if (paramsLine) message += `${paramsLine}\n`;
+        message += `\n📌 *${product.brand}*`;
+        if (paramsLine) message += ` (${paramsLine})`;
+        message += '\n';
 
         const isSprinkler = product.product_type.toLowerCase().includes('sprinkler');
 
-        // Aggregate all rolls across all batches
-        const allRolls = product.batches.flatMap(b => b.rolls);
+        if (isSprinkler) {
+          const allRolls = [...standardRolls, ...cutRolls];
+          const bundles = allRolls.filter(r => r.roll_type?.startsWith('bundle_'));
+          const spares = allRolls.filter(r => r.roll_type === 'spare');
 
-        if (showOnlyCutRolls) {
-          // Only show cut rolls when filter is active
-          const cutRolls = allRolls.filter(r => r.is_cut_roll || r.roll_type === 'cut');
+          const bundleGroups = bundles.reduce((acc, roll) => {
+            const key = roll.bundle_size || 0;
+            if (!acc[key]) acc[key] = [];
+            acc[key].push(roll);
+            return acc;
+          }, {} as Record<number, RollInventory[]>);
+
+          Object.entries(bundleGroups).forEach(([size, rollGroup]) => {
+            const totalPieces = rollGroup.length * parseInt(size);
+            message += `   📦 ${rollGroup.length} bundles × ${size} pcs = *${totalPieces} pieces*\n`;
+          });
+
+          if (spares.length > 0) {
+            const sparePieces = spares.reduce((sum, r) => sum + (r.bundle_size || 1), 0);
+            message += `   📍 Spare pieces: *${sparePieces}*\n`;
+          }
+        } else {
+          if (standardRolls.length > 0) {
+            const lengthGroups = standardRolls.reduce((acc, roll) => {
+              const key = roll.initial_length_meters.toFixed(0);
+              if (!acc[key]) acc[key] = [];
+              acc[key].push(roll);
+              return acc;
+            }, {} as Record<string, RollInventory[]>);
+
+            Object.entries(lengthGroups).forEach(([length, rollGroup]) => {
+              const totalLength = rollGroup.reduce((sum, r) => sum + r.length_meters, 0);
+              message += `   🔄 ${rollGroup.length} rolls × ${length}m = *${totalLength.toFixed(2)}m*\n`;
+            });
+          }
 
           if (cutRolls.length > 0) {
-            // Group cut rolls by their exact length
             const cutLengthGroups = cutRolls.reduce((acc, roll) => {
               const key = roll.length_meters.toFixed(2);
               if (!acc[key]) acc[key] = [];
@@ -687,84 +1042,32 @@ const Inventory = () => {
               return acc;
             }, {} as Record<string, RollInventory[]>);
 
-            Object.entries(cutLengthGroups).forEach(([length, rolls]) => {
-              const totalLength = rolls.reduce((sum, r) => sum + r.length_meters, 0);
-              message += `  • *${rolls.length} cut pieces* (${length}m each) = ${totalLength.toFixed(2)}m total\n`;
+            Object.entries(cutLengthGroups).forEach(([length, rollGroup]) => {
+              const totalLength = rollGroup.reduce((sum, r) => sum + r.length_meters, 0);
+              message += `   ✂️  ${rollGroup.length} cut pieces × ${length}m = *${totalLength.toFixed(2)}m*\n`;
             });
-          }
-        } else {
-          // Show all inventory (original behavior)
-          if (isSprinkler) {
-            // For Sprinkler Pipe - aggregate bundles and spare pieces
-            const bundles = allRolls.filter(r => r.roll_type?.startsWith('bundle_'));
-            const spares = allRolls.filter(r => r.roll_type === 'spare');
-
-            const bundleGroups = bundles.reduce((acc, roll) => {
-              const key = roll.bundle_size || 0;
-              if (!acc[key]) acc[key] = [];
-              acc[key].push(roll);
-              return acc;
-            }, {} as Record<number, RollInventory[]>);
-
-            Object.entries(bundleGroups).forEach(([size, rolls]) => {
-              const totalPieces = rolls.length * parseInt(size);
-              message += `  • ${rolls.length} bundles (${size} pcs/bundle) = *${totalPieces} pieces*\n`;
-            });
-
-            if (spares.length > 0) {
-              const sparePieces = spares.reduce((sum, r) => sum + (r.bundle_size || 1), 0);
-              message += `  • *${sparePieces} spare pieces*\n`;
-            }
-          } else {
-            // For HDPE - aggregate rolls with lengths
-            const standardRolls = allRolls.filter(r => !r.is_cut_roll && (!r.roll_type || r.roll_type === 'standard'));
-            const cutRolls = allRolls.filter(r => r.is_cut_roll || r.roll_type === 'cut');
-
-            if (standardRolls.length > 0) {
-              // Group by roll length
-              const lengthGroups = standardRolls.reduce((acc, roll) => {
-                const key = roll.initial_length_meters.toFixed(0);
-                if (!acc[key]) acc[key] = [];
-                acc[key].push(roll);
-                return acc;
-              }, {} as Record<string, RollInventory[]>);
-
-              Object.entries(lengthGroups).forEach(([length, rolls]) => {
-                const totalLength = rolls.reduce((sum, r) => sum + r.length_meters, 0);
-                message += `  • *${rolls.length} rolls* (${length}m each) = ${totalLength.toFixed(2)}m total\n`;
-              });
-            }
-
-            if (cutRolls.length > 0) {
-              // Group cut rolls by their exact length
-              const cutLengthGroups = cutRolls.reduce((acc, roll) => {
-                const key = roll.length_meters.toFixed(2);
-                if (!acc[key]) acc[key] = [];
-                acc[key].push(roll);
-                return acc;
-              }, {} as Record<string, RollInventory[]>);
-
-              Object.entries(cutLengthGroups).forEach(([length, rolls]) => {
-                const totalLength = rolls.reduce((sum, r) => sum + r.length_meters, 0);
-                message += `  • *${rolls.length} cut pieces* (${length}m each) = ${totalLength.toFixed(2)}m total\n`;
-              });
-            }
           }
         }
 
-        message += '\n';
+        const allRolls = [...standardRolls, ...cutRolls];
+        const totalQty = allRolls.reduce((sum, r) => sum + r.length_meters, 0);
+        const unit = product.roll_config?.type === 'bundles' ? 'pcs' : 'm';
+        message += `   ➡️ *Total: ${totalQty.toFixed(2)} ${unit}*\n`;
       });
-    }
 
-    // Encode the message for URL
+      message += '\n';
+    });
+
+    message += '━━━━━━━━━━━━━━━━━━━━\n';
+    message += '✅ _Stock Updated_';
+
     const encodedMessage = encodeURIComponent(message);
     const whatsappUrl = `https://wa.me/?text=${encodedMessage}`;
-
-    // Open WhatsApp in new window
     window.open(whatsappUrl, '_blank');
-  };
-
-  const handleImport = async () => {
+    setWhatsappDialogOpen(false);
+    setExpandedProductsInWhatsApp(new Set());
+    toast.success('Opening WhatsApp...');
+  };  const handleImport = async () => {
     if (!importFile) {
       toast.error('Please select a file');
       return;
@@ -852,11 +1155,12 @@ const Inventory = () => {
           bundleSize = parseFloat(getValue('bundle_size (pcs)', ['bundle_size', 'Bundle Size (pcs)']) || '10');
           pieceLength = parseFloat(getValue('piece_length (m)', ['piece_length', 'Piece Length (m)']) || '6');
           numBundles = parseInt(getValue('number_of_bundles', ['Number of Bundles']) || '1');
+          weightPerMeter = parseFloat(getValue('weight_per_meter (kg/m)', ['weight_per_meter', 'Weight per Meter']) || '0');
           initialQuantity = numBundles * bundleSize * pieceLength;
         } else {
           rollLength = parseFloat(getValue('roll_length (m)', ['roll_length_meters', 'Roll Length (m)']) || '100');
           numRolls = parseInt(getValue('number_of_rolls', ['Number of Rolls']) || '1');
-          weightPerMeter = parseFloat(getValue('weight_per_meter (kg/m)', ['weight_per_meter']) || '0');
+          weightPerMeter = parseFloat(getValue('weight_per_meter (kg/m)', ['weight_per_meter', 'Weight per Meter']) || '0');
           initialQuantity = rollLength * numRolls;
         }
 
@@ -871,6 +1175,8 @@ const Inventory = () => {
           weight_per_meter: weightPerMeter || 0,
           notes: getValue('notes', ['Notes']) || 'Imported from CSV',
           // Roll configuration
+          roll_config_type: isSprinkler ? 'bundles' : 'standard_rolls',
+          quantity_based: isSprinkler ? 'true' : 'false',
           roll_length: isSprinkler ? null : rollLength,
           number_of_rolls: isSprinkler ? null : numRolls,
           bundle_size: isSprinkler ? bundleSize : null,
@@ -915,19 +1221,33 @@ const Inventory = () => {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={downloadTemplate}>
-              <FileSpreadsheet className="h-4 w-4 mr-2" />
-              Download Template
-            </Button>
-            <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
-              <Upload className="h-4 w-4 mr-2" />
-              Import
-            </Button>
-            <Button variant="outline" onClick={exportInventory}>
-              <Download className="h-4 w-4 mr-2" />
-              Export
-            </Button>
-            <Button variant="outline" onClick={shareOnWhatsApp} className="bg-green-50 hover:bg-green-100 border-green-200">
+            {user?.role === 'admin' && (
+              <>
+                <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
+                  <Upload className="h-4 w-4 mr-2" />
+                  Import
+                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline">
+                      <Download className="h-4 w-4 mr-2" />
+                      Export
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => navigate('/export/hdpe')}>
+                      <FileSpreadsheet className="h-4 w-4 mr-2" />
+                      Export HDPE Inventory
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => navigate('/export/sprinkler')}>
+                      <FileSpreadsheet className="h-4 w-4 mr-2" />
+                      Export Sprinkler Inventory
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </>
+            )}
+            <Button variant="outline" onClick={openWhatsAppDialog} className="bg-green-50 hover:bg-green-100 border-green-200">
               <MessageCircle className="h-4 w-4 mr-2 text-green-600" />
               <span className="text-green-700">Share on WhatsApp</span>
             </Button>
@@ -1028,14 +1348,29 @@ const Inventory = () => {
                 </Label>
               </div>
 
+              {/* Spare Pieces Filter */}
+              <div className="flex items-center space-x-2 border rounded-md px-3 h-12">
+                <input
+                  type="checkbox"
+                  id="spare-pieces-filter"
+                  checked={showOnlySpares}
+                  onChange={(e) => setShowOnlySpares(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300"
+                />
+                <Label htmlFor="spare-pieces-filter" className="text-sm font-medium cursor-pointer">
+                  Show Only Spare Pieces
+                </Label>
+              </div>
+
               {/* Clear Filters Button */}
-              {(selectedBrand !== 'all' || showOnlyCutRolls || Object.keys(parameterFilters).length > 0) && (
+              {(selectedBrand !== 'all' || showOnlyCutRolls || showOnlySpares || Object.keys(parameterFilters).length > 0) && (
                 <Button
                   variant="outline"
                   onClick={() => {
                     setSelectedBrand('all');
                     setParameterFilters({});
                     setShowOnlyCutRolls(false);
+                    setShowOnlySpares(false);
                   }}
                   className="h-12"
                 >
@@ -1129,12 +1464,18 @@ const Inventory = () => {
               const unit = isBundle ? 'pieces' : 'm';
               const displayQty = isBundle ? product.total_quantity : product.total_quantity.toFixed(2);
 
-              // Aggregate ALL rolls from ALL batches
-              let allRolls = product.batches.flatMap(batch => batch.rolls);
+              // Aggregate ALL rolls from ALL batches (preserve batch_id)
+              let allRolls = product.batches.flatMap(batch =>
+                batch.rolls.map(roll => ({ ...roll, batch_id: batch.id }))
+              );
 
-              // Apply cut rolls filter if active
+              // Apply filters if active
               if (showOnlyCutRolls) {
                 allRolls = allRolls.filter(r => r.is_cut_roll || r.roll_type === 'cut');
+              }
+
+              if (showOnlySpares) {
+                allRolls = allRolls.filter(r => r.roll_type === 'spare');
               }
 
               // Standard rolls grouped by length
@@ -1300,8 +1641,19 @@ const Inventory = () => {
                         {/* Bundles */}
                         {Object.keys(bundlesBySize).length > 0 && (
                           <div>
-                            <div className="text-sm font-semibold text-muted-foreground mb-3">
-                              Bundles ({bundleRolls.length} total)
+                            <div className="text-sm font-semibold text-muted-foreground mb-3 flex items-center justify-between">
+                              <span>Bundles ({bundleRolls.length} total)</span>
+                              {bundleRolls.length > 0 && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => openCutBundleDialogWithBundles(bundleRolls)}
+                                  className="text-orange-600 hover:text-orange-700 hover:bg-orange-50"
+                                >
+                                  <ScissorsIcon className="h-3 w-3 mr-1" />
+                                  Cut into Spares
+                                </Button>
+                              )}
                             </div>
                             <div className="space-y-2">
                               {Object.entries(bundlesBySize)
@@ -1327,8 +1679,18 @@ const Inventory = () => {
                                           {!product.roll_config?.quantity_based && ` (${totalLength.toFixed(2)} m)`}
                                         </div>
                                       </div>
-                                      <div className="text-3xl font-bold text-blue-600">
-                                        {totalPieces} pcs
+                                      <div className="flex items-center gap-3">
+                                        <div className="text-3xl font-bold text-blue-600">
+                                          {totalPieces} pcs
+                                        </div>
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          onClick={() => openCutBundleDialog(rolls[0])}
+                                          className="text-orange-600 hover:text-orange-700 hover:bg-orange-50"
+                                        >
+                                          <ScissorsIcon className="h-4 w-4" />
+                                        </Button>
                                       </div>
                                     </div>
                                   );
@@ -1340,8 +1702,19 @@ const Inventory = () => {
                         {/* Spare Pipes */}
                         {spareRolls.length > 0 && (
                           <div>
-                            <div className="text-sm font-semibold text-muted-foreground mb-3">
-                              Spare Pipes ({spareRolls.length} total)
+                            <div className="text-sm font-semibold text-muted-foreground mb-3 flex items-center justify-between">
+                              <span>Spare Pipes ({spareRolls.length} total)</span>
+                              {spareRolls.length >= 1 && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => openCombineSparesDialog(spareRolls)}
+                                  className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                                >
+                                  <PlusIcon className="h-3 w-3 mr-1" />
+                                  Combine into Bundle
+                                </Button>
+                              )}
                             </div>
                             <div className="p-4 bg-purple-50 dark:bg-purple-950 rounded-lg flex items-center justify-between border border-purple-200 dark:border-purple-800">
                               <div className="flex-1">
@@ -1353,8 +1726,20 @@ const Inventory = () => {
                                   {!product.roll_config?.quantity_based && ` (${spareRolls.reduce((sum, r) => sum + r.length_meters, 0).toFixed(2)} m)`}
                                 </div>
                               </div>
-                              <div className="text-3xl font-bold text-purple-600">
-                                {spareRolls.reduce((sum, r) => sum + (r.bundle_size || 1), 0)} pcs
+                              <div className="flex items-center gap-3">
+                                <div className="text-3xl font-bold text-purple-600">
+                                  {spareRolls.reduce((sum, r) => sum + (r.bundle_size || 1), 0)} pcs
+                                </div>
+                                {spareRolls.length >= 1 && (
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => openCombineSparesDialog(spareRolls)}
+                                    className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                                  >
+                                    <PlusIcon className="h-4 w-4" />
+                                  </Button>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -1443,11 +1828,37 @@ const Inventory = () => {
           </DialogHeader>
 
           {loadingHistory ? (
-            <div className="text-center py-8">Loading history...</div>
+            <div className="flex flex-col items-center justify-center py-12">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
+              <p className="text-muted-foreground">Loading transaction history...</p>
+            </div>
+          ) : productHistory.length === 0 ? (
+            <div className="text-center py-12">
+              <Package className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
+              <h3 className="text-lg font-semibold mb-2">No Transactions Found</h3>
+              <p className="text-muted-foreground mb-4">
+                There are no transactions recorded for this product variant yet.
+              </p>
+              {selectedProductForHistory && (
+                <div className="bg-secondary/30 rounded-lg p-4 max-w-md mx-auto">
+                  <p className="text-sm text-muted-foreground">
+                    <strong>Product Variant ID:</strong> {selectedProductForHistory.product_variant_id}
+                  </p>
+                </div>
+              )}
+            </div>
           ) : (
             <div className="space-y-6">
               {/* Summary Cards */}
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-4 gap-4">
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="text-sm text-muted-foreground">Total Transactions</div>
+                    <div className="text-2xl font-bold text-blue-600">
+                      {productHistory.length}
+                    </div>
+                  </CardContent>
+                </Card>
                 <Card>
                   <CardContent className="pt-6">
                     <div className="text-sm text-muted-foreground">Total Produced</div>
@@ -1472,7 +1883,7 @@ const Inventory = () => {
                 </Card>
                 <Card>
                   <CardContent className="pt-6">
-                    <div className="text-sm text-muted-foreground">Current Outstanding</div>
+                    <div className="text-sm text-muted-foreground">Current Stock</div>
                     <div className="text-2xl font-bold text-primary">
                       {selectedProductForHistory?.total_quantity.toFixed(2)} {selectedProductForHistory?.roll_config?.type === 'bundles' ? 'pcs' : 'm'}
                     </div>
@@ -1480,84 +1891,75 @@ const Inventory = () => {
                 </Card>
               </div>
 
-              {/* Diagnostics when no exact matches */}
-              {productHistory.length === 0 && productHistoryDiagnostics.length > 0 && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-sm font-medium text-muted-foreground">Potential Matches (no exact matches)</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2">
-                      {productHistoryDiagnostics.map((d) => (
-                        <div key={d.id} className="p-2 border rounded flex items-start justify-between">
-                          <div className="flex-1 mr-4">
-                            <div className="text-sm font-medium break-words">{d.id}</div>
-                            <div className="text-xs text-muted-foreground mt-1 truncate">params: {JSON.stringify(d.txnParams)}</div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Badge variant={d.matchType ? 'secondary' : 'outline'} className="text-xs">{d.matchType ? 'Type' : 'Type ✗'}</Badge>
-                            <Badge variant={d.matchBrand ? 'secondary' : 'outline'} className="text-xs">{d.matchBrand ? 'Brand' : 'Brand ✗'}</Badge>
-                            <Badge variant={d.matchParams ? 'secondary' : 'outline'} className="text-xs">{d.matchParams ? 'Params' : 'Params ✗'}</Badge>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
               {/* Transaction Table */}
               <div className="border rounded-lg">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Date & Time</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Batch Code</TableHead>
-                      <TableHead>Roll</TableHead>
-                      <TableHead className="text-right">Quantity</TableHead>
-                      <TableHead>Customer</TableHead>
-                      <TableHead>Invoice</TableHead>
-                      <TableHead>Notes</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {productHistory.map((txn) => (
-                      <TableRow key={txn.id}>
-                        <TableCell className="whitespace-nowrap">
-                          {new Date(txn.transaction_date).toLocaleString('en-IN', {
-                            dateStyle: 'short',
-                            timeStyle: 'short'
-                          })}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={txn.transaction_type === 'PRODUCTION' ? 'default' : 'destructive'}>
-                            {txn.transaction_type}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>{txn.batch_code || '-'}</TableCell>
+                <div className="bg-secondary/30 px-4 py-3 border-b">
+                  <h3 className="font-semibold flex items-center gap-2">
+                    <Clock className="h-4 w-4" />
+                    Transaction History ({productHistory.length} records)
+                  </h3>
+                </div>
+                <div className="max-h-96 overflow-y-auto">
+                  <Table>
+                    <TableHeader className="sticky top-0 bg-background">
+                      <TableRow>
+                        <TableHead>Date & Time</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Batch</TableHead>
+                        <TableHead>Roll Details</TableHead>
+                        <TableHead className="text-right">Quantity</TableHead>
+                        <TableHead>Customer</TableHead>
+                        <TableHead>Invoice</TableHead>
+                        <TableHead>Notes</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {productHistory.map((txn) => (
+                        <TableRow key={txn.id}>
+                          <TableCell className="whitespace-nowrap">
+                            {new Date(txn.transaction_date).toLocaleString('en-IN', {
+                              dateStyle: 'short',
+                              timeStyle: 'short'
+                            })}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={txn.transaction_type === 'PRODUCTION' ? 'default' : 'destructive'}>
+                              {txn.transaction_type}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="font-mono text-sm">
+                            {txn.batch_code || '-'}
+                            {txn.batch_no && <div className="text-xs text-muted-foreground">#{txn.batch_no}</div>}
+                          </TableCell>
                         <TableCell>
                           {txn.roll_length_meters != null ? (
                             <div className="text-sm">
-                              <div>{txn.roll_length_meters} m</div>
+                              <div className="font-medium">{txn.roll_length_meters.toFixed(2)} m</div>
                               <div className="text-xs text-muted-foreground">{formatWeight(txn.roll_weight)}</div>
-                              <div className="text-xs text-muted-foreground">{txn.roll_type || ''}{txn.roll_is_cut ? ' • Cut' : ''}</div>
+                              {txn.roll_type && <div className="text-xs text-muted-foreground">{txn.roll_type}{txn.roll_is_cut ? ' • Cut' : ''}</div>}
                             </div>
                           ) : (
                             <div className="text-sm text-muted-foreground">-</div>
                           )}
                         </TableCell>
                         <TableCell className="text-right font-medium">
-                          {txn.transaction_type === 'PRODUCTION' ? '+' : '-'}
-                          {Math.abs(txn.quantity_change || 0).toFixed(2)} m
+                          <span className={txn.transaction_type === 'PRODUCTION' ? 'text-green-600' : 'text-red-600'}>
+                            {txn.transaction_type === 'PRODUCTION' ? '+' : '-'}
+                            {Math.abs(txn.quantity_change || 0).toFixed(2)} m
+                          </span>
                         </TableCell>
                         <TableCell>{txn.customer_name || '-'}</TableCell>
-                        <TableCell>{txn.invoice_no || '-'}</TableCell>
-                        <TableCell className="max-w-xs truncate">{txn.notes || '-'}</TableCell>
+                        <TableCell className="font-mono text-sm">{txn.invoice_no || '-'}</TableCell>
+                        <TableCell className="max-w-xs">
+                          <div className="truncate" title={txn.notes || ''}>
+                            {txn.notes || '-'}
+                          </div>
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
+                </div>
               </div>
             </div>
           )}
@@ -1741,6 +2143,305 @@ const Inventory = () => {
         </DialogContent>
       </Dialog>
 
+      {/* Cut Bundle Dialog (for Sprinkler Pipes) */}
+      <Dialog open={cutBundleDialogOpen} onOpenChange={setCutBundleDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-orange-600 flex items-center gap-2">
+              <ScissorsIcon className="h-5 w-5" />
+              Cut Bundle into Spare Pieces
+            </DialogTitle>
+            <DialogDescription>
+              {availableBundles.length > 0 ? 'Select a bundle and enter pieces to extract' : 'Split this bundle into spare pieces'}
+            </DialogDescription>
+          </DialogHeader>
+
+          {availableBundles.length > 0 ? (
+            <div className="space-y-4">
+              <div>
+                <Label>Select Bundle to Cut</Label>
+                <div className="space-y-2 max-h-60 overflow-y-auto mt-2">
+                  {availableBundles.map((bundle) => (
+                    <div
+                      key={bundle.id}
+                      className={`p-3 rounded-lg flex items-center justify-between cursor-pointer transition-colors border-2 ${
+                        bundleToCut?.id === bundle.id
+                          ? 'bg-orange-100 dark:bg-orange-950 border-orange-400'
+                          : 'bg-secondary/50 border-transparent hover:bg-secondary/70'
+                      }`}
+                      onClick={() => setBundleToCut(bundle)}
+                    >
+                      <div className="flex-1">
+                        <div className="text-base font-semibold">
+                          Bundle of {bundle.bundle_size} pieces
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {bundle.status}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {bundleToCut && (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="cut-pieces">Number of Pieces to Extract</Label>
+                    <Input
+                      id="cut-pieces"
+                      type="number"
+                      step="1"
+                      min="1"
+                      max={(bundleToCut.bundle_size || 0) - 1}
+                      value={cutPiecesCount}
+                      onChange={(e) => setCutPiecesCount(e.target.value)}
+                      placeholder="Enter pieces count"
+                      autoFocus
+                    />
+                  </div>
+
+                  {cutPiecesCount && parseInt(cutPiecesCount) > 0 && parseInt(cutPiecesCount) < (bundleToCut.bundle_size || 0) && (
+                    <div className="p-3 bg-orange-50 dark:bg-orange-950 rounded-lg space-y-2 text-sm">
+                      <div className="flex justify-between font-medium">
+                        <span>Original Bundle:</span>
+                        <span>{bundleToCut.bundle_size} pieces</span>
+                      </div>
+                      <div className="flex justify-between text-orange-600 dark:text-orange-400">
+                        <span>→ Spare Batch 1:</span>
+                        <span>{cutPiecesCount} pieces</span>
+                      </div>
+                      <div className="flex justify-between text-orange-600 dark:text-orange-400">
+                        <span>→ Spare Batch 2:</span>
+                        <span>{(bundleToCut.bundle_size || 0) - parseInt(cutPiecesCount)} pieces</span>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          ) : (
+            bundleToCut && (
+              <div className="space-y-4">
+                <div className="p-4 bg-secondary/50 rounded-lg">
+                  <div className="text-sm font-semibold mb-1">Selected Bundle</div>
+                  <div className="text-2xl font-bold">
+                    {bundleToCut.bundle_size} pieces
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="cut-pieces-single">Number of Pieces to Extract</Label>
+                  <Input
+                    id="cut-pieces-single"
+                    type="number"
+                    step="1"
+                    min="1"
+                    max={(bundleToCut.bundle_size || 0) - 1}
+                    value={cutPiecesCount}
+                    onChange={(e) => setCutPiecesCount(e.target.value)}
+                    placeholder="Enter pieces count"
+                    autoFocus
+                  />
+                </div>
+
+                {cutPiecesCount && parseInt(cutPiecesCount) > 0 && parseInt(cutPiecesCount) < (bundleToCut.bundle_size || 0) && (
+                  <div className="p-3 bg-orange-50 dark:bg-orange-950 rounded-lg space-y-2 text-sm">
+                    <div className="flex justify-between font-medium">
+                      <span>Original Bundle:</span>
+                      <span>{bundleToCut.bundle_size} pieces</span>
+                    </div>
+                    <div className="flex justify-between text-orange-600 dark:text-orange-400">
+                      <span>→ Spare Batch 1:</span>
+                      <span>{cutPiecesCount} pieces</span>
+                    </div>
+                    <div className="flex justify-between text-orange-600 dark:text-orange-400">
+                      <span>→ Spare Batch 2:</span>
+                      <span>{(bundleToCut.bundle_size || 0) - parseInt(cutPiecesCount)} pieces</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setCutBundleDialogOpen(false);
+                setBundleToCut(null);
+                setCutPiecesCount('');
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCutBundle}
+              disabled={
+                cuttingLoading ||
+                !bundleToCut ||
+                !cutPiecesCount ||
+                parseInt(cutPiecesCount) <= 0 ||
+                (bundleToCut && parseInt(cutPiecesCount) >= (bundleToCut.bundle_size || 0))
+              }
+              className="bg-orange-600 hover:bg-orange-700"
+            >
+              {cuttingLoading ? (
+                <>Processing...</>
+              ) : (
+                <>
+                  <ScissorsIcon className="h-4 w-4 mr-2" />
+                  Cut Bundle
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Combine Spares Dialog (for Sprinkler Pipes) */}
+      <Dialog open={combineSparesDialogOpen} onOpenChange={setCombineSparesDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh]">
+          <DialogHeader>
+            <DialogTitle className="text-green-600 flex items-center gap-2">
+              <PlusIcon className="h-5 w-5" />
+              Combine Spare Pieces into Bundle
+            </DialogTitle>
+            <DialogDescription>
+              Create custom-sized bundles from available spare pieces
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 overflow-y-auto max-h-[60vh]">
+            {availableSpares.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <Package className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                <p>No spare pieces available</p>
+              </div>
+            ) : (
+              <>
+                {/* Total Available Pieces */}
+                <div className="p-4 bg-blue-50 dark:bg-blue-950 rounded-lg border-2 border-blue-200 dark:border-blue-800">
+                  <div className="text-sm font-medium mb-1 text-muted-foreground">Total Available Spare Pieces</div>
+                  <div className="text-3xl font-bold text-blue-600">
+                    {availableSpares.reduce((sum, s) => sum + (s.bundle_size || 1), 0)} pieces
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  {/* Bundle Size Input */}
+                  <div className="space-y-2">
+                    <Label htmlFor="new-bundle-size">Bundle Size (pieces per bundle)</Label>
+                    <Input
+                      id="new-bundle-size"
+                      type="number"
+                      step="1"
+                      min="1"
+                      max={availableSpares.reduce((sum, s) => sum + (s.bundle_size || 1), 0)}
+                      value={newBundleSize}
+                      onChange={(e) => setNewBundleSize(e.target.value)}
+                      placeholder="e.g., 10, 20, 50"
+                      className="text-lg"
+                    />
+                  </div>
+
+                  {/* Number of Bundles Input */}
+                  <div className="space-y-2">
+                    <Label htmlFor="number-of-bundles">Number of Bundles</Label>
+                    <Input
+                      id="number-of-bundles"
+                      type="number"
+                      step="1"
+                      min="1"
+                      max={newBundleSize ? Math.floor(availableSpares.reduce((sum, s) => sum + (s.bundle_size || 1), 0) / parseInt(newBundleSize)) : undefined}
+                      value={numberOfBundles}
+                      onChange={(e) => setNumberOfBundles(e.target.value)}
+                      placeholder="1"
+                      className="text-lg"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Leave empty for 1 bundle
+                    </p>
+                  </div>
+                </div>
+
+                {/* Preview */}
+                {newBundleSize && parseInt(newBundleSize) > 0 && (
+                  <div className="p-4 bg-green-50 dark:bg-green-950 rounded-lg space-y-3 border-2 border-green-200 dark:border-green-800">
+                    <div className="text-sm font-semibold text-green-700 dark:text-green-400">
+                      Bundle Preview
+                    </div>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between font-medium">
+                        <span>Available Pieces:</span>
+                        <span>{availableSpares.reduce((sum, s) => sum + (s.bundle_size || 1), 0)} pieces</span>
+                      </div>
+                      {(() => {
+                        const totalAvailable = availableSpares.reduce((sum, s) => sum + (s.bundle_size || 1), 0);
+                        const bundleSize = parseInt(newBundleSize);
+                        const numBundles = numberOfBundles && parseInt(numberOfBundles) > 0
+                          ? parseInt(numberOfBundles)
+                          : 1;
+                        const totalPiecesUsed = numBundles * bundleSize;
+                        const remaining = totalAvailable - totalPiecesUsed;
+
+                        return (
+                          <>
+                            <div className="flex justify-between text-green-600 dark:text-green-400 font-semibold text-base">
+                              <span>→ Create {numBundles} bundle{numBundles > 1 ? 's' : ''}:</span>
+                              <span>{numBundles} × {bundleSize} pcs = {totalPiecesUsed} pieces</span>
+                            </div>
+                            {remaining > 0 && (
+                              <div className="flex justify-between text-muted-foreground">
+                                <span>→ Remaining Spares:</span>
+                                <span>{remaining} pieces</span>
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setCombineSparesDialogOpen(false);
+                setNewBundleSize('');
+                setNumberOfBundles('');
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCombineSpares}
+              disabled={
+                combiningLoading ||
+                !newBundleSize ||
+                parseInt(newBundleSize) <= 0 ||
+                parseInt(newBundleSize) > availableSpares.reduce((sum, s) => sum + (s.bundle_size || 1), 0)
+              }
+              className="bg-green-600 hover:bg-green-700"
+            >
+              {combiningLoading ? (
+                <>Processing...</>
+              ) : (
+                <>
+                  <PlusIcon className="h-4 w-4 mr-2" />
+                  Create Bundle
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Import Dialog */}
       <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
         <DialogContent className="max-w-2xl">
@@ -1820,15 +2521,29 @@ const Inventory = () => {
                   💡 Units are shown in parentheses (mm, bar, m, kg/m, pcs) to help you enter correct values
                 </p>
               </div>
-              <Button
-                variant="link"
-                size="sm"
-                onClick={downloadTemplate}
-                className="mt-2 h-auto p-0 text-xs"
-              >
-                <Download className="h-3 w-3 mr-1" />
-                Download example template with units
-              </Button>
+              <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                <p className="text-sm font-medium mb-3 text-blue-900 dark:text-blue-100">📥 Download Template</p>
+                <div className="flex items-center gap-2">
+                  <Select value={templateType} onValueChange={(value: 'hdpe' | 'sprinkler') => setTemplateType(value)}>
+                    <SelectTrigger className="w-[180px] h-9 bg-white dark:bg-gray-800">
+                      <SelectValue placeholder="Select template type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="hdpe">HDPE Template</SelectItem>
+                      <SelectItem value="sprinkler">Sprinkler Template</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={downloadTemplate}
+                    className="h-9"
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Download Template
+                  </Button>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1855,6 +2570,388 @@ const Inventory = () => {
                   Import Inventory
                 </>
               )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* WhatsApp Share Dialog */}
+      <Dialog open={whatsappDialogOpen} onOpenChange={setWhatsappDialogOpen}>
+        <DialogContent className="max-w-3xl max-h-[90vh]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MessageCircle className="h-5 w-5 text-green-600" />
+              Share on WhatsApp
+            </DialogTitle>
+            <DialogDescription>
+              Select products to share. Standard rolls/bundles show total quantity, cut rolls and spare pieces can be individually selected.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="max-h-[550px] overflow-y-auto space-y-2 border rounded-lg p-4">
+              {filteredInventory.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Package className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                  <p>No products match your current filters</p>
+                </div>
+              ) : (
+                filteredInventory.map((product) => {
+                  const uniqueKey = `${product.product_type_id}_${product.brand_id}_${JSON.stringify(product.parameters)}`;
+                  const isSelected = selectedRollsForWhatsApp.has(uniqueKey);
+                  const isExpanded = expandedProductsInWhatsApp.has(uniqueKey);
+
+                  const allRolls = product.batches.flatMap(b => b.rolls);
+                  const standardRolls = allRolls.filter(r => !r.is_cut_roll && r.roll_type !== 'cut' && r.roll_type !== 'spare' && !r.roll_type?.startsWith('bundle_'));
+                  const bundleRolls = allRolls.filter(r => r.roll_type?.startsWith('bundle_'));
+                  const cutRolls = allRolls.filter(r => r.is_cut_roll || r.roll_type === 'cut');
+                  const spareRolls = allRolls.filter(r => r.roll_type === 'spare');
+
+                  const standardTotal = standardRolls.reduce((sum, r) => sum + r.length_meters, 0);
+                  const bundleTotal = bundleRolls.reduce((sum, r) => sum + (r.bundle_size || 0), 0);
+                  const isSprinkler = product.product_type.toLowerCase().includes('sprinkler');
+
+                  const selectedCutRolls = cutRolls.filter(r => selectedRollsForWhatsApp.has(r.id));
+                  const selectedSpares = spareRolls.filter(r => selectedRollsForWhatsApp.has(r.id));
+                  const hasExpandableItems = cutRolls.length > 0 || spareRolls.length > 0;
+
+                  const params = product.parameters || {};
+                  const paramsText = Object.entries(params)
+                    .filter(([k, v]) => v && k !== 'Type' && k !== 'type')
+                    .map(([k, v]) => `${k}: ${v}`)
+                    .join(', ');
+
+                  return (
+                    <div key={uniqueKey} className="border rounded-lg overflow-hidden">
+                      {/* Product Header - Clickable for standard rolls, shows checkbox */}
+                      <div
+                        className={`flex items-center space-x-3 p-3 cursor-pointer transition-colors ${
+                          isSelected ? 'bg-green-50 border-green-500' : 'bg-secondary/30 hover:bg-secondary/50'
+                        }`}
+                        onClick={() => {
+                          if (hasExpandableItems) {
+                            // If has cut rolls or spares, toggle expansion
+                            setExpandedProductsInWhatsApp(prev => {
+                              const newSet = new Set(prev);
+                              if (newSet.has(uniqueKey)) {
+                                newSet.delete(uniqueKey);
+                              } else {
+                                newSet.add(uniqueKey);
+                              }
+                              return newSet;
+                            });
+                          } else {
+                            // If only standard rolls/bundles, toggle selection
+                            setSelectedRollsForWhatsApp(prev => {
+                              const newSet = new Set(prev);
+                              if (newSet.has(uniqueKey)) {
+                                newSet.delete(uniqueKey);
+                              } else {
+                                newSet.add(uniqueKey);
+                              }
+                              return newSet;
+                            });
+                          }
+                        }}
+                      >
+                        <div onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              setSelectedRollsForWhatsApp(prev => {
+                                const newSet = new Set(prev);
+                                if (newSet.has(uniqueKey)) {
+                                  newSet.delete(uniqueKey);
+                                } else {
+                                  newSet.add(uniqueKey);
+                                }
+                                return newSet;
+                              });
+                            }}
+                            className="h-4 w-4 rounded border-gray-300 text-green-600"
+                          />
+                        </div>
+                        <div className="flex-1">
+                          <div className="font-semibold">{product.product_type} - {product.brand}</div>
+                          {paramsText && (
+                            <div className="text-sm text-muted-foreground">{paramsText}</div>
+                          )}
+                          <div className="text-sm text-muted-foreground mt-1">
+                            {isSprinkler ? (
+                              <>
+                                {bundleTotal > 0 && (
+                                  <span>{bundleTotal} pcs in bundles</span>
+                                )}
+                                {spareRolls.length > 0 && (
+                                  <span className="ml-2">• {spareRolls.reduce((sum, r) => sum + (r.bundle_size || 1), 0)} spare pieces</span>
+                                )}
+                              </>
+                            ) : (
+                              <>
+                                {standardTotal > 0 && (
+                                  <span>{standardTotal.toFixed(2)}m standard</span>
+                                )}
+                                {cutRolls.length > 0 && (
+                                  <span className="ml-2">• {cutRolls.length} cut piece{cutRolls.length !== 1 ? 's' : ''}</span>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        </div>
+                        {hasExpandableItems && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setExpandedProductsInWhatsApp(prev => {
+                                const newSet = new Set(prev);
+                                if (newSet.has(uniqueKey)) {
+                                  newSet.delete(uniqueKey);
+                                } else {
+                                  newSet.add(uniqueKey);
+                                }
+                                return newSet;
+                              });
+                            }}
+                          >
+                            {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                          </Button>
+                        )}
+                        {isSelected && <CheckCircle className="h-5 w-5 text-green-600" />}
+                      </div>
+
+                      {/* Cut Rolls List (when expanded) */}
+                      {isExpanded && cutRolls.length > 0 && (
+                        <div className="p-3 space-y-2 bg-background border-t">
+                          <div className="flex items-center justify-between pb-2">
+                            <span className="text-sm font-medium text-muted-foreground">
+                              Cut Pieces ({cutRolls.length})
+                            </span>
+                            <div className="flex gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedRollsForWhatsApp(prev => {
+                                    const newSet = new Set(prev);
+                                    cutRolls.forEach(r => newSet.add(r.id));
+                                    return newSet;
+                                  });
+                                }}
+                              >
+                                Select All
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedRollsForWhatsApp(prev => {
+                                    const newSet = new Set(prev);
+                                    cutRolls.forEach(r => newSet.delete(r.id));
+                                    return newSet;
+                                  });
+                                }}
+                              >
+                                Clear
+                              </Button>
+                            </div>
+                          </div>
+
+                          <div className="space-y-1 max-h-64 overflow-y-auto">
+                            {cutRolls.map((roll) => {
+                              const isRollSelected = selectedRollsForWhatsApp.has(roll.id);
+
+                              return (
+                                <div
+                                  key={roll.id}
+                                  className={`flex items-center space-x-3 p-2 rounded border cursor-pointer transition-colors ${
+                                    isRollSelected ? 'bg-green-50 border-green-500' : 'border-gray-200 hover:bg-secondary/30'
+                                  }`}
+                                  onClick={() => {
+                                    setSelectedRollsForWhatsApp(prev => {
+                                      const newSet = new Set(prev);
+                                      if (newSet.has(roll.id)) {
+                                        newSet.delete(roll.id);
+                                      } else {
+                                        newSet.add(roll.id);
+                                      }
+                                      return newSet;
+                                    });
+                                  }}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={isRollSelected}
+                                    onChange={() => {}}
+                                    className="h-4 w-4 rounded border-gray-300 text-green-600"
+                                  />
+                                  <div className="flex-1 flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                      <Badge variant="destructive" className="text-xs">Cut</Badge>
+                                      <span className="text-sm font-medium">
+                                        {roll.length_meters.toFixed(2)}m
+                                      </span>
+                                      {roll.initial_length_meters && roll.initial_length_meters !== roll.length_meters && (
+                                        <span className="text-xs text-muted-foreground">
+                                          (originally {roll.initial_length_meters.toFixed(0)}m)
+                                        </span>
+                                      )}
+                                    </div>
+                                    <Badge variant="outline" className="text-xs">
+                                      {roll.status}
+                                    </Badge>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Spare Pieces List (when expanded) */}
+                      {isExpanded && spareRolls.length > 0 && (
+                        <div className="p-3 space-y-2 bg-background border-t">
+                          <div className="flex items-center justify-between pb-2">
+                            <span className="text-sm font-medium text-muted-foreground">
+                              Spare Pieces ({spareRolls.length})
+                            </span>
+                            <div className="flex gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedRollsForWhatsApp(prev => {
+                                    const newSet = new Set(prev);
+                                    spareRolls.forEach(r => newSet.add(r.id));
+                                    return newSet;
+                                  });
+                                }}
+                              >
+                                Select All
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedRollsForWhatsApp(prev => {
+                                    const newSet = new Set(prev);
+                                    spareRolls.forEach(r => newSet.delete(r.id));
+                                    return newSet;
+                                  });
+                                }}
+                              >
+                                Clear
+                              </Button>
+                            </div>
+                          </div>
+
+                          <div className="space-y-1 max-h-64 overflow-y-auto">
+                            {spareRolls.map((spare) => {
+                              const isSpareSelected = selectedRollsForWhatsApp.has(spare.id);
+
+                              return (
+                                <div
+                                  key={spare.id}
+                                  className={`flex items-center space-x-3 p-2 rounded border cursor-pointer transition-colors ${
+                                    isSpareSelected ? 'bg-green-50 border-green-500' : 'border-gray-200 hover:bg-secondary/30'
+                                  }`}
+                                  onClick={() => {
+                                    setSelectedRollsForWhatsApp(prev => {
+                                      const newSet = new Set(prev);
+                                      if (newSet.has(spare.id)) {
+                                        newSet.delete(spare.id);
+                                      } else {
+                                        newSet.add(spare.id);
+                                      }
+                                      return newSet;
+                                    });
+                                  }}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={isSpareSelected}
+                                    onChange={() => {}}
+                                    className="h-4 w-4 rounded border-gray-300 text-green-600"
+                                  />
+                                  <div className="flex-1 flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                      <Badge variant="secondary" className="text-xs bg-purple-100 text-purple-700">Spare</Badge>
+                                      <span className="text-sm font-medium">
+                                        {spare.bundle_size || 1} pieces
+                                      </span>
+                                    </div>
+                                    <Badge variant="outline" className="text-xs">
+                                      {spare.status}
+                                    </Badge>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Summary and Action Buttons */}
+            <div className="flex items-center justify-between pt-2 border-t">
+              <div className="flex items-center gap-4">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const newSet = new Set<string>();
+                    filteredInventory.forEach(p => {
+                      const uniqueKey = `${p.product_type_id}_${p.brand_id}_${JSON.stringify(p.parameters)}`;
+                      newSet.add(uniqueKey);
+                      // Also select all cut rolls and spare pieces
+                      p.batches.forEach(b => {
+                        b.rolls.filter(r => r.is_cut_roll || r.roll_type === 'cut' || r.roll_type === 'spare').forEach(r => newSet.add(r.id));
+                      });
+                    });
+                    setSelectedRollsForWhatsApp(newSet);
+                  }}
+                >
+                  Select All
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSelectedRollsForWhatsApp(new Set())}
+                >
+                  Clear All
+                </Button>
+                <span className="text-sm text-muted-foreground font-medium">
+                  {selectedRollsForWhatsApp.size} item{selectedRollsForWhatsApp.size !== 1 ? 's' : ''} selected
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setWhatsappDialogOpen(false);
+                setExpandedProductsInWhatsApp(new Set());
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={shareOnWhatsApp}
+              disabled={selectedRollsForWhatsApp.size === 0}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              <MessageCircle className="h-4 w-4 mr-2" />
+              Share ({selectedRollsForWhatsApp.size})
             </Button>
           </DialogFooter>
         </DialogContent>

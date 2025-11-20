@@ -66,6 +66,8 @@ dist/
 # yarn.lock
 bun.lockb
 
+# Google Drive credentials (SECURITY: Never commit!)
+backend/google_drive_credentials.json
 
 # Images and pdf
 *.png

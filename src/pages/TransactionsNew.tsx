@@ -1,17 +1,20 @@
 import { useState, useEffect } from 'react';
 import { Layout } from '../components/Layout';
-import { transactions as transactionsAPI, inventory as inventoryAPI } from '../lib/api';
+import { useAuth } from '../contexts/AuthContext';
+import { transactions as transactionsAPI, inventory as inventoryAPI, admin } from '../lib/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '../components/ui/dialog';
 import { Separator } from '../components/ui/separator';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { Package, Weight, FileText, User, Calendar, Truck, Scale, Ruler, Info, Filter, X, Search, Download, Paperclip } from 'lucide-react';
+import { Checkbox } from '../components/ui/checkbox';
+import { Package, Weight, FileText, User, Calendar, Truck, Scale, Ruler, Info, Filter, X, Search, Download, Paperclip, Mail, Phone, MapPin, Building, Undo2, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
+import { toast } from 'sonner';
 
 interface TransactionRecord {
   id: string;
@@ -72,6 +75,11 @@ interface TransactionRecord {
     rolls?: Array<{
       roll_id: string;
       batch_id: string;
+      batch_code?: string;
+      batch_no?: string;
+      product_type?: string;
+      brand?: string;
+      parameters?: Record<string, string>;
       quantity_dispatched: number;
       length_meters: number;
       initial_length_meters: number;
@@ -85,11 +93,20 @@ interface TransactionRecord {
 }
 
 export default function TransactionsNew() {
+  const { user } = useAuth();
   const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
   const [filteredTransactions, setFilteredTransactions] = useState<TransactionRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [modalTransaction, setModalTransaction] = useState<TransactionRecord | null>(null);
+  const [customerModalOpen, setCustomerModalOpen] = useState(false);
+  const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
+  const [batchDetailsCache, setBatchDetailsCache] = useState<Record<string, any>>({});
+
+  // Revert functionality states
+  const [selectedTransactionIds, setSelectedTransactionIds] = useState<Set<string>>(new Set());
+  const [revertDialogOpen, setRevertDialogOpen] = useState(false);
+  const [reverting, setReverting] = useState(false);
 
   // Filter states
   const [searchQuery, setSearchQuery] = useState('');
@@ -144,7 +161,28 @@ export default function TransactionsNew() {
 
       // Transaction type filter
       if (typeFilter !== 'all') {
-        filtered = filtered.filter(t => t.transaction_type === typeFilter);
+        filtered = filtered.filter(t => {
+          // Handle special display types
+          if (typeFilter === 'BUNDLED') {
+            return t.transaction_type === 'PRODUCTION' &&
+                   t.notes?.includes('Combined') &&
+                   t.notes?.includes('spare');
+          }
+          if (typeFilter === 'CUT BUNDLE') {
+            return t.transaction_type === 'CUT' &&
+                   t.notes?.includes('Cut bundle');
+          }
+          // Regular types - exclude bundling and cut bundle transactions
+          if (typeFilter === 'PRODUCTION') {
+            return t.transaction_type === 'PRODUCTION' &&
+                   !(t.notes?.includes('Combined') && t.notes?.includes('spare'));
+          }
+          if (typeFilter === 'CUT') {
+            return t.transaction_type === 'CUT' &&
+                   !t.notes?.includes('Cut bundle');
+          }
+          return t.transaction_type === typeFilter;
+        });
       }
 
       // Product type filter
@@ -273,6 +311,56 @@ export default function TransactionsNew() {
     }
   };
 
+  const toggleSelectTransaction = (id: string) => {
+    const newSelected = new Set(selectedTransactionIds);
+    if (newSelected.has(id)) {
+      newSelected.delete(id);
+    } else {
+      newSelected.add(id);
+    }
+    setSelectedTransactionIds(newSelected);
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedTransactionIds.size === filteredTransactions.length) {
+      setSelectedTransactionIds(new Set());
+    } else {
+      setSelectedTransactionIds(new Set(filteredTransactions.map(t => t.id)));
+    }
+  };
+
+  const handleRevertTransactions = async () => {
+    if (selectedTransactionIds.size === 0) {
+      toast.error('No transactions selected');
+      return;
+    }
+
+    setReverting(true);
+    try {
+      const { data } = await transactionsAPI.revert(Array.from(selectedTransactionIds));
+
+      const { reverted_count, total_requested, failed_transactions } = data;
+
+      if (reverted_count > 0) {
+        toast.success(`Successfully reverted ${reverted_count} transaction${reverted_count > 1 ? 's' : ''}`);
+        if (failed_transactions && failed_transactions.length > 0) {
+          toast.warning(`Failed to revert ${failed_transactions.length} transaction${failed_transactions.length > 1 ? 's' : ''}`);
+        }
+        await loadTransactions();
+        setSelectedTransactionIds(new Set());
+        setRevertDialogOpen(false);
+      } else {
+        toast.error('Failed to revert transactions');
+      }
+    } catch (error: any) {
+      console.error('Error reverting transactions:', error);
+      toast.error(error.response?.data?.error || 'Failed to revert transactions');
+    } finally {
+      setReverting(false);
+    }
+  };
+
+
   const loadMasterData = async () => {
     try {
       const [productTypesRes, brandsRes] = await Promise.all([
@@ -306,7 +394,11 @@ export default function TransactionsNew() {
 
   const getTotalProductionWeight = () => {
     return filteredTransactions
-      .filter(t => t.transaction_type === 'PRODUCTION')
+      .filter(t =>
+        t.transaction_type === 'PRODUCTION' &&
+        // Exclude bundling transactions (they don't add new production)
+        !(t.notes?.includes('Combined') && t.notes?.includes('spare'))
+      )
       .reduce((sum, t) => {
         const weight = Number(t.total_weight) || 0;
         return sum + (isNaN(weight) ? 0 : weight);
@@ -336,7 +428,7 @@ export default function TransactionsNew() {
     return `${kg.toFixed(2)} kg (${tons.toFixed(3)} ton)`;
   };
 
-  const openDetailModal = (transaction: TransactionRecord) => {
+  const openDetailModal = async (transaction: TransactionRecord) => {
     // Parse parameters if they're a string, but they might already be an object
     let params = transaction.parameters;
     if (typeof params === 'string') {
@@ -351,16 +443,75 @@ export default function TransactionsNew() {
       ...transaction,
       parameters: params || {}
     };
-    console.log('Opening modal with transaction:', parsedTransaction);
-    console.log('Product Type:', parsedTransaction.product_type);
-    console.log('Standard rolls:', parsedTransaction.standard_rolls_count, 'Avg length:', parsedTransaction.avg_standard_roll_length);
-    console.log('Cut rolls details:', parsedTransaction.cut_rolls_details);
-    console.log('Bundles count:', parsedTransaction.bundles_count);
-    console.log('Spare pieces count:', parsedTransaction.spare_pieces_count);
-    console.log('Spare pieces details:', parsedTransaction.spare_pieces_details);
-    console.log('Parameters type:', typeof parsedTransaction.parameters, parsedTransaction.parameters);
+
+    // Fetch batch details if roll_snapshot has batches without product info
+    if (parsedTransaction.roll_snapshot?.rolls) {
+      const batchIds = Array.from(new Set(parsedTransaction.roll_snapshot.rolls.map(r => r.batch_id)));
+      const needsFetching = batchIds.some(batchId => {
+        const roll = parsedTransaction.roll_snapshot!.rolls!.find(r => r.batch_id === batchId);
+        return !roll?.product_type; // Need to fetch if product_type is missing
+      });
+
+      if (needsFetching) {
+        await fetchBatchDetails(batchIds, parsedTransaction);
+      }
+    }
+
     setModalTransaction(parsedTransaction);
     setDetailModalOpen(true);
+  };
+
+  const fetchBatchDetails = async (batchIds: string[], transaction: TransactionRecord) => {
+    try {
+      // Fetch details for batches not in cache
+      const uncachedBatchIds = batchIds.filter(id => !batchDetailsCache[id]);
+
+      if (uncachedBatchIds.length > 0) {
+        const response = await inventoryAPI.getBatches();
+        const allBatches = response.data || [];
+
+        const newCache = { ...batchDetailsCache };
+        uncachedBatchIds.forEach(batchId => {
+          const batch = allBatches.find((b: any) => b.id === batchId);
+          if (batch) {
+            newCache[batchId] = {
+              batch_code: batch.batch_code,
+              batch_no: batch.batch_no,
+              product_type: batch.product_type_name,
+              brand: batch.brand_name,
+              parameters: batch.parameters
+            };
+          }
+        });
+        setBatchDetailsCache(newCache);
+
+        // Update roll_snapshot with batch details
+        if (transaction.roll_snapshot?.rolls) {
+          transaction.roll_snapshot.rolls = transaction.roll_snapshot.rolls.map(roll => {
+            const batchInfo = newCache[roll.batch_id];
+            if (batchInfo && !roll.product_type) {
+              return { ...roll, ...batchInfo };
+            }
+            return roll;
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch batch details:', error);
+    }
+  };
+
+  const openCustomerModal = async (customerName: string) => {
+    try {
+      const response = await admin.getCustomers();
+      const customer = response.data.find((c: any) => c.name === customerName);
+      if (customer) {
+        setSelectedCustomer(customer);
+        setCustomerModalOpen(true);
+      }
+    } catch (error) {
+      console.error('Failed to fetch customer details:', error);
+    }
   };
 
   const renderTransactionSummaryCards = (transaction: TransactionRecord) => {
@@ -484,65 +635,164 @@ export default function TransactionsNew() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FileText className="h-5 w-5" />
-              Transaction Details - {modalTransaction.transaction_type}
+              Transaction Details - {
+                modalTransaction.transaction_type === 'PRODUCTION' &&
+                modalTransaction.notes?.includes('Combined') &&
+                modalTransaction.notes?.includes('spare')
+                  ? 'BUNDLED'
+                  : modalTransaction.transaction_type === 'CUT' &&
+                    modalTransaction.notes?.includes('Cut bundle')
+                    ? 'CUT BUNDLE'
+                    : modalTransaction.transaction_type
+              }
             </DialogTitle>
           </DialogHeader>
 
           <div className="space-y-6">
             {/* Product Information */}
-            <div className="bg-blue-50/50 dark:bg-blue-950/30 p-4 rounded-lg border border-blue-200/50 dark:border-blue-800/50">
-              <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
-                <Package className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                Product Information
-              </h3>
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-medium text-xl">{modalTransaction.product_type}</span>
-                  <span className="text-muted-foreground">•</span>
-                  <span className="font-semibold text-xl">{modalTransaction.brand}</span>
-                  {modalTransaction.parameters && Object.keys(modalTransaction.parameters).length > 0 && (
-                    <>
+            {(() => {
+              // Check if this dispatch contains multiple batches
+              const hasMultipleBatches = modalTransaction.roll_snapshot?.rolls &&
+                modalTransaction.roll_snapshot.rolls.length > 1 &&
+                new Set(modalTransaction.roll_snapshot.rolls.map(r => r.batch_id)).size > 1;
+
+              if (hasMultipleBatches && modalTransaction.roll_snapshot?.rolls) {
+                // Group rolls by batch to show unique product info
+                const rollsByBatch = modalTransaction.roll_snapshot.rolls.reduce((acc, roll) => {
+                  const batchId = roll.batch_id;
+                  if (!acc[batchId]) {
+                    acc[batchId] = [];
+                  }
+                  acc[batchId].push(roll);
+                  return acc;
+                }, {} as Record<string, typeof modalTransaction.roll_snapshot.rolls>);
+
+                return (
+                  <div className="bg-blue-50/50 dark:bg-blue-950/30 p-4 rounded-lg border border-blue-200/50 dark:border-blue-800/50">
+                    <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                      <Package className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                      Multiple Products in Dispatch
+                    </h3>
+                    <div className="space-y-3">
+                      {Object.entries(rollsByBatch).map(([batchId, batchRolls], idx) => {
+                        const firstRoll = batchRolls[0];
+                        return (
+                          <div key={batchId} className="bg-white dark:bg-slate-800 p-3 rounded-md border border-blue-200 dark:border-blue-700">
+                            <div className="flex items-start gap-2 mb-2">
+                              <Badge variant="outline" className="text-xs font-mono">
+                                {firstRoll.batch_code || `Batch ${idx + 1}`}
+                              </Badge>
+                              <span className="text-xs text-muted-foreground">
+                                ({batchRolls.length} item{batchRolls.length > 1 ? 's' : ''})
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-medium text-base">{firstRoll.product_type || modalTransaction.product_type}</span>
+                              <span className="text-muted-foreground">•</span>
+                              <span className="font-semibold text-base">{firstRoll.brand || modalTransaction.brand}</span>
+                              {(() => {
+                                const params = firstRoll.parameters || modalTransaction.parameters;
+                                if (params && typeof params === 'object' && Object.keys(params).length > 0) {
+                                  return (
+                                    <>
+                                      <span className="text-muted-foreground">•</span>
+                                      <div className="flex flex-wrap gap-1">
+                                        {params.PE && (
+                                          <Badge variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200 text-xs">
+                                            PE: {params.PE}
+                                          </Badge>
+                                        )}
+                                        {params.OD && (
+                                          <Badge variant="secondary" className="bg-green-50 text-green-700 border-green-200 text-xs">
+                                            OD: {params.OD}
+                                          </Badge>
+                                        )}
+                                        {params.PN && (
+                                          <Badge variant="secondary" className="bg-purple-50 text-purple-700 border-purple-200 text-xs">
+                                            PN: {params.PN}
+                                          </Badge>
+                                        )}
+                                        {params.Type && (
+                                          <Badge variant="secondary" className="bg-orange-50 text-orange-700 border-orange-200 text-xs">
+                                            Type: {params.Type}
+                                          </Badge>
+                                        )}
+                                        {params.size && (
+                                          <Badge variant="secondary" className="bg-pink-50 text-pink-700 border-pink-200 text-xs">
+                                            Size: {params.size}
+                                          </Badge>
+                                        )}
+                                      </div>
+                                    </>
+                                  );
+                                }
+                                return null;
+                              })()}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="bg-blue-50/50 dark:bg-blue-950/30 p-4 rounded-lg border border-blue-200/50 dark:border-blue-800/50">
+                  <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                    <Package className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                    Product Information
+                  </h3>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-medium text-xl">{modalTransaction.product_type}</span>
                       <span className="text-muted-foreground">•</span>
-                      <div className="flex flex-wrap gap-2">
-                        {modalTransaction.parameters.PE && (
-                          <Badge variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200">
-                            PE: {modalTransaction.parameters.PE}
-                          </Badge>
-                        )}
-                        {modalTransaction.parameters.OD && (
-                          <Badge variant="secondary" className="bg-green-50 text-green-700 border-green-200">
-                            OD: {modalTransaction.parameters.OD}
-                          </Badge>
-                        )}
-                        {modalTransaction.parameters.PN && (
-                          <Badge variant="secondary" className="bg-purple-50 text-purple-700 border-purple-200">
-                            PN: {modalTransaction.parameters.PN}
-                          </Badge>
-                        )}
-                        {modalTransaction.parameters.Type && (
-                          <Badge variant="secondary" className="bg-orange-50 text-orange-700 border-orange-200">
-                            Type: {modalTransaction.parameters.Type}
-                          </Badge>
-                        )}
-                        {modalTransaction.parameters.size && (
-                          <Badge variant="secondary" className="bg-pink-50 text-pink-700 border-pink-200">
-                            Size: {modalTransaction.parameters.size}
-                          </Badge>
-                        )}
-                        {modalTransaction.parameters.quality && (
-                          <Badge variant="secondary" className="bg-cyan-50 text-cyan-700 border-cyan-200">
-                            Quality: {modalTransaction.parameters.quality}
-                          </Badge>
-                        )}
-                        {modalTransaction.parameters.color && (
-                          <Badge variant="secondary" className="bg-yellow-50 text-yellow-700 border-yellow-200">
-                            Color: {modalTransaction.parameters.color}
-                          </Badge>
-                        )}
-                      </div>
-                    </>
-                  )}
+                      <span className="font-semibold text-xl">{modalTransaction.brand}</span>
+                      {modalTransaction.parameters && Object.keys(modalTransaction.parameters).length > 0 && (
+                        <>
+                          <span className="text-muted-foreground">•</span>
+                          <div className="flex flex-wrap gap-2">
+                            {modalTransaction.parameters.PE && (
+                              <Badge variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200 text-base px-3 py-1">
+                                PE: {modalTransaction.parameters.PE}
+                              </Badge>
+                            )}
+                            {modalTransaction.parameters.OD && (
+                              <Badge variant="secondary" className="bg-green-50 text-green-700 border-green-200 text-base px-3 py-1">
+                                OD: {modalTransaction.parameters.OD}
+                              </Badge>
+                            )}
+                            {modalTransaction.parameters.PN && (
+                              <Badge variant="secondary" className="bg-purple-50 text-purple-700 border-purple-200 text-base px-3 py-1">
+                                PN: {modalTransaction.parameters.PN}
+                              </Badge>
+                            )}
+                            {modalTransaction.parameters.Type && (
+                              <Badge variant="secondary" className="bg-orange-50 text-orange-700 border-orange-200 text-base px-3 py-1">
+                                Type: {modalTransaction.parameters.Type}
+                              </Badge>
+                            )}
+                            {modalTransaction.parameters.size && (
+                              <Badge variant="secondary" className="bg-pink-50 text-pink-700 border-pink-200 text-base px-3 py-1">
+                                Size: {modalTransaction.parameters.size}
+                              </Badge>
+                            )}
+                            {modalTransaction.parameters.quality && (
+                              <Badge variant="secondary" className="bg-cyan-50 text-cyan-700 border-cyan-200 text-base px-3 py-1">
+                                Quality: {modalTransaction.parameters.quality}
+                              </Badge>
+                            )}
+                            {modalTransaction.parameters.color && (
+                              <Badge variant="secondary" className="bg-yellow-50 text-yellow-700 border-yellow-200 text-base px-3 py-1">
+                                Color: {modalTransaction.parameters.color}
+                              </Badge>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
                 </div>
-            </div>
+              );
+            })()}
 
             <Separator />
 
@@ -550,34 +800,159 @@ export default function TransactionsNew() {
             <div className="bg-green-50/50 dark:bg-green-950/30 p-4 rounded-lg border border-green-200/50 dark:border-green-800/50">
               <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
                 <Weight className="h-5 w-5 text-green-600 dark:text-green-400" />
-                {modalTransaction.transaction_type === 'CUT' ? 'Cut Roll Details' : 'Quantity & Weight'}
+                {modalTransaction.transaction_type === 'CUT' ? 'Cut Roll Details' :
+                 modalTransaction.transaction_type === 'PRODUCTION' &&
+                 modalTransaction.notes?.includes('Combined') &&
+                 modalTransaction.notes?.includes('spare') ? 'Bundling Details' : 'Quantity & Weight'}
               </h3>
               <div className="grid grid-cols-2 gap-4">
-                {/* CUT Transaction - Show original roll and resulting pieces */}
+                {/* CUT Transaction - Show simplified before/after state */}
                 {modalTransaction.transaction_type === 'CUT' ? (
                   <>
-                    <div className="bg-orange-100/50 dark:bg-orange-900/30 p-3 rounded-md border border-orange-300/50 dark:border-orange-700/50">
-                      <p className="text-sm text-muted-foreground">Original Roll Length</p>
-                      <p className="font-semibold text-lg text-orange-700 dark:text-orange-300">
-                        {modalTransaction.roll_initial_length_meters
-                          ? `${Number(modalTransaction.roll_initial_length_meters).toFixed(2)} m`
-                          : 'N/A'}
-                      </p>
-                    </div>
-                    <div className="bg-orange-100/50 dark:bg-orange-900/30 p-3 rounded-md border border-orange-300/50 dark:border-orange-700/50">
-                      <p className="text-sm text-muted-foreground">Amount Cut</p>
-                      <p className="font-semibold text-lg text-orange-700 dark:text-orange-300">
-                        {Math.abs(modalTransaction.quantity_change || 0).toFixed(2)} m
-                      </p>
-                    </div>
-                    {modalTransaction.notes && (
-                      <div className="col-span-2 bg-orange-50/50 dark:bg-orange-900/20 p-3 rounded-md border border-orange-200/50 dark:border-orange-800/50">
-                        <p className="text-sm text-muted-foreground mb-1">Cut Details</p>
-                        <p className="text-sm font-medium text-orange-800 dark:text-orange-200">
-                          {modalTransaction.notes}
-                        </p>
+                    {modalTransaction.notes?.includes('Cut bundle') ? (
+                      /* Cut Bundle - Show before/after state */
+                      <div className="col-span-2 bg-orange-50/50 dark:bg-orange-900/20 p-4 rounded-md border border-orange-200/50 dark:border-orange-800/50">
+                        <div className="space-y-4">
+                          {/* Before State */}
+                          <div>
+                            <p className="text-xs font-semibold text-orange-600 dark:text-orange-400 mb-2">BEFORE CUTTING</p>
+                            <div className="flex items-center gap-2 text-sm">
+                              <span className="font-medium">Bundle:</span>
+                              <span className="font-semibold text-orange-700 dark:text-orange-300">
+                                {(() => {
+                                  const match = modalTransaction.notes?.match(/Cut bundle into (\d+) spare/);
+                                  const bundleSize = modalTransaction.roll_bundle_size || modalTransaction.roll_initial_length_meters;
+                                  return match ? `1 bundle of ${bundleSize} pieces` : 'N/A';
+                                })()}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Separator */}
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 border-t border-orange-300 dark:border-orange-700"></div>
+                            <span className="text-xs text-orange-600 dark:text-orange-400 font-semibold">→ CUT →</span>
+                            <div className="flex-1 border-t border-orange-300 dark:border-orange-700"></div>
+                          </div>
+
+                          {/* After State */}
+                          <div>
+                            <p className="text-xs font-semibold text-green-600 dark:text-green-400 mb-2">AFTER CUTTING</p>
+                            <div className="flex items-center gap-2 text-sm">
+                              <span className="font-medium">Spare Pieces Created:</span>
+                              <span className="font-semibold text-green-700 dark:text-green-300">
+                                {(() => {
+                                  const match = modalTransaction.notes?.match(/into (\d+) spare batches?: (.+)/);
+                                  if (match) {
+                                    const pieces = match[2].split(', ');
+                                    return `${pieces.length} spare piece${pieces.length > 1 ? 's' : ''} (${pieces.join(', ')})`;
+                                  }
+                                  return 'N/A';
+                                })()}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
                       </div>
+                    ) : (
+                      /* Regular Cut Roll - Keep existing display */
+                      <>
+                        <div className="bg-orange-100/50 dark:bg-orange-900/30 p-3 rounded-md border border-orange-300/50 dark:border-orange-700/50">
+                          <p className="text-sm text-muted-foreground">Original Roll Length</p>
+                          <p className="font-semibold text-lg text-orange-700 dark:text-orange-300">
+                            {modalTransaction.roll_initial_length_meters
+                              ? `${Number(modalTransaction.roll_initial_length_meters).toFixed(2)} m`
+                              : 'N/A'}
+                          </p>
+                        </div>
+                        <div className="bg-orange-100/50 dark:bg-orange-900/30 p-3 rounded-md border border-orange-300/50 dark:border-orange-700/50">
+                          <p className="text-sm text-muted-foreground">Amount Cut</p>
+                          <p className="font-semibold text-lg text-orange-700 dark:text-orange-300">
+                            {Math.abs(modalTransaction.quantity_change || 0).toFixed(2)} m
+                          </p>
+                        </div>
+                        {modalTransaction.notes && (
+                          <div className="col-span-2 bg-orange-50/50 dark:bg-orange-900/20 p-3 rounded-md border border-orange-200/50 dark:border-orange-800/50">
+                            <p className="text-sm text-muted-foreground mb-1">Cut Details</p>
+                            <p className="text-sm font-medium text-orange-800 dark:text-orange-200">
+                              {modalTransaction.notes}
+                            </p>
+                          </div>
+                        )}
+                      </>
                     )}
+                  </>
+                ) : modalTransaction.transaction_type === 'PRODUCTION' &&
+                    modalTransaction.notes?.includes('Combined') &&
+                    modalTransaction.notes?.includes('spare') ? (
+                  /* BUNDLED Transaction - Show simplified before/after state */
+                  <>
+                    <div className="col-span-2 bg-blue-50/50 dark:bg-blue-900/20 p-4 rounded-md border border-blue-200/50 dark:border-blue-800/50">
+                      <div className="space-y-4">
+                        {/* Before State */}
+                        <div>
+                          <p className="text-xs font-semibold text-blue-600 dark:text-blue-400 mb-2">BEFORE BUNDLING</p>
+                          <div className="flex items-center gap-2 text-sm">
+                            <span className="font-medium">Spare Pieces:</span>
+                            <span className="font-semibold text-blue-700 dark:text-blue-300">
+                              {(() => {
+                                const match = modalTransaction.notes?.match(/(\d+) spare rolls \((\d+) pieces\)/);
+                                return match ? `${match[2]} pieces (from ${match[1]} spare rolls)` : 'N/A';
+                              })()}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Separator */}
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 border-t border-blue-300 dark:border-blue-700"></div>
+                          <span className="text-xs text-blue-600 dark:text-blue-400 font-semibold">→ BUNDLED →</span>
+                          <div className="flex-1 border-t border-blue-300 dark:border-blue-700"></div>
+                        </div>
+
+                        {/* After State */}
+                        <div>
+                          <p className="text-xs font-semibold text-green-600 dark:text-green-400 mb-2">AFTER BUNDLING</p>
+                          <div className="flex items-center gap-2 text-sm">
+                            <span className="font-medium">Bundles Created:</span>
+                            <span className="font-semibold text-green-700 dark:text-green-300">
+                              {(() => {
+                                const match = modalTransaction.notes?.match(/into (\d+) bundles? of (\d+) pieces/);
+                                if (match) {
+                                  const numBundles = match[1];
+                                  const bundleSize = match[2];
+                                  return `${numBundles} bundle${numBundles === '1' ? '' : 's'} × ${bundleSize} pieces each = ${parseInt(numBundles) * parseInt(bundleSize)} pieces`;
+                                }
+                                return 'N/A';
+                              })()}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Remaining Spares if any */}
+                        {(() => {
+                          const noteMatch = modalTransaction.notes?.match(/(\d+) spare rolls \((\d+) pieces\)/);
+                          const bundleMatch = modalTransaction.notes?.match(/into (\d+) bundles? of (\d+) pieces/);
+                          if (noteMatch && bundleMatch) {
+                            const totalPieces = parseInt(noteMatch[2]);
+                            const bundlesCreated = parseInt(bundleMatch[1]);
+                            const bundleSize = parseInt(bundleMatch[2]);
+                            const remaining = totalPieces - (bundlesCreated * bundleSize);
+                            if (remaining > 0) {
+                              return (
+                                <div className="pt-2 border-t border-blue-200 dark:border-blue-800">
+                                  <div className="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-400">
+                                    <span className="font-medium">Remaining Spares:</span>
+                                    <span className="font-semibold">{remaining} pieces</span>
+                                  </div>
+                                </div>
+                              );
+                            }
+                          }
+                          return null;
+                        })()}
+                      </div>
+                    </div>
                   </>
                 ) : modalTransaction.transaction_type === 'PRODUCTION' ? (
                   <>
@@ -627,12 +1002,12 @@ export default function TransactionsNew() {
                     {modalTransaction.roll_snapshot?.rolls && modalTransaction.roll_snapshot.rolls.length > 0 ? (
                       <div className="col-span-2">
                         <div className="bg-blue-50/50 dark:bg-blue-900/30 p-3 rounded-md border border-blue-300/50 dark:border-blue-700/50">
-                          <p className="text-sm text-muted-foreground mb-2">
+                          <p className="text-sm font-medium text-blue-700 dark:text-blue-300 mb-3">
                             {modalTransaction.product_type?.toLowerCase().includes('sprinkler') ? 'Dispatched Items' : 'Dispatched Rolls'}
                           </p>
-                          <div className="space-y-2">
+                          <div className="space-y-3">
                             {(() => {
-                              // Group identical rolls together
+                              // Group rolls by batch_id first
                               interface RollGroup {
                                 roll_type: string;
                                 quantity_dispatched: number;
@@ -641,53 +1016,163 @@ export default function TransactionsNew() {
                                 bundle_size?: number;
                                 count: number;
                               }
-                              const rollGroups: Record<string, RollGroup> = modalTransaction.roll_snapshot.rolls.reduce((acc: Record<string, RollGroup>, roll) => {
-                                const key = `${roll.roll_type}_${roll.quantity_dispatched}_${roll.is_cut_roll ? roll.initial_length_meters : 'standard'}`;
-                                if (!acc[key]) {
-                                  acc[key] = { ...roll, count: 0 };
-                                }
-                                acc[key].count++;
-                                return acc;
-                              }, {});
 
-                              return Object.values(rollGroups).map((group: RollGroup, idx) => {
-                                const isBundle = group.roll_type?.startsWith('bundle_');
-                                const isSprinklerPipe = modalTransaction.product_type?.toLowerCase().includes('sprinkler');
+                              const rollsByBatch = modalTransaction.roll_snapshot.rolls.reduce((acc, roll) => {
+                                const batchId = roll.batch_id;
+                                if (!acc[batchId]) {
+                                  acc[batchId] = [];
+                                }
+                                acc[batchId].push(roll);
+                                return acc;
+                              }, {} as Record<string, typeof modalTransaction.roll_snapshot.rolls>);
+
+                              const uniqueBatches = Object.keys(rollsByBatch);
+                              const hasMultipleBatches = uniqueBatches.length > 1;
+
+                              return uniqueBatches.map((batchId, batchIdx) => {
+                                const batchRolls = rollsByBatch[batchId];
+                                const firstRoll = batchRolls[0]; // Get product info from first roll of batch
+
+                                // Group identical rolls within this batch
+                                const rollGroups: Record<string, RollGroup> = batchRolls.reduce((acc: Record<string, RollGroup>, roll) => {
+                                  const key = `${roll.roll_type}_${roll.quantity_dispatched}_${roll.is_cut_roll ? roll.initial_length_meters : 'standard'}_${roll.bundle_size || 0}`;
+                                  if (!acc[key]) {
+                                    acc[key] = { ...roll, count: 0 };
+                                  }
+                                  acc[key].count++;
+                                  return acc;
+                                }, {});
 
                                 return (
-                                  <div key={idx} className="flex items-center justify-between text-sm bg-white dark:bg-slate-800 p-2 rounded">
-                                    <div className="flex items-center gap-2">
-                                      <Badge variant={group.is_cut_roll ? "secondary" : "default"} className="text-xs">
-                                        {group.roll_type === 'standard' ? 'Standard Roll' :
-                                         group.is_cut_roll ? 'Cut Roll' :
-                                         isBundle ? `Bundle (${group.bundle_size || 0} pcs)` :
-                                         'Spare'}
-                                      </Badge>
-                                      <span className="font-medium">
-                                        {isBundle && isSprinklerPipe ? (
-                                          // For Sprinkler Pipe bundles, just show the count
-                                          group.count > 1 ? `× ${group.count}` : ''
-                                        ) : (
-                                          // For other products, show meters
-                                          `${group.quantity_dispatched.toFixed(2)} m ${group.count > 1 ? `× ${group.count}` : ''}`
-                                        )}
-                                      </span>
+                                  <div key={batchId} className={hasMultipleBatches ? "bg-white dark:bg-slate-800 p-3 rounded-md border border-blue-200 dark:border-blue-700 space-y-2" : ""}>
+                                    {hasMultipleBatches && (
+                                      <div className="pb-2 border-b border-blue-200 dark:border-blue-700">
+                                        <div className="flex items-center gap-2 mb-1">
+                                          <Badge variant="outline" className="text-xs font-mono">
+                                            {firstRoll.batch_code || `Batch ${batchIdx + 1}`}
+                                          </Badge>
+                                          <span className="text-xs text-muted-foreground">
+                                            {batchRolls.length} item{batchRolls.length > 1 ? 's' : ''}
+                                          </span>
+                                        </div>
+                                        <div className="flex items-center gap-2 flex-wrap text-xs mt-1">
+                                          <span className="font-medium">{firstRoll.product_type || modalTransaction.product_type}</span>
+                                          <span className="text-muted-foreground">•</span>
+                                          <span className="font-medium">{firstRoll.brand || modalTransaction.brand}</span>
+                                          {(() => {
+                                            const params = firstRoll.parameters || modalTransaction.parameters;
+                                            if (params && typeof params === 'object' && Object.keys(params).length > 0) {
+                                              return (
+                                                <>
+                                                  <span className="text-muted-foreground">•</span>
+                                                  <div className="flex flex-wrap gap-1">
+                                                    {params.PE && (
+                                                      <Badge variant="secondary" className="text-xs">PE: {params.PE}</Badge>
+                                                    )}
+                                                    {params.OD && (
+                                                      <Badge variant="secondary" className="text-xs">OD: {params.OD}</Badge>
+                                                    )}
+                                                    {params.PN && (
+                                                      <Badge variant="secondary" className="text-xs">PN: {params.PN}</Badge>
+                                                    )}
+                                                    {params.Type && (
+                                                      <Badge variant="secondary" className="text-xs">Type: {params.Type}</Badge>
+                                                    )}
+                                                  </div>
+                                                </>
+                                              );
+                                            }
+                                            return null;
+                                          })()}
+                                        </div>
+                                      </div>
+                                    )}
+                                    <div className="space-y-2">
+                                      {Object.values(rollGroups).map((group: RollGroup, idx) => {
+                                        const isBundle = group.roll_type?.startsWith('bundle_');
+                                        const isSprinklerPipe = modalTransaction.product_type?.toLowerCase().includes('sprinkler');
+                                        const isSpare = group.roll_type === 'spare';
+
+                                        return (
+                                          <div key={idx} className="flex items-center justify-between text-sm bg-slate-50 dark:bg-slate-900 p-2 rounded">
+                                            <div className="flex items-center gap-2">
+                                              <Badge variant={group.is_cut_roll ? "secondary" : "default"} className="text-xs">
+                                                {group.roll_type === 'standard' ? 'Standard' :
+                                                 group.is_cut_roll ? 'Cut' :
+                                                 isBundle ? `Bundle` :
+                                                 isSpare ? 'Spare' :
+                                                 group.roll_type}
+                                              </Badge>
+                                              <span className="font-medium">
+                                                {isBundle || isSpare ? (
+                                                  // Bundles and Spares: show pieces
+                                                  <>
+                                                    <span className="text-base">{group.count}</span>
+                                                    <span className="text-muted-foreground text-xs ml-1">×</span>
+                                                    <span className="ml-1">{group.bundle_size || group.quantity_dispatched} piece{(group.bundle_size || group.quantity_dispatched) > 1 ? 's' : ''}</span>
+                                                    {group.count > 1 && (
+                                                      <span className="text-muted-foreground text-xs ml-2">
+                                                        (total: {(group.bundle_size || group.quantity_dispatched) * group.count} pcs)
+                                                      </span>
+                                                    )}
+                                                  </>
+                                                ) : (
+                                                  // Standard/Cut rolls: show meters
+                                                  <>
+                                                    {group.quantity_dispatched.toFixed(2)} m
+                                                    {group.count > 1 && <> × {group.count}</>}
+                                                  </>
+                                                )}
+                                              </span>
+                                            </div>
+                                            <span className="text-muted-foreground text-xs">
+                                              {group.is_cut_roll && `from ${group.initial_length_meters}m`}
+                                            </span>
+                                          </div>
+                                        );
+                                      })}
                                     </div>
-                                    <span className="text-muted-foreground text-xs">
-                                      {group.is_cut_roll && `from ${group.initial_length_meters}m roll`}
-                                    </span>
                                   </div>
                                 );
                               });
                             })()}
                           </div>
-                          <div className="mt-2 pt-2 border-t border-blue-200 dark:border-blue-800 flex justify-between font-semibold">
+                          <div className="mt-3 pt-3 border-t-2 border-blue-300 dark:border-blue-700 flex justify-between font-semibold text-blue-700 dark:text-blue-300">
                             <span>
-                              {modalTransaction.roll_snapshot.total_rolls} {modalTransaction.product_type?.toLowerCase().includes('sprinkler') ? 'item(s)' : 'roll(s)'} total
+                              Total: {modalTransaction.roll_snapshot.total_rolls} item(s)
                             </span>
-                            {!modalTransaction.product_type?.toLowerCase().includes('sprinkler') && (
-                              <span>{Math.abs(modalTransaction.quantity_change || 0).toFixed(2)} m</span>
-                            )}
+                            {(() => {
+                              // Calculate total meters only for non-sprinkler items
+                              const hasMultipleBatches = new Set(modalTransaction.roll_snapshot.rolls.map(r => r.batch_id)).size > 1;
+
+                              if (hasMultipleBatches) {
+                                // Check if we have mixed product types
+                                const productTypes = new Set(modalTransaction.roll_snapshot.rolls.map(r => r.product_type || modalTransaction.product_type));
+                                const hasSprinkler = Array.from(productTypes).some(pt => pt?.toLowerCase().includes('sprinkler'));
+                                const hasNonSprinkler = Array.from(productTypes).some(pt => !pt?.toLowerCase().includes('sprinkler'));
+
+                                if (hasSprinkler && hasNonSprinkler) {
+                                  // Mixed types - calculate meters only for non-sprinkler items
+                                  const totalMeters = modalTransaction.roll_snapshot.rolls
+                                    .filter(r => {
+                                      const pt = r.product_type || modalTransaction.product_type;
+                                      return !pt?.toLowerCase().includes('sprinkler');
+                                    })
+                                    .reduce((sum, r) => sum + (r.quantity_dispatched || 0), 0);
+
+                                  return totalMeters > 0 ? <span>{totalMeters.toFixed(2)} m (HDPE only)</span> : null;
+                                } else if (!hasSprinkler) {
+                                  // All non-sprinkler - show total meters
+                                  return <span>{Math.abs(modalTransaction.quantity_change || 0).toFixed(2)} m</span>;
+                                }
+                                // All sprinkler - no meters
+                                return null;
+                              } else {
+                                // Single batch - use original logic
+                                const isSprinkler = modalTransaction.product_type?.toLowerCase().includes('sprinkler');
+                                return !isSprinkler ? <span>{Math.abs(modalTransaction.quantity_change || 0).toFixed(2)} m</span> : null;
+                              }
+                            })()}
                           </div>
                         </div>
                       </div>
@@ -712,7 +1197,11 @@ export default function TransactionsNew() {
                     )}
                   </>
                 )}
-                {modalTransaction.transaction_type !== 'SALE' && modalTransaction.transaction_type !== 'CUT' && (
+                {modalTransaction.transaction_type !== 'SALE' &&
+                 modalTransaction.transaction_type !== 'CUT' &&
+                 !(modalTransaction.transaction_type === 'PRODUCTION' &&
+                   modalTransaction.notes?.includes('Combined') &&
+                   modalTransaction.notes?.includes('spare')) && (
                   <div className="bg-emerald-100/50 dark:bg-emerald-900/30 p-3 rounded-md border border-emerald-300/50 dark:border-emerald-700/50">
                     <p className="text-sm text-muted-foreground">
                       {modalTransaction.transaction_type === 'PRODUCTION' ? 'Batch Total Weight' : 'Weight'}
@@ -734,7 +1223,8 @@ export default function TransactionsNew() {
                     </p>
                   </div>
                 )}
-                {modalTransaction.roll_bundle_size && (
+                {modalTransaction.roll_bundle_size &&
+                 !(modalTransaction.transaction_type === 'CUT' && modalTransaction.notes?.includes('Cut bundle')) && (
                   <div>
                     <p className="text-sm text-muted-foreground">Bundle Size</p>
                     <p className="font-medium text-lg">
@@ -742,7 +1232,10 @@ export default function TransactionsNew() {
                     </p>
                   </div>
                 )}
-                {modalTransaction.product_type === 'Sprinkler Pipe' && modalTransaction.piece_length && Number(modalTransaction.piece_length) > 0 && (
+                {modalTransaction.product_type === 'Sprinkler Pipe' &&
+                 modalTransaction.piece_length &&
+                 Number(modalTransaction.piece_length) > 0 &&
+                 !(modalTransaction.transaction_type === 'CUT' && modalTransaction.notes?.includes('Cut bundle')) && (
                   <div className="bg-purple-50/50 dark:bg-purple-900/30 p-3 rounded-md border border-purple-300/50 dark:border-purple-700/50">
                     <p className="text-sm text-muted-foreground">Length per Piece</p>
                     <p className="font-semibold text-lg text-purple-700 dark:text-purple-300">
@@ -755,8 +1248,10 @@ export default function TransactionsNew() {
 
             <Separator />
 
-            {/* Roll Information (Production specific) */}
-            {modalTransaction.transaction_type === 'PRODUCTION' && (
+            {/* Roll Information (Production specific - hide for bundling) */}
+            {modalTransaction.transaction_type === 'PRODUCTION' &&
+             !modalTransaction.notes?.includes('Combined') &&
+             !modalTransaction.notes?.includes('spare') && (
               <>
                 <div>
                   <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
@@ -1050,7 +1545,14 @@ export default function TransactionsNew() {
                 <div>
                   <p className="text-sm text-muted-foreground">Transaction Type</p>
                   <Badge variant={modalTransaction.transaction_type === 'PRODUCTION' ? 'default' : 'secondary'}>
-                    {modalTransaction.transaction_type}
+                    {modalTransaction.transaction_type === 'PRODUCTION' &&
+                     modalTransaction.notes?.includes('Combined') &&
+                     modalTransaction.notes?.includes('spare')
+                      ? 'BUNDLED'
+                      : modalTransaction.transaction_type === 'CUT' &&
+                        modalTransaction.notes?.includes('Cut bundle')
+                        ? 'CUT BUNDLE'
+                        : modalTransaction.transaction_type}
                   </Badge>
                 </div>
                 <div>
@@ -1085,7 +1587,7 @@ export default function TransactionsNew() {
 
   return (
     <Layout>
-      <div className="container mx-auto py-6 space-y-6">
+      <div className="w-full px-6 py-6 space-y-6">
         <div>
           <h1 className="text-3xl font-bold mb-2">Transaction History</h1>
           <p className="text-muted-foreground">View all production and sales transactions</p>
@@ -1153,8 +1655,11 @@ export default function TransactionsNew() {
                     <SelectContent>
                       <SelectItem value="all">All Types</SelectItem>
                       <SelectItem value="PRODUCTION">Production</SelectItem>
+                      <SelectItem value="BUNDLED">Bundled (Combined Spares)</SelectItem>
                       <SelectItem value="SALE">Sale</SelectItem>
                       <SelectItem value="CUT">Cut Roll</SelectItem>
+                      <SelectItem value="CUT BUNDLE">Cut Bundle</SelectItem>
+                      <SelectItem value="ADJUSTMENT">Adjustment</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -1356,15 +1861,43 @@ export default function TransactionsNew() {
         {/* Transactions Table */}
         <Card>
         <CardHeader>
-          <CardTitle>All Transactions</CardTitle>
-          <CardDescription>
-            View all transactions or click the detail button for complete information
-          </CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>All Transactions</CardTitle>
+              <CardDescription>
+                View all transactions or click the detail button for complete information
+              </CardDescription>
+            </div>
+            {user?.role === 'admin' && selectedTransactionIds.size > 0 && (
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary" className="text-sm">
+                  {selectedTransactionIds.size} selected
+                </Badge>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => setRevertDialogOpen(true)}
+                  disabled={reverting}
+                >
+                  <Undo2 className="h-4 w-4 mr-2" />
+                  Revert Selected
+                </Button>
+              </div>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
+                {user?.role === 'admin' && (
+                  <TableHead className="w-[50px]">
+                    <Checkbox
+                      checked={selectedTransactionIds.size === filteredTransactions.length && filteredTransactions.length > 0}
+                      onCheckedChange={toggleSelectAll}
+                    />
+                  </TableHead>
+                )}
                 <TableHead>Date & Time</TableHead>
                 <TableHead>Batch</TableHead>
                 <TableHead>Product Type & Brand</TableHead>
@@ -1381,7 +1914,7 @@ export default function TransactionsNew() {
             <TableBody>
               {filteredTransactions.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={11} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={user?.role === 'admin' ? 12 : 11} className="text-center text-muted-foreground py-8">
                     No transactions found
                   </TableCell>
                 </TableRow>
@@ -1393,62 +1926,119 @@ export default function TransactionsNew() {
                   key={transaction.id}
                   className="hover:bg-muted/50 transition-colors"
                 >
+                  {user?.role === 'admin' && (
+                    <TableCell>
+                      <Checkbox
+                        checked={selectedTransactionIds.has(transaction.id)}
+                        onCheckedChange={() => toggleSelectTransaction(transaction.id)}
+                      />
+                    </TableCell>
+                  )}
                   <TableCell className="font-medium">
                     <div>{format(new Date(transaction.transaction_date), 'PP')}</div>
                     <div className="text-xs text-muted-foreground">{format(new Date(transaction.transaction_date), 'p')}</div>
                   </TableCell>
                   <TableCell>
-                    <div className="text-sm font-medium">{transaction.batch_code || '-'}</div>
-                    {transaction.batch_no && (
-                      <div className="text-xs text-muted-foreground">{transaction.batch_no}</div>
-                    )}
+                    {(() => {
+                      // Check if this is a dispatch with multiple batches
+                      if (transaction.roll_snapshot?.rolls && transaction.roll_snapshot.rolls.length > 1) {
+                        const uniqueBatches = new Set(transaction.roll_snapshot.rolls.map(r => r.batch_id));
+                        if (uniqueBatches.size > 1) {
+                          return (
+                            <>
+                              <div className="text-sm font-medium">Multiple Batches</div>
+                              <Badge variant="outline" className="text-xs mt-1">
+                                {uniqueBatches.size} batches, {transaction.roll_snapshot.rolls.length} items
+                              </Badge>
+                            </>
+                          );
+                        }
+                      }
+                      return (
+                        <>
+                          <div className="text-sm font-medium">{transaction.batch_code || '-'}</div>
+                          {transaction.batch_no && (
+                            <div className="text-xs text-muted-foreground">{transaction.batch_no}</div>
+                          )}
+                        </>
+                      );
+                    })()}
                   </TableCell>
                   <TableCell>
-                    <div className="font-medium text-base">{transaction.product_type}</div>
-                    <div className="text-sm text-muted-foreground">{transaction.brand}</div>
+                    {(() => {
+                      // Check if this is a dispatch with multiple product types
+                      if (transaction.roll_snapshot?.rolls && transaction.roll_snapshot.rolls.length > 1) {
+                        const uniqueBatches = new Set(transaction.roll_snapshot.rolls.map(r => r.batch_id));
+                        if (uniqueBatches.size > 1) {
+                          return (
+                            <>
+                              <div className="font-medium text-base">Mixed Products</div>
+                              <div className="text-sm text-muted-foreground">See details</div>
+                            </>
+                          );
+                        }
+                      }
+                      return (
+                        <>
+                          <div className="font-medium text-base">{transaction.product_type}</div>
+                          <div className="text-sm text-muted-foreground">{transaction.brand}</div>
+                        </>
+                      );
+                    })()}
                   </TableCell>
                   <TableCell>
-                    {transaction.parameters && typeof transaction.parameters === 'object' && Object.keys(transaction.parameters).length > 0 ? (
-                      <div className="flex flex-wrap gap-1">
-                        {transaction.parameters.PE && (
-                          <Badge variant="secondary" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
-                            PE: {transaction.parameters.PE}
-                          </Badge>
-                        )}
-                        {transaction.parameters.OD && (
-                          <Badge variant="secondary" className="text-xs bg-green-50 text-green-700 border-green-200">
-                            OD: {transaction.parameters.OD}
-                          </Badge>
-                        )}
-                        {transaction.parameters.PN && (
-                          <Badge variant="secondary" className="text-xs bg-purple-50 text-purple-700 border-purple-200">
-                            PN: {transaction.parameters.PN}
-                          </Badge>
-                        )}
-                        {transaction.parameters.Type && (
-                          <Badge variant="secondary" className="text-xs bg-orange-50 text-orange-700 border-orange-200">
-                            Type: {transaction.parameters.Type}
-                          </Badge>
-                        )}
-                        {transaction.parameters.size && (
-                          <Badge variant="secondary" className="text-xs bg-pink-50 text-pink-700 border-pink-200">
-                            Size: {transaction.parameters.size}
-                          </Badge>
-                        )}
-                        {transaction.parameters.quality && (
-                          <Badge variant="secondary" className="text-xs bg-cyan-50 text-cyan-700 border-cyan-200">
-                            Quality: {transaction.parameters.quality}
-                          </Badge>
-                        )}
-                        {transaction.parameters.color && (
-                          <Badge variant="secondary" className="text-xs bg-yellow-50 text-yellow-700 border-yellow-200">
-                            Color: {transaction.parameters.color}
-                          </Badge>
-                        )}
-                      </div>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">-</span>
-                    )}
+                    {(() => {
+                      // Check if multiple batches - don't show parameters
+                      if (transaction.roll_snapshot?.rolls && transaction.roll_snapshot.rolls.length > 1) {
+                        const uniqueBatches = new Set(transaction.roll_snapshot.rolls.map(r => r.batch_id));
+                        if (uniqueBatches.size > 1) {
+                          return <span className="text-xs text-muted-foreground italic">Various (see details)</span>;
+                        }
+                      }
+
+                      // Single batch - show parameters
+                      return transaction.parameters && typeof transaction.parameters === 'object' && Object.keys(transaction.parameters).length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {transaction.parameters.PE && (
+                            <Badge variant="secondary" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+                              PE: {transaction.parameters.PE}
+                            </Badge>
+                          )}
+                          {transaction.parameters.OD && (
+                            <Badge variant="secondary" className="text-xs bg-green-50 text-green-700 border-green-200">
+                              OD: {transaction.parameters.OD}
+                            </Badge>
+                          )}
+                          {transaction.parameters.PN && (
+                            <Badge variant="secondary" className="text-xs bg-purple-50 text-purple-700 border-purple-200">
+                              PN: {transaction.parameters.PN}
+                            </Badge>
+                          )}
+                          {transaction.parameters.Type && (
+                            <Badge variant="secondary" className="text-xs bg-orange-50 text-orange-700 border-orange-200">
+                              Type: {transaction.parameters.Type}
+                            </Badge>
+                          )}
+                          {transaction.parameters.size && (
+                            <Badge variant="secondary" className="text-xs bg-pink-50 text-pink-700 border-pink-200">
+                              Size: {transaction.parameters.size}
+                            </Badge>
+                          )}
+                          {transaction.parameters.quality && (
+                            <Badge variant="secondary" className="text-xs bg-cyan-50 text-cyan-700 border-cyan-200">
+                              Quality: {transaction.parameters.quality}
+                            </Badge>
+                          )}
+                          {transaction.parameters.color && (
+                            <Badge variant="secondary" className="text-xs bg-yellow-50 text-yellow-700 border-yellow-200">
+                              Color: {transaction.parameters.color}
+                            </Badge>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">-</span>
+                      );
+                    })()}
                   </TableCell>
                   <TableCell>
                     <Badge
@@ -1458,15 +2048,35 @@ export default function TransactionsNew() {
                           ? 'bg-red-100 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-300 dark:border-red-700'
                           : transaction.transaction_type === 'CUT'
                           ? 'bg-orange-100 text-orange-700 border-orange-300 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-700'
+                          : transaction.transaction_type === 'PRODUCTION' && transaction.notes?.includes('Combined') && transaction.notes?.includes('spare')
+                          ? 'bg-blue-100 text-blue-700 border-blue-300 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-700'
                           : ''
                       }
                     >
-                      {transaction.transaction_type}
+                      {transaction.transaction_type === 'PRODUCTION' && transaction.notes?.includes('Combined') && transaction.notes?.includes('spare')
+                        ? 'BUNDLED'
+                        : transaction.transaction_type === 'CUT' && transaction.notes?.includes('Cut bundle')
+                        ? 'CUT BUNDLE'
+                        : transaction.transaction_type}
                     </Badge>
                   </TableCell>
                   <TableCell>
                     {/* Calculate proper length in meters for all product types */}
-                    {transaction.product_type === 'Sprinkler Pipe' ? (
+                    {(() => {
+                      // Check if multiple batches - show mixed indicator
+                      if (transaction.transaction_type === 'SALE' && transaction.roll_snapshot?.rolls && transaction.roll_snapshot.rolls.length > 1) {
+                        const uniqueBatches = new Set(transaction.roll_snapshot.rolls.map(r => r.batch_id));
+                        if (uniqueBatches.size > 1) {
+                          return (
+                            <div className="text-sm">
+                              <div className="font-medium">{transaction.roll_snapshot.total_rolls} items</div>
+                              <div className="text-xs text-muted-foreground italic">See details</div>
+                            </div>
+                          );
+                        }
+                      }
+
+                      return transaction.product_type === 'Sprinkler Pipe' ? (
                       // Sprinkler Pipe: Calculate total meters (pieces × piece_length)
                       <span className={transaction.quantity_change > 0 ? 'text-green-600' : 'text-red-600'}>
                         {(() => {
@@ -1519,12 +2129,34 @@ export default function TransactionsNew() {
                       <span className={transaction.quantity_change > 0 ? 'text-green-600' : 'text-red-600'}>
                         {Math.abs(transaction.quantity_change || 0).toFixed(2)} {transaction.unit_abbreviation || 'm'}
                       </span>
-                    )}
+                    );
+                    })()}
                   </TableCell>
                   <TableCell>
-                    {transaction.transaction_type === 'SALE' || transaction.transaction_type === 'CUT' ? '-' : formatWeight(transaction.total_weight || 0)}
+                    {transaction.transaction_type === 'SALE' ||
+                     transaction.transaction_type === 'CUT' ||
+                     (transaction.transaction_type === 'PRODUCTION' &&
+                      transaction.notes?.includes('Combined') &&
+                      transaction.notes?.includes('spare'))
+                      ? '-'
+                      : formatWeight(transaction.total_weight || 0)}
                   </TableCell>
-                  <TableCell>{transaction.customer_name || '-'}</TableCell>
+                  <TableCell>
+                    {transaction.customer_name ? (
+                      <Button
+                        variant="link"
+                        className="h-auto p-0 text-blue-600 hover:text-blue-800 hover:underline"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openCustomerModal(transaction.customer_name!);
+                        }}
+                      >
+                        {transaction.customer_name}
+                      </Button>
+                    ) : (
+                      '-'
+                    )}
+                  </TableCell>
                   <TableCell>
                     {transaction.attachment_url ? (
                       <a
@@ -1592,6 +2224,190 @@ export default function TransactionsNew() {
 
         {/* Detail Modal */}
         {renderDetailModal()}
+
+        {/* Customer Information Modal */}
+        <Dialog open={customerModalOpen} onOpenChange={setCustomerModalOpen}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <User className="h-5 w-5" />
+                Customer Information
+              </DialogTitle>
+            </DialogHeader>
+            {selectedCustomer && (
+              <div className="space-y-6">
+                {/* Customer Name */}
+                <div>
+                  <h3 className="text-2xl font-bold">{selectedCustomer.name}</h3>
+                </div>
+
+                <Separator />
+
+                {/* Contact Information */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {selectedCustomer.contact_person && (
+                    <div className="space-y-1">
+                      <Label className="text-muted-foreground flex items-center gap-2">
+                        <User className="h-4 w-4" />
+                        Contact Person
+                      </Label>
+                      <p className="text-base font-medium">{selectedCustomer.contact_person}</p>
+                    </div>
+                  )}
+
+                  {selectedCustomer.phone && (
+                    <div className="space-y-1">
+                      <Label className="text-muted-foreground flex items-center gap-2">
+                        <Phone className="h-4 w-4" />
+                        Phone
+                      </Label>
+                      <p className="text-base font-medium">
+                        <a href={`tel:${selectedCustomer.phone}`} className="text-blue-600 hover:underline">
+                          {selectedCustomer.phone}
+                        </a>
+                      </p>
+                    </div>
+                  )}
+
+                  {selectedCustomer.email && (
+                    <div className="space-y-1">
+                      <Label className="text-muted-foreground flex items-center gap-2">
+                        <Mail className="h-4 w-4" />
+                        Email
+                      </Label>
+                      <p className="text-base font-medium">
+                        <a href={`mailto:${selectedCustomer.email}`} className="text-blue-600 hover:underline">
+                          {selectedCustomer.email}
+                        </a>
+                      </p>
+                    </div>
+                  )}
+
+                  {selectedCustomer.gstin && (
+                    <div className="space-y-1">
+                      <Label className="text-muted-foreground flex items-center gap-2">
+                        <FileText className="h-4 w-4" />
+                        GSTIN
+                      </Label>
+                      <p className="text-base font-medium font-mono">{selectedCustomer.gstin}</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Address & Location */}
+                {(selectedCustomer.address || selectedCustomer.city || selectedCustomer.state || selectedCustomer.pincode) && (
+                  <>
+                    <Separator />
+                    <div className="space-y-4">
+                      <Label className="text-muted-foreground flex items-center gap-2">
+                        <MapPin className="h-4 w-4" />
+                        Location Details
+                      </Label>
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {selectedCustomer.city && (
+                          <div className="space-y-1">
+                            <Label className="text-xs text-muted-foreground">City</Label>
+                            <p className="text-base font-medium">{selectedCustomer.city}</p>
+                          </div>
+                        )}
+
+                        {selectedCustomer.state && (
+                          <div className="space-y-1">
+                            <Label className="text-xs text-muted-foreground">State</Label>
+                            <p className="text-base font-medium">{selectedCustomer.state}</p>
+                          </div>
+                        )}
+
+                        {selectedCustomer.pincode && (
+                          <div className="space-y-1">
+                            <Label className="text-xs text-muted-foreground">Pincode</Label>
+                            <p className="text-base font-medium font-mono">{selectedCustomer.pincode}</p>
+                          </div>
+                        )}
+                      </div>
+
+                      {selectedCustomer.address && (
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">Street Address</Label>
+                          <p className="text-base whitespace-pre-line">{selectedCustomer.address}</p>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+
+                {/* Additional Info */}
+                <Separator />
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <Label className="text-muted-foreground">Created</Label>
+                    <p>{selectedCustomer.created_at ? format(new Date(selectedCustomer.created_at), 'PPP') : '-'}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Revert Dialog */}
+        <Dialog open={revertDialogOpen} onOpenChange={setRevertDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Revert Transactions</DialogTitle>
+              <DialogDescription>
+                Are you sure you want to revert {selectedTransactionIds.size} transaction{selectedTransactionIds.size > 1 ? 's' : ''}?
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-4">
+              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
+                <div className="flex gap-2">
+                  <Undo2 className="h-5 w-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                  <div className="text-sm space-y-2">
+                    <p className="font-medium text-amber-900 dark:text-amber-100">
+                      This will:
+                    </p>
+                    <ul className="list-disc list-inside space-y-1 text-amber-800 dark:text-amber-200">
+                      <li>Reverse the inventory changes</li>
+                      <li>Restore affected rolls and batches</li>
+                      <li>Mark transactions as deleted</li>
+                      <li>Create audit log entries</li>
+                    </ul>
+                    <p className="text-amber-700 dark:text-amber-300 mt-2 font-medium">
+                      ⚠️ This action cannot be undone!
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setRevertDialogOpen(false)}
+                disabled={reverting}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleRevertTransactions}
+                disabled={reverting}
+              >
+                {reverting ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                    Reverting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Revert {selectedTransactionIds.size} Transaction{selectedTransactionIds.size > 1 ? 's' : ''}
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </Layout>
   );

@@ -268,3 +268,321 @@ def get_transactions():
     print(f"  Total records returned: {len(all_records)}")
 
     return jsonify(all_records), 200
+
+
+@transaction_bp.route('/revert', methods=['POST'])
+@jwt_required_with_role('user')
+def revert_transactions():
+    """Revert one or more transactions"""
+    user_id = get_jwt_identity()
+    data = request.get_json()
+
+    transaction_ids = data.get('transaction_ids', [])
+
+    if not transaction_ids or not isinstance(transaction_ids, list):
+        return jsonify({'error': 'transaction_ids array is required'}), 400
+
+    actor = get_user_identity_details(user_id)
+    reverted_count = 0
+    failed_transactions = []
+
+    with get_db_cursor() as cursor:
+        for transaction_id in transaction_ids:
+            try:
+                # Strip 'txn_' prefix if present (frontend adds this prefix)
+                clean_id = transaction_id.replace('txn_', '') if transaction_id.startswith('txn_') else transaction_id
+
+                # Get transaction details
+                cursor.execute("""
+                    SELECT t.*, b.product_variant_id, b.current_quantity as batch_current_quantity,
+                           r.id as roll_id, r.length_meters as roll_length, r.status as roll_status,
+                           r.deleted_at as roll_deleted_at, pv.product_type_id,
+                           pt.name as product_type_name
+                    FROM transactions t
+                    JOIN batches b ON t.batch_id = b.id
+                    JOIN product_variants pv ON b.product_variant_id = pv.id
+                    JOIN product_types pt ON pv.product_type_id = pt.id
+                    LEFT JOIN rolls r ON t.roll_id = r.id
+                    WHERE t.id = %s AND t.deleted_at IS NULL
+                """, (clean_id,))
+
+                transaction = cursor.fetchone()
+
+                if not transaction:
+                    failed_transactions.append({'id': transaction_id, 'error': 'Transaction not found'})
+                    continue
+
+                # Calculate revert quantity (opposite of original change)
+                revert_quantity = -float(transaction['quantity_change'])
+
+                print(f"🔄 Reverting transaction {clean_id}:")
+                print(f"   Transaction type: {transaction['transaction_type']}")
+                print(f"   Product type: {transaction.get('product_type_name')}")
+                print(f"   Original quantity_change: {transaction['quantity_change']}")
+                print(f"   Revert quantity: {revert_quantity}")
+                print(f"   Batch current_quantity: {transaction['batch_current_quantity']}")
+                print(f"   Roll involved: {transaction['roll_id']}")
+                print(f"   Roll snapshot: {transaction.get('roll_snapshot')}")
+
+                # Update batch quantity
+                cursor.execute("""
+                    UPDATE batches
+                    SET current_quantity = current_quantity + %s,
+                        updated_at = NOW()
+                    WHERE id = %s
+                    RETURNING current_quantity
+                """, (revert_quantity, transaction['batch_id']))
+
+                new_batch_qty = cursor.fetchone()
+                print(f"   New batch quantity: {new_batch_qty['current_quantity']}")
+
+                # Handle PRODUCTION transaction reversal - delete the rolls that were created
+                if transaction['transaction_type'] == 'PRODUCTION':
+                    print(f"   PRODUCTION reversal - finding and deleting created rolls")
+                    # Find all rolls created for this batch around the transaction time
+                    cursor.execute("""
+                        SELECT id, roll_type, bundle_size, length_meters
+                        FROM rolls
+                        WHERE batch_id = %s
+                        AND deleted_at IS NULL
+                        AND created_at >= %s - INTERVAL '1 minute'
+                        AND created_at <= %s + INTERVAL '1 minute'
+                    """, (transaction['batch_id'], transaction['created_at'], transaction['created_at']))
+
+                    rolls_to_delete = cursor.fetchall()
+                    print(f"   Found {len(rolls_to_delete)} rolls to delete")
+
+                    for roll in rolls_to_delete:
+                        print(f"      Deleting roll {roll['id']}: type={roll['roll_type']}, bundle_size={roll.get('bundle_size')}, length={roll['length_meters']}")
+                        cursor.execute("""
+                            UPDATE rolls
+                            SET deleted_at = NOW()
+                            WHERE id = %s
+                        """, (roll['id'],))
+
+                # Handle CUT transaction reversal - restore the original roll and delete cut pieces
+                elif transaction['transaction_type'] == 'CUT':
+                    print(f"   CUT transaction reversal")
+                    # Check if this is a cut bundle or cut roll
+                    if 'Cut bundle' in (transaction.get('notes') or ''):
+                        print(f"   CUT BUNDLE reversal - restoring bundle and deleting spare pieces")
+                        # Find the bundle that was cut and restore it
+                        # Find spare pieces created from this transaction and delete them
+                        cursor.execute("""
+                            SELECT id, roll_type, length_meters, bundle_size
+                            FROM rolls
+                            WHERE batch_id = %s
+                            AND roll_type = 'spare'
+                            AND deleted_at IS NULL
+                            AND created_at >= %s - INTERVAL '1 minute'
+                            AND created_at <= %s + INTERVAL '1 minute'
+                        """, (transaction['batch_id'], transaction['created_at'], transaction['created_at']))
+
+                        spare_pieces = cursor.fetchall()
+                        print(f"   Found {len(spare_pieces)} spare pieces to delete")
+
+                        for piece in spare_pieces:
+                            print(f"      Deleting spare piece {piece['id']}: length={piece['length_meters']}")
+                            cursor.execute("UPDATE rolls SET deleted_at = NOW() WHERE id = %s", (piece['id'],))
+
+                        # Restore the bundle that was cut
+                        if transaction['roll_id']:
+                            cursor.execute("""
+                                UPDATE rolls
+                                SET length_meters = initial_length_meters,
+                                    status = 'AVAILABLE',
+                                    deleted_at = NULL,
+                                    updated_at = NOW()
+                                WHERE id = %s
+                            """, (transaction['roll_id'],))
+                            print(f"   Restored bundle {transaction['roll_id']} to full length")
+                    else:
+                        print(f"   CUT ROLL reversal - restoring original roll and deleting cut pieces")
+                        # Find the cut pieces created and delete them
+                        cursor.execute("""
+                            SELECT id, roll_type, length_meters, is_cut_roll
+                            FROM rolls
+                            WHERE batch_id = %s
+                            AND (is_cut_roll = TRUE OR roll_type = 'cut')
+                            AND deleted_at IS NULL
+                            AND created_at >= %s - INTERVAL '1 minute'
+                            AND created_at <= %s + INTERVAL '1 minute'
+                        """, (transaction['batch_id'], transaction['created_at'], transaction['created_at']))
+
+                        cut_pieces = cursor.fetchall()
+                        print(f"   Found {len(cut_pieces)} cut pieces to delete")
+
+                        for piece in cut_pieces:
+                            print(f"      Deleting cut piece {piece['id']}: length={piece['length_meters']}")
+                            cursor.execute("UPDATE rolls SET deleted_at = NOW() WHERE id = %s", (piece['id'],))
+
+                        # Restore the original roll that was cut
+                        if transaction['roll_id']:
+                            cursor.execute("""
+                                UPDATE rolls
+                                SET length_meters = initial_length_meters,
+                                    status = 'AVAILABLE',
+                                    is_cut_roll = FALSE,
+                                    deleted_at = NULL,
+                                    updated_at = NOW()
+                                WHERE id = %s
+                            """, (transaction['roll_id'],))
+                            print(f"   Restored original roll {transaction['roll_id']} to full length")
+
+                # Handle BUNDLED/COMBINED transaction reversal - restore spare pieces and delete the bundle
+                elif transaction['transaction_type'] == 'PRODUCTION' and 'Combined' in (transaction.get('notes') or '') and 'spare' in (transaction.get('notes') or ''):
+                    print(f"   BUNDLED/COMBINED transaction reversal")
+                    # Find the bundle created and delete it
+                    cursor.execute("""
+                        SELECT id, roll_type, bundle_size, length_meters
+                        FROM rolls
+                        WHERE batch_id = %s
+                        AND roll_type LIKE 'bundle_%'
+                        AND deleted_at IS NULL
+                        AND created_at >= %s - INTERVAL '1 minute'
+                        AND created_at <= %s + INTERVAL '1 minute'
+                    """, (transaction['batch_id'], transaction['created_at'], transaction['created_at']))
+
+                    bundles = cursor.fetchall()
+                    print(f"   Found {len(bundles)} bundles to delete")
+
+                    for bundle in bundles:
+                        print(f"      Deleting bundle {bundle['id']}: type={bundle['roll_type']}, size={bundle.get('bundle_size')}")
+                        cursor.execute("UPDATE rolls SET deleted_at = NOW() WHERE id = %s", (bundle['id'],))
+
+                    # Restore the spare pieces that were combined
+                    # Parse the transaction notes to get the spare piece IDs
+                    notes = transaction.get('notes') or ''
+                    import re
+                    # Extract spare piece info from notes (format: "Combined X spare pieces")
+                    # We need to find spare pieces that existed before this transaction
+                    cursor.execute("""
+                        SELECT id, length_meters
+                        FROM rolls
+                        WHERE batch_id = %s
+                        AND roll_type = 'spare'
+                        AND deleted_at IS NOT NULL
+                        AND deleted_at >= %s - INTERVAL '1 minute'
+                        AND deleted_at <= %s + INTERVAL '1 minute'
+                    """, (transaction['batch_id'], transaction['created_at'], transaction['created_at']))
+
+                    deleted_spares = cursor.fetchall()
+                    print(f"   Found {len(deleted_spares)} spare pieces to restore")
+
+                    for spare in deleted_spares:
+                        print(f"      Restoring spare piece {spare['id']}: length={spare['length_meters']}")
+                        cursor.execute("""
+                            UPDATE rolls
+                            SET deleted_at = NULL,
+                                updated_at = NOW()
+                            WHERE id = %s
+                        """, (spare['id'],))
+
+                # Handle SALE/DISPATCH transaction reversal - restore rolls from snapshot
+                elif transaction.get('roll_snapshot'):
+                    import json
+                    roll_snapshot = transaction['roll_snapshot']
+                    if isinstance(roll_snapshot, str):
+                        roll_snapshot = json.loads(roll_snapshot)
+
+                    # Check if it's a multi-roll snapshot
+                    if isinstance(roll_snapshot, dict) and 'rolls' in roll_snapshot:
+                        print(f"   Multi-roll dispatch detected: {len(roll_snapshot['rolls'])} rolls")
+                        # Restore each roll from the snapshot
+                        for roll_data in roll_snapshot['rolls']:
+                            roll_id = roll_data.get('roll_id')
+                            quantity_dispatched = float(roll_data.get('quantity_dispatched', 0))
+
+                            if roll_id:
+                                # Get current roll state
+                                cursor.execute("SELECT length_meters, status, deleted_at FROM rolls WHERE id = %s", (roll_id,))
+                                current_roll = cursor.fetchone()
+
+                                if current_roll:
+                                    current_length = float(current_roll['length_meters'] or 0)
+                                    new_length = current_length + quantity_dispatched
+                                    new_status = 'AVAILABLE' if new_length > 0 else 'SOLD_OUT'
+
+                                    print(f"      Restoring roll {roll_id}: {current_length} + {quantity_dispatched} = {new_length}")
+
+                                    cursor.execute("""
+                                        UPDATE rolls
+                                        SET length_meters = %s,
+                                            status = %s,
+                                            deleted_at = NULL,
+                                            updated_at = NOW()
+                                        WHERE id = %s
+                                    """, (new_length, new_status, roll_id))
+                    else:
+                        # Old single-roll snapshot format
+                        if transaction['roll_id']:
+                            roll_length = float(transaction['roll_length'] or 0)
+                            new_roll_length = roll_length + revert_quantity
+
+                            print(f"   Roll current length: {roll_length}")
+                            print(f"   Roll new length: {new_roll_length}")
+
+                            new_status = 'AVAILABLE' if new_roll_length > 0 else 'SOLD_OUT'
+
+                            cursor.execute("""
+                                UPDATE rolls
+                                SET length_meters = %s,
+                                    status = %s,
+                                    deleted_at = NULL,
+                                    updated_at = NOW()
+                                WHERE id = %s
+                            """, (new_roll_length, new_status, transaction['roll_id']))
+                elif transaction['roll_id']:
+                    # No snapshot, just a single roll
+                    roll_length = float(transaction['roll_length'] or 0)
+                    new_roll_length = roll_length + revert_quantity
+
+                    print(f"   Roll current length: {roll_length}")
+                    print(f"   Roll new length: {new_roll_length}")
+
+                    new_status = 'AVAILABLE' if new_roll_length > 0 else 'SOLD_OUT'
+
+                    cursor.execute("""
+                        UPDATE rolls
+                        SET length_meters = %s,
+                            status = %s,
+                            deleted_at = NULL,
+                            updated_at = NOW()
+                        WHERE id = %s
+                    """, (new_roll_length, new_status, transaction['roll_id']))
+
+                # Mark transaction as deleted (soft delete)
+                cursor.execute("""
+                    UPDATE transactions
+                    SET deleted_at = NOW()
+                    WHERE id = %s
+                """, (clean_id,))
+
+                # Create audit log
+                actor_label = f"{actor['name']} ({actor['role']})"
+                log_msg = f"{actor_label} reverted transaction {clean_id} - {transaction['transaction_type']}: {abs(float(transaction['quantity_change']))} units"
+
+                cursor.execute("""
+                    INSERT INTO audit_logs (
+                        user_id, action_type, entity_type, entity_id,
+                        description, created_at
+                    ) VALUES (%s, 'REVERT_TRANSACTION', 'TRANSACTION', %s, %s, NOW())
+                """, (user_id, clean_id, log_msg))
+
+                reverted_count += 1
+
+            except Exception as e:
+                print(f"Error reverting transaction {transaction_id}: {str(e)}")
+                failed_transactions.append({'id': transaction_id, 'error': str(e)})
+                continue
+
+    response = {
+        'reverted_count': reverted_count,
+        'total_requested': len(transaction_ids),
+        'failed_transactions': failed_transactions
+    }
+
+    if reverted_count > 0:
+        return jsonify(response), 200
+    else:
+        return jsonify(response), 400

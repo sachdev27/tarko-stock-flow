@@ -95,6 +95,9 @@ export const transactions = {
 
   getAll: (params?: { start_date?: string; end_date?: string }) =>
     api.get('/transactions/', { params }),
+
+  revert: (transactionIds: string[]) =>
+    api.post('/transactions/revert', { transaction_ids: transactionIds }),
 };
 
 // Stats endpoints
@@ -116,6 +119,12 @@ export const dispatch = {
 
   cutRoll: (data: { roll_id: string; cuts: { length: number }[] }) =>
     api.post('/dispatch/cut-roll', data),
+
+  cutBundle: (data: { roll_id: string; cuts: { pieces: number }[] }) =>
+    api.post('/dispatch/cut-bundle', data),
+
+  combineSpares: (data: { spare_roll_ids: string[]; bundle_size: number; number_of_bundles?: number }) =>
+    api.post('/dispatch/combine-spares', data),
 
   createDispatch: (data: {
     customer_id: string;
@@ -198,6 +207,12 @@ export const reports = {
 
   getProductInventory: () =>
     api.get('/reports/product-inventory'),
+
+  getAnalyticsOverview: (days: number = 30) =>
+    api.get('/reports/analytics/overview', { params: { days } }),
+
+  getCustomerRegions: (days: number = 30) =>
+    api.get('/reports/analytics/customer-regions', { params: { days } }),
 };
 
 // Parameter endpoints
@@ -216,6 +231,36 @@ export const parameters = {
 
   deleteOption: (optionId: number) =>
     api.delete(`/parameters/options/${optionId}`),
+};
+
+// Version Control endpoints
+export const versionControl = {
+  getSnapshots: () =>
+    api.get('/version-control/snapshots'),
+
+  createSnapshot: (data: { snapshot_name?: string; description?: string; tags?: string[] }) =>
+    api.post('/version-control/snapshots', data),
+
+  deleteSnapshot: (snapshotId: string) =>
+    api.delete(`/version-control/snapshots/${snapshotId}`),
+
+  rollbackToSnapshot: (snapshotId: string, confirm: boolean = false) =>
+    api.post(`/version-control/rollback/${snapshotId}`, { confirm }),
+
+  getRollbackHistory: () =>
+    api.get('/version-control/rollback-history'),
+
+  testDriveConnection: () =>
+    api.get('/version-control/drive/test'),
+
+  syncToDrive: (snapshotId: string) =>
+    api.post(`/version-control/drive/sync/${snapshotId}`),
+
+  syncAllToDrive: (data: { days?: number }) =>
+    api.post('/version-control/drive/sync-all', data),
+
+  configureDrive: (data: { credentials: string }) =>
+    api.post('/version-control/drive/configure', data),
 };
 
 export default api;

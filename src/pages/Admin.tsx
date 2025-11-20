@@ -6,13 +6,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
-import { Settings, Plus, Trash2, Edit, Building, Tag, Package, Users, Shield, Sliders, Upload, Download, FileText } from 'lucide-react';
+import { Settings, Plus, Trash2, Edit, Building, Tag, Package, Users, Shield, Sliders, Upload, Download, FileText, Database, History, RotateCcw, Save, AlertTriangle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { admin, parameters } from '@/lib/api';
+import { admin, parameters, versionControl } from '@/lib/api';
 import { formatDate } from '@/lib/utils';
 
 const Admin = () => {
@@ -27,6 +27,8 @@ const Admin = () => {
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [parameterOptions, setParameterOptions] = useState<Record<string, any[]>>({});
   const [users, setUsers] = useState<any[]>([]);
+  const [snapshots, setSnapshots] = useState<any[]>([]);
+  const [rollbackHistory, setRollbackHistory] = useState<any[]>([]);
 
   // Audit log filters
   const [auditUserFilter, setAuditUserFilter] = useState<string>('');
@@ -42,11 +44,19 @@ const Admin = () => {
   const [customerDialog, setCustomerDialog] = useState(false);
   const [parameterDialog, setParameterDialog] = useState(false);
   const [userDialog, setUserDialog] = useState(false);
+  const [snapshotDialog, setSnapshotDialog] = useState(false);
+  const [rollbackDialog, setRollbackDialog] = useState(false);
+  const [driveConfigDialog, setDriveConfigDialog] = useState(false);
+  const [selectedSnapshot, setSelectedSnapshot] = useState<any>(null);
 
   // Edit mode states
   const [editingProductType, setEditingProductType] = useState<any>(null);
   const [editingUser, setEditingUser] = useState<any>(null);
   const [editingParameter, setEditingParameter] = useState<any>(null);
+  const [editingCustomer, setEditingCustomer] = useState<any>(null);
+
+  // Search states
+  const [customerSearchTerm, setCustomerSearchTerm] = useState<string>('');
 
   // Form data
   const [brandForm, setBrandForm] = useState({ name: '' });
@@ -80,6 +90,9 @@ const Admin = () => {
     email: '',
     gstin: '',
     address: '',
+    city: '',
+    state: '',
+    pincode: '',
   });
   const [parameterForm, setParameterForm] = useState({
     id: '',
@@ -94,6 +107,14 @@ const Admin = () => {
     role: 'user',
     is_active: true,
   });
+  const [snapshotForm, setSnapshotForm] = useState({
+    snapshot_name: '',
+    description: '',
+    tags: [] as string[],
+  });
+  const [driveStatus, setDriveStatus] = useState<'connected' | 'disconnected' | 'unknown'>('unknown');
+  const [syncingToDrive, setSyncingToDrive] = useState(false);
+  const [driveCredentials, setDriveCredentials] = useState<string>('');
 
   useEffect(() => {
     if (isAdmin) {
@@ -123,6 +144,10 @@ const Admin = () => {
       setAuditLogs(logsRes.data || []);
       setParameterOptions(paramsRes.data || {});
       setUsers(usersRes.data || []);
+
+      // Fetch version control data
+      fetchSnapshots();
+      fetchRollbackHistory();
     } catch (error: any) {
       console.error('Error fetching admin data:', error);
       console.error('Error details:', error.response?.data);
@@ -156,9 +181,15 @@ const Admin = () => {
     }
 
     try {
-      await admin.createCustomer(customerForm);
-      toast.success('Customer added successfully');
+      if (editingCustomer) {
+        await admin.updateCustomer(editingCustomer.id, customerForm);
+        toast.success('Customer updated successfully');
+      } else {
+        await admin.createCustomer(customerForm);
+        toast.success('Customer added successfully');
+      }
       setCustomerDialog(false);
+      setEditingCustomer(null);
       setCustomerForm({
         name: '',
         contact_person: '',
@@ -166,11 +197,30 @@ const Admin = () => {
         email: '',
         gstin: '',
         address: '',
+        city: '',
+        state: '',
+        pincode: '',
       });
       fetchAllData();
     } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to add customer');
+      toast.error(error.response?.data?.error || `Failed to ${editingCustomer ? 'update' : 'add'} customer`);
     }
+  };
+
+  const handleEditCustomer = (customer: any) => {
+    setEditingCustomer(customer);
+    setCustomerForm({
+      name: customer.name || '',
+      contact_person: customer.contact_person || '',
+      phone: customer.phone || '',
+      email: customer.email || '',
+      gstin: customer.gstin || '',
+      address: customer.address || '',
+      city: customer.city || '',
+      state: customer.state || '',
+      pincode: customer.pincode || '',
+    });
+    setCustomerDialog(true);
   };
 
   const handleAddProductType = async () => {
@@ -423,6 +473,161 @@ const Admin = () => {
     }
   };
 
+  // Version Control functions
+  const fetchSnapshots = async () => {
+    try {
+      const response = await versionControl.getSnapshots();
+      setSnapshots(response.data || []);
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Failed to load snapshots');
+    }
+  };
+
+  const fetchRollbackHistory = async () => {
+    try {
+      const response = await versionControl.getRollbackHistory();
+      setRollbackHistory(response.data || []);
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Failed to load rollback history');
+    }
+  };
+
+  const testDriveConnection = async () => {
+    try {
+      const response = await versionControl.testDriveConnection();
+      setDriveStatus(response.data.status);
+      if (response.data.status === 'connected') {
+        toast.success('Google Drive connected successfully');
+      } else {
+        toast.warning('Google Drive not configured');
+      }
+    } catch (error: any) {
+      toast.error('Failed to test Drive connection');
+      setDriveStatus('disconnected');
+    }
+  };
+
+  const syncSnapshotToDrive = async (snapshotId: string) => {
+    try {
+      setSyncingToDrive(true);
+      await versionControl.syncToDrive(snapshotId);
+      toast.success('Snapshot synced to Google Drive');
+      await fetchSnapshots();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to sync to Drive');
+    } finally {
+      setSyncingToDrive(false);
+    }
+  };
+
+  const syncAllToDrive = async () => {
+    try {
+      setSyncingToDrive(true);
+      const response = await versionControl.syncAllToDrive({ days: 7 });
+      toast.success(`Synced ${response.data.synced} snapshots, ${response.data.failed} failed`);
+      await fetchSnapshots();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to sync all');
+    } finally {
+      setSyncingToDrive(false);
+    }
+  };
+
+  const handleConfigureDrive = async () => {
+    try {
+      if (!driveCredentials) {
+        toast.error('Please paste the credentials JSON');
+        return;
+      }
+
+      // Validate JSON format
+      JSON.parse(driveCredentials);
+
+      await versionControl.configureDrive({ credentials: driveCredentials });
+      toast.success('Google Drive configured successfully');
+      setDriveConfigDialog(false);
+      setDriveCredentials('');
+      await testDriveConnection();
+    } catch (error: any) {
+      if (error instanceof SyntaxError) {
+        toast.error('Invalid JSON format');
+      } else {
+        toast.error(error.response?.data?.error || 'Failed to configure Drive');
+      }
+    }
+  };
+
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const content = e.target?.result as string;
+        setDriveCredentials(content);
+      };
+      reader.readAsText(file);
+    }
+  };
+
+  const handleCreateSnapshot = async () => {
+    if (!snapshotForm.snapshot_name) {
+      toast.error('Snapshot name is required');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await versionControl.createSnapshot(snapshotForm);
+      toast.success('Snapshot created successfully');
+      setSnapshotDialog(false);
+      setSnapshotForm({ snapshot_name: '', description: '', tags: [] });
+      fetchSnapshots();
+      fetchAllData(); // Refresh audit logs
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Failed to create snapshot');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteSnapshot = async (snapshotId: string) => {
+    if (!confirm('Are you sure you want to delete this snapshot? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      await versionControl.deleteSnapshot(snapshotId);
+      toast.success('Snapshot deleted successfully');
+      fetchSnapshots();
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Failed to delete snapshot');
+    }
+  };
+
+  const handleRollback = async () => {
+    if (!selectedSnapshot) return;
+
+    setLoading(true);
+    try {
+      const response = await versionControl.rollbackToSnapshot(selectedSnapshot.id, true);
+      toast.success(`Rollback completed! ${response.data.affected_tables.length} tables restored.`);
+      setRollbackDialog(false);
+      setSelectedSnapshot(null);
+      fetchSnapshots();
+      fetchRollbackHistory();
+      fetchAllData(); // Refresh all data after rollback
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Rollback failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const openRollbackDialog = (snapshot: any) => {
+    setSelectedSnapshot(snapshot);
+    setRollbackDialog(true);
+  };
+
   if (!isAdmin) {
     return (
       <Layout>
@@ -460,12 +665,13 @@ const Admin = () => {
         </div>
 
         <Tabs defaultValue="brands" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-6">
+          <TabsList className="grid w-full grid-cols-7">
             <TabsTrigger value="brands">Brands</TabsTrigger>
             <TabsTrigger value="products">Products</TabsTrigger>
             <TabsTrigger value="customers">Customers</TabsTrigger>
             <TabsTrigger value="users">Users</TabsTrigger>
             <TabsTrigger value="parameters">Parameters</TabsTrigger>
+            <TabsTrigger value="version-control">Version Control</TabsTrigger>
             <TabsTrigger value="audit">Audit Logs</TabsTrigger>
           </TabsList>
 
@@ -903,7 +1109,23 @@ const Admin = () => {
                     className="hidden"
                     onChange={handleImportCustomers}
                   />
-                  <Dialog open={customerDialog} onOpenChange={setCustomerDialog}>
+                  <Dialog open={customerDialog} onOpenChange={(open) => {
+                    setCustomerDialog(open);
+                    if (!open) {
+                      setEditingCustomer(null);
+                      setCustomerForm({
+                        name: '',
+                        contact_person: '',
+                        phone: '',
+                        email: '',
+                        gstin: '',
+                        address: '',
+                        city: '',
+                        state: '',
+                        pincode: '',
+                      });
+                    }
+                  }}>
                     <DialogTrigger asChild>
                       <Button>
                         <Plus className="h-4 w-4 mr-2" />
@@ -912,8 +1134,10 @@ const Admin = () => {
                     </DialogTrigger>
                   <DialogContent className="max-w-2xl">
                     <DialogHeader>
-                      <DialogTitle>Add New Customer</DialogTitle>
-                      <DialogDescription>Create a new customer record</DialogDescription>
+                      <DialogTitle>{editingCustomer ? 'Edit Customer' : 'Add New Customer'}</DialogTitle>
+                      <DialogDescription>
+                        {editingCustomer ? 'Update customer information' : 'Create a new customer record'}
+                      </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4 max-h-[60vh] overflow-y-auto">
                       <div className="grid grid-cols-2 gap-4">
@@ -969,19 +1193,52 @@ const Admin = () => {
                         />
                       </div>
 
-                      <div className="space-y-2">
-                        <Label htmlFor="custAddress">Address</Label>
-                        <Textarea
-                          id="custAddress"
-                          value={customerForm.address}
-                          onChange={(e) => setCustomerForm({ ...customerForm, address: e.target.value })}
-                          placeholder="Full Address"
-                          rows={3}
-                        />
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="custCity">City</Label>
+                          <Input
+                            id="custCity"
+                            value={customerForm.city}
+                            onChange={(e) => setCustomerForm({ ...customerForm, city: e.target.value })}
+                            placeholder="City"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="custState">State</Label>
+                          <Input
+                            id="custState"
+                            value={customerForm.state}
+                            onChange={(e) => setCustomerForm({ ...customerForm, state: e.target.value })}
+                            placeholder="State"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="custPincode">Pincode</Label>
+                          <Input
+                            id="custPincode"
+                            value={customerForm.pincode}
+                            onChange={(e) => setCustomerForm({ ...customerForm, pincode: e.target.value })}
+                            placeholder="Pincode"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="custAddress">Address</Label>
+                          <Input
+                            id="custAddress"
+                            value={customerForm.address}
+                            onChange={(e) => setCustomerForm({ ...customerForm, address: e.target.value })}
+                            placeholder="Street Address"
+                          />
+                        </div>
                       </div>
 
                       <Button onClick={handleAddCustomer} className="w-full">
-                        Add Customer
+                        {editingCustomer ? 'Update Customer' : 'Add Customer'}
                       </Button>
                     </div>
                   </DialogContent>
@@ -989,29 +1246,60 @@ const Admin = () => {
                 </div>
               </CardHeader>
               <CardContent>
+                <div className="mb-4">
+                  <Input
+                    placeholder="Search customers by name or phone..."
+                    value={customerSearchTerm}
+                    onChange={(e) => setCustomerSearchTerm(e.target.value)}
+                    className="max-w-md"
+                  />
+                </div>
                 <div className="space-y-2">
-                  {customers.map((customer) => (
+                  {customers
+                    .filter((customer) => {
+                      const searchLower = customerSearchTerm.toLowerCase();
+                      return (
+                        customer.name?.toLowerCase().includes(searchLower) ||
+                        customer.phone?.toLowerCase().includes(searchLower) ||
+                        customer.email?.toLowerCase().includes(searchLower)
+                      );
+                    })
+                    .map((customer) => (
                     <div
                       key={customer.id}
                       className="flex items-center justify-between p-4 bg-secondary/30 rounded-lg"
                     >
                       <div className="flex items-center space-x-3">
                         <Users className="h-5 w-5 text-muted-foreground" />
-                        <div>
+                        <div className="flex-1">
                           <div className="font-medium">{customer.name}</div>
                           <div className="text-sm text-muted-foreground">
                             {customer.phone && `${customer.phone} | `}
                             {customer.email}
                           </div>
+                          {(customer.city || customer.state) && (
+                            <div className="text-sm text-muted-foreground">
+                              {[customer.city, customer.state, customer.pincode].filter(Boolean).join(', ')}
+                            </div>
+                          )}
                         </div>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDelete('customers', customer.id)}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleEditCustomer(customer)}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDelete('customers', customer.id)}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -1439,6 +1727,213 @@ const Admin = () => {
             </Card>
           </TabsContent>
 
+          {/* Version Control Tab */}
+          <TabsContent value="version-control">
+            <div className="space-y-6">
+              {/* Google Drive Status Card */}
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="flex items-center gap-2">
+                        <Upload className="h-5 w-5" />
+                        Google Drive Sync
+                      </CardTitle>
+                      <CardDescription>
+                        Automatic backup synchronization to Google Drive
+                      </CardDescription>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge
+                        variant={driveStatus === 'connected' ? 'default' : driveStatus === 'disconnected' ? 'destructive' : 'secondary'}
+                      >
+                        {driveStatus === 'connected' ? '● Connected' : driveStatus === 'disconnected' ? '● Disconnected' : '● Unknown'}
+                      </Badge>
+                      <Button variant="outline" size="sm" onClick={testDriveConnection}>
+                        Test Connection
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={syncAllToDrive} disabled={syncingToDrive}>
+                        {syncingToDrive ? 'Syncing...' : 'Sync All Recent'}
+                      </Button>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-sm text-muted-foreground">
+                    <p>
+                      Daily snapshots are automatically synced to Google Drive at 2:00 AM.
+                      Backups are stored for 30 days and accessible from the "Tarko Inventory Backups" folder.
+                    </p>
+                    {driveStatus === 'disconnected' && (
+                      <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded">
+                        <div className="flex items-start justify-between">
+                          <p className="text-amber-800 dark:text-amber-200">
+                            <strong>Google Drive not configured.</strong> Configure it now to enable automatic cloud backups.
+                          </p>
+                          <Button
+                            variant="default"
+                            size="sm"
+                            onClick={() => setDriveConfigDialog(true)}
+                            className="ml-4"
+                          >
+                            Configure
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Snapshots Card */}
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="flex items-center gap-2">
+                        <Database className="h-5 w-5" />
+                        Database Snapshots
+                      </CardTitle>
+                      <CardDescription>
+                        Create and manage database snapshots for version control and rollback
+                      </CardDescription>
+                    </div>
+                    <Button onClick={() => setSnapshotDialog(true)}>
+                      <Save className="h-4 w-4 mr-2" />
+                      Create Snapshot
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {snapshots.map((snapshot) => (
+                      <div
+                        key={snapshot.id}
+                        className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors"
+                      >
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-semibold">{snapshot.snapshot_name}</h3>
+                            {snapshot.is_automatic && (
+                              <Badge variant="secondary" className="text-xs">Auto</Badge>
+                            )}
+                          </div>
+                          {snapshot.description && (
+                            <p className="text-sm text-muted-foreground mt-1">{snapshot.description}</p>
+                          )}
+                          <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
+                            <span>Created: {formatDate(snapshot.created_at)}</span>
+                            <span>By: {snapshot.created_by_name || snapshot.created_by_username}</span>
+                            <span>Size: {snapshot.file_size_mb?.toFixed(2)} MB</span>
+                            {snapshot.table_counts && (
+                              <span>
+                                Tables: {String(Object.values(snapshot.table_counts).reduce((sum: number, count: any) => sum + (count || 0), 0))} records
+                              </span>
+                            )}
+                          </div>
+                          {snapshot.tags && snapshot.tags.length > 0 && (
+                            <div className="flex gap-1 mt-2">
+                              {snapshot.tags.map((tag: string, idx: number) => (
+                                <Badge key={idx} variant="outline" className="text-xs">
+                                  {tag}
+                                </Badge>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {driveStatus === 'connected' && !snapshot.tags?.includes('google-drive-synced') && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => syncSnapshotToDrive(snapshot.id)}
+                              disabled={syncingToDrive}
+                            >
+                              <Upload className="h-4 w-4 mr-1" />
+                              Sync
+                            </Button>
+                          )}
+                          <Button
+                            variant="default"
+                            size="sm"
+                            onClick={() => openRollbackDialog(snapshot)}
+                          >
+                            <RotateCcw className="h-4 w-4 mr-1" />
+                            Rollback
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => handleDeleteSnapshot(snapshot.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                    {snapshots.length === 0 && (
+                      <div className="text-center py-8 text-muted-foreground">
+                        No snapshots created yet. Create your first snapshot to enable version control.
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Rollback History Card */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <History className="h-5 w-5" />
+                    Rollback History
+                  </CardTitle>
+                  <CardDescription>
+                    View history of all rollback operations
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {rollbackHistory.map((entry) => (
+                      <div
+                        key={entry.id}
+                        className={`p-4 border rounded-lg ${entry.success ? 'bg-green-50 dark:bg-green-950/20' : 'bg-red-50 dark:bg-red-950/20'}`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <h4 className="font-medium">{entry.snapshot_name}</h4>
+                              <Badge variant={entry.success ? 'default' : 'destructive'}>
+                                {entry.success ? 'Success' : 'Failed'}
+                              </Badge>
+                            </div>
+                            <div className="text-sm text-muted-foreground mt-1">
+                              Rolled back by {entry.rolled_back_by_name || entry.rolled_back_by_username} on {formatDate(entry.rolled_back_at)}
+                            </div>
+                            {entry.affected_tables && (
+                              <div className="text-xs text-muted-foreground mt-1">
+                                Affected tables: {entry.affected_tables.join(', ')}
+                              </div>
+                            )}
+                            {entry.error_message && (
+                              <div className="text-xs text-red-600 mt-1">
+                                Error: {entry.error_message}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    {rollbackHistory.length === 0 && (
+                      <div className="text-center py-8 text-muted-foreground">
+                        No rollback operations performed yet
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
           {/* Audit Logs Tab */}
           <TabsContent value="audit">
             <Card>
@@ -1845,6 +2340,181 @@ const Admin = () => {
             </Card>
           </TabsContent>
         </Tabs>
+
+        {/* Create Snapshot Dialog */}
+        <Dialog open={snapshotDialog} onOpenChange={setSnapshotDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Create Database Snapshot</DialogTitle>
+              <DialogDescription>
+                Create a snapshot of the current database state for version control
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label>Snapshot Name *</Label>
+                <Input
+                  value={snapshotForm.snapshot_name}
+                  onChange={(e) => setSnapshotForm({ ...snapshotForm, snapshot_name: e.target.value })}
+                  placeholder="e.g., Before Bulk Import 2025-11-20"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Description</Label>
+                <Textarea
+                  value={snapshotForm.description}
+                  onChange={(e) => setSnapshotForm({ ...snapshotForm, description: e.target.value })}
+                  placeholder="Optional description of this snapshot"
+                  rows={3}
+                />
+              </div>
+              <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
+                <div className="flex gap-2">
+                  <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <div className="text-sm text-amber-800 dark:text-amber-200">
+                    <p className="font-medium mb-1">Important:</p>
+                    <ul className="list-disc list-inside space-y-1 text-xs">
+                      <li>Snapshots capture the current state of all inventory data</li>
+                      <li>Large databases may take time to snapshot</li>
+                      <li>Regular snapshots are recommended before major changes</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setSnapshotDialog(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleCreateSnapshot} disabled={loading || !snapshotForm.snapshot_name}>
+                {loading ? 'Creating...' : 'Create Snapshot'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Rollback Confirmation Dialog */}
+        <Dialog open={rollbackDialog} onOpenChange={setRollbackDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-red-600">
+                <AlertTriangle className="h-5 w-5" />
+                Confirm Rollback
+              </DialogTitle>
+              <DialogDescription>
+                This action will restore the database to a previous state
+              </DialogDescription>
+            </DialogHeader>
+            {selectedSnapshot && (
+              <div className="space-y-4 py-4">
+                <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+                  <h4 className="font-semibold text-red-900 dark:text-red-100 mb-2">
+                    ⚠️ Warning: Destructive Action
+                  </h4>
+                  <ul className="text-sm text-red-800 dark:text-red-200 space-y-1">
+                    <li>• All current data will be replaced with snapshot data</li>
+                    <li>• Changes made after snapshot creation will be lost</li>
+                    <li>• This operation cannot be undone</li>
+                    <li>• Consider creating a snapshot of current state first</li>
+                  </ul>
+                </div>
+                <div className="p-4 bg-muted rounded-lg">
+                  <h4 className="font-medium mb-2">Rolling back to:</h4>
+                  <div className="space-y-1 text-sm">
+                    <div><span className="text-muted-foreground">Name:</span> <span className="font-medium">{selectedSnapshot.snapshot_name}</span></div>
+                    <div><span className="text-muted-foreground">Created:</span> {formatDate(selectedSnapshot.created_at)}</div>
+                    <div><span className="text-muted-foreground">Size:</span> {selectedSnapshot.file_size_mb?.toFixed(2)} MB</div>
+                    {selectedSnapshot.description && (
+                      <div className="mt-2">
+                        <span className="text-muted-foreground">Description:</span>
+                        <p className="text-sm mt-1">{selectedSnapshot.description}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setRollbackDialog(false)}>
+                Cancel
+              </Button>
+              <Button variant="destructive" onClick={handleRollback} disabled={loading}>
+                {loading ? 'Rolling back...' : 'Confirm Rollback'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Google Drive Configuration Dialog */}
+        <Dialog open={driveConfigDialog} onOpenChange={setDriveConfigDialog}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Upload className="h-5 w-5" />
+                Configure Google Drive
+              </DialogTitle>
+              <DialogDescription>
+                Upload or paste your Google Drive service account credentials to enable automatic backup synchronization.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <Label>Upload Credentials File</Label>
+                <Input
+                  type="file"
+                  accept=".json"
+                  onChange={handleFileUpload}
+                  className="mt-2"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Upload your google_drive_credentials.json file
+                </p>
+              </div>
+
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-background px-2 text-muted-foreground">Or</span>
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="credentials">Paste Credentials JSON</Label>
+                <Textarea
+                  id="credentials"
+                  value={driveCredentials}
+                  onChange={(e) => setDriveCredentials(e.target.value)}
+                  placeholder='{"type": "service_account", "project_id": "...", ...}'
+                  className="font-mono text-xs mt-2"
+                  rows={10}
+                />
+              </div>
+
+              <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
+                <p className="text-sm text-blue-800 dark:text-blue-200">
+                  <strong>How to get credentials:</strong>
+                </p>
+                <ol className="text-xs text-blue-700 dark:text-blue-300 list-decimal list-inside mt-2 space-y-1">
+                  <li>Go to <a href="https://console.cloud.google.com" target="_blank" rel="noopener noreferrer" className="underline">Google Cloud Console</a></li>
+                  <li>Create a new project or select existing</li>
+                  <li>Enable Google Drive API</li>
+                  <li>Create Service Account credentials</li>
+                  <li>Download JSON key file</li>
+                </ol>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setDriveConfigDialog(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleConfigureDrive} disabled={!driveCredentials}>
+                Save Configuration
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </Layout>
   );
