@@ -1080,11 +1080,40 @@ export default function TransactionsNew() {
                           </div>
                           <div className="mt-3 pt-3 border-t-2 border-blue-300 dark:border-blue-700 flex justify-between font-semibold text-blue-700 dark:text-blue-300">
                             <span>
-                              Total: {modalTransaction.roll_snapshot.total_rolls} {modalTransaction.product_type?.toLowerCase().includes('sprinkler') ? 'item(s)' : 'roll(s)'}
+                              Total: {modalTransaction.roll_snapshot.total_rolls} item(s)
                             </span>
-                            {!modalTransaction.product_type?.toLowerCase().includes('sprinkler') && (
-                              <span>{Math.abs(modalTransaction.quantity_change || 0).toFixed(2)} m</span>
-                            )}
+                            {(() => {
+                              // Calculate total meters only for non-sprinkler items
+                              const hasMultipleBatches = new Set(modalTransaction.roll_snapshot.rolls.map(r => r.batch_id)).size > 1;
+
+                              if (hasMultipleBatches) {
+                                // Check if we have mixed product types
+                                const productTypes = new Set(modalTransaction.roll_snapshot.rolls.map(r => r.product_type || modalTransaction.product_type));
+                                const hasSprinkler = Array.from(productTypes).some(pt => pt?.toLowerCase().includes('sprinkler'));
+                                const hasNonSprinkler = Array.from(productTypes).some(pt => !pt?.toLowerCase().includes('sprinkler'));
+
+                                if (hasSprinkler && hasNonSprinkler) {
+                                  // Mixed types - calculate meters only for non-sprinkler items
+                                  const totalMeters = modalTransaction.roll_snapshot.rolls
+                                    .filter(r => {
+                                      const pt = r.product_type || modalTransaction.product_type;
+                                      return !pt?.toLowerCase().includes('sprinkler');
+                                    })
+                                    .reduce((sum, r) => sum + (r.quantity_dispatched || 0), 0);
+
+                                  return totalMeters > 0 ? <span>{totalMeters.toFixed(2)} m (HDPE only)</span> : null;
+                                } else if (!hasSprinkler) {
+                                  // All non-sprinkler - show total meters
+                                  return <span>{Math.abs(modalTransaction.quantity_change || 0).toFixed(2)} m</span>;
+                                }
+                                // All sprinkler - no meters
+                                return null;
+                              } else {
+                                // Single batch - use original logic
+                                const isSprinkler = modalTransaction.product_type?.toLowerCase().includes('sprinkler');
+                                return !isSprinkler ? <span>{Math.abs(modalTransaction.quantity_change || 0).toFixed(2)} m</span> : null;
+                              }
+                            })()}
                           </div>
                         </div>
                       </div>
