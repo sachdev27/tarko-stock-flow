@@ -117,6 +117,12 @@ export const dispatch = {
   cutRoll: (data: { roll_id: string; cuts: { length: number }[] }) =>
     api.post('/dispatch/cut-roll', data),
 
+  cutBundle: (data: { roll_id: string; cuts: { pieces: number }[] }) =>
+    api.post('/dispatch/cut-bundle', data),
+
+  combineSpares: (data: { spare_roll_ids: string[]; bundle_size: number; number_of_bundles?: number }) =>
+    api.post('/dispatch/combine-spares', data),
+
   createDispatch: (data: {
     customer_id: string;
     invoice_number?: string;

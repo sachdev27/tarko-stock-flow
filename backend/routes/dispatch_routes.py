@@ -308,6 +308,249 @@ def cut_roll():
         return jsonify({'error': str(e)}), 500
 
 
+@dispatch_bp.route('/cut-bundle', methods=['POST'])
+@jwt_required()
+def cut_bundle():
+    """
+    Cut a sprinkler bundle into spare pieces.
+    Request body: {
+        roll_id: UUID,
+        cuts: [{ pieces: int }, { pieces: int }, ...]
+    }
+    """
+    user_id = get_jwt_identity()
+    data = request.json
+    roll_id = data.get('roll_id')
+    cuts = data.get('cuts', [])
+
+    if not roll_id or not cuts:
+        return jsonify({'error': 'roll_id and cuts are required'}), 400
+
+    # Validate cuts
+    total_cut_pieces = sum(int(cut['pieces']) for cut in cuts)
+
+    try:
+        with get_db_cursor() as cursor:
+            # Get the bundle details
+            cursor.execute("""
+                SELECT r.*, r.batch_id, pv.id as product_variant_id, r.bundle_size
+                FROM rolls r
+                JOIN batches b ON r.batch_id = b.id
+                JOIN product_variants pv ON b.product_variant_id = pv.id
+                WHERE r.id = %s AND r.deleted_at IS NULL
+            """, (roll_id,))
+
+            bundle = cursor.fetchone()
+            if not bundle:
+                return jsonify({'error': 'Bundle not found'}), 404
+
+            available_pieces = int(bundle['bundle_size'] or 0)
+
+            if total_cut_pieces > available_pieces:
+                return jsonify({'error': f'Total cut pieces ({total_cut_pieces}) exceeds available pieces ({available_pieces})'}), 400
+
+            # Create new spare piece rolls
+            new_spare_rolls = []
+            for cut in cuts:
+                pieces_count = int(cut['pieces'])
+                cursor.execute("""
+                    INSERT INTO rolls (
+                        batch_id, product_variant_id, length_meters,
+                        initial_length_meters, status, roll_type, bundle_size
+                    )
+                    VALUES (%s, %s, 0, 0, 'AVAILABLE', 'spare', %s)
+                    RETURNING id, bundle_size
+                """, (
+                    bundle['batch_id'],
+                    bundle['product_variant_id'],
+                    pieces_count
+                ))
+                new_roll = cursor.fetchone()
+                new_spare_rolls.append({
+                    'id': new_roll['id'],
+                    'pieces': int(new_roll['bundle_size'])
+                })
+
+            # Delete the original bundle (mark as deleted)
+            cursor.execute("""
+                UPDATE rolls
+                SET status = 'SOLD_OUT', deleted_at = NOW(), updated_at = NOW()
+                WHERE id = %s
+            """, (roll_id,))
+
+            # Create CUT transaction
+            cursor.execute("""
+                INSERT INTO transactions (
+                    batch_id, roll_id, transaction_type, quantity_change,
+                    transaction_date, notes, created_by, created_at, updated_at
+                ) VALUES (%s, %s, 'CUT', %s, NOW(), %s, %s, NOW(), NOW())
+            """, (
+                bundle['batch_id'],
+                roll_id,
+                -available_pieces,
+                f"Cut bundle into {len(cuts)} spare batches: {', '.join([str(c['pieces']) + ' pcs' for c in cuts])}",
+                user_id
+            ))
+
+            # Create audit log
+            actor = get_user_identity_details(user_id)
+            cursor.execute("""
+                INSERT INTO audit_logs (
+                    user_id, action_type, entity_type, entity_id,
+                    description, created_at
+                ) VALUES (%s, 'CUT_BUNDLE', 'ROLL', %s, %s, NOW())
+            """, (
+                user_id,
+                roll_id,
+                f"{actor['name']} cut bundle into {len(cuts)} spare batches totaling {total_cut_pieces} pieces"
+            ))
+
+        return jsonify({
+            'message': 'Bundle cut successfully',
+            'new_spare_rolls': new_spare_rolls
+        }), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@dispatch_bp.route('/combine-spares', methods=['POST'])
+@jwt_required()
+def combine_spares():
+    """
+    Combine spare pieces into bundles.
+    Request body: {
+        spare_roll_ids: [UUID, ...],
+        bundle_size: int,
+        number_of_bundles: int (optional, defaults to 1)
+    }
+    """
+    user_id = get_jwt_identity()
+    data = request.json
+    spare_roll_ids = data.get('spare_roll_ids', [])
+    bundle_size = int(data.get('bundle_size', 0))
+    number_of_bundles = int(data.get('number_of_bundles', 1))
+
+    if not spare_roll_ids or bundle_size <= 0 or number_of_bundles <= 0:
+        return jsonify({'error': 'spare_roll_ids, bundle_size, and number_of_bundles are required'}), 400
+
+    try:
+        with get_db_cursor() as cursor:
+            # Get all spare rolls details
+            placeholders = ','.join(['%s'] * len(spare_roll_ids))
+            cursor.execute(f"""
+                SELECT r.*, r.batch_id, pv.id as product_variant_id, r.bundle_size
+                FROM rolls r
+                JOIN batches b ON r.batch_id = b.id
+                JOIN product_variants pv ON b.product_variant_id = pv.id
+                WHERE r.id IN ({placeholders})
+                AND r.deleted_at IS NULL
+                AND r.roll_type = 'spare'
+            """, tuple(spare_roll_ids))
+
+            spares = cursor.fetchall()
+            if len(spares) != len(spare_roll_ids):
+                return jsonify({'error': 'Some spare rolls not found or are not spare type'}), 404
+
+            # Verify all spares are from the same batch
+            batch_ids = set(spare['batch_id'] for spare in spares)
+            if len(batch_ids) > 1:
+                return jsonify({'error': 'All spare rolls must be from the same batch'}), 400
+
+            batch_id = spares[0]['batch_id']
+            product_variant_id = spares[0]['product_variant_id']
+
+            # Calculate total pieces
+            total_pieces = sum(int(spare['bundle_size'] or 0) for spare in spares)
+
+            total_pieces_needed = bundle_size * number_of_bundles
+
+            if total_pieces_needed > total_pieces:
+                return jsonify({'error': f'Total pieces needed ({total_pieces_needed}) exceeds available pieces ({total_pieces})'}), 400
+
+            # Create multiple bundles
+            new_bundle_ids = []
+            for i in range(number_of_bundles):
+                cursor.execute("""
+                    INSERT INTO rolls (
+                        batch_id, product_variant_id, length_meters,
+                        initial_length_meters, status, roll_type, bundle_size
+                    )
+                    VALUES (%s, %s, 0, 0, 'AVAILABLE', %s, %s)
+                    RETURNING id
+                """, (
+                    batch_id,
+                    product_variant_id,
+                    f'bundle_{bundle_size}',
+                    bundle_size
+                ))
+                new_bundle = cursor.fetchone()
+                new_bundle_ids.append(new_bundle['id'])
+
+            # Handle remaining pieces
+            remaining_pieces = total_pieces - total_pieces_needed
+            if remaining_pieces > 0:
+                # Create a new spare roll with remaining pieces
+                cursor.execute("""
+                    INSERT INTO rolls (
+                        batch_id, product_variant_id, length_meters,
+                        initial_length_meters, status, roll_type, bundle_size
+                    )
+                    VALUES (%s, %s, 0, 0, 'AVAILABLE', 'spare', %s)
+                    RETURNING id
+                """, (
+                    batch_id,
+                    product_variant_id,
+                    remaining_pieces
+                ))
+
+            # Delete original spare rolls
+            for spare_id in spare_roll_ids:
+                cursor.execute("""
+                    UPDATE rolls
+                    SET status = 'SOLD_OUT', deleted_at = NOW(), updated_at = NOW()
+                    WHERE id = %s
+                """, (spare_id,))
+
+            # Create ONE transaction for all bundles created
+            cursor.execute("""
+                INSERT INTO transactions (
+                    batch_id, roll_id, transaction_type, quantity_change,
+                    transaction_date, notes, created_by, created_at, updated_at
+                ) VALUES (%s, %s, 'PRODUCTION', %s, NOW(), %s, %s, NOW(), NOW())
+            """, (
+                batch_id,
+                new_bundle_ids[0],  # Reference the first bundle created
+                total_pieces_needed,
+                f"Combined {len(spare_roll_ids)} spare rolls ({total_pieces} pieces) into {number_of_bundles} bundle{'s' if number_of_bundles > 1 else ''} of {bundle_size} pieces each",
+                user_id
+            ))
+
+            # Create audit log
+            actor = get_user_identity_details(user_id)
+            cursor.execute("""
+                INSERT INTO audit_logs (
+                    user_id, action_type, entity_type, entity_id,
+                    description, created_at
+                ) VALUES (%s, 'COMBINE_SPARES', 'ROLL', %s, %s, NOW())
+            """, (
+                user_id,
+                new_bundle_ids[0],
+                f"{actor['name']} combined {len(spare_roll_ids)} spare rolls into {number_of_bundles} bundle{'s' if number_of_bundles > 1 else ''} of {bundle_size} pieces each"
+            ))
+
+        return jsonify({
+            'message': 'Spares combined successfully',
+            'new_bundle_ids': new_bundle_ids,
+            'number_of_bundles': number_of_bundles,
+            'bundle_size': bundle_size,
+            'remaining_pieces': remaining_pieces
+        }), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @dispatch_bp.route('/create', methods=['POST'])
 @jwt_required()
 def create_dispatch():

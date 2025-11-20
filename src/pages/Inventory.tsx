@@ -102,6 +102,7 @@ const Inventory = () => {
   const [parameterFilters, setParameterFilters] = useState<Record<string, string>>({});
   const [searchQuery, setSearchQuery] = useState('');
   const [showOnlyCutRolls, setShowOnlyCutRolls] = useState(false);
+  const [showOnlySpares, setShowOnlySpares] = useState(false);
 
   // Edit dialogs
   const [editingBatch, setEditingBatch] = useState<any>(null);
@@ -120,6 +121,20 @@ const Inventory = () => {
   const [cutLength, setCutLength] = useState<string>('');
   const [cuttingLoading, setCuttingLoading] = useState(false);
   const [availableRolls, setAvailableRolls] = useState<RollInventory[]>([]);
+
+  // Cut bundle dialog (for sprinkler pipes)
+  const [cutBundleDialogOpen, setCutBundleDialogOpen] = useState(false);
+  const [bundleToCut, setBundleToCut] = useState<RollInventory | null>(null);
+  const [cutPiecesCount, setCutPiecesCount] = useState<string>('');
+  const [availableBundles, setAvailableBundles] = useState<RollInventory[]>([]);
+
+  // Combine spares dialog (for sprinkler pipes)
+  const [combineSparesDialogOpen, setCombineSparesDialogOpen] = useState(false);
+  const [selectedSparesToCombine, setSelectedSparesToCombine] = useState<Set<string>>(new Set());
+  const [newBundleSize, setNewBundleSize] = useState<string>('');
+  const [numberOfBundles, setNumberOfBundles] = useState<string>('');
+  const [availableSpares, setAvailableSpares] = useState<RollInventory[]>([]);
+  const [combiningLoading, setCombiningLoading] = useState(false);
 
   // Import/Export
   const [importDialogOpen, setImportDialogOpen] = useState(false);
@@ -382,6 +397,160 @@ const Inventory = () => {
     }
   };
 
+  // Bundle cutting functions (for sprinkler pipes)
+  const openCutBundleDialog = (bundle: RollInventory) => {
+    setBundleToCut(bundle);
+    setCutPiecesCount('');
+    setAvailableBundles([]);
+    setCutBundleDialogOpen(true);
+  };
+
+  const openCutBundleDialogWithBundles = (bundles: RollInventory[]) => {
+    setBundleToCut(bundles[0]);
+    setAvailableBundles([]);
+    setCutPiecesCount('');
+    setCutBundleDialogOpen(true);
+  };
+
+  const handleCutBundle = async () => {
+    if (!bundleToCut) return;
+
+    const piecesCount = parseInt(cutPiecesCount);
+    const bundleSize = bundleToCut.bundle_size || 0;
+
+    if (isNaN(piecesCount) || piecesCount <= 0) {
+      toast.error('Please enter a valid number of pieces');
+      return;
+    }
+
+    if (piecesCount >= bundleSize) {
+      toast.error(`Cut pieces must be less than bundle size (${bundleSize} pieces)`);
+      return;
+    }
+
+    const remainingPieces = bundleSize - piecesCount;
+
+    setCuttingLoading(true);
+    try {
+      const { dispatch } = await import('@/lib/api');
+      await dispatch.cutBundle({
+        roll_id: bundleToCut.id,
+        cuts: [
+          { pieces: piecesCount },
+          { pieces: remainingPieces }
+        ],
+      });
+
+      toast.success(`Bundle split: ${piecesCount} spare pieces + ${remainingPieces} spare pieces`);
+      setCutBundleDialogOpen(false);
+      setBundleToCut(null);
+
+      await fetchInventory();
+    } catch (error: any) {
+      console.error('Error cutting bundle:', error);
+      toast.error(error.response?.data?.error || 'Failed to cut bundle');
+    } finally {
+      setCuttingLoading(false);
+    }
+  };
+
+  // Combine spares functions (for sprinkler pipes)
+  const openCombineSparesDialog = (spares: RollInventory[]) => {
+    setAvailableSpares(spares);
+    setSelectedSparesToCombine(new Set());
+    setNewBundleSize('');
+    setCombineSparesDialogOpen(true);
+  };
+
+  const handleCombineSpares = async () => {
+    const bundleSize = parseInt(newBundleSize);
+    if (isNaN(bundleSize) || bundleSize <= 0) {
+      toast.error('Please enter a valid bundle size');
+      return;
+    }
+
+    // Use all available spare pieces
+    const totalPieces = availableSpares.reduce((sum, s) => sum + (s.bundle_size || 1), 0);
+
+    // Calculate number of bundles to create (default to 1 if not specified)
+    const numBundles = numberOfBundles && parseInt(numberOfBundles) > 0
+      ? parseInt(numberOfBundles)
+      : 1;
+
+    const totalPiecesNeeded = numBundles * bundleSize;
+
+    if (totalPiecesNeeded > totalPieces) {
+      toast.error(`Not enough pieces: need ${totalPiecesNeeded}, have ${totalPieces}`);
+      return;
+    }
+
+    setCombiningLoading(true);
+
+    try {
+      const { dispatch } = await import('@/lib/api');
+
+      // Create all bundles in one API call (creates one transaction)
+      await dispatch.combineSpares({
+        spare_roll_ids: availableSpares.map(s => s.id),
+        bundle_size: bundleSize,
+        number_of_bundles: numBundles,
+      });
+
+      const remainingPieces = totalPieces - totalPiecesNeeded;
+
+      if (numBundles > 1) {
+        toast.success(`Created ${numBundles} bundles of ${bundleSize} pieces each${remainingPieces > 0 ? `. ${remainingPieces} pieces remaining as spares` : ''}`);
+      } else {
+        toast.success(`Created bundle of ${bundleSize} pieces${remainingPieces > 0 ? `. ${remainingPieces} pieces remaining as spares` : ''}`);
+      }
+
+      setCombineSparesDialogOpen(false);
+      setNewBundleSize('');
+      setNumberOfBundles('');
+
+      await fetchInventory();
+    } catch (error: any) {
+      console.error('Error combining spares:', error);
+      toast.error(error.response?.data?.error || 'Failed to combine spares');
+    } finally {
+      setCombiningLoading(false);
+    }
+  };  // Helper function to fetch current spare rolls for a batch
+  const fetchCurrentSpareRolls = async (): Promise<RollInventory[]> => {
+    if (availableSpares.length === 0) return [];
+
+    const batchId = (availableSpares[0] as any).batch_id;
+    if (!batchId) {
+      console.error('No batch_id found on spare rolls');
+      return [];
+    }
+
+    const { inventory } = await import('@/lib/api');
+    const response = await inventory.getBatches();
+    const data = response.data || response;
+
+    const batch = data.find((b: any) => b.id === batchId);
+    if (!batch || !batch.rolls) {
+      console.log('Batch not found or has no rolls:', batchId);
+      return [];
+    }
+
+    const spares = batch.rolls.filter((r: any) => r.roll_type === 'spare').map((r: any) => ({
+      id: r.id,
+      length_meters: r.length_meters || 0,
+      weight: r.weight,
+      status: r.status,
+      roll_type: r.roll_type,
+      bundle_size: r.bundle_size,
+      batch_id: batchId,
+    }));
+
+    console.log(`Found ${spares.length} spare rolls in batch ${batchId}, total pieces:`,
+      spares.reduce((sum, s) => sum + (s.bundle_size || 1), 0));
+
+    return spares;
+  };
+
   const formatWeight = (weightInGrams: number | null | undefined): string => {
     if (weightInGrams == null) return '-';
     if (weightInGrams >= 1000) {
@@ -447,6 +616,16 @@ const Inventory = () => {
         batch.rolls.some(roll => roll.is_cut_roll || roll.roll_type === 'cut')
       );
       if (!hasCutRolls) {
+        return false;
+      }
+    }
+
+    // Spare pieces filter
+    if (showOnlySpares) {
+      const hasSpares = item.batches.some(batch =>
+        batch.rolls.some(roll => roll.roll_type === 'spare')
+      );
+      if (!hasSpares) {
         return false;
       }
     }
@@ -1097,14 +1276,29 @@ const Inventory = () => {
                 </Label>
               </div>
 
+              {/* Spare Pieces Filter */}
+              <div className="flex items-center space-x-2 border rounded-md px-3 h-12">
+                <input
+                  type="checkbox"
+                  id="spare-pieces-filter"
+                  checked={showOnlySpares}
+                  onChange={(e) => setShowOnlySpares(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300"
+                />
+                <Label htmlFor="spare-pieces-filter" className="text-sm font-medium cursor-pointer">
+                  Show Only Spare Pieces
+                </Label>
+              </div>
+
               {/* Clear Filters Button */}
-              {(selectedBrand !== 'all' || showOnlyCutRolls || Object.keys(parameterFilters).length > 0) && (
+              {(selectedBrand !== 'all' || showOnlyCutRolls || showOnlySpares || Object.keys(parameterFilters).length > 0) && (
                 <Button
                   variant="outline"
                   onClick={() => {
                     setSelectedBrand('all');
                     setParameterFilters({});
                     setShowOnlyCutRolls(false);
+                    setShowOnlySpares(false);
                   }}
                   className="h-12"
                 >
@@ -1198,12 +1392,18 @@ const Inventory = () => {
               const unit = isBundle ? 'pieces' : 'm';
               const displayQty = isBundle ? product.total_quantity : product.total_quantity.toFixed(2);
 
-              // Aggregate ALL rolls from ALL batches
-              let allRolls = product.batches.flatMap(batch => batch.rolls);
+              // Aggregate ALL rolls from ALL batches (preserve batch_id)
+              let allRolls = product.batches.flatMap(batch =>
+                batch.rolls.map(roll => ({ ...roll, batch_id: batch.id }))
+              );
 
-              // Apply cut rolls filter if active
+              // Apply filters if active
               if (showOnlyCutRolls) {
                 allRolls = allRolls.filter(r => r.is_cut_roll || r.roll_type === 'cut');
+              }
+
+              if (showOnlySpares) {
+                allRolls = allRolls.filter(r => r.roll_type === 'spare');
               }
 
               // Standard rolls grouped by length
@@ -1369,8 +1569,19 @@ const Inventory = () => {
                         {/* Bundles */}
                         {Object.keys(bundlesBySize).length > 0 && (
                           <div>
-                            <div className="text-sm font-semibold text-muted-foreground mb-3">
-                              Bundles ({bundleRolls.length} total)
+                            <div className="text-sm font-semibold text-muted-foreground mb-3 flex items-center justify-between">
+                              <span>Bundles ({bundleRolls.length} total)</span>
+                              {bundleRolls.length > 0 && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => openCutBundleDialogWithBundles(bundleRolls)}
+                                  className="text-orange-600 hover:text-orange-700 hover:bg-orange-50"
+                                >
+                                  <ScissorsIcon className="h-3 w-3 mr-1" />
+                                  Cut into Spares
+                                </Button>
+                              )}
                             </div>
                             <div className="space-y-2">
                               {Object.entries(bundlesBySize)
@@ -1396,8 +1607,18 @@ const Inventory = () => {
                                           {!product.roll_config?.quantity_based && ` (${totalLength.toFixed(2)} m)`}
                                         </div>
                                       </div>
-                                      <div className="text-3xl font-bold text-blue-600">
-                                        {totalPieces} pcs
+                                      <div className="flex items-center gap-3">
+                                        <div className="text-3xl font-bold text-blue-600">
+                                          {totalPieces} pcs
+                                        </div>
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          onClick={() => openCutBundleDialog(rolls[0])}
+                                          className="text-orange-600 hover:text-orange-700 hover:bg-orange-50"
+                                        >
+                                          <ScissorsIcon className="h-4 w-4" />
+                                        </Button>
                                       </div>
                                     </div>
                                   );
@@ -1409,8 +1630,19 @@ const Inventory = () => {
                         {/* Spare Pipes */}
                         {spareRolls.length > 0 && (
                           <div>
-                            <div className="text-sm font-semibold text-muted-foreground mb-3">
-                              Spare Pipes ({spareRolls.length} total)
+                            <div className="text-sm font-semibold text-muted-foreground mb-3 flex items-center justify-between">
+                              <span>Spare Pipes ({spareRolls.length} total)</span>
+                              {spareRolls.length >= 1 && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => openCombineSparesDialog(spareRolls)}
+                                  className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                                >
+                                  <PlusIcon className="h-3 w-3 mr-1" />
+                                  Combine into Bundle
+                                </Button>
+                              )}
                             </div>
                             <div className="p-4 bg-purple-50 dark:bg-purple-950 rounded-lg flex items-center justify-between border border-purple-200 dark:border-purple-800">
                               <div className="flex-1">
@@ -1422,8 +1654,20 @@ const Inventory = () => {
                                   {!product.roll_config?.quantity_based && ` (${spareRolls.reduce((sum, r) => sum + r.length_meters, 0).toFixed(2)} m)`}
                                 </div>
                               </div>
-                              <div className="text-3xl font-bold text-purple-600">
-                                {spareRolls.reduce((sum, r) => sum + (r.bundle_size || 1), 0)} pcs
+                              <div className="flex items-center gap-3">
+                                <div className="text-3xl font-bold text-purple-600">
+                                  {spareRolls.reduce((sum, r) => sum + (r.bundle_size || 1), 0)} pcs
+                                </div>
+                                {spareRolls.length >= 1 && (
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => openCombineSparesDialog(spareRolls)}
+                                    className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                                  >
+                                    <PlusIcon className="h-4 w-4" />
+                                  </Button>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -1827,6 +2071,305 @@ const Inventory = () => {
         </DialogContent>
       </Dialog>
 
+      {/* Cut Bundle Dialog (for Sprinkler Pipes) */}
+      <Dialog open={cutBundleDialogOpen} onOpenChange={setCutBundleDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-orange-600 flex items-center gap-2">
+              <ScissorsIcon className="h-5 w-5" />
+              Cut Bundle into Spare Pieces
+            </DialogTitle>
+            <DialogDescription>
+              {availableBundles.length > 0 ? 'Select a bundle and enter pieces to extract' : 'Split this bundle into spare pieces'}
+            </DialogDescription>
+          </DialogHeader>
+
+          {availableBundles.length > 0 ? (
+            <div className="space-y-4">
+              <div>
+                <Label>Select Bundle to Cut</Label>
+                <div className="space-y-2 max-h-60 overflow-y-auto mt-2">
+                  {availableBundles.map((bundle) => (
+                    <div
+                      key={bundle.id}
+                      className={`p-3 rounded-lg flex items-center justify-between cursor-pointer transition-colors border-2 ${
+                        bundleToCut?.id === bundle.id
+                          ? 'bg-orange-100 dark:bg-orange-950 border-orange-400'
+                          : 'bg-secondary/50 border-transparent hover:bg-secondary/70'
+                      }`}
+                      onClick={() => setBundleToCut(bundle)}
+                    >
+                      <div className="flex-1">
+                        <div className="text-base font-semibold">
+                          Bundle of {bundle.bundle_size} pieces
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {bundle.status}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {bundleToCut && (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="cut-pieces">Number of Pieces to Extract</Label>
+                    <Input
+                      id="cut-pieces"
+                      type="number"
+                      step="1"
+                      min="1"
+                      max={(bundleToCut.bundle_size || 0) - 1}
+                      value={cutPiecesCount}
+                      onChange={(e) => setCutPiecesCount(e.target.value)}
+                      placeholder="Enter pieces count"
+                      autoFocus
+                    />
+                  </div>
+
+                  {cutPiecesCount && parseInt(cutPiecesCount) > 0 && parseInt(cutPiecesCount) < (bundleToCut.bundle_size || 0) && (
+                    <div className="p-3 bg-orange-50 dark:bg-orange-950 rounded-lg space-y-2 text-sm">
+                      <div className="flex justify-between font-medium">
+                        <span>Original Bundle:</span>
+                        <span>{bundleToCut.bundle_size} pieces</span>
+                      </div>
+                      <div className="flex justify-between text-orange-600 dark:text-orange-400">
+                        <span>→ Spare Batch 1:</span>
+                        <span>{cutPiecesCount} pieces</span>
+                      </div>
+                      <div className="flex justify-between text-orange-600 dark:text-orange-400">
+                        <span>→ Spare Batch 2:</span>
+                        <span>{(bundleToCut.bundle_size || 0) - parseInt(cutPiecesCount)} pieces</span>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          ) : (
+            bundleToCut && (
+              <div className="space-y-4">
+                <div className="p-4 bg-secondary/50 rounded-lg">
+                  <div className="text-sm font-semibold mb-1">Selected Bundle</div>
+                  <div className="text-2xl font-bold">
+                    {bundleToCut.bundle_size} pieces
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="cut-pieces-single">Number of Pieces to Extract</Label>
+                  <Input
+                    id="cut-pieces-single"
+                    type="number"
+                    step="1"
+                    min="1"
+                    max={(bundleToCut.bundle_size || 0) - 1}
+                    value={cutPiecesCount}
+                    onChange={(e) => setCutPiecesCount(e.target.value)}
+                    placeholder="Enter pieces count"
+                    autoFocus
+                  />
+                </div>
+
+                {cutPiecesCount && parseInt(cutPiecesCount) > 0 && parseInt(cutPiecesCount) < (bundleToCut.bundle_size || 0) && (
+                  <div className="p-3 bg-orange-50 dark:bg-orange-950 rounded-lg space-y-2 text-sm">
+                    <div className="flex justify-between font-medium">
+                      <span>Original Bundle:</span>
+                      <span>{bundleToCut.bundle_size} pieces</span>
+                    </div>
+                    <div className="flex justify-between text-orange-600 dark:text-orange-400">
+                      <span>→ Spare Batch 1:</span>
+                      <span>{cutPiecesCount} pieces</span>
+                    </div>
+                    <div className="flex justify-between text-orange-600 dark:text-orange-400">
+                      <span>→ Spare Batch 2:</span>
+                      <span>{(bundleToCut.bundle_size || 0) - parseInt(cutPiecesCount)} pieces</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setCutBundleDialogOpen(false);
+                setBundleToCut(null);
+                setCutPiecesCount('');
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCutBundle}
+              disabled={
+                cuttingLoading ||
+                !bundleToCut ||
+                !cutPiecesCount ||
+                parseInt(cutPiecesCount) <= 0 ||
+                (bundleToCut && parseInt(cutPiecesCount) >= (bundleToCut.bundle_size || 0))
+              }
+              className="bg-orange-600 hover:bg-orange-700"
+            >
+              {cuttingLoading ? (
+                <>Processing...</>
+              ) : (
+                <>
+                  <ScissorsIcon className="h-4 w-4 mr-2" />
+                  Cut Bundle
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Combine Spares Dialog (for Sprinkler Pipes) */}
+      <Dialog open={combineSparesDialogOpen} onOpenChange={setCombineSparesDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh]">
+          <DialogHeader>
+            <DialogTitle className="text-green-600 flex items-center gap-2">
+              <PlusIcon className="h-5 w-5" />
+              Combine Spare Pieces into Bundle
+            </DialogTitle>
+            <DialogDescription>
+              Create custom-sized bundles from available spare pieces
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 overflow-y-auto max-h-[60vh]">
+            {availableSpares.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <Package className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                <p>No spare pieces available</p>
+              </div>
+            ) : (
+              <>
+                {/* Total Available Pieces */}
+                <div className="p-4 bg-blue-50 dark:bg-blue-950 rounded-lg border-2 border-blue-200 dark:border-blue-800">
+                  <div className="text-sm font-medium mb-1 text-muted-foreground">Total Available Spare Pieces</div>
+                  <div className="text-3xl font-bold text-blue-600">
+                    {availableSpares.reduce((sum, s) => sum + (s.bundle_size || 1), 0)} pieces
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  {/* Bundle Size Input */}
+                  <div className="space-y-2">
+                    <Label htmlFor="new-bundle-size">Bundle Size (pieces per bundle)</Label>
+                    <Input
+                      id="new-bundle-size"
+                      type="number"
+                      step="1"
+                      min="1"
+                      max={availableSpares.reduce((sum, s) => sum + (s.bundle_size || 1), 0)}
+                      value={newBundleSize}
+                      onChange={(e) => setNewBundleSize(e.target.value)}
+                      placeholder="e.g., 10, 20, 50"
+                      className="text-lg"
+                    />
+                  </div>
+
+                  {/* Number of Bundles Input */}
+                  <div className="space-y-2">
+                    <Label htmlFor="number-of-bundles">Number of Bundles</Label>
+                    <Input
+                      id="number-of-bundles"
+                      type="number"
+                      step="1"
+                      min="1"
+                      max={newBundleSize ? Math.floor(availableSpares.reduce((sum, s) => sum + (s.bundle_size || 1), 0) / parseInt(newBundleSize)) : undefined}
+                      value={numberOfBundles}
+                      onChange={(e) => setNumberOfBundles(e.target.value)}
+                      placeholder="1"
+                      className="text-lg"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Leave empty for 1 bundle
+                    </p>
+                  </div>
+                </div>
+
+                {/* Preview */}
+                {newBundleSize && parseInt(newBundleSize) > 0 && (
+                  <div className="p-4 bg-green-50 dark:bg-green-950 rounded-lg space-y-3 border-2 border-green-200 dark:border-green-800">
+                    <div className="text-sm font-semibold text-green-700 dark:text-green-400">
+                      Bundle Preview
+                    </div>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between font-medium">
+                        <span>Available Pieces:</span>
+                        <span>{availableSpares.reduce((sum, s) => sum + (s.bundle_size || 1), 0)} pieces</span>
+                      </div>
+                      {(() => {
+                        const totalAvailable = availableSpares.reduce((sum, s) => sum + (s.bundle_size || 1), 0);
+                        const bundleSize = parseInt(newBundleSize);
+                        const numBundles = numberOfBundles && parseInt(numberOfBundles) > 0
+                          ? parseInt(numberOfBundles)
+                          : 1;
+                        const totalPiecesUsed = numBundles * bundleSize;
+                        const remaining = totalAvailable - totalPiecesUsed;
+
+                        return (
+                          <>
+                            <div className="flex justify-between text-green-600 dark:text-green-400 font-semibold text-base">
+                              <span>→ Create {numBundles} bundle{numBundles > 1 ? 's' : ''}:</span>
+                              <span>{numBundles} × {bundleSize} pcs = {totalPiecesUsed} pieces</span>
+                            </div>
+                            {remaining > 0 && (
+                              <div className="flex justify-between text-muted-foreground">
+                                <span>→ Remaining Spares:</span>
+                                <span>{remaining} pieces</span>
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setCombineSparesDialogOpen(false);
+                setNewBundleSize('');
+                setNumberOfBundles('');
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCombineSpares}
+              disabled={
+                combiningLoading ||
+                !newBundleSize ||
+                parseInt(newBundleSize) <= 0 ||
+                parseInt(newBundleSize) > availableSpares.reduce((sum, s) => sum + (s.bundle_size || 1), 0)
+              }
+              className="bg-green-600 hover:bg-green-700"
+            >
+              {combiningLoading ? (
+                <>Processing...</>
+              ) : (
+                <>
+                  <PlusIcon className="h-4 w-4 mr-2" />
+                  Create Bundle
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Import Dialog */}
       <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
         <DialogContent className="max-w-2xl">
@@ -1955,7 +2498,7 @@ const Inventory = () => {
               Share on WhatsApp
             </DialogTitle>
             <DialogDescription>
-              Select products to share. Standard rolls show total quantity, cut rolls can be individually selected.
+              Select products to share. Standard rolls/bundles show total quantity, cut rolls and spare pieces can be individually selected.
             </DialogDescription>
           </DialogHeader>
 
@@ -1973,11 +2516,18 @@ const Inventory = () => {
                   const isExpanded = expandedProductsInWhatsApp.has(uniqueKey);
 
                   const allRolls = product.batches.flatMap(b => b.rolls);
-                  const standardRolls = allRolls.filter(r => !r.is_cut_roll && r.roll_type !== 'cut');
+                  const standardRolls = allRolls.filter(r => !r.is_cut_roll && r.roll_type !== 'cut' && r.roll_type !== 'spare' && !r.roll_type?.startsWith('bundle_'));
+                  const bundleRolls = allRolls.filter(r => r.roll_type?.startsWith('bundle_'));
                   const cutRolls = allRolls.filter(r => r.is_cut_roll || r.roll_type === 'cut');
+                  const spareRolls = allRolls.filter(r => r.roll_type === 'spare');
+
                   const standardTotal = standardRolls.reduce((sum, r) => sum + r.length_meters, 0);
+                  const bundleTotal = bundleRolls.reduce((sum, r) => sum + (r.bundle_size || 0), 0);
+                  const isSprinkler = product.product_type.toLowerCase().includes('sprinkler');
 
                   const selectedCutRolls = cutRolls.filter(r => selectedRollsForWhatsApp.has(r.id));
+                  const selectedSpares = spareRolls.filter(r => selectedRollsForWhatsApp.has(r.id));
+                  const hasExpandableItems = cutRolls.length > 0 || spareRolls.length > 0;
 
                   const params = product.parameters || {};
                   const paramsText = Object.entries(params)
@@ -1993,8 +2543,8 @@ const Inventory = () => {
                           isSelected ? 'bg-green-50 border-green-500' : 'bg-secondary/30 hover:bg-secondary/50'
                         }`}
                         onClick={() => {
-                          if (cutRolls.length > 0) {
-                            // If has cut rolls, toggle expansion
+                          if (hasExpandableItems) {
+                            // If has cut rolls or spares, toggle expansion
                             setExpandedProductsInWhatsApp(prev => {
                               const newSet = new Set(prev);
                               if (newSet.has(uniqueKey)) {
@@ -2005,7 +2555,7 @@ const Inventory = () => {
                               return newSet;
                             });
                           } else {
-                            // If only standard rolls, toggle selection
+                            // If only standard rolls/bundles, toggle selection
                             setSelectedRollsForWhatsApp(prev => {
                               const newSet = new Set(prev);
                               if (newSet.has(uniqueKey)) {
@@ -2043,15 +2593,28 @@ const Inventory = () => {
                             <div className="text-sm text-muted-foreground">{paramsText}</div>
                           )}
                           <div className="text-sm text-muted-foreground mt-1">
-                            {standardTotal > 0 && (
-                              <span>{standardTotal.toFixed(2)}m standard</span>
-                            )}
-                            {cutRolls.length > 0 && (
-                              <span className="ml-2">• {cutRolls.length} cut piece{cutRolls.length !== 1 ? 's' : ''}</span>
+                            {isSprinkler ? (
+                              <>
+                                {bundleTotal > 0 && (
+                                  <span>{bundleTotal} pcs in bundles</span>
+                                )}
+                                {spareRolls.length > 0 && (
+                                  <span className="ml-2">• {spareRolls.reduce((sum, r) => sum + (r.bundle_size || 1), 0)} spare pieces</span>
+                                )}
+                              </>
+                            ) : (
+                              <>
+                                {standardTotal > 0 && (
+                                  <span>{standardTotal.toFixed(2)}m standard</span>
+                                )}
+                                {cutRolls.length > 0 && (
+                                  <span className="ml-2">• {cutRolls.length} cut piece{cutRolls.length !== 1 ? 's' : ''}</span>
+                                )}
+                              </>
                             )}
                           </div>
                         </div>
-                        {cutRolls.length > 0 && (
+                        {hasExpandableItems && (
                           <Button
                             variant="ghost"
                             size="sm"
@@ -2162,6 +2725,89 @@ const Inventory = () => {
                           </div>
                         </div>
                       )}
+
+                      {/* Spare Pieces List (when expanded) */}
+                      {isExpanded && spareRolls.length > 0 && (
+                        <div className="p-3 space-y-2 bg-background border-t">
+                          <div className="flex items-center justify-between pb-2">
+                            <span className="text-sm font-medium text-muted-foreground">
+                              Spare Pieces ({spareRolls.length})
+                            </span>
+                            <div className="flex gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedRollsForWhatsApp(prev => {
+                                    const newSet = new Set(prev);
+                                    spareRolls.forEach(r => newSet.add(r.id));
+                                    return newSet;
+                                  });
+                                }}
+                              >
+                                Select All
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedRollsForWhatsApp(prev => {
+                                    const newSet = new Set(prev);
+                                    spareRolls.forEach(r => newSet.delete(r.id));
+                                    return newSet;
+                                  });
+                                }}
+                              >
+                                Clear
+                              </Button>
+                            </div>
+                          </div>
+
+                          <div className="space-y-1 max-h-64 overflow-y-auto">
+                            {spareRolls.map((spare) => {
+                              const isSpareSelected = selectedRollsForWhatsApp.has(spare.id);
+
+                              return (
+                                <div
+                                  key={spare.id}
+                                  className={`flex items-center space-x-3 p-2 rounded border cursor-pointer transition-colors ${
+                                    isSpareSelected ? 'bg-green-50 border-green-500' : 'border-gray-200 hover:bg-secondary/30'
+                                  }`}
+                                  onClick={() => {
+                                    setSelectedRollsForWhatsApp(prev => {
+                                      const newSet = new Set(prev);
+                                      if (newSet.has(spare.id)) {
+                                        newSet.delete(spare.id);
+                                      } else {
+                                        newSet.add(spare.id);
+                                      }
+                                      return newSet;
+                                    });
+                                  }}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={isSpareSelected}
+                                    onChange={() => {}}
+                                    className="h-4 w-4 rounded border-gray-300 text-green-600"
+                                  />
+                                  <div className="flex-1 flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                      <Badge variant="secondary" className="text-xs bg-purple-100 text-purple-700">Spare</Badge>
+                                      <span className="text-sm font-medium">
+                                        {spare.bundle_size || 1} pieces
+                                      </span>
+                                    </div>
+                                    <Badge variant="outline" className="text-xs">
+                                      {spare.status}
+                                    </Badge>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })
@@ -2179,9 +2825,9 @@ const Inventory = () => {
                     filteredInventory.forEach(p => {
                       const uniqueKey = `${p.product_type_id}_${p.brand_id}_${JSON.stringify(p.parameters)}`;
                       newSet.add(uniqueKey);
-                      // Also select all cut rolls
+                      // Also select all cut rolls and spare pieces
                       p.batches.forEach(b => {
-                        b.rolls.filter(r => r.is_cut_roll || r.roll_type === 'cut').forEach(r => newSet.add(r.id));
+                        b.rolls.filter(r => r.is_cut_roll || r.roll_type === 'cut' || r.roll_type === 'spare').forEach(r => newSet.add(r.id));
                       });
                     });
                     setSelectedRollsForWhatsApp(newSet);

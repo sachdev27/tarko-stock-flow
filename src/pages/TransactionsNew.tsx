@@ -308,7 +308,11 @@ export default function TransactionsNew() {
 
   const getTotalProductionWeight = () => {
     return filteredTransactions
-      .filter(t => t.transaction_type === 'PRODUCTION')
+      .filter(t =>
+        t.transaction_type === 'PRODUCTION' &&
+        // Exclude bundling transactions (they don't add new production)
+        !(t.notes?.includes('Combined') && t.notes?.includes('spare'))
+      )
       .reduce((sum, t) => {
         const weight = Number(t.total_weight) || 0;
         return sum + (isNaN(weight) ? 0 : weight);
@@ -491,7 +495,16 @@ export default function TransactionsNew() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FileText className="h-5 w-5" />
-              Transaction Details - {modalTransaction.transaction_type}
+              Transaction Details - {
+                modalTransaction.transaction_type === 'PRODUCTION' &&
+                modalTransaction.notes?.includes('Combined') &&
+                modalTransaction.notes?.includes('spare')
+                  ? 'BUNDLED'
+                  : modalTransaction.transaction_type === 'CUT' &&
+                    modalTransaction.notes?.includes('Cut bundle')
+                    ? 'CUT BUNDLE'
+                    : modalTransaction.transaction_type
+              }
             </DialogTitle>
           </DialogHeader>
 
@@ -557,34 +570,159 @@ export default function TransactionsNew() {
             <div className="bg-green-50/50 dark:bg-green-950/30 p-4 rounded-lg border border-green-200/50 dark:border-green-800/50">
               <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
                 <Weight className="h-5 w-5 text-green-600 dark:text-green-400" />
-                {modalTransaction.transaction_type === 'CUT' ? 'Cut Roll Details' : 'Quantity & Weight'}
+                {modalTransaction.transaction_type === 'CUT' ? 'Cut Roll Details' :
+                 modalTransaction.transaction_type === 'PRODUCTION' &&
+                 modalTransaction.notes?.includes('Combined') &&
+                 modalTransaction.notes?.includes('spare') ? 'Bundling Details' : 'Quantity & Weight'}
               </h3>
               <div className="grid grid-cols-2 gap-4">
-                {/* CUT Transaction - Show original roll and resulting pieces */}
+                {/* CUT Transaction - Show simplified before/after state */}
                 {modalTransaction.transaction_type === 'CUT' ? (
                   <>
-                    <div className="bg-orange-100/50 dark:bg-orange-900/30 p-3 rounded-md border border-orange-300/50 dark:border-orange-700/50">
-                      <p className="text-sm text-muted-foreground">Original Roll Length</p>
-                      <p className="font-semibold text-lg text-orange-700 dark:text-orange-300">
-                        {modalTransaction.roll_initial_length_meters
-                          ? `${Number(modalTransaction.roll_initial_length_meters).toFixed(2)} m`
-                          : 'N/A'}
-                      </p>
-                    </div>
-                    <div className="bg-orange-100/50 dark:bg-orange-900/30 p-3 rounded-md border border-orange-300/50 dark:border-orange-700/50">
-                      <p className="text-sm text-muted-foreground">Amount Cut</p>
-                      <p className="font-semibold text-lg text-orange-700 dark:text-orange-300">
-                        {Math.abs(modalTransaction.quantity_change || 0).toFixed(2)} m
-                      </p>
-                    </div>
-                    {modalTransaction.notes && (
-                      <div className="col-span-2 bg-orange-50/50 dark:bg-orange-900/20 p-3 rounded-md border border-orange-200/50 dark:border-orange-800/50">
-                        <p className="text-sm text-muted-foreground mb-1">Cut Details</p>
-                        <p className="text-sm font-medium text-orange-800 dark:text-orange-200">
-                          {modalTransaction.notes}
-                        </p>
+                    {modalTransaction.notes?.includes('Cut bundle') ? (
+                      /* Cut Bundle - Show before/after state */
+                      <div className="col-span-2 bg-orange-50/50 dark:bg-orange-900/20 p-4 rounded-md border border-orange-200/50 dark:border-orange-800/50">
+                        <div className="space-y-4">
+                          {/* Before State */}
+                          <div>
+                            <p className="text-xs font-semibold text-orange-600 dark:text-orange-400 mb-2">BEFORE CUTTING</p>
+                            <div className="flex items-center gap-2 text-sm">
+                              <span className="font-medium">Bundle:</span>
+                              <span className="font-semibold text-orange-700 dark:text-orange-300">
+                                {(() => {
+                                  const match = modalTransaction.notes?.match(/Cut bundle into (\d+) spare/);
+                                  const bundleSize = modalTransaction.roll_bundle_size || modalTransaction.roll_initial_length_meters;
+                                  return match ? `1 bundle of ${bundleSize} pieces` : 'N/A';
+                                })()}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Separator */}
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 border-t border-orange-300 dark:border-orange-700"></div>
+                            <span className="text-xs text-orange-600 dark:text-orange-400 font-semibold">→ CUT →</span>
+                            <div className="flex-1 border-t border-orange-300 dark:border-orange-700"></div>
+                          </div>
+
+                          {/* After State */}
+                          <div>
+                            <p className="text-xs font-semibold text-green-600 dark:text-green-400 mb-2">AFTER CUTTING</p>
+                            <div className="flex items-center gap-2 text-sm">
+                              <span className="font-medium">Spare Pieces Created:</span>
+                              <span className="font-semibold text-green-700 dark:text-green-300">
+                                {(() => {
+                                  const match = modalTransaction.notes?.match(/into (\d+) spare batches?: (.+)/);
+                                  if (match) {
+                                    const pieces = match[2].split(', ');
+                                    return `${pieces.length} spare piece${pieces.length > 1 ? 's' : ''} (${pieces.join(', ')})`;
+                                  }
+                                  return 'N/A';
+                                })()}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
                       </div>
+                    ) : (
+                      /* Regular Cut Roll - Keep existing display */
+                      <>
+                        <div className="bg-orange-100/50 dark:bg-orange-900/30 p-3 rounded-md border border-orange-300/50 dark:border-orange-700/50">
+                          <p className="text-sm text-muted-foreground">Original Roll Length</p>
+                          <p className="font-semibold text-lg text-orange-700 dark:text-orange-300">
+                            {modalTransaction.roll_initial_length_meters
+                              ? `${Number(modalTransaction.roll_initial_length_meters).toFixed(2)} m`
+                              : 'N/A'}
+                          </p>
+                        </div>
+                        <div className="bg-orange-100/50 dark:bg-orange-900/30 p-3 rounded-md border border-orange-300/50 dark:border-orange-700/50">
+                          <p className="text-sm text-muted-foreground">Amount Cut</p>
+                          <p className="font-semibold text-lg text-orange-700 dark:text-orange-300">
+                            {Math.abs(modalTransaction.quantity_change || 0).toFixed(2)} m
+                          </p>
+                        </div>
+                        {modalTransaction.notes && (
+                          <div className="col-span-2 bg-orange-50/50 dark:bg-orange-900/20 p-3 rounded-md border border-orange-200/50 dark:border-orange-800/50">
+                            <p className="text-sm text-muted-foreground mb-1">Cut Details</p>
+                            <p className="text-sm font-medium text-orange-800 dark:text-orange-200">
+                              {modalTransaction.notes}
+                            </p>
+                          </div>
+                        )}
+                      </>
                     )}
+                  </>
+                ) : modalTransaction.transaction_type === 'PRODUCTION' &&
+                    modalTransaction.notes?.includes('Combined') &&
+                    modalTransaction.notes?.includes('spare') ? (
+                  /* BUNDLED Transaction - Show simplified before/after state */
+                  <>
+                    <div className="col-span-2 bg-blue-50/50 dark:bg-blue-900/20 p-4 rounded-md border border-blue-200/50 dark:border-blue-800/50">
+                      <div className="space-y-4">
+                        {/* Before State */}
+                        <div>
+                          <p className="text-xs font-semibold text-blue-600 dark:text-blue-400 mb-2">BEFORE BUNDLING</p>
+                          <div className="flex items-center gap-2 text-sm">
+                            <span className="font-medium">Spare Pieces:</span>
+                            <span className="font-semibold text-blue-700 dark:text-blue-300">
+                              {(() => {
+                                const match = modalTransaction.notes?.match(/(\d+) spare rolls \((\d+) pieces\)/);
+                                return match ? `${match[2]} pieces (from ${match[1]} spare rolls)` : 'N/A';
+                              })()}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Separator */}
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 border-t border-blue-300 dark:border-blue-700"></div>
+                          <span className="text-xs text-blue-600 dark:text-blue-400 font-semibold">→ BUNDLED →</span>
+                          <div className="flex-1 border-t border-blue-300 dark:border-blue-700"></div>
+                        </div>
+
+                        {/* After State */}
+                        <div>
+                          <p className="text-xs font-semibold text-green-600 dark:text-green-400 mb-2">AFTER BUNDLING</p>
+                          <div className="flex items-center gap-2 text-sm">
+                            <span className="font-medium">Bundles Created:</span>
+                            <span className="font-semibold text-green-700 dark:text-green-300">
+                              {(() => {
+                                const match = modalTransaction.notes?.match(/into (\d+) bundles? of (\d+) pieces/);
+                                if (match) {
+                                  const numBundles = match[1];
+                                  const bundleSize = match[2];
+                                  return `${numBundles} bundle${numBundles === '1' ? '' : 's'} × ${bundleSize} pieces each = ${parseInt(numBundles) * parseInt(bundleSize)} pieces`;
+                                }
+                                return 'N/A';
+                              })()}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Remaining Spares if any */}
+                        {(() => {
+                          const noteMatch = modalTransaction.notes?.match(/(\d+) spare rolls \((\d+) pieces\)/);
+                          const bundleMatch = modalTransaction.notes?.match(/into (\d+) bundles? of (\d+) pieces/);
+                          if (noteMatch && bundleMatch) {
+                            const totalPieces = parseInt(noteMatch[2]);
+                            const bundlesCreated = parseInt(bundleMatch[1]);
+                            const bundleSize = parseInt(bundleMatch[2]);
+                            const remaining = totalPieces - (bundlesCreated * bundleSize);
+                            if (remaining > 0) {
+                              return (
+                                <div className="pt-2 border-t border-blue-200 dark:border-blue-800">
+                                  <div className="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-400">
+                                    <span className="font-medium">Remaining Spares:</span>
+                                    <span className="font-semibold">{remaining} pieces</span>
+                                  </div>
+                                </div>
+                              );
+                            }
+                          }
+                          return null;
+                        })()}
+                      </div>
+                    </div>
                   </>
                 ) : modalTransaction.transaction_type === 'PRODUCTION' ? (
                   <>
@@ -719,7 +857,11 @@ export default function TransactionsNew() {
                     )}
                   </>
                 )}
-                {modalTransaction.transaction_type !== 'SALE' && modalTransaction.transaction_type !== 'CUT' && (
+                {modalTransaction.transaction_type !== 'SALE' &&
+                 modalTransaction.transaction_type !== 'CUT' &&
+                 !(modalTransaction.transaction_type === 'PRODUCTION' &&
+                   modalTransaction.notes?.includes('Combined') &&
+                   modalTransaction.notes?.includes('spare')) && (
                   <div className="bg-emerald-100/50 dark:bg-emerald-900/30 p-3 rounded-md border border-emerald-300/50 dark:border-emerald-700/50">
                     <p className="text-sm text-muted-foreground">
                       {modalTransaction.transaction_type === 'PRODUCTION' ? 'Batch Total Weight' : 'Weight'}
@@ -741,7 +883,8 @@ export default function TransactionsNew() {
                     </p>
                   </div>
                 )}
-                {modalTransaction.roll_bundle_size && (
+                {modalTransaction.roll_bundle_size &&
+                 !(modalTransaction.transaction_type === 'CUT' && modalTransaction.notes?.includes('Cut bundle')) && (
                   <div>
                     <p className="text-sm text-muted-foreground">Bundle Size</p>
                     <p className="font-medium text-lg">
@@ -749,7 +892,10 @@ export default function TransactionsNew() {
                     </p>
                   </div>
                 )}
-                {modalTransaction.product_type === 'Sprinkler Pipe' && modalTransaction.piece_length && Number(modalTransaction.piece_length) > 0 && (
+                {modalTransaction.product_type === 'Sprinkler Pipe' &&
+                 modalTransaction.piece_length &&
+                 Number(modalTransaction.piece_length) > 0 &&
+                 !(modalTransaction.transaction_type === 'CUT' && modalTransaction.notes?.includes('Cut bundle')) && (
                   <div className="bg-purple-50/50 dark:bg-purple-900/30 p-3 rounded-md border border-purple-300/50 dark:border-purple-700/50">
                     <p className="text-sm text-muted-foreground">Length per Piece</p>
                     <p className="font-semibold text-lg text-purple-700 dark:text-purple-300">
@@ -762,8 +908,10 @@ export default function TransactionsNew() {
 
             <Separator />
 
-            {/* Roll Information (Production specific) */}
-            {modalTransaction.transaction_type === 'PRODUCTION' && (
+            {/* Roll Information (Production specific - hide for bundling) */}
+            {modalTransaction.transaction_type === 'PRODUCTION' &&
+             !modalTransaction.notes?.includes('Combined') &&
+             !modalTransaction.notes?.includes('spare') && (
               <>
                 <div>
                   <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
@@ -1057,7 +1205,14 @@ export default function TransactionsNew() {
                 <div>
                   <p className="text-sm text-muted-foreground">Transaction Type</p>
                   <Badge variant={modalTransaction.transaction_type === 'PRODUCTION' ? 'default' : 'secondary'}>
-                    {modalTransaction.transaction_type}
+                    {modalTransaction.transaction_type === 'PRODUCTION' &&
+                     modalTransaction.notes?.includes('Combined') &&
+                     modalTransaction.notes?.includes('spare')
+                      ? 'BUNDLED'
+                      : modalTransaction.transaction_type === 'CUT' &&
+                        modalTransaction.notes?.includes('Cut bundle')
+                        ? 'CUT BUNDLE'
+                        : modalTransaction.transaction_type}
                   </Badge>
                 </div>
                 <div>
@@ -1465,10 +1620,16 @@ export default function TransactionsNew() {
                           ? 'bg-red-100 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-300 dark:border-red-700'
                           : transaction.transaction_type === 'CUT'
                           ? 'bg-orange-100 text-orange-700 border-orange-300 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-700'
+                          : transaction.transaction_type === 'PRODUCTION' && transaction.notes?.includes('Combined') && transaction.notes?.includes('spare')
+                          ? 'bg-blue-100 text-blue-700 border-blue-300 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-700'
                           : ''
                       }
                     >
-                      {transaction.transaction_type}
+                      {transaction.transaction_type === 'PRODUCTION' && transaction.notes?.includes('Combined') && transaction.notes?.includes('spare')
+                        ? 'BUNDLED'
+                        : transaction.transaction_type === 'CUT' && transaction.notes?.includes('Cut bundle')
+                        ? 'CUT BUNDLE'
+                        : transaction.transaction_type}
                     </Badge>
                   </TableCell>
                   <TableCell>

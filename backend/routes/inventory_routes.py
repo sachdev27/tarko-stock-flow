@@ -10,19 +10,20 @@ inventory_bp = Blueprint('inventory', __name__, url_prefix='/api/inventory')
 def get_batches():
     """Get all batches with inventory"""
 
-    # First, cleanup any rolls with zero length
+    # First, cleanup any rolls with zero length (but preserve spare pieces and bundles)
     cleanup_query = """
         UPDATE rolls
         SET deleted_at = NOW(), status = 'SOLD_OUT'
         WHERE length_meters = 0
         AND deleted_at IS NULL
+        AND roll_type IS NULL
     """
     execute_query(cleanup_query, fetch_all=False)
 
     query = """
-        SELECT
+        SELECT DISTINCT
             b.id, b.batch_code, b.batch_no, b.current_quantity,
-            b.production_date, b.attachment_url,
+            b.production_date, b.attachment_url, b.created_at,
             pv.parameters,
             pt.id as product_type_id,
             pt.name as product_type_name,
@@ -32,8 +33,9 @@ def get_batches():
         JOIN product_variants pv ON b.product_variant_id = pv.id
         JOIN product_types pt ON pv.product_type_id = pt.id
         JOIN brands br ON pv.brand_id = br.id
+        LEFT JOIN rolls r ON r.batch_id = b.id AND r.deleted_at IS NULL
         WHERE b.deleted_at IS NULL
-        AND b.current_quantity > 0
+        AND (b.current_quantity > 0 OR r.roll_type IN ('spare', 'bundle_10', 'bundle_20', 'bundle_50', 'bundle_100'))
         ORDER BY b.created_at DESC
     """
 
