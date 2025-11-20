@@ -524,37 +524,37 @@ export default function TransactionsNew() {
                       <span className="text-muted-foreground">•</span>
                       <div className="flex flex-wrap gap-2">
                         {modalTransaction.parameters.PE && (
-                          <Badge variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200">
+                          <Badge variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200 text-base px-3 py-1">
                             PE: {modalTransaction.parameters.PE}
                           </Badge>
                         )}
                         {modalTransaction.parameters.OD && (
-                          <Badge variant="secondary" className="bg-green-50 text-green-700 border-green-200">
+                          <Badge variant="secondary" className="bg-green-50 text-green-700 border-green-200 text-base px-3 py-1">
                             OD: {modalTransaction.parameters.OD}
                           </Badge>
                         )}
                         {modalTransaction.parameters.PN && (
-                          <Badge variant="secondary" className="bg-purple-50 text-purple-700 border-purple-200">
+                          <Badge variant="secondary" className="bg-purple-50 text-purple-700 border-purple-200 text-base px-3 py-1">
                             PN: {modalTransaction.parameters.PN}
                           </Badge>
                         )}
                         {modalTransaction.parameters.Type && (
-                          <Badge variant="secondary" className="bg-orange-50 text-orange-700 border-orange-200">
+                          <Badge variant="secondary" className="bg-orange-50 text-orange-700 border-orange-200 text-base px-3 py-1">
                             Type: {modalTransaction.parameters.Type}
                           </Badge>
                         )}
                         {modalTransaction.parameters.size && (
-                          <Badge variant="secondary" className="bg-pink-50 text-pink-700 border-pink-200">
+                          <Badge variant="secondary" className="bg-pink-50 text-pink-700 border-pink-200 text-base px-3 py-1">
                             Size: {modalTransaction.parameters.size}
                           </Badge>
                         )}
                         {modalTransaction.parameters.quality && (
-                          <Badge variant="secondary" className="bg-cyan-50 text-cyan-700 border-cyan-200">
+                          <Badge variant="secondary" className="bg-cyan-50 text-cyan-700 border-cyan-200 text-base px-3 py-1">
                             Quality: {modalTransaction.parameters.quality}
                           </Badge>
                         )}
                         {modalTransaction.parameters.color && (
-                          <Badge variant="secondary" className="bg-yellow-50 text-yellow-700 border-yellow-200">
+                          <Badge variant="secondary" className="bg-yellow-50 text-yellow-700 border-yellow-200 text-base px-3 py-1">
                             Color: {modalTransaction.parameters.color}
                           </Badge>
                         )}
@@ -1690,7 +1690,13 @@ export default function TransactionsNew() {
                     )}
                   </TableCell>
                   <TableCell>
-                    {transaction.transaction_type === 'SALE' || transaction.transaction_type === 'CUT' ? '-' : formatWeight(transaction.total_weight || 0)}
+                    {transaction.transaction_type === 'SALE' ||
+                     transaction.transaction_type === 'CUT' ||
+                     (transaction.transaction_type === 'PRODUCTION' &&
+                      transaction.notes?.includes('Combined') &&
+                      transaction.notes?.includes('spare'))
+                      ? '-'
+                      : formatWeight(transaction.total_weight || 0)}
                   </TableCell>
                   <TableCell>
                     {transaction.customer_name ? (
