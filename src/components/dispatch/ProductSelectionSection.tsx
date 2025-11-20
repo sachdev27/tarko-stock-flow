@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { SearchableCombobox } from './SearchableCombobox';
-import { X, Package } from 'lucide-react';
+import { X, Package, Scissors } from 'lucide-react';
 
 interface Roll {
   id: string;
@@ -12,29 +12,41 @@ interface Roll {
   length_meters: number;
   status: string;
   bundle_size?: number;
-  roll_type?: string;
-  parameters?: any;
+  bundle_type?: string;
+  is_cut_roll?: boolean;
+  parameters?: Record<string, unknown>;
   brand_name?: string;
   product_type_name?: string;
+  product_category?: string;
   quantity: number;
   dispatchLength?: number;
+  piece_count?: number;
+  piece_length_meters?: number;
 }
 
 interface ProductGroup {
-  batch_code: string;
+  product_key: string;
   brand_name: string;
-  parameters: any;
-  total_rolls: number;
-  total_meters: number;
-  rolls: any[];
-  has_cut_rolls: boolean;
-  bundles: { size: number; count: number }[];
-  spares_count: number;
+  parameters: Record<string, unknown>;
+  product_category: string;
+  // HDPE
+  standard_rolls: Array<{ id: string; length: number }>;
+  cut_rolls: Array<{ id: string; length: number }>;
+  total_hdpe_meters: number;
+  // Sprinkler
+  bundles: { size: number; count: number; ids: string[] }[];
+  spares: Array<{ id: string; pieces: number }>;
+  total_sprinkler_pieces: number;
 }
 
 interface SelectedRoll extends Roll {
   quantity: number;
   dispatchLength?: number;
+}
+
+interface ProductType {
+  id: string;
+  name: string;
 }
 
 interface ProductSelectionProps {
@@ -46,7 +58,7 @@ interface ProductSelectionProps {
   onRemoveRoll: (index: number) => void;
   onAddRoll: (roll: Roll) => void;
   onUpdateRollQuantity: (index: number, quantity: number, dispatchLength?: number) => void;
-  productTypes: any[];
+  productTypes: ProductType[];
   availableRolls: Roll[];
   onSearchProducts: () => void;
   productTypeRef?: React.RefObject<HTMLDivElement>;
@@ -66,48 +78,56 @@ export const ProductSelectionSection = ({
   productTypeRef,
   productSearchRef
 }: ProductSelectionProps) => {
-  const [selections, setSelections] = useState<Record<string, { fullRolls: number; cutRolls: number; bundles: Record<string, number>; spares: number }>>({});
-
-  // Group rolls by product (batch_code + parameters)
+  // Group rolls by product (brand + parameters, NOT batch)
   const groupedProducts = useMemo(() => {
     const groups: Record<string, ProductGroup> = {};
 
-    availableRolls.forEach((roll: any) => {
-      const key = `${roll.batch_code}-${JSON.stringify(roll.parameters || {})}`;
+    availableRolls.forEach((roll) => {
+      // Create key from brand + parameters (ignore batch_code)
+      const paramStr = JSON.stringify(roll.parameters || {});
+      const key = `${roll.brand_name}-${paramStr}`;
 
       if (!groups[key]) {
         groups[key] = {
-          batch_code: roll.batch_code,
+          product_key: key,
           brand_name: roll.brand_name,
           parameters: roll.parameters || {},
-          total_rolls: 0,
-          total_meters: 0,
-          rolls: [],
-          has_cut_rolls: false,
+          product_category: roll.product_category || 'HDPE',
+          standard_rolls: [],
+          cut_rolls: [],
+          total_hdpe_meters: 0,
           bundles: [],
-          spares_count: 0
+          spares: [],
+          total_sprinkler_pieces: 0
         };
       }
 
-      groups[key].rolls.push(roll);
-      groups[key].total_meters = (groups[key].total_meters || 0) + (parseFloat(roll.length_meters) || 0);
+      const group = groups[key];
 
-      // Categorize roll types
-      if (roll.roll_type?.includes('bundle')) {
-        const bundleSize = roll.bundle_size || 0;
-        const existing = groups[key].bundles.find(b => b.size === bundleSize);
-        if (existing) {
-          existing.count++;
+      // Categorize by product type
+      if (roll.product_category === 'HDPE') {
+        const rollData = { id: roll.id, length: parseFloat(String(roll.length_meters)) || 0 };
+        if (roll.is_cut_roll) {
+          group.cut_rolls.push(rollData);
         } else {
-          groups[key].bundles.push({ size: bundleSize, count: 1 });
+          group.standard_rolls.push(rollData);
         }
-      } else if (roll.roll_type === 'spare') {
-        groups[key].spares_count++;
-      } else if (roll.is_cut_roll) {
-        groups[key].has_cut_rolls = true;
-        groups[key].total_rolls++;
-      } else {
-        groups[key].total_rolls++;
+        group.total_hdpe_meters += rollData.length;
+      } else if (roll.product_category === 'SPRINKLER') {
+        if (roll.bundle_type === 'bundle') {
+          const bundleSize = roll.bundle_size || 0;
+          const existing = group.bundles.find(b => b.size === bundleSize);
+          if (existing) {
+            existing.count++;
+            existing.ids.push(roll.id);
+          } else {
+            group.bundles.push({ size: bundleSize, count: 1, ids: [roll.id] });
+          }
+          group.total_sprinkler_pieces += roll.piece_count || 0;
+        } else if (roll.bundle_type === 'spare') {
+          group.spares.push({ id: roll.id, pieces: roll.piece_count || 1 });
+          group.total_sprinkler_pieces += roll.piece_count || 1;
+        }
       }
     });
 
@@ -120,99 +140,51 @@ export const ProductSelectionSection = ({
 
     const searchLower = productSearch.toLowerCase();
     return groupedProducts.filter(product => {
-      const batchCode = product.batch_code?.toLowerCase() || '';
       const brandName = product.brand_name?.toLowerCase() || '';
       const params = JSON.stringify(product.parameters).toLowerCase();
 
-      return batchCode.includes(searchLower) ||
-             brandName.includes(searchLower) ||
-             params.includes(searchLower);
+      return brandName.includes(searchLower) || params.includes(searchLower);
     });
   }, [groupedProducts, productSearch]);
 
-  const getProductDisplayInfo = (product: ProductGroup) => {
+  // Format product name from parameters
+  const getProductDisplayName = (product: ProductGroup) => {
     const params = product.parameters || {};
     const parts = [];
 
-    if (params.size) parts.push(`${params.size}mm`);
-    if (params.class) parts.push(`Class ${params.class}`);
-    if (params.pressure) parts.push(`${params.pressure} Bar`);
-    if (product.brand_name) parts.push(product.brand_name);
+    // Extract key specs
+    if (params.outer_diameter) parts.push(`${params.outer_diameter}mm`);
+    if (params.material) parts.push(params.material);
+    if (params.pressure_class) parts.push(params.pressure_class);
 
-    return parts.join(' • ') || 'No details';
+    const specs = parts.join(' ');
+    return specs ? `${specs} - ${product.brand_name}` : product.brand_name;
   };
 
-  const handleAddProduct = (product: ProductGroup) => {
-    const key = `${product.batch_code}-${JSON.stringify(product.parameters)}`;
-    const selection = selections[key] || { fullRolls: 0, cutRolls: 0, bundles: {}, spares: 0 };
-
-    // Add full rolls
-    let addedCount = 0;
-    if (selection.fullRolls > 0) {
-      const fullRolls = product.rolls.filter((r: any) => !r.is_cut_roll && !r.roll_type?.includes('bundle') && r.roll_type !== 'spare');
-      for (let i = 0; i < Math.min(selection.fullRolls, fullRolls.length); i++) {
-        onAddRoll(fullRolls[i]);
-        addedCount++;
-      }
-    }
-
-    // Add cut rolls
-    if (selection.cutRolls > 0) {
-      const cutRolls = product.rolls.filter((r: any) => r.is_cut_roll);
-      for (let i = 0; i < Math.min(selection.cutRolls, cutRolls.length); i++) {
-        onAddRoll(cutRolls[i]);
-        addedCount++;
-      }
-    }
-
-    // Add bundles
-    Object.entries(selection.bundles).forEach(([size, count]) => {
-      const bundleRolls = product.rolls.filter((r: any) => r.bundle_size === parseInt(size));
-      for (let i = 0; i < Math.min(count as number, bundleRolls.length); i++) {
-        onAddRoll(bundleRolls[i]);
-        addedCount++;
-      }
-    });
-
-    // Add spares
-    if (selection.spares > 0) {
-      const spareRolls = product.rolls.filter((r: any) => r.roll_type === 'spare');
-      for (let i = 0; i < Math.min(selection.spares, spareRolls.length); i++) {
-        onAddRoll(spareRolls[i]);
-        addedCount++;
-      }
-    }
-
-    if (addedCount > 0) {
-      // Reset selections for this product
-      const newSelections = { ...selections };
-      delete newSelections[key];
-      setSelections(newSelections);
+  // Handle adding individual HDPE rolls
+  const handleAddHdpeRoll = (rollId: string, length: number) => {
+    const roll = availableRolls.find(r => r.id === rollId);
+    if (roll) {
+      onAddRoll(roll);
     }
   };
 
-  const updateSelection = (key: string, field: string, value: number) => {
-    setSelections({
-      ...selections,
-      [key]: {
-        ...selections[key],
-        [field]: Math.max(0, value)
+  // Handle adding sprinkler bundles
+  const handleAddBundle = (bundleIds: string[], size: number) => {
+    if (bundleIds.length > 0) {
+      const roll = availableRolls.find(r => r.id === bundleIds[0]);
+      if (roll) {
+        onAddRoll(roll);
       }
-    });
+    }
   };
 
-  const updateBundleSelection = (key: string, bundleSize: number, value: number) => {
-    const current = selections[key] || { fullRolls: 0, cutRolls: 0, bundles: {}, spares: 0 };
-    setSelections({
-      ...selections,
-      [key]: {
-        ...current,
-        bundles: {
-          ...current.bundles,
-          [bundleSize]: Math.max(0, value)
-        }
-      }
-    });
+  // Handle adding sprinkler spares
+  const handleAddSpare = (spareId: string) => {
+    const roll = availableRolls.find(r => r.id === spareId);
+    if (roll) {
+      onAddRoll(roll);
+    }
   };
 
   return (
@@ -239,7 +211,7 @@ export const ProductSelectionSection = ({
           <Input
             value={productSearch}
             onChange={(e) => onProductSearchChange(e.target.value)}
-            placeholder="Type to filter..."
+            placeholder="Search by brand or specs..."
             className="w-full"
           />
           <p className="text-xs text-gray-500 mt-1">
@@ -254,10 +226,9 @@ export const ProductSelectionSection = ({
           <h4 className="font-medium mb-3 text-sm text-gray-700">
             Available Products ({filteredProducts.length})
           </h4>
-          <div className="space-y-3 max-h-[500px] overflow-y-auto">
+          <div className="space-y-4 max-h-[500px] overflow-y-auto">
             {filteredProducts.map((product) => {
-              const key = `${product.batch_code}-${JSON.stringify(product.parameters)}`;
-              const selection = selections[key] || { fullRolls: 0, cutRolls: 0, bundles: {}, spares: 0 };
+              const key = product.product_key;
 
               return (
                 <div
@@ -267,109 +238,121 @@ export const ProductSelectionSection = ({
                   {/* Product Header */}
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex-1">
-                      <div className="font-semibold text-base">{product.batch_code}</div>
-                      <div className="text-sm text-gray-600 mt-1">{getProductDisplayInfo(product)}</div>
+                      <div className="font-semibold text-lg">{getProductDisplayName(product)}</div>
                     </div>
-                    <Badge variant="outline" className="ml-2">
-                      {product.total_meters.toFixed(0)}m total
-                    </Badge>
-                  </div>
-
-                  {/* Selection Inputs */}
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    {/* Full Rolls */}
-                    {product.total_rolls > 0 && (
-                      <div>
-                        <Label className="text-xs text-gray-600">Full Rolls ({product.total_rolls})</Label>
-                        <Input
-                          type="number"
-                          min="0"
-                          max={product.total_rolls}
-                          value={selection.fullRolls || ''}
-                          onChange={(e) => updateSelection(key, 'fullRolls', parseInt(e.target.value) || 0)}
-                          placeholder="0"
-                          className="h-9"
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              handleAddProduct(product);
-                            }
-                          }}
-                        />
-                      </div>
+                    {product.product_category === 'HDPE' && (
+                      <Badge variant="outline" className="ml-2">
+                        {product.total_hdpe_meters.toFixed(0)}m total
+                      </Badge>
                     )}
-
-                    {/* Cut Rolls */}
-                    {product.has_cut_rolls && (
-                      <div>
-                        <Label className="text-xs text-gray-600">Cut Rolls</Label>
-                        <Input
-                          type="number"
-                          min="0"
-                          value={selection.cutRolls || ''}
-                          onChange={(e) => updateSelection(key, 'cutRolls', parseInt(e.target.value) || 0)}
-                          placeholder="0"
-                          className="h-9"
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              handleAddProduct(product);
-                            }
-                          }}
-                        />
-                      </div>
-                    )}
-
-                    {/* Bundles */}
-                    {product.bundles.map((bundle) => (
-                      <div key={bundle.size}>
-                        <Label className="text-xs text-gray-600">Bundle {bundle.size} ({bundle.count})</Label>
-                        <Input
-                          type="number"
-                          min="0"
-                          max={bundle.count}
-                          value={selection.bundles?.[bundle.size] || ''}
-                          onChange={(e) => updateBundleSelection(key, bundle.size, parseInt(e.target.value) || 0)}
-                          placeholder="0"
-                          className="h-9"
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              handleAddProduct(product);
-                            }
-                          }}
-                        />
-                      </div>
-                    ))}
-
-                    {/* Spares */}
-                    {product.spares_count > 0 && (
-                      <div>
-                        <Label className="text-xs text-gray-600">Spares ({product.spares_count})</Label>
-                        <Input
-                          type="number"
-                          min="0"
-                          max={product.spares_count}
-                          value={selection.spares || ''}
-                          onChange={(e) => updateSelection(key, 'spares', parseInt(e.target.value) || 0)}
-                          placeholder="0"
-                          className="h-9"
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              handleAddProduct(product);
-                            }
-                          }}
-                        />
-                      </div>
+                    {product.product_category === 'SPRINKLER' && (
+                      <Badge variant="outline" className="ml-2">
+                        {product.total_sprinkler_pieces} pieces total
+                      </Badge>
                     )}
                   </div>
 
-                  {/* Add Button */}
-                  <Button
-                    onClick={() => handleAddProduct(product)}
-                    size="sm"
-                    className="w-full mt-3"
-                    disabled={!selection.fullRolls && !selection.cutRolls && !selection.spares && !Object.values(selection.bundles || {}).some(v => v > 0)}
-                  >
-                    Add Selected
-                  </Button>
+                  {/* HDPE Rolls Display */}
+                  {product.product_category === 'HDPE' && (
+                    <div className="space-y-3">
+                      {/* Standard Rolls */}
+                      {product.standard_rolls.length > 0 && (
+                        <div className="bg-blue-50 p-3 rounded-md">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Package className="h-4 w-4 text-blue-600" />
+                            <Label className="text-sm font-medium">Full Rolls ({product.standard_rolls.length})</Label>
+                          </div>
+                          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                            {product.standard_rolls.map((roll) => (
+                              <Button
+                                key={roll.id}
+                                onClick={() => handleAddHdpeRoll(roll.id, roll.length)}
+                                variant="outline"
+                                size="sm"
+                                className="h-auto py-2"
+                              >
+                                {roll.length.toFixed(0)}m
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Cut Rolls */}
+                      {product.cut_rolls.length > 0 && (
+                        <div className="bg-orange-50 p-3 rounded-md">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Scissors className="h-4 w-4 text-orange-600" />
+                            <Label className="text-sm font-medium">Cut Rolls ({product.cut_rolls.length})</Label>
+                          </div>
+                          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                            {product.cut_rolls.map((roll) => (
+                              <Button
+                                key={roll.id}
+                                onClick={() => handleAddHdpeRoll(roll.id, roll.length)}
+                                variant="outline"
+                                size="sm"
+                                className="h-auto py-2"
+                              >
+                                Cut - {roll.length.toFixed(1)}m
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Sprinkler Bundles Display */}
+                  {product.product_category === 'SPRINKLER' && (
+                    <div className="space-y-3">
+                      {/* Bundles */}
+                      {product.bundles.length > 0 && (
+                        <div className="bg-green-50 p-3 rounded-md">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Package className="h-4 w-4 text-green-600" />
+                            <Label className="text-sm font-medium">Bundles</Label>
+                          </div>
+                          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                            {product.bundles.map((bundle) => (
+                              <Button
+                                key={`bundle-${bundle.size}`}
+                                onClick={() => handleAddBundle(bundle.ids, bundle.size)}
+                                variant="outline"
+                                size="sm"
+                                className="h-auto py-2"
+                              >
+                                Bundle {bundle.size} ({bundle.count} avail)
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Spares */}
+                      {product.spares.length > 0 && (
+                        <div className="bg-purple-50 p-3 rounded-md">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Package className="h-4 w-4 text-purple-600" />
+                            <Label className="text-sm font-medium">Spares ({product.spares.length})</Label>
+                          </div>
+                          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                            {product.spares.map((spare) => (
+                              <Button
+                                key={spare.id}
+                                onClick={() => handleAddSpare(spare.id)}
+                                variant="outline"
+                                size="sm"
+                                className="h-auto py-2"
+                              >
+                                {spare.pieces} piece{spare.pieces !== 1 ? 's' : ''}
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -382,9 +365,14 @@ export const ProductSelectionSection = ({
         <div className="mt-4">
           <h4 className="font-medium mb-2 flex items-center justify-between">
             <span>Selected Items ({selectedRolls.length})</span>
-            <span className="text-sm text-gray-600">
-              Total: {selectedRolls.reduce((sum, r) => sum + r.length_meters, 0).toFixed(2)}m
-            </span>
+            {selectedRolls.some(r => r.product_category === 'HDPE') && (
+              <span className="text-sm text-gray-600">
+                Total: {selectedRolls
+                  .filter(r => r.product_category === 'HDPE')
+                  .reduce((sum, r) => sum + (r.length_meters || 0), 0)
+                  .toFixed(2)}m
+              </span>
+            )}
           </h4>
           <div className="space-y-2 max-h-60 overflow-y-auto border rounded-lg p-2 bg-blue-50">
             {selectedRolls.map((roll, idx) => (
@@ -393,12 +381,20 @@ export const ProductSelectionSection = ({
                 className="flex items-center justify-between p-2 bg-white border border-blue-200 rounded"
               >
                 <div className="flex-1">
-                  <div className="font-medium text-sm">{roll.batch_code}</div>
+                  <div className="font-medium text-sm">{roll.brand_name} - {roll.product_type_name}</div>
                   <div className="text-xs text-gray-600">
-                    {roll.length_meters}m
-                    {roll.roll_type?.includes('bundle') && ` • Bundle ${roll.bundle_size}`}
-                    {roll.roll_type === 'spare' && ' • Spare'}
-                    {roll.is_cut_roll && ' • Cut Roll'}
+                    {roll.product_category === 'HDPE' && (
+                      <>
+                        {roll.length_meters}m
+                        {roll.is_cut_roll && ' • Cut Roll'}
+                      </>
+                    )}
+                    {roll.product_category === 'SPRINKLER' && (
+                      <>
+                        {roll.bundle_type === 'bundle' && `Bundle ${roll.bundle_size}`}
+                        {roll.bundle_type === 'spare' && `Spare - ${roll.piece_count} pieces`}
+                      </>
+                    )}
                   </div>
                 </div>
                 <Button

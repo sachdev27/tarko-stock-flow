@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from database import execute_query, execute_insert, get_db_cursor
+from inventory_helpers_aggregate import AggregateInventoryHelper as InventoryHelper
 from auth import get_user_identity_details
 from decimal import Decimal
 import json
@@ -14,16 +15,15 @@ def get_available_rolls():
     Get available rolls/cut rolls for dispatch based on product selection.
     Request body: { product_type_id, brand_id, parameters }
     """
-    # Cleanup any rolls with zero length before fetching
-    # Exclude spare pieces and bundles which may have legitimate 0 length_meters
-    # (for quantity-based products, piece count is stored in bundle_size, not length_meters)
+    # Cleanup HDPE rolls with zero length before fetching
     execute_query("""
-        UPDATE rolls
+        UPDATE inventory_items
         SET deleted_at = NOW(), status = 'SOLD_OUT'
-        WHERE length_meters = 0
-        AND roll_type NOT IN ('spare', 'bundle_10', 'bundle_20', 'bundle_50')
-        AND roll_type NOT LIKE 'bundle_%%'
-        AND deleted_at IS NULL
+        WHERE id IN (
+            SELECT i.id FROM inventory_items i
+            JOIN hdpe_rolls h ON i.id = h.id
+            WHERE h.length_meters = 0 AND i.deleted_at IS NULL
+        )
     """, params=None, fetch_all=False)
 
     data = request.json
@@ -79,33 +79,37 @@ def get_available_rolls():
     variant_ids = [v['id'] for v in matching_variants]
     placeholders = ','.join(['%s'] * len(variant_ids))
 
+    # Use inventory_unified view for querying
     rolls_query = f"""
         SELECT
-            r.id,
-            r.batch_id,
-            r.length_meters,
-            r.initial_length_meters,
-            r.status,
-            r.is_cut_roll,
-            r.roll_type,
-            r.bundle_size,
-            r.product_variant_id,
-            b.batch_code,
-            b.batch_no,
-            pt.name as product_type,
-            pt.roll_configuration,
-            br.name as brand,
-            pv.parameters
-        FROM rolls r
-        JOIN batches b ON r.batch_id = b.id
-        JOIN product_variants pv ON r.product_variant_id = pv.id
-        JOIN product_types pt ON pv.product_type_id = pt.id
-        JOIN brands br ON pv.brand_id = br.id
-        WHERE r.product_variant_id IN ({placeholders})
-        AND r.deleted_at IS NULL
-        AND r.status IN ('AVAILABLE', 'PARTIAL')
-        AND r.length_meters > 0
-        ORDER BY pv.parameters, r.roll_type, r.created_at
+            id,
+            batch_id,
+            batch_code,
+            status,
+            product_category,
+            product_variant_id,
+            parameters,
+            product_type_name as product_type,
+            brand_name as brand,
+            -- HDPE fields
+            length_meters,
+            initial_length_meters,
+            is_cut_roll,
+            -- Sprinkler fields
+            bundle_type,
+            bundle_size,
+            piece_count,
+            piece_length_meters,
+            total_length_meters
+        FROM inventory_unified
+        WHERE product_variant_id IN ({placeholders})
+        AND deleted_at IS NULL
+        AND status IN ('AVAILABLE', 'PARTIAL')
+        AND (
+            (product_category = 'HDPE' AND length_meters > 0) OR
+            (product_category = 'SPRINKLER' AND piece_count > 0)
+        )
+        ORDER BY parameters, product_category, created_at
     """
 
     all_rolls = execute_query(rolls_query, tuple(variant_ids))
@@ -132,6 +136,7 @@ def get_available_rolls():
                 'product_type': roll['product_type'],
                 'brand': roll['brand'],
                 'parameters': roll['parameters'],
+                'product_category': roll['product_category'],
                 'standard_rolls': [],
                 'cut_rolls': [],
                 'bundles': [],
@@ -139,28 +144,44 @@ def get_available_rolls():
                 'total_length': 0
             }
 
-        roll_info = {
-            'id': roll['id'],
-            'batch_id': roll['batch_id'],
-            'batch_code': roll['batch_code'],
-            'batch_no': roll['batch_no'],
-            'length_meters': float(roll['length_meters']),
-            'initial_length_meters': float(roll['initial_length_meters']),
-            'status': roll['status'],
-            'roll_type': roll['roll_type'],
-            'bundle_size': roll.get('bundle_size')
-        }
+        # Build roll info based on product category
+        if roll['product_category'] == 'HDPE':
+            roll_info = {
+                'id': roll['id'],
+                'batch_id': roll['batch_id'],
+                'batch_code': roll['batch_code'],
+                'length_meters': float(roll['length_meters']),
+                'initial_length_meters': float(roll['initial_length_meters']),
+                'status': roll['status'],
+                'is_cut_roll': roll['is_cut_roll'],
+                'product_category': 'HDPE'
+            }
 
-        # Categorize rolls by type
-        if roll['roll_type'] == 'spare':
-            product_groups[product_label]['spares'].append(roll_info)
-        elif roll['roll_type'] and roll['roll_type'].startswith('bundle_'):
-            product_groups[product_label]['bundles'].append(roll_info)
-        elif roll['is_cut_roll'] or roll['roll_type'] == 'cut':
-            product_groups[product_label]['cut_rolls'].append(roll_info)
-        else:
-            product_groups[product_label]['standard_rolls'].append(roll_info)
+            if roll['is_cut_roll']:
+                product_groups[product_label]['cut_rolls'].append(roll_info)
+            else:
+                product_groups[product_label]['standard_rolls'].append(roll_info)
             product_groups[product_label]['total_length'] += float(roll['length_meters'])
+
+        elif roll['product_category'] == 'SPRINKLER':
+            roll_info = {
+                'id': roll['id'],
+                'batch_id': roll['batch_id'],
+                'batch_code': roll['batch_code'],
+                'bundle_type': roll['bundle_type'],
+                'bundle_size': roll['bundle_size'],
+                'piece_count': roll['piece_count'],
+                'piece_length_meters': float(roll['piece_length_meters']),
+                'total_length_meters': float(roll['total_length_meters']),
+                'status': roll['status'],
+                'product_category': 'SPRINKLER'
+            }
+
+            if roll['bundle_type'] == 'bundle':
+                product_groups[product_label]['bundles'].append(roll_info)
+            else:  # spare
+                product_groups[product_label]['spares'].append(roll_info)
+            product_groups[product_label]['total_length'] += float(roll['total_length_meters'])
 
     # Convert to list format
     products = []
@@ -170,6 +191,7 @@ def get_available_rolls():
             'product_type': group['product_type'],
             'brand': group['brand'],
             'parameters': group['parameters'],
+            'product_category': group['product_category'],
             'standard_rolls': group['standard_rolls'],
             'cut_rolls': group['cut_rolls'],
             'bundles': group['bundles'],
@@ -205,73 +227,47 @@ def cut_roll():
 
     try:
         with get_db_cursor() as cursor:
-            # Get the roll details
-            cursor.execute("""
-                SELECT r.*, r.batch_id, pv.id as product_variant_id
-                FROM rolls r
-                JOIN batches b ON r.batch_id = b.id
-                JOIN product_variants pv ON b.product_variant_id = pv.id
-                WHERE r.id = %s AND r.deleted_at IS NULL
-            """, (roll_id,))
+            # Get the roll details - must be HDPE (only HDPE can be cut)
+            roll = InventoryHelper.get_hdpe_roll(cursor, roll_id)
 
-            roll = cursor.fetchone()
             if not roll:
-                return jsonify({'error': 'Roll not found'}), 404
+                return jsonify({'error': 'HDPE roll not found'}), 404
 
             available_length = float(roll['length_meters'])
 
             if total_cut_length > available_length:
                 return jsonify({'error': f'Total cut length ({total_cut_length}m) exceeds available length ({available_length}m)'}), 400
 
-            # Create new cut rolls
+            # Create new cut rolls (children of this roll)
             new_cut_rolls = []
             for cut in cuts:
                 cut_length = float(cut['length'])
-                cursor.execute("""
-                    INSERT INTO rolls (
-                        batch_id, product_variant_id, length_meters,
-                        initial_length_meters, status, is_cut_roll, roll_type
-                    )
-                    VALUES (%s, %s, %s, %s, 'AVAILABLE', TRUE, 'cut')
-                    RETURNING id, length_meters
-                """, (
-                    roll['batch_id'],
-                    roll['product_variant_id'],
-                    cut_length,
-                    cut_length
-                ))
-                new_roll = cursor.fetchone()
+                new_roll_id = InventoryHelper.create_hdpe_roll(
+                    cursor,
+                    batch_id=roll['batch_id'],
+                    product_variant_id=roll['product_variant_id'],
+                    length_meters=cut_length,
+                    is_cut_roll=True,
+                    parent_roll_id=roll_id,  # Track parent
+                    weight_grams=None  # Can calculate if needed
+                )
                 new_cut_rolls.append({
-                    'id': new_roll['id'],
-                    'length_meters': float(new_roll['length_meters'])
+                    'id': new_roll_id,
+                    'length_meters': cut_length
                 })
 
             # Update original roll
             remaining_length = available_length - total_cut_length
-
-            if remaining_length == 0:
-                # Mark roll as deleted if fully cut
-                cursor.execute("""
-                    UPDATE rolls
-                    SET length_meters = 0, status = 'SOLD_OUT', deleted_at = NOW(), updated_at = NOW()
-                    WHERE id = %s
-                """, (roll_id,))
-            else:
-                # Update roll with remaining length
-                new_status = 'PARTIAL'
-                cursor.execute("""
-                    UPDATE rolls
-                    SET length_meters = %s, status = %s, updated_at = NOW()
-                    WHERE id = %s
-                """, (remaining_length, new_status, roll_id))
+            InventoryHelper.update_hdpe_roll_length(cursor, roll_id, remaining_length)
 
             # Update batch quantity
             cursor.execute("""
                 UPDATE batches
                 SET current_quantity = (
-                    SELECT COALESCE(SUM(length_meters), 0)
-                    FROM rolls
-                    WHERE batch_id = %s AND deleted_at IS NULL
+                    SELECT COALESCE(SUM(h.length_meters), 0)
+                    FROM inventory_items i
+                    JOIN hdpe_rolls h ON i.id = h.id
+                    WHERE i.batch_id = %s AND i.deleted_at IS NULL
                 ),
                 updated_at = NOW()
                 WHERE id = %s
@@ -612,72 +608,81 @@ def create_dispatch():
                 if not roll_id or dispatch_quantity <= 0:
                     return jsonify({'error': 'Invalid item data'}), 400
 
-                # Get roll details with batch and product info
+                # Get roll/bundle details using inventory_unified view
                 cursor.execute("""
                     SELECT
-                        r.*,
-                        r.batch_id,
-                        pv.id as product_variant_id,
-                        b.batch_code,
-                        b.batch_no,
-                        pt.name as product_type_name,
-                        br.name as brand_name,
-                        pv.parameters
-                    FROM rolls r
-                    JOIN batches b ON r.batch_id = b.id
-                    JOIN product_variants pv ON b.product_variant_id = pv.id
-                    JOIN product_types pt ON pv.product_type_id = pt.id
-                    JOIN brands br ON pv.brand_id = br.id
-                    WHERE r.id = %s AND r.deleted_at IS NULL
+                        id, batch_id, product_variant_id, product_category, status,
+                        length_meters, is_cut_roll,
+                        bundle_type, bundle_size, piece_count, piece_length_meters,
+                        batch_code, product_type_name, brand_name, parameters
+                    FROM inventory_unified
+                    WHERE id = %s AND deleted_at IS NULL
                 """, (roll_id,))
 
                 roll = cursor.fetchone()
                 if not roll:
-                    return jsonify({'error': f'Roll {roll_id} not found'}), 404
+                    return jsonify({'error': f'Inventory item {roll_id} not found'}), 404
 
                 # Store first batch/roll for the transaction record
                 if first_batch_id is None:
                     first_batch_id = roll['batch_id']
                     first_roll_id = roll_id
 
-                available_length = float(roll['length_meters'])
+                product_category = roll['product_category']
 
-                if item_type == 'full_roll':
-                    # Dispatch entire roll
-                    quantity_dispatched = available_length
+                # ==================================================
+                # HDPE Roll Dispatch
+                # ==================================================
+                if product_category == 'HDPE':
+                    available_length = float(roll['length_meters'])
 
-                    # Soft delete roll (set deleted_at timestamp)
-                    cursor.execute("""
-                        UPDATE rolls
-                        SET length_meters = 0, status = 'SOLD_OUT', deleted_at = NOW(), updated_at = NOW()
-                        WHERE id = %s
-                    """, (roll_id,))
+                    if item_type == 'full_roll':
+                        # Dispatch entire roll
+                        quantity_dispatched = available_length
+                        InventoryHelper.update_hdpe_roll_length(cursor, roll_id, 0)
 
-                elif item_type == 'partial_roll':
-                    # Dispatch partial quantity from roll
-                    if dispatch_quantity > available_length:
-                        return jsonify({'error': f'Insufficient quantity in roll {roll_id}'}), 400
+                    elif item_type == 'partial_roll':
+                        # Dispatch partial quantity from roll
+                        if dispatch_quantity > available_length:
+                            return jsonify({'error': f'Insufficient length in HDPE roll {roll_id}'}), 400
 
-                    quantity_dispatched = dispatch_quantity
-                    remaining = available_length - dispatch_quantity
+                        quantity_dispatched = dispatch_quantity
+                        remaining = available_length - dispatch_quantity
+                        InventoryHelper.update_hdpe_roll_length(cursor, roll_id, remaining)
 
-                    if remaining == 0:
-                        # Soft delete roll when length reaches 0
+                    else:
+                        return jsonify({'error': f'Invalid item type for HDPE: {item_type}'}), 400
+
+                # ==================================================
+                # Sprinkler Bundle/Spare Dispatch
+                # ==================================================
+                elif product_category == 'SPRINKLER':
+                    if item_type == 'full_roll':  # Actually full bundle
+                        # Dispatch entire bundle/spare
+                        quantity_dispatched = float(roll['total_length_meters']) if roll.get('total_length_meters') else float(roll['piece_count']) * float(roll['piece_length_meters'])
+
+                        # Mark as SOLD_OUT
                         cursor.execute("""
-                            UPDATE rolls
-                            SET length_meters = 0, status = 'SOLD_OUT', deleted_at = NOW(), updated_at = NOW()
+                            UPDATE inventory_items
+                            SET status = 'SOLD_OUT', deleted_at = NOW(), updated_at = NOW()
                             WHERE id = %s
                         """, (roll_id,))
+
+                    elif item_type == 'partial_roll':
+                        # For Sprinkler, "partial" means dispatching some pieces from a bundle
+                        # This is rare but possible
+                        pieces_to_dispatch = int(dispatch_quantity / float(roll['piece_length_meters']))
+                        if pieces_to_dispatch > roll['piece_count']:
+                            return jsonify({'error': f'Insufficient pieces in bundle {roll_id}'}), 400
+
+                        quantity_dispatched = pieces_to_dispatch * float(roll['piece_length_meters'])
+                        InventoryHelper.update_sprinkler_bundle_pieces(cursor, roll_id, pieces_to_dispatch)
+
                     else:
-                        # Update roll with remaining length
-                        cursor.execute("""
-                            UPDATE rolls
-                            SET length_meters = %s, status = 'PARTIAL', updated_at = NOW()
-                            WHERE id = %s
-                        """, (remaining, roll_id))
+                        return jsonify({'error': f'Invalid item type for Sprinkler: {item_type}'}), 400
 
                 else:
-                    return jsonify({'error': f'Invalid item type: {item_type}'}), 400
+                    return jsonify({'error': f'Unknown product category: {product_category}'}), 400
 
                 # Collect roll snapshot for this roll with batch and product info
                 roll_snapshots.append({
