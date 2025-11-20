@@ -440,7 +440,7 @@ def revert_transactions():
                                     current_length = float(current_roll['length_meters'] or 0)
                                     new_length = current_length + quantity_dispatched
                                     new_status = 'AVAILABLE' if new_length > 0 else 'SOLD_OUT'
-                                    
+
                                     cursor.execute("""
                                         UPDATE rolls
                                         SET length_meters = %s,

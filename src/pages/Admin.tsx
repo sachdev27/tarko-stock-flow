@@ -46,7 +46,6 @@ const Admin = () => {
   const [userDialog, setUserDialog] = useState(false);
   const [snapshotDialog, setSnapshotDialog] = useState(false);
   const [rollbackDialog, setRollbackDialog] = useState(false);
-  const [driveConfigDialog, setDriveConfigDialog] = useState(false);
   const [selectedSnapshot, setSelectedSnapshot] = useState<any>(null);
 
   // Edit mode states
@@ -112,9 +111,6 @@ const Admin = () => {
     description: '',
     tags: [] as string[],
   });
-  const [driveStatus, setDriveStatus] = useState<'connected' | 'disconnected' | 'unknown'>('unknown');
-  const [syncingToDrive, setSyncingToDrive] = useState(false);
-  const [driveCredentials, setDriveCredentials] = useState<string>('');
 
   useEffect(() => {
     if (isAdmin) {
@@ -484,83 +480,6 @@ const Admin = () => {
       setRollbackHistory(response.data || []);
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Failed to load rollback history');
-    }
-  };
-
-  const testDriveConnection = async () => {
-    try {
-      const response = await versionControl.testDriveConnection();
-      setDriveStatus(response.data.status);
-      if (response.data.status === 'connected') {
-        toast.success('Google Drive connected successfully');
-      } else {
-        toast.warning('Google Drive not configured');
-      }
-    } catch (error: any) {
-      toast.error('Failed to test Drive connection');
-      setDriveStatus('disconnected');
-    }
-  };
-
-  const syncSnapshotToDrive = async (snapshotId: string) => {
-    try {
-      setSyncingToDrive(true);
-      await versionControl.syncToDrive(snapshotId);
-      toast.success('Snapshot synced to Google Drive');
-      await fetchSnapshots();
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Failed to sync to Drive');
-    } finally {
-      setSyncingToDrive(false);
-    }
-  };
-
-  const syncAllToDrive = async () => {
-    try {
-      setSyncingToDrive(true);
-      const response = await versionControl.syncAllToDrive({ days: 7 });
-      toast.success(`Synced ${response.data.synced} snapshots, ${response.data.failed} failed`);
-      await fetchSnapshots();
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Failed to sync all');
-    } finally {
-      setSyncingToDrive(false);
-    }
-  };
-
-  const handleConfigureDrive = async () => {
-    try {
-      if (!driveCredentials) {
-        toast.error('Please paste the credentials JSON');
-        return;
-      }
-
-      // Validate JSON format
-      JSON.parse(driveCredentials);
-
-      await versionControl.configureDrive({ credentials: driveCredentials });
-      toast.success('Google Drive configured successfully');
-      setDriveConfigDialog(false);
-      setDriveCredentials('');
-      await testDriveConnection();
-    } catch (error: any) {
-      if (error instanceof SyntaxError) {
-        toast.error('Invalid JSON format');
-      } else {
-        toast.error(error.response?.data?.error || 'Failed to configure Drive');
-      }
-    }
-  };
-
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const content = e.target?.result as string;
-        setDriveCredentials(content);
-      };
-      reader.readAsText(file);
     }
   };
 
@@ -1725,60 +1644,6 @@ const Admin = () => {
           {/* Version Control Tab */}
           <TabsContent value="version-control">
             <div className="space-y-6">
-              {/* Google Drive Status Card */}
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <CardTitle className="flex items-center gap-2">
-                        <Upload className="h-5 w-5" />
-                        Google Drive Sync
-                      </CardTitle>
-                      <CardDescription>
-                        Automatic backup synchronization to Google Drive
-                      </CardDescription>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge
-                        variant={driveStatus === 'connected' ? 'default' : driveStatus === 'disconnected' ? 'destructive' : 'secondary'}
-                      >
-                        {driveStatus === 'connected' ? '● Connected' : driveStatus === 'disconnected' ? '● Disconnected' : '● Unknown'}
-                      </Badge>
-                      <Button variant="outline" size="sm" onClick={testDriveConnection}>
-                        Test Connection
-                      </Button>
-                      <Button variant="outline" size="sm" onClick={syncAllToDrive} disabled={syncingToDrive}>
-                        {syncingToDrive ? 'Syncing...' : 'Sync All Recent'}
-                      </Button>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-sm text-muted-foreground">
-                    <p>
-                      Daily snapshots are automatically synced to Google Drive at 2:00 AM.
-                      Backups are stored for 30 days and accessible from the "Tarko Inventory Backups" folder.
-                    </p>
-                    {driveStatus === 'disconnected' && (
-                      <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded">
-                        <div className="flex items-start justify-between">
-                          <p className="text-amber-800 dark:text-amber-200">
-                            <strong>Google Drive not configured.</strong> Configure it now to enable automatic cloud backups.
-                          </p>
-                          <Button
-                            variant="default"
-                            size="sm"
-                            onClick={() => setDriveConfigDialog(true)}
-                            className="ml-4"
-                          >
-                            Configure
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
 
               {/* Snapshots Card */}
               <Card>
@@ -1837,17 +1702,6 @@ const Admin = () => {
                           )}
                         </div>
                         <div className="flex items-center gap-2">
-                          {driveStatus === 'connected' && !snapshot.tags?.includes('google-drive-synced') && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => syncSnapshotToDrive(snapshot.id)}
-                              disabled={syncingToDrive}
-                            >
-                              <Upload className="h-4 w-4 mr-1" />
-                              Sync
-                            </Button>
-                          )}
                           <Button
                             variant="default"
                             size="sm"
@@ -2440,76 +2294,6 @@ const Admin = () => {
           </DialogContent>
         </Dialog>
 
-        {/* Google Drive Configuration Dialog */}
-        <Dialog open={driveConfigDialog} onOpenChange={setDriveConfigDialog}>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <Upload className="h-5 w-5" />
-                Configure Google Drive
-              </DialogTitle>
-              <DialogDescription>
-                Upload or paste your Google Drive service account credentials to enable automatic backup synchronization.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div>
-                <Label>Upload Credentials File</Label>
-                <Input
-                  type="file"
-                  accept=".json"
-                  onChange={handleFileUpload}
-                  className="mt-2"
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Upload your google_drive_credentials.json file
-                </p>
-              </div>
-
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <span className="w-full border-t" />
-                </div>
-                <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-background px-2 text-muted-foreground">Or</span>
-                </div>
-              </div>
-
-              <div>
-                <Label htmlFor="credentials">Paste Credentials JSON</Label>
-                <Textarea
-                  id="credentials"
-                  value={driveCredentials}
-                  onChange={(e) => setDriveCredentials(e.target.value)}
-                  placeholder='{"type": "service_account", "project_id": "...", ...}'
-                  className="font-mono text-xs mt-2"
-                  rows={10}
-                />
-              </div>
-
-              <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
-                <p className="text-sm text-blue-800 dark:text-blue-200">
-                  <strong>How to get credentials:</strong>
-                </p>
-                <ol className="text-xs text-blue-700 dark:text-blue-300 list-decimal list-inside mt-2 space-y-1">
-                  <li>Go to <a href="https://console.cloud.google.com" target="_blank" rel="noopener noreferrer" className="underline">Google Cloud Console</a></li>
-                  <li>Create a new project or select existing</li>
-                  <li>Enable Google Drive API</li>
-                  <li>Create Service Account credentials</li>
-                  <li>Download JSON key file</li>
-                </ol>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setDriveConfigDialog(false)}>
-                Cancel
-              </Button>
-              <Button onClick={handleConfigureDrive} disabled={!driveCredentials}>
-                Save Configuration
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
       </div>
     </Layout>
   );

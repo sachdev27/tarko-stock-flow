@@ -30,7 +30,7 @@ def get_available_rolls():
     product_type_id = data.get('product_type_id')
     brand_id = data.get('brand_id')  # Optional for "All Brands"
     parameters = data.get('parameters', {})
-    
+
     if not product_type_id:
         return jsonify({'error': 'product_type_id is required'}), 400
 
