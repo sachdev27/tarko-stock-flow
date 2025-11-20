@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { TruckIcon, ScissorsIcon, PlusIcon, TrashIcon, SearchIcon, PackageIcon } from 'lucide-react';
+import { TruckIcon, ScissorsIcon, PlusIcon, TrashIcon, SearchIcon, PackageIcon, X } from 'lucide-react';
 import { inventory, dispatch as dispatchAPI, parameters as paramAPI } from '@/lib/api';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -445,6 +445,18 @@ const Dispatch = () => {
 
       toast.success(`Bundle split: ${piecesCount} spare pieces + ${remainingPieces} spare pieces`);
       setCutBundleDialogOpen(false);
+
+      // Remove the cut bundle from cart since it no longer exists
+      setCart(cart.map(item => ({
+        ...item,
+        bundles: item.bundles.filter(b => b.id !== bundleToCut.id)
+      })).filter(item =>
+        item.standard_roll_count > 0 ||
+        item.cut_rolls.length > 0 ||
+        item.bundles.length > 0 ||
+        item.spares.length > 0
+      ));
+
       setBundleToCut(null);
 
       // Refresh products list
@@ -1100,8 +1112,25 @@ const Dispatch = () => {
 
                                     for (const spare of product.spares) {
                                       if (piecesCollected >= piecesNeeded) break;
-                                      sparesToAdd.push(spare);
-                                      piecesCollected += spare.bundle_size || 0;
+
+                                      const sparePieceCount = spare.bundle_size || 0;
+                                      const piecesRemaining = piecesNeeded - piecesCollected;
+
+                                      if (piecesRemaining >= sparePieceCount) {
+                                        // Take the whole spare entry
+                                        sparesToAdd.push(spare);
+                                        piecesCollected += sparePieceCount;
+                                      } else {
+                                        // Take only part of this spare entry
+                                        // Create a modified spare with reduced count
+                                        sparesToAdd.push({
+                                          ...spare,
+                                          bundle_size: piecesRemaining,
+                                          length_meters: piecesRemaining
+                                        });
+                                        piecesCollected += piecesRemaining;
+                                        break;
+                                      }
                                     }
 
                                     const existingItem = cart.find(item => item.product_label === product.product_label);
@@ -1124,7 +1153,7 @@ const Dispatch = () => {
                                     }
 
                                     input.value = '0';
-                                    toast.success(`Added ${piecesCollected} spare pieces`);
+                                    toast.success(`Added exactly ${piecesCollected} spare pieces`);
                                   }
                                 }}
                               >
@@ -1231,31 +1260,59 @@ const Dispatch = () => {
 
                         {/* Bundles */}
                         {item.bundles.length > 0 && (
-                          <div className="flex items-center justify-between text-sm bg-purple-50 dark:bg-purple-900/30 p-2 rounded">
-                            <span className="text-muted-foreground">Bundles:</span>
-                            <div className="flex items-center gap-2">
-                              <Input
-                                type="number"
-                                min="0"
-                                max={item.product.bundles?.length || 0}
-                                value={item.bundles.length}
-                                onChange={(e) => {
-                                  const newCount = parseInt(e.target.value) || 0;
-                                  const newBundles = item.product.bundles.slice(0, newCount);
-                                  setCart(cart.map(cartItem =>
-                                    cartItem.product_label === item.product_label
-                                      ? { ...cartItem, bundles: newBundles }
-                                      : cartItem
-                                  ).filter(cartItem =>
-                                    cartItem.standard_roll_count > 0 ||
-                                    cartItem.cut_rolls.length > 0 ||
-                                    cartItem.bundles.length > 0 ||
-                                    cartItem.spares.length > 0
-                                  ));
-                                }}
-                                className="w-16 h-7 text-sm"
-                              />
-                            </div>
+                          <div className="space-y-2">
+                            {(() => {
+                              // Group bundles by size
+                              const bundlesBySize = item.bundles.reduce((acc, bundle) => {
+                                const size = bundle.bundle_size || 0;
+                                if (!acc[size]) acc[size] = [];
+                                acc[size].push(bundle);
+                                return acc;
+                              }, {} as Record<number, typeof item.bundles>);
+
+                              return Object.entries(bundlesBySize).map(([size, bundles]) => (
+                                <div key={size} className="flex items-center justify-between text-sm bg-purple-50 dark:bg-purple-950/30 p-2 rounded border border-purple-200">
+                                  <span className="text-muted-foreground">
+                                    <span className="font-bold">{bundles.length}</span> × {size} pieces
+                                  </span>
+                                  <div className="flex items-center gap-1">
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-6 px-2 text-xs"
+                                      onClick={() => {
+                                        setBundleToCut(bundles[0]);
+                                        setCutBundleDialogOpen(true);
+                                      }}
+                                    >
+                                      <ScissorsIcon className="h-3 w-3 mr-1" />
+                                      Cut
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-6 w-6 p-0"
+                                      onClick={() => {
+                                        // Remove all bundles of this size
+                                        const bundleIdsToRemove = new Set(bundles.map(b => b.id));
+                                        setCart(cart.map(cartItem =>
+                                          cartItem.product_label === item.product_label
+                                            ? { ...cartItem, bundles: cartItem.bundles.filter(b => !bundleIdsToRemove.has(b.id)) }
+                                            : cartItem
+                                        ).filter(cartItem =>
+                                          cartItem.standard_roll_count > 0 ||
+                                          cartItem.cut_rolls.length > 0 ||
+                                          cartItem.bundles.length > 0 ||
+                                          cartItem.spares.length > 0
+                                        ));
+                                      }}
+                                    >
+                                      <TrashIcon className="h-3 w-3 text-destructive" />
+                                    </Button>
+                                  </div>
+                                </div>
+                              ));
+                            })()}
                           </div>
                         )}
 
@@ -1264,27 +1321,16 @@ const Dispatch = () => {
                           <div className="flex items-center justify-between text-sm bg-amber-50 dark:bg-amber-900/30 p-2 rounded border border-amber-200">
                             <span className="text-muted-foreground">Spare Pieces:</span>
                             <div className="flex items-center gap-2">
-                              <Input
-                                type="number"
-                                min="0"
-                                max={item.product.spares?.length || 0}
-                                value={item.spares.length}
-                                onChange={(e) => {
-                                  const newCount = parseInt(e.target.value) || 0;
-                                  const newSpares = item.product.spares.slice(0, newCount);
-                                  setCart(cart.map(cartItem =>
-                                    cartItem.product_label === item.product_label
-                                      ? { ...cartItem, spares: newSpares }
-                                      : cartItem
-                                  ).filter(cartItem =>
-                                    cartItem.standard_roll_count > 0 ||
-                                    cartItem.cut_rolls.length > 0 ||
-                                    cartItem.bundles.length > 0 ||
-                                    cartItem.spares.length > 0
-                                  ));
+                              <span className="font-medium">{item.spares.reduce((sum, s) => sum + (s.bundle_size || 0), 0)} pieces</span>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  setCart(cart.filter(cartItem => cartItem.product_label !== item.product_label));
                                 }}
-                                className="w-16 h-7 text-sm"
-                              />
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
                             </div>
                           </div>
                         )}
