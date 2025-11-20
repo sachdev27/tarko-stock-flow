@@ -70,6 +70,14 @@ def create_batch():
         bundle_size = int(bundle_size_raw) if bundle_size_raw not in (None, '', 'null') else 10
         spare_pipes = json.loads(data.get('spare_pipes', '[]')) if isinstance(data.get('spare_pipes'), str) else data.get('spare_pipes', [])
 
+        # For sprinkler pipes with bundles, recalculate quantity correctly
+        # quantity should be: number_of_bundles × bundle_size (pieces)
+        if quantity_based and roll_config_type == 'bundles' and number_of_bundles > 0 and bundle_size > 0:
+            # Recalculate quantity as total pieces
+            quantity = float(number_of_bundles * bundle_size)
+            print(f"📦 Recalculated Sprinkler quantity: {number_of_bundles} bundles × {bundle_size} pcs = {quantity} pieces")
+
+
         # Weight tracking - ensure proper conversion and default to None if missing
         # Note: CSV imports provide kg/m, but system stores g/m, so convert if from import
         weight_per_meter_raw = data.get('weight_per_meter')
@@ -85,10 +93,6 @@ def create_batch():
         total_weight_raw = data.get('total_weight')
         total_weight = float(total_weight_raw) if total_weight_raw not in (None, '', 'null') else None
 
-        # Calculate total_weight from weight_per_meter if provided
-        if weight_per_meter and not total_weight and quantity > 0:
-            total_weight = weight_per_meter * quantity
-
         # Calculate piece_length for quantity-based products (Sprinkler Pipe)
         piece_length_value = None
         if quantity_based and length_per_roll_input > 0:
@@ -98,6 +102,20 @@ def create_batch():
             print(f"⚠️  WARNING: Sprinkler Pipe missing piece length!")
             print(f"   - length_per_roll_input: {length_per_roll_input}")
             print(f"   - Received data keys: {list(data.keys())}")
+
+        # Calculate total_weight from weight_per_meter if provided
+        if weight_per_meter and not total_weight and quantity > 0:
+            if quantity_based and piece_length_value:
+                # For sprinkler pipes: weight = weight_per_meter × total_length
+                # total_length = quantity (pieces) × piece_length (meters/piece)
+                total_length = quantity * piece_length_value
+                total_weight = weight_per_meter * total_length
+                print(f"⚖️  Weight calculation (Sprinkler): {weight_per_meter}g/m × ({quantity} pcs × {piece_length_value}m) = {total_weight}g = {total_weight/1000}kg")
+            else:
+                # For HDPE rolls: weight = weight_per_meter × quantity (meters)
+                total_weight = weight_per_meter * quantity
+                print(f"⚖️  Weight calculation (HDPE): {weight_per_meter}g/m × {quantity}m = {total_weight}g = {total_weight/1000}kg")
+
 
         # Handle file upload
         attachment_url = None

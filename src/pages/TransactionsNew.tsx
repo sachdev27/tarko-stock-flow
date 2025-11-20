@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Layout } from '../components/Layout';
+import { useAuth } from '../contexts/AuthContext';
 import { transactions as transactionsAPI, inventory as inventoryAPI, admin } from '../lib/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
@@ -92,6 +93,7 @@ interface TransactionRecord {
 }
 
 export default function TransactionsNew() {
+  const { user } = useAuth();
   const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
   const [filteredTransactions, setFilteredTransactions] = useState<TransactionRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -1866,7 +1868,7 @@ export default function TransactionsNew() {
                 View all transactions or click the detail button for complete information
               </CardDescription>
             </div>
-            {selectedTransactionIds.size > 0 && (
+            {user?.role === 'admin' && selectedTransactionIds.size > 0 && (
               <div className="flex items-center gap-2">
                 <Badge variant="secondary" className="text-sm">
                   {selectedTransactionIds.size} selected
@@ -1888,12 +1890,14 @@ export default function TransactionsNew() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[50px]">
-                  <Checkbox
-                    checked={selectedTransactionIds.size === filteredTransactions.length && filteredTransactions.length > 0}
-                    onCheckedChange={toggleSelectAll}
-                  />
-                </TableHead>
+                {user?.role === 'admin' && (
+                  <TableHead className="w-[50px]">
+                    <Checkbox
+                      checked={selectedTransactionIds.size === filteredTransactions.length && filteredTransactions.length > 0}
+                      onCheckedChange={toggleSelectAll}
+                    />
+                  </TableHead>
+                )}
                 <TableHead>Date & Time</TableHead>
                 <TableHead>Batch</TableHead>
                 <TableHead>Product Type & Brand</TableHead>
@@ -1910,7 +1914,7 @@ export default function TransactionsNew() {
             <TableBody>
               {filteredTransactions.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={12} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={user?.role === 'admin' ? 12 : 11} className="text-center text-muted-foreground py-8">
                     No transactions found
                   </TableCell>
                 </TableRow>
@@ -1922,12 +1926,14 @@ export default function TransactionsNew() {
                   key={transaction.id}
                   className="hover:bg-muted/50 transition-colors"
                 >
-                  <TableCell>
-                    <Checkbox
-                      checked={selectedTransactionIds.has(transaction.id)}
-                      onCheckedChange={() => toggleSelectTransaction(transaction.id)}
-                    />
-                  </TableCell>
+                  {user?.role === 'admin' && (
+                    <TableCell>
+                      <Checkbox
+                        checked={selectedTransactionIds.has(transaction.id)}
+                        onCheckedChange={() => toggleSelectTransaction(transaction.id)}
+                      />
+                    </TableCell>
+                  )}
                   <TableCell className="font-medium">
                     <div>{format(new Date(transaction.transaction_date), 'PP')}</div>
                     <div className="text-xs text-muted-foreground">{format(new Date(transaction.transaction_date), 'p')}</div>

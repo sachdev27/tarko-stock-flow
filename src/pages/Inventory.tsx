@@ -1221,28 +1221,32 @@ const Inventory = () => {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
-              <Upload className="h-4 w-4 mr-2" />
-              Import
-            </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline">
-                  <Download className="h-4 w-4 mr-2" />
-                  Export
+            {user?.role === 'admin' && (
+              <>
+                <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
+                  <Upload className="h-4 w-4 mr-2" />
+                  Import
                 </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => navigate('/export/hdpe')}>
-                  <FileSpreadsheet className="h-4 w-4 mr-2" />
-                  Export HDPE Inventory
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => navigate('/export/sprinkler')}>
-                  <FileSpreadsheet className="h-4 w-4 mr-2" />
-                  Export Sprinkler Inventory
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline">
+                      <Download className="h-4 w-4 mr-2" />
+                      Export
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => navigate('/export/hdpe')}>
+                      <FileSpreadsheet className="h-4 w-4 mr-2" />
+                      Export HDPE Inventory
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => navigate('/export/sprinkler')}>
+                      <FileSpreadsheet className="h-4 w-4 mr-2" />
+                      Export Sprinkler Inventory
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </>
+            )}
             <Button variant="outline" onClick={openWhatsAppDialog} className="bg-green-50 hover:bg-green-100 border-green-200">
               <MessageCircle className="h-4 w-4 mr-2 text-green-600" />
               <span className="text-green-700">Share on WhatsApp</span>
