@@ -115,7 +115,7 @@ def create_snapshot():
 
             snapshot = cursor.fetchone()
             snapshot_id = str(snapshot['id'])
-            
+
             # Save snapshot to local storage
             metadata = {
                 'snapshot_id': snapshot_id,
@@ -128,7 +128,7 @@ def create_snapshot():
                 'is_automatic': is_automatic,
                 'tags': tags
             }
-            
+
             storage_success = snapshot_storage.save_snapshot(snapshot_id, snapshot_data, metadata)
             if not storage_success:
                 # Log warning but don't fail the operation
@@ -505,29 +505,29 @@ def download_snapshot(snapshot_id):
         import tempfile
         import shutil
         from pathlib import Path
-        
+
         snapshot_dir = snapshot_storage.storage_path / snapshot_id
-        
+
         if not snapshot_dir.exists():
             return jsonify({'error': 'Snapshot not found in local storage'}), 404
-        
+
         # Create temporary zip file
         temp_dir = tempfile.mkdtemp()
         zip_path = Path(temp_dir) / f"{snapshot_id}.zip"
-        
+
         shutil.make_archive(
             str(zip_path.with_suffix('')),
             'zip',
             snapshot_dir
         )
-        
+
         return send_file(
             str(zip_path),
             as_attachment=True,
             download_name=f"snapshot_{snapshot_id}.zip",
             mimetype='application/zip'
         )
-        
+
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -538,12 +538,12 @@ def export_snapshot_to_path(snapshot_id):
     try:
         data = request.json
         export_path = data.get('export_path')
-        
+
         if not export_path:
             return jsonify({'error': 'export_path is required'}), 400
-        
+
         success = snapshot_storage.export_snapshot(snapshot_id, export_path)
-        
+
         if success:
             return jsonify({
                 'message': 'Snapshot exported successfully',
@@ -551,6 +551,6 @@ def export_snapshot_to_path(snapshot_id):
             }), 200
         else:
             return jsonify({'error': 'Failed to export snapshot'}), 500
-            
+
     except Exception as e:
         return jsonify({'error': str(e)}), 500

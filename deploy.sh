@@ -27,11 +27,11 @@ echo ""
 if [ ! -f .env ]; then
     echo "📝 Creating .env file from template..."
     cp .env.production .env
-    
+
     # Generate random secrets
     DB_PASSWORD=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
     JWT_SECRET=$(openssl rand -base64 48 | tr -d "=+/")
-    
+
     # Update .env with generated secrets
     if [[ "$OSTYPE" == "darwin"* ]]; then
         # macOS
@@ -42,7 +42,7 @@ if [ ! -f .env ]; then
         sed -i "s/your-secure-database-password-here/$DB_PASSWORD/" .env
         sed -i "s/your-very-long-and-secure-jwt-secret-key-here-minimum-32-characters/$JWT_SECRET/" .env
     fi
-    
+
     echo "✅ Generated secure passwords and secrets"
     echo ""
     echo "⚠️  IMPORTANT: Review and update .env file with your settings:"
