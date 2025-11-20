@@ -16,6 +16,12 @@ interface Roll {
   length_meters: number;
   status: string;
   bundle_size?: number;
+  roll_type?: string;
+  parameters?: any;
+  brand_name?: string;
+  product_type_name?: string;
+  quantity: number;
+  dispatchLength?: number;
 }
 
 const DispatchNewModular = () => {
@@ -96,9 +102,18 @@ const DispatchNewModular = () => {
 
   useKeyboardShortcuts({ shortcuts });
 
+  // Auto-search when product type changes
+  useEffect(() => {
+    if (productTypeId) {
+      handleSearchProducts();
+    } else {
+      setAvailableRolls([]);
+    }
+  }, [productTypeId]);
+
   const handleSearchProducts = async () => {
-    if (!productTypeId && !productSearch) {
-      toast.error('Please select a product type or enter search criteria');
+    if (!productTypeId) {
+      toast.error('Please select a product type');
       return;
     }
 
@@ -108,24 +123,42 @@ const DispatchNewModular = () => {
         product_type_id: productTypeId,
         parameters: {} // Parse productSearch into parameters
       });
-      setAvailableRolls(results.rolls || []);
-      if (results.rolls?.length === 0) {
-        toast.info('No products found matching your criteria');
+      // API returns array directly, not { rolls: [] }
+      const rollsArray = Array.isArray(results) ? results : [];
+      setAvailableRolls(rollsArray);
+      if (rollsArray.length === 0) {
+        toast.info('No products found for this product type');
       }
-    } catch (error) {
-      toast.error('Failed to search products');
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to search products');
+      setAvailableRolls([]);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleAddRoll = (roll: Roll) => {
-    if (selectedRolls.find(r => r.id === roll.id)) {
+  const handleAddRoll = (roll: any) => {
+    // Map roll_id to id if needed
+    const normalizedRoll = {
+      id: roll.roll_id || roll.id,
+      batch_code: roll.batch_code,
+      length_meters: roll.length_meters,
+      status: roll.status,
+      bundle_size: roll.bundle_size,
+      roll_type: roll.roll_type,
+      parameters: roll.parameters,
+      brand_name: roll.brand_name,
+      product_type_name: roll.product_type_name,
+      quantity: 1, // Default quantity
+      dispatchLength: roll.length_meters
+    };
+
+    if (selectedRolls.find(r => r.id === normalizedRoll.id)) {
       toast.info('Roll already selected');
       return;
     }
-    setSelectedRolls([...selectedRolls, roll]);
-    toast.success(`Added ${roll.batch_code}`);
+    setSelectedRolls([...selectedRolls, normalizedRoll]);
+    toast.success(`Added ${normalizedRoll.batch_code}`);
   };
 
   const handleRemoveRoll = (index: number) => {
@@ -242,6 +275,18 @@ const DispatchNewModular = () => {
               selectedRolls={selectedRolls}
               onRemoveRoll={handleRemoveRoll}
               onAddRoll={handleAddRoll}
+              onUpdateRollQuantity={(index, quantity, dispatchLength) => {
+                // Update quantity or dispatch length for a selected roll
+                const updated = [...selectedRolls];
+                if (updated[index]) {
+                  updated[index] = {
+                    ...updated[index],
+                    quantity,
+                    dispatchLength
+                  };
+                  setSelectedRolls(updated);
+                }
+              }}
               productTypes={productTypes}
               availableRolls={availableRolls}
               onSearchProducts={handleSearchProducts}

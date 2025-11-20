@@ -1,8 +1,26 @@
 from flask import Blueprint, request, jsonify
 from database import execute_insert, execute_query, get_db_cursor
 from auth import jwt_required_with_role
+from flask_jwt_extended import jwt_required
 
 parameter_bp = Blueprint('parameters', __name__, url_prefix='/api/parameters')
+
+@parameter_bp.route('/product-types', methods=['GET', 'OPTIONS'])
+@jwt_required()
+def get_product_types():
+    """Get all product types"""
+    try:
+        query = """
+            SELECT pt.*, u.name as unit_name, u.abbreviation as unit_abbr
+            FROM product_types pt
+            JOIN units u ON pt.unit_id = u.id
+            WHERE pt.deleted_at IS NULL
+            ORDER BY pt.name
+        """
+        product_types = execute_query(query)
+        return jsonify(product_types), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @parameter_bp.route('/options', methods=['GET'])
 @jwt_required_with_role()

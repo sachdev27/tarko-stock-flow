@@ -71,7 +71,7 @@ export const SearchableCombobox = ({
 
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setHighlightedIndex(prev => 
+      setHighlightedIndex(prev =>
         prev < filteredOptions.length - 1 ? prev + 1 : prev
       );
     } else if (e.key === 'ArrowUp') {
@@ -96,24 +96,24 @@ export const SearchableCombobox = ({
       const newItem = await onCreateNew(search);
       setSearch('');
       setOpen(false);
-      
+
       // If the creation returned a new item, select it
       if (newItem && newItem.id) {
         onChange(newItem.id);
-        
+
         // Move focus to next input (simulate Tab behavior)
         setTimeout(() => {
           const currentInput = inputRef.current;
           if (!currentInput) return;
-          
+
           // Get all focusable elements in the document
           const focusableElements = document.querySelectorAll(
             'input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled])'
           );
-          
+
           const focusableArray = Array.from(focusableElements) as HTMLElement[];
           const currentIndex = focusableArray.indexOf(currentInput);
-          
+
           // Find next focusable element
           if (currentIndex !== -1 && currentIndex < focusableArray.length - 1) {
             const nextElement = focusableArray[currentIndex + 1];

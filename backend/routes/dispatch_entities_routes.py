@@ -104,14 +104,14 @@ def update_customer(customer_id):
     try:
         data = request.json
         name = data.get('name', '').strip()
-        
+
         if not name:
             return jsonify({'error': 'Customer name is required'}), 400
-        
+
         with get_db_cursor(commit=True) as cursor:
             cursor.execute("""
                 UPDATE customers
-                SET name = %s, city = %s, contact_person = %s, phone = %s, 
+                SET name = %s, city = %s, contact_person = %s, phone = %s,
                     email = %s, gstin = %s, address = %s, updated_at = NOW()
                 WHERE id = %s AND deleted_at IS NULL
                 RETURNING id, name, city, contact_person, phone, email, gstin, address
@@ -125,14 +125,14 @@ def update_customer(customer_id):
                 data.get('address', '').strip(),
                 customer_id
             ))
-            
+
             updated_customer = cursor.fetchone()
             if not updated_customer:
                 return jsonify({'error': 'Customer not found'}), 404
-            
+
             logger.info(f"Updated customer: {name}")
             return jsonify(updated_customer), 200
-            
+
     except Exception as e:
         logger.error(f"Error updating customer: {e}")
         return jsonify({'error': str(e)}), 500
@@ -150,14 +150,14 @@ def delete_customer(customer_id):
                 WHERE id = %s AND deleted_at IS NULL
                 RETURNING id
             """, (customer_id,))
-            
+
             deleted = cursor.fetchone()
             if not deleted:
                 return jsonify({'error': 'Customer not found'}), 404
-            
+
             logger.info(f"Deleted customer: {customer_id}")
             return jsonify({'message': 'Customer deleted successfully'}), 200
-            
+
     except Exception as e:
         logger.error(f"Error deleting customer: {e}")
         return jsonify({'error': str(e)}), 500
@@ -241,7 +241,7 @@ def update_bill_to(bill_to_id):
         data = request.json
         if 'name' not in data:
             return jsonify({'error': 'Name is required'}), 400
-        
+
         with get_db_cursor(commit=True) as cursor:
             cursor.execute("""
                 UPDATE bill_to
@@ -259,13 +259,13 @@ def update_bill_to(bill_to_id):
                 data.get('email'),
                 bill_to_id
             ))
-            
+
             updated = cursor.fetchone()
             if not updated:
                 return jsonify({'error': 'Bill-to entity not found'}), 404
-            
+
             return jsonify(updated), 200
-            
+
     except Exception as e:
         logger.error(f"Error updating bill-to: {e}")
         return jsonify({'error': str(e)}), 500
@@ -283,13 +283,13 @@ def delete_bill_to(bill_to_id):
                 WHERE id = %s AND deleted_at IS NULL
                 RETURNING id
             """, (bill_to_id,))
-            
+
             deleted = cursor.fetchone()
             if not deleted:
                 return jsonify({'error': 'Bill-to entity not found'}), 404
-            
+
             return jsonify({'message': 'Bill-to deleted successfully'}), 200
-            
+
     except Exception as e:
         logger.error(f"Error deleting bill-to: {e}")
         return jsonify({'error': str(e)}), 500
@@ -369,7 +369,7 @@ def update_transport(transport_id):
         data = request.json
         if 'name' not in data:
             return jsonify({'error': 'Name is required'}), 400
-        
+
         with get_db_cursor(commit=True) as cursor:
             cursor.execute("""
                 UPDATE transports
@@ -382,13 +382,13 @@ def update_transport(transport_id):
                 data.get('phone'),
                 transport_id
             ))
-            
+
             updated = cursor.fetchone()
             if not updated:
                 return jsonify({'error': 'Transport not found'}), 404
-            
+
             return jsonify(updated), 200
-            
+
     except Exception as e:
         logger.error(f"Error updating transport: {e}")
         return jsonify({'error': str(e)}), 500
@@ -406,13 +406,13 @@ def delete_transport(transport_id):
                 WHERE id = %s AND deleted_at IS NULL
                 RETURNING id
             """, (transport_id,))
-            
+
             deleted = cursor.fetchone()
             if not deleted:
                 return jsonify({'error': 'Transport not found'}), 404
-            
+
             return jsonify({'message': 'Transport deleted successfully'}), 200
-            
+
     except Exception as e:
         logger.error(f"Error deleting transport: {e}")
         return jsonify({'error': str(e)}), 500
@@ -493,7 +493,7 @@ def update_vehicle(vehicle_id):
         data = request.json
         if 'vehicle_number' not in data:
             return jsonify({'error': 'Vehicle number is required'}), 400
-        
+
         with get_db_cursor(commit=True) as cursor:
             cursor.execute("""
                 UPDATE vehicles
@@ -508,13 +508,13 @@ def update_vehicle(vehicle_id):
                 data.get('driver_phone'),
                 vehicle_id
             ))
-            
+
             updated = cursor.fetchone()
             if not updated:
                 return jsonify({'error': 'Vehicle not found'}), 404
-            
+
             return jsonify(updated), 200
-            
+
     except Exception as e:
         logger.error(f"Error updating vehicle: {e}")
         return jsonify({'error': str(e)}), 500
@@ -532,13 +532,13 @@ def delete_vehicle(vehicle_id):
                 WHERE id = %s AND deleted_at IS NULL
                 RETURNING id
             """, (vehicle_id,))
-            
+
             deleted = cursor.fetchone()
             if not deleted:
                 return jsonify({'error': 'Vehicle not found'}), 404
-            
+
             return jsonify({'message': 'Vehicle deleted successfully'}), 200
-            
+
     except Exception as e:
         logger.error(f"Error deleting vehicle: {e}")
         return jsonify({'error': str(e)}), 500

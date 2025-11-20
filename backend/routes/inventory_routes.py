@@ -236,7 +236,7 @@ def update_roll(roll_id):
     except Exception as e:
         return jsonify({'error': 'Failed to update roll', 'details': str(e)}), 500
 
-@inventory_bp.route('/customers', methods=['GET'])
+@inventory_bp.route('/customers', methods=['GET', 'OPTIONS'])
 @jwt_required()
 def get_customers():
     """Get all customers"""
@@ -247,7 +247,80 @@ def get_customers():
     except Exception as e:
         return jsonify({'error': 'Failed to fetch customers', 'details': str(e)}), 500
 
-@inventory_bp.route('/product-variants/search', methods=['GET'])
+@inventory_bp.route('/search', methods=['POST', 'OPTIONS'])
+def search_inventory():
+    """Search for available rolls by product type, brand, and parameters"""
+    # Allow OPTIONS without authentication for CORS preflight
+    if request.method == 'OPTIONS':
+        return jsonify({}), 200
+
+    # Require JWT for actual request
+    from flask_jwt_extended import verify_jwt_in_request
+    verify_jwt_in_request()
+
+    try:
+        data = request.json or {}
+        product_type_id = data.get('product_type_id')
+        brand_id = data.get('brand_id')
+        parameters = data.get('parameters', {})
+
+        # Return empty if no product_type_id
+        if not product_type_id:
+            return jsonify([]), 200
+
+        # Build query
+        query = """
+            SELECT
+                r.id as roll_id,
+                r.length_meters,
+                r.status,
+                r.roll_type,
+                r.bundle_size,
+                b.id as batch_id,
+                b.batch_code,
+                b.current_quantity,
+                pv.id as product_variant_id,
+                pv.parameters,
+                pt.id as product_type_id,
+                pt.name as product_type_name,
+                br.id as brand_id,
+                br.name as brand_name
+            FROM rolls r
+            JOIN batches b ON r.batch_id = b.id
+            JOIN product_variants pv ON b.product_variant_id = pv.id
+            JOIN product_types pt ON pv.product_type_id = pt.id
+            JOIN brands br ON pv.brand_id = br.id
+            WHERE r.deleted_at IS NULL
+            AND b.deleted_at IS NULL
+            AND r.status IN ('AVAILABLE', 'PARTIAL')
+            AND r.length_meters > 0
+            AND pt.id = %s
+        """
+
+        params = [product_type_id]
+
+        # Optional: filter by brand
+        if brand_id:
+            query += " AND br.id = %s"
+            params.append(brand_id)
+
+        # Optional: filter by parameters if provided
+        if parameters:
+            for key, value in parameters.items():
+                if value:
+                    query += f" AND pv.parameters->>%s = %s"
+                    params.extend([key, str(value)])
+
+        query += " ORDER BY b.batch_code, r.length_meters DESC"
+
+        rolls = execute_query(query, tuple(params))
+
+        return jsonify(rolls), 200
+
+    except Exception as e:
+        return jsonify({'error': 'Failed to search inventory', 'details': str(e)}), 500
+
+@inventory_bp.route('/product-variants/search', methods=['GET', 'OPTIONS'])
 @jwt_required()
 def search_product_variants():
     """Search product variants by batch code or parameters"""
