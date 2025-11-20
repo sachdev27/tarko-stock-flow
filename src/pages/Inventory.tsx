@@ -126,6 +126,11 @@ const Inventory = () => {
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importing, setImporting] = useState(false);
 
+  // WhatsApp sharing
+  const [whatsappDialogOpen, setWhatsappDialogOpen] = useState(false);
+  const [selectedRollsForWhatsApp, setSelectedRollsForWhatsApp] = useState<Set<string>>(new Set());
+  const [expandedProductsInWhatsApp, setExpandedProductsInWhatsApp] = useState<Set<string>>(new Set());
+
   useEffect(() => {
     fetchProductTypes();
     fetchBrands();
@@ -236,50 +241,83 @@ const Inventory = () => {
 
   const fetchProductHistory = async (product: ProductInventory) => {
     setLoadingHistory(true);
+    setProductHistory([]);
+    setProductHistoryDiagnostics([]);
+
     try {
       // Fetch all transactions
       const { data } = await transactionsAPI.getAll();
 
-      // Diagnostic log to see raw transactions returned by the API
-      console.log('fetchProductHistory - raw transactions:', data);
+      if (!data || data.length === 0) {
+        toast.info('No transactions found in the system');
+        setLoadingHistory(false);
+        return;
+      }
 
-      const normalizeVariantId = (value: string | number | null | undefined) =>
-        value === null || value === undefined ? '' : String(value);
+      console.log('📊 Fetching history for product:', {
+        product_type: product.product_type,
+        brand: product.brand,
+        product_variant_id: product.product_variant_id,
+        parameters: product.parameters
+      });
 
-      const targetVariantId = normalizeVariantId(product.product_variant_id);
-      console.log('Target product_variant_id:', targetVariantId);
+      // Normalize variant ID for comparison
+      const normalizeId = (val: any) => {
+        if (val === null || val === undefined) return '';
+        return String(val).trim();
+      };
 
-      // EXACT MATCH ONLY using product_variant_id - no complex comparisons needed!
-      const allTxns = (data || []) as TransactionRecord[];
+      const targetVariantId = normalizeId(product.product_variant_id);
+
+      // Filter transactions that match this product variant
+      const matchedTransactions: TransactionRecord[] = [];
       const diagnostics: TransactionDiagnostic[] = [];
-      const filtered: TransactionRecord[] = [];
 
-      for (const txn of allTxns) {
-        // Simple exact match on product_variant_id
-        const txnVariantId = normalizeVariantId(txn.product_variant_id);
-        const isExactMatch = txnVariantId === targetVariantId;
-        console.log('Comparing:', { txnVariantId, targetVariantId, isExactMatch, txnId: txn.id });
+      data.forEach((txn: TransactionRecord) => {
+        const txnVariantId = normalizeId(txn.product_variant_id);
+        const isMatch = txnVariantId === targetVariantId && targetVariantId !== '';
+
+        // Log first few for debugging
+        if (matchedTransactions.length < 3 || isMatch) {
+          console.log('Transaction check:', {
+            txn_id: txn.id,
+            txn_variant_id: txnVariantId,
+            target_variant_id: targetVariantId,
+            isMatch,
+            type: txn.transaction_type,
+            date: txn.transaction_date
+          });
+        }
 
         diagnostics.push({
           id: txn.id,
-          matchType: true,  // Not needed with product_variant_id
-          matchBrand: true, // Not needed with product_variant_id
-          matchParams: isExactMatch,
-          txnParams: txn.parameters
+          matchType: txn.product_type === product.product_type,
+          matchBrand: txn.brand === product.brand,
+          matchParams: isMatch,
+          txnParams: txn.parameters || {}
         });
 
-        if (isExactMatch) {
-          filtered.push(txn);
+        if (isMatch) {
+          matchedTransactions.push(txn);
         }
-      }
+      });
 
-      console.log('fetchProductHistory - per-transaction diagnostics:', diagnostics);
-      console.log('fetchProductHistory - filtered transactions:', filtered);
+      // Sort by date descending (most recent first)
+      matchedTransactions.sort((a, b) =>
+        new Date(b.transaction_date).getTime() - new Date(a.transaction_date).getTime()
+      );
+
+      console.log(`✅ Found ${matchedTransactions.length} matching transactions out of ${data.length} total`);
+
+      setProductHistory(matchedTransactions);
       setProductHistoryDiagnostics(diagnostics);
-      setProductHistory(filtered);
-    } catch (error) {
-      console.error('Error fetching product history:', error);
-      toast.error('Failed to load product history');
+
+      if (matchedTransactions.length === 0) {
+        toast.info('No transactions found for this product variant');
+      }
+    } catch (error: any) {
+      console.error('❌ Error fetching product history:', error);
+      toast.error(`Failed to load product history: ${error.message || 'Unknown error'}`);
     } finally {
       setLoadingHistory(false);
     }
@@ -646,40 +684,123 @@ const Inventory = () => {
     toast.success('Inventory exported successfully');
   };
 
-  const shareOnWhatsApp = () => {
-    // Generate inventory message from filtered inventory
-    let message = '📦 *Inventory Report*\n';
-    message += `Date: ${new Date().toLocaleDateString('en-IN')}\n\n`;
+  const openWhatsAppDialog = () => {
+    // Pre-select all rolls from visible products
+    const allRollIds = new Set<string>();
+    filteredInventory.forEach(product => {
+      product.batches.forEach(batch => {
+        batch.rolls.forEach(roll => {
+          allRollIds.add(roll.id);
+        });
+      });
+    });
+    setSelectedRollsForWhatsApp(allRollIds);
+    setWhatsappDialogOpen(true);
+  };
 
-    if (showOnlyCutRolls) {
-      message += '🔪 *Cut Rolls Only*\n\n';
+  const shareOnWhatsApp = () => {
+    if (selectedRollsForWhatsApp.size === 0) {
+      toast.error('Please select at least one item to share');
+      return;
     }
 
-    if (filteredInventory.length === 0) {
-      message += 'No items in inventory matching current filters.';
-    } else {
-      filteredInventory.forEach((product) => {
+    // Generate inventory message with improved formatting
+    let message = '📦 *INVENTORY REPORT*\n';
+    message += `📅 ${new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}\n`;
+    message += '━━━━━━━━━━━━━━━━━━━━\n\n';
+
+    // Group products by their selection type
+    const productGroups = new Map<string, {
+      product: ProductInventory;
+      standardRolls: RollInventory[];
+      cutRolls: RollInventory[];
+    }>();
+
+    filteredInventory.forEach((product) => {
+      const uniqueKey = `${product.product_type_id}_${product.brand_id}_${JSON.stringify(product.parameters)}`;
+      const allRolls = product.batches.flatMap(b => b.rolls);
+      const standardRolls = allRolls.filter(r => !r.is_cut_roll && r.roll_type !== 'cut');
+      const cutRolls = allRolls.filter(r => r.is_cut_roll || r.roll_type === 'cut');
+
+      // Check if this product (standard rolls) is selected
+      const isProductSelected = selectedRollsForWhatsApp.has(uniqueKey);
+
+      // Get selected cut rolls
+      const selectedCutRolls = cutRolls.filter(r => selectedRollsForWhatsApp.has(r.id));
+
+      if (isProductSelected || selectedCutRolls.length > 0) {
+        productGroups.set(uniqueKey, {
+          product,
+          standardRolls: isProductSelected ? standardRolls : [],
+          cutRolls: selectedCutRolls
+        });
+      }
+    });
+
+    // Group by product type
+    const groupedByType: Record<string, Array<{ product: ProductInventory; standardRolls: RollInventory[]; cutRolls: RollInventory[] }>> = {};
+    productGroups.forEach((data) => {
+      const productType = data.product.product_type;
+      if (!groupedByType[productType]) {
+        groupedByType[productType] = [];
+      }
+      groupedByType[productType].push(data);
+    });
+
+    Object.entries(groupedByType).forEach(([productType, productList]) => {
+      message += `🏷️ *${productType.toUpperCase()}*\n`;
+      message += '─────────────────\n';
+
+      productList.forEach(({ product, standardRolls, cutRolls }) => {
         const params = product.parameters || {};
-        const productLine = `*${product.product_type}* - ${product.brand}`;
         const paramsLine = Object.entries(params)
           .filter(([k, v]) => v && k !== 'Type' && k !== 'type')
           .map(([k, v]) => `${k}: ${v}`)
-          .join(', ');
+          .join(' | ');
 
-        message += `${productLine}\n`;
-        if (paramsLine) message += `${paramsLine}\n`;
+        message += `\n📌 *${product.brand}*`;
+        if (paramsLine) message += ` (${paramsLine})`;
+        message += '\n';
 
         const isSprinkler = product.product_type.toLowerCase().includes('sprinkler');
 
-        // Aggregate all rolls across all batches
-        const allRolls = product.batches.flatMap(b => b.rolls);
+        if (isSprinkler) {
+          const allRolls = [...standardRolls, ...cutRolls];
+          const bundles = allRolls.filter(r => r.roll_type?.startsWith('bundle_'));
+          const spares = allRolls.filter(r => r.roll_type === 'spare');
 
-        if (showOnlyCutRolls) {
-          // Only show cut rolls when filter is active
-          const cutRolls = allRolls.filter(r => r.is_cut_roll || r.roll_type === 'cut');
+          const bundleGroups = bundles.reduce((acc, roll) => {
+            const key = roll.bundle_size || 0;
+            if (!acc[key]) acc[key] = [];
+            acc[key].push(roll);
+            return acc;
+          }, {} as Record<number, RollInventory[]>);
+
+          Object.entries(bundleGroups).forEach(([size, rollGroup]) => {
+            const totalPieces = rollGroup.length * parseInt(size);
+            message += `   📦 ${rollGroup.length} bundles × ${size} pcs = *${totalPieces} pieces*\n`;
+          });
+
+          if (spares.length > 0) {
+            const sparePieces = spares.reduce((sum, r) => sum + (r.bundle_size || 1), 0);
+            message += `   📍 Spare pieces: *${sparePieces}*\n`;
+          }
+        } else {
+          if (standardRolls.length > 0) {
+            const lengthGroups = standardRolls.reduce((acc, roll) => {
+              const key = roll.initial_length_meters.toFixed(0);
+              if (!acc[key]) acc[key] = [];
+              acc[key].push(roll);
+              return acc;
+            }, {} as Record<string, RollInventory[]>);
+
+            Object.entries(lengthGroups).forEach(([length, rollGroup]) => {
+              const totalLength = rollGroup.reduce((sum, r) => sum + r.length_meters, 0);
+              message += `   🔄 ${rollGroup.length} rolls × ${length}m = *${totalLength.toFixed(2)}m*\n`;
+            });
+          }
 
           if (cutRolls.length > 0) {
-            // Group cut rolls by their exact length
             const cutLengthGroups = cutRolls.reduce((acc, roll) => {
               const key = roll.length_meters.toFixed(2);
               if (!acc[key]) acc[key] = [];
@@ -687,84 +808,32 @@ const Inventory = () => {
               return acc;
             }, {} as Record<string, RollInventory[]>);
 
-            Object.entries(cutLengthGroups).forEach(([length, rolls]) => {
-              const totalLength = rolls.reduce((sum, r) => sum + r.length_meters, 0);
-              message += `  • *${rolls.length} cut pieces* (${length}m each) = ${totalLength.toFixed(2)}m total\n`;
+            Object.entries(cutLengthGroups).forEach(([length, rollGroup]) => {
+              const totalLength = rollGroup.reduce((sum, r) => sum + r.length_meters, 0);
+              message += `   ✂️  ${rollGroup.length} cut pieces × ${length}m = *${totalLength.toFixed(2)}m*\n`;
             });
-          }
-        } else {
-          // Show all inventory (original behavior)
-          if (isSprinkler) {
-            // For Sprinkler Pipe - aggregate bundles and spare pieces
-            const bundles = allRolls.filter(r => r.roll_type?.startsWith('bundle_'));
-            const spares = allRolls.filter(r => r.roll_type === 'spare');
-
-            const bundleGroups = bundles.reduce((acc, roll) => {
-              const key = roll.bundle_size || 0;
-              if (!acc[key]) acc[key] = [];
-              acc[key].push(roll);
-              return acc;
-            }, {} as Record<number, RollInventory[]>);
-
-            Object.entries(bundleGroups).forEach(([size, rolls]) => {
-              const totalPieces = rolls.length * parseInt(size);
-              message += `  • ${rolls.length} bundles (${size} pcs/bundle) = *${totalPieces} pieces*\n`;
-            });
-
-            if (spares.length > 0) {
-              const sparePieces = spares.reduce((sum, r) => sum + (r.bundle_size || 1), 0);
-              message += `  • *${sparePieces} spare pieces*\n`;
-            }
-          } else {
-            // For HDPE - aggregate rolls with lengths
-            const standardRolls = allRolls.filter(r => !r.is_cut_roll && (!r.roll_type || r.roll_type === 'standard'));
-            const cutRolls = allRolls.filter(r => r.is_cut_roll || r.roll_type === 'cut');
-
-            if (standardRolls.length > 0) {
-              // Group by roll length
-              const lengthGroups = standardRolls.reduce((acc, roll) => {
-                const key = roll.initial_length_meters.toFixed(0);
-                if (!acc[key]) acc[key] = [];
-                acc[key].push(roll);
-                return acc;
-              }, {} as Record<string, RollInventory[]>);
-
-              Object.entries(lengthGroups).forEach(([length, rolls]) => {
-                const totalLength = rolls.reduce((sum, r) => sum + r.length_meters, 0);
-                message += `  • *${rolls.length} rolls* (${length}m each) = ${totalLength.toFixed(2)}m total\n`;
-              });
-            }
-
-            if (cutRolls.length > 0) {
-              // Group cut rolls by their exact length
-              const cutLengthGroups = cutRolls.reduce((acc, roll) => {
-                const key = roll.length_meters.toFixed(2);
-                if (!acc[key]) acc[key] = [];
-                acc[key].push(roll);
-                return acc;
-              }, {} as Record<string, RollInventory[]>);
-
-              Object.entries(cutLengthGroups).forEach(([length, rolls]) => {
-                const totalLength = rolls.reduce((sum, r) => sum + r.length_meters, 0);
-                message += `  • *${rolls.length} cut pieces* (${length}m each) = ${totalLength.toFixed(2)}m total\n`;
-              });
-            }
           }
         }
 
-        message += '\n';
+        const allRolls = [...standardRolls, ...cutRolls];
+        const totalQty = allRolls.reduce((sum, r) => sum + r.length_meters, 0);
+        const unit = product.roll_config?.type === 'bundles' ? 'pcs' : 'm';
+        message += `   ➡️ *Total: ${totalQty.toFixed(2)} ${unit}*\n`;
       });
-    }
 
-    // Encode the message for URL
+      message += '\n';
+    });
+
+    message += '━━━━━━━━━━━━━━━━━━━━\n';
+    message += '✅ _Stock Updated_';
+
     const encodedMessage = encodeURIComponent(message);
     const whatsappUrl = `https://wa.me/?text=${encodedMessage}`;
-
-    // Open WhatsApp in new window
     window.open(whatsappUrl, '_blank');
-  };
-
-  const handleImport = async () => {
+    setWhatsappDialogOpen(false);
+    setExpandedProductsInWhatsApp(new Set());
+    toast.success('Opening WhatsApp...');
+  };  const handleImport = async () => {
     if (!importFile) {
       toast.error('Please select a file');
       return;
@@ -927,7 +996,7 @@ const Inventory = () => {
               <Download className="h-4 w-4 mr-2" />
               Export
             </Button>
-            <Button variant="outline" onClick={shareOnWhatsApp} className="bg-green-50 hover:bg-green-100 border-green-200">
+            <Button variant="outline" onClick={openWhatsAppDialog} className="bg-green-50 hover:bg-green-100 border-green-200">
               <MessageCircle className="h-4 w-4 mr-2 text-green-600" />
               <span className="text-green-700">Share on WhatsApp</span>
             </Button>
@@ -1443,11 +1512,37 @@ const Inventory = () => {
           </DialogHeader>
 
           {loadingHistory ? (
-            <div className="text-center py-8">Loading history...</div>
+            <div className="flex flex-col items-center justify-center py-12">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
+              <p className="text-muted-foreground">Loading transaction history...</p>
+            </div>
+          ) : productHistory.length === 0 ? (
+            <div className="text-center py-12">
+              <Package className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
+              <h3 className="text-lg font-semibold mb-2">No Transactions Found</h3>
+              <p className="text-muted-foreground mb-4">
+                There are no transactions recorded for this product variant yet.
+              </p>
+              {selectedProductForHistory && (
+                <div className="bg-secondary/30 rounded-lg p-4 max-w-md mx-auto">
+                  <p className="text-sm text-muted-foreground">
+                    <strong>Product Variant ID:</strong> {selectedProductForHistory.product_variant_id}
+                  </p>
+                </div>
+              )}
+            </div>
           ) : (
             <div className="space-y-6">
               {/* Summary Cards */}
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-4 gap-4">
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="text-sm text-muted-foreground">Total Transactions</div>
+                    <div className="text-2xl font-bold text-blue-600">
+                      {productHistory.length}
+                    </div>
+                  </CardContent>
+                </Card>
                 <Card>
                   <CardContent className="pt-6">
                     <div className="text-sm text-muted-foreground">Total Produced</div>
@@ -1472,7 +1567,7 @@ const Inventory = () => {
                 </Card>
                 <Card>
                   <CardContent className="pt-6">
-                    <div className="text-sm text-muted-foreground">Current Outstanding</div>
+                    <div className="text-sm text-muted-foreground">Current Stock</div>
                     <div className="text-2xl font-bold text-primary">
                       {selectedProductForHistory?.total_quantity.toFixed(2)} {selectedProductForHistory?.roll_config?.type === 'bundles' ? 'pcs' : 'm'}
                     </div>
@@ -1480,84 +1575,75 @@ const Inventory = () => {
                 </Card>
               </div>
 
-              {/* Diagnostics when no exact matches */}
-              {productHistory.length === 0 && productHistoryDiagnostics.length > 0 && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-sm font-medium text-muted-foreground">Potential Matches (no exact matches)</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2">
-                      {productHistoryDiagnostics.map((d) => (
-                        <div key={d.id} className="p-2 border rounded flex items-start justify-between">
-                          <div className="flex-1 mr-4">
-                            <div className="text-sm font-medium break-words">{d.id}</div>
-                            <div className="text-xs text-muted-foreground mt-1 truncate">params: {JSON.stringify(d.txnParams)}</div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Badge variant={d.matchType ? 'secondary' : 'outline'} className="text-xs">{d.matchType ? 'Type' : 'Type ✗'}</Badge>
-                            <Badge variant={d.matchBrand ? 'secondary' : 'outline'} className="text-xs">{d.matchBrand ? 'Brand' : 'Brand ✗'}</Badge>
-                            <Badge variant={d.matchParams ? 'secondary' : 'outline'} className="text-xs">{d.matchParams ? 'Params' : 'Params ✗'}</Badge>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
               {/* Transaction Table */}
               <div className="border rounded-lg">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Date & Time</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Batch Code</TableHead>
-                      <TableHead>Roll</TableHead>
-                      <TableHead className="text-right">Quantity</TableHead>
-                      <TableHead>Customer</TableHead>
-                      <TableHead>Invoice</TableHead>
-                      <TableHead>Notes</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {productHistory.map((txn) => (
-                      <TableRow key={txn.id}>
-                        <TableCell className="whitespace-nowrap">
-                          {new Date(txn.transaction_date).toLocaleString('en-IN', {
-                            dateStyle: 'short',
-                            timeStyle: 'short'
-                          })}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={txn.transaction_type === 'PRODUCTION' ? 'default' : 'destructive'}>
-                            {txn.transaction_type}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>{txn.batch_code || '-'}</TableCell>
+                <div className="bg-secondary/30 px-4 py-3 border-b">
+                  <h3 className="font-semibold flex items-center gap-2">
+                    <Clock className="h-4 w-4" />
+                    Transaction History ({productHistory.length} records)
+                  </h3>
+                </div>
+                <div className="max-h-96 overflow-y-auto">
+                  <Table>
+                    <TableHeader className="sticky top-0 bg-background">
+                      <TableRow>
+                        <TableHead>Date & Time</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Batch</TableHead>
+                        <TableHead>Roll Details</TableHead>
+                        <TableHead className="text-right">Quantity</TableHead>
+                        <TableHead>Customer</TableHead>
+                        <TableHead>Invoice</TableHead>
+                        <TableHead>Notes</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {productHistory.map((txn) => (
+                        <TableRow key={txn.id}>
+                          <TableCell className="whitespace-nowrap">
+                            {new Date(txn.transaction_date).toLocaleString('en-IN', {
+                              dateStyle: 'short',
+                              timeStyle: 'short'
+                            })}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={txn.transaction_type === 'PRODUCTION' ? 'default' : 'destructive'}>
+                              {txn.transaction_type}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="font-mono text-sm">
+                            {txn.batch_code || '-'}
+                            {txn.batch_no && <div className="text-xs text-muted-foreground">#{txn.batch_no}</div>}
+                          </TableCell>
                         <TableCell>
                           {txn.roll_length_meters != null ? (
                             <div className="text-sm">
-                              <div>{txn.roll_length_meters} m</div>
+                              <div className="font-medium">{txn.roll_length_meters.toFixed(2)} m</div>
                               <div className="text-xs text-muted-foreground">{formatWeight(txn.roll_weight)}</div>
-                              <div className="text-xs text-muted-foreground">{txn.roll_type || ''}{txn.roll_is_cut ? ' • Cut' : ''}</div>
+                              {txn.roll_type && <div className="text-xs text-muted-foreground">{txn.roll_type}{txn.roll_is_cut ? ' • Cut' : ''}</div>}
                             </div>
                           ) : (
                             <div className="text-sm text-muted-foreground">-</div>
                           )}
                         </TableCell>
                         <TableCell className="text-right font-medium">
-                          {txn.transaction_type === 'PRODUCTION' ? '+' : '-'}
-                          {Math.abs(txn.quantity_change || 0).toFixed(2)} m
+                          <span className={txn.transaction_type === 'PRODUCTION' ? 'text-green-600' : 'text-red-600'}>
+                            {txn.transaction_type === 'PRODUCTION' ? '+' : '-'}
+                            {Math.abs(txn.quantity_change || 0).toFixed(2)} m
+                          </span>
                         </TableCell>
                         <TableCell>{txn.customer_name || '-'}</TableCell>
-                        <TableCell>{txn.invoice_no || '-'}</TableCell>
-                        <TableCell className="max-w-xs truncate">{txn.notes || '-'}</TableCell>
+                        <TableCell className="font-mono text-sm">{txn.invoice_no || '-'}</TableCell>
+                        <TableCell className="max-w-xs">
+                          <div className="truncate" title={txn.notes || ''}>
+                            {txn.notes || '-'}
+                          </div>
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
+                </div>
               </div>
             </div>
           )}
@@ -1855,6 +1941,285 @@ const Inventory = () => {
                   Import Inventory
                 </>
               )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* WhatsApp Share Dialog */}
+      <Dialog open={whatsappDialogOpen} onOpenChange={setWhatsappDialogOpen}>
+        <DialogContent className="max-w-3xl max-h-[90vh]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MessageCircle className="h-5 w-5 text-green-600" />
+              Share on WhatsApp
+            </DialogTitle>
+            <DialogDescription>
+              Select products to share. Standard rolls show total quantity, cut rolls can be individually selected.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="max-h-[550px] overflow-y-auto space-y-2 border rounded-lg p-4">
+              {filteredInventory.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Package className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                  <p>No products match your current filters</p>
+                </div>
+              ) : (
+                filteredInventory.map((product) => {
+                  const uniqueKey = `${product.product_type_id}_${product.brand_id}_${JSON.stringify(product.parameters)}`;
+                  const isSelected = selectedRollsForWhatsApp.has(uniqueKey);
+                  const isExpanded = expandedProductsInWhatsApp.has(uniqueKey);
+
+                  const allRolls = product.batches.flatMap(b => b.rolls);
+                  const standardRolls = allRolls.filter(r => !r.is_cut_roll && r.roll_type !== 'cut');
+                  const cutRolls = allRolls.filter(r => r.is_cut_roll || r.roll_type === 'cut');
+                  const standardTotal = standardRolls.reduce((sum, r) => sum + r.length_meters, 0);
+
+                  const selectedCutRolls = cutRolls.filter(r => selectedRollsForWhatsApp.has(r.id));
+
+                  const params = product.parameters || {};
+                  const paramsText = Object.entries(params)
+                    .filter(([k, v]) => v && k !== 'Type' && k !== 'type')
+                    .map(([k, v]) => `${k}: ${v}`)
+                    .join(', ');
+
+                  return (
+                    <div key={uniqueKey} className="border rounded-lg overflow-hidden">
+                      {/* Product Header - Clickable for standard rolls, shows checkbox */}
+                      <div
+                        className={`flex items-center space-x-3 p-3 cursor-pointer transition-colors ${
+                          isSelected ? 'bg-green-50 border-green-500' : 'bg-secondary/30 hover:bg-secondary/50'
+                        }`}
+                        onClick={() => {
+                          if (cutRolls.length > 0) {
+                            // If has cut rolls, toggle expansion
+                            setExpandedProductsInWhatsApp(prev => {
+                              const newSet = new Set(prev);
+                              if (newSet.has(uniqueKey)) {
+                                newSet.delete(uniqueKey);
+                              } else {
+                                newSet.add(uniqueKey);
+                              }
+                              return newSet;
+                            });
+                          } else {
+                            // If only standard rolls, toggle selection
+                            setSelectedRollsForWhatsApp(prev => {
+                              const newSet = new Set(prev);
+                              if (newSet.has(uniqueKey)) {
+                                newSet.delete(uniqueKey);
+                              } else {
+                                newSet.add(uniqueKey);
+                              }
+                              return newSet;
+                            });
+                          }
+                        }}
+                      >
+                        <div onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              setSelectedRollsForWhatsApp(prev => {
+                                const newSet = new Set(prev);
+                                if (newSet.has(uniqueKey)) {
+                                  newSet.delete(uniqueKey);
+                                } else {
+                                  newSet.add(uniqueKey);
+                                }
+                                return newSet;
+                              });
+                            }}
+                            className="h-4 w-4 rounded border-gray-300 text-green-600"
+                          />
+                        </div>
+                        <div className="flex-1">
+                          <div className="font-semibold">{product.product_type} - {product.brand}</div>
+                          {paramsText && (
+                            <div className="text-sm text-muted-foreground">{paramsText}</div>
+                          )}
+                          <div className="text-sm text-muted-foreground mt-1">
+                            {standardTotal > 0 && (
+                              <span>{standardTotal.toFixed(2)}m standard</span>
+                            )}
+                            {cutRolls.length > 0 && (
+                              <span className="ml-2">• {cutRolls.length} cut piece{cutRolls.length !== 1 ? 's' : ''}</span>
+                            )}
+                          </div>
+                        </div>
+                        {cutRolls.length > 0 && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setExpandedProductsInWhatsApp(prev => {
+                                const newSet = new Set(prev);
+                                if (newSet.has(uniqueKey)) {
+                                  newSet.delete(uniqueKey);
+                                } else {
+                                  newSet.add(uniqueKey);
+                                }
+                                return newSet;
+                              });
+                            }}
+                          >
+                            {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                          </Button>
+                        )}
+                        {isSelected && <CheckCircle className="h-5 w-5 text-green-600" />}
+                      </div>
+
+                      {/* Cut Rolls List (when expanded) */}
+                      {isExpanded && cutRolls.length > 0 && (
+                        <div className="p-3 space-y-2 bg-background border-t">
+                          <div className="flex items-center justify-between pb-2">
+                            <span className="text-sm font-medium text-muted-foreground">
+                              Cut Pieces ({cutRolls.length})
+                            </span>
+                            <div className="flex gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedRollsForWhatsApp(prev => {
+                                    const newSet = new Set(prev);
+                                    cutRolls.forEach(r => newSet.add(r.id));
+                                    return newSet;
+                                  });
+                                }}
+                              >
+                                Select All
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedRollsForWhatsApp(prev => {
+                                    const newSet = new Set(prev);
+                                    cutRolls.forEach(r => newSet.delete(r.id));
+                                    return newSet;
+                                  });
+                                }}
+                              >
+                                Clear
+                              </Button>
+                            </div>
+                          </div>
+
+                          <div className="space-y-1 max-h-64 overflow-y-auto">
+                            {cutRolls.map((roll) => {
+                              const isRollSelected = selectedRollsForWhatsApp.has(roll.id);
+
+                              return (
+                                <div
+                                  key={roll.id}
+                                  className={`flex items-center space-x-3 p-2 rounded border cursor-pointer transition-colors ${
+                                    isRollSelected ? 'bg-green-50 border-green-500' : 'border-gray-200 hover:bg-secondary/30'
+                                  }`}
+                                  onClick={() => {
+                                    setSelectedRollsForWhatsApp(prev => {
+                                      const newSet = new Set(prev);
+                                      if (newSet.has(roll.id)) {
+                                        newSet.delete(roll.id);
+                                      } else {
+                                        newSet.add(roll.id);
+                                      }
+                                      return newSet;
+                                    });
+                                  }}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={isRollSelected}
+                                    onChange={() => {}}
+                                    className="h-4 w-4 rounded border-gray-300 text-green-600"
+                                  />
+                                  <div className="flex-1 flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                      <Badge variant="destructive" className="text-xs">Cut</Badge>
+                                      <span className="text-sm font-medium">
+                                        {roll.length_meters.toFixed(2)}m
+                                      </span>
+                                      {roll.initial_length_meters && roll.initial_length_meters !== roll.length_meters && (
+                                        <span className="text-xs text-muted-foreground">
+                                          (originally {roll.initial_length_meters.toFixed(0)}m)
+                                        </span>
+                                      )}
+                                    </div>
+                                    <Badge variant="outline" className="text-xs">
+                                      {roll.status}
+                                    </Badge>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Summary and Action Buttons */}
+            <div className="flex items-center justify-between pt-2 border-t">
+              <div className="flex items-center gap-4">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const newSet = new Set<string>();
+                    filteredInventory.forEach(p => {
+                      const uniqueKey = `${p.product_type_id}_${p.brand_id}_${JSON.stringify(p.parameters)}`;
+                      newSet.add(uniqueKey);
+                      // Also select all cut rolls
+                      p.batches.forEach(b => {
+                        b.rolls.filter(r => r.is_cut_roll || r.roll_type === 'cut').forEach(r => newSet.add(r.id));
+                      });
+                    });
+                    setSelectedRollsForWhatsApp(newSet);
+                  }}
+                >
+                  Select All
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSelectedRollsForWhatsApp(new Set())}
+                >
+                  Clear All
+                </Button>
+                <span className="text-sm text-muted-foreground font-medium">
+                  {selectedRollsForWhatsApp.size} item{selectedRollsForWhatsApp.size !== 1 ? 's' : ''} selected
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setWhatsappDialogOpen(false);
+                setExpandedProductsInWhatsApp(new Set());
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={shareOnWhatsApp}
+              disabled={selectedRollsForWhatsApp.size === 0}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              <MessageCircle className="h-4 w-4 mr-2" />
+              Share ({selectedRollsForWhatsApp.size})
             </Button>
           </DialogFooter>
         </DialogContent>
