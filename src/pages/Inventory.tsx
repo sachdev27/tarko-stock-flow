@@ -15,7 +15,7 @@ import { toast } from 'sonner';
 import { Package, Search, Filter, QrCode, ChevronDown, ChevronUp, MapPin, Edit2, CheckCircle, XCircle, Clock, Paperclip, Calendar, FileText, Download, ScissorsIcon, PlusIcon, TrashIcon, Upload, FileSpreadsheet, MessageCircle } from 'lucide-react';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { inventory as inventoryAPI, transactions as transactionsAPI, production as productionAPI } from '@/lib/api';
+import { inventory as inventoryAPI, transactions as transactionsAPI, production as productionAPI, ledger as ledgerAPI } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { toISTDateTimeLocal, fromISTDateTimeLocal } from '@/lib/utils';
 
@@ -117,6 +117,8 @@ const Inventory = () => {
   const [productHistory, setProductHistory] = useState<TransactionRecord[]>([]);
   const [productHistoryDiagnostics, setProductHistoryDiagnostics] = useState<TransactionDiagnostic[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [transactionDetailDialogOpen, setTransactionDetailDialogOpen] = useState(false);
+  const [selectedTransaction, setSelectedTransaction] = useState<TransactionRecord | null>(null);
 
   // Cut roll dialog
   const [cutDialogOpen, setCutDialogOpen] = useState(false);
@@ -264,74 +266,23 @@ const Inventory = () => {
     setProductHistoryDiagnostics([]);
 
     try {
-      // Fetch all transactions
-      const { data } = await transactionsAPI.getAll();
+      console.log('📊 Fetching history for product variant:', product.product_variant_id);
 
-      if (!data || data.length === 0) {
-        toast.info('No transactions found in the system');
+      // Use the new dedicated ledger API endpoint
+      const { data } = await ledgerAPI.getProductLedger(product.product_variant_id);
+
+      if (!data || !data.transactions || data.transactions.length === 0) {
+        toast.info('No transactions found for this product');
         setLoadingHistory(false);
         return;
       }
 
-      console.log('📊 Fetching history for product:', {
-        product_type: product.product_type,
-        brand: product.brand,
-        product_variant_id: product.product_variant_id,
-        parameters: product.parameters
-      });
+      console.log(`✅ Found ${data.transactions.length} transactions`);
+      console.log('📈 Summary:', data.summary);
 
-      // Normalize variant ID for comparison
-      const normalizeId = (val: any) => {
-        if (val === null || val === undefined) return '';
-        return String(val).trim();
-      };
+      setProductHistory(data.transactions);
 
-      const targetVariantId = normalizeId(product.product_variant_id);
-
-      // Filter transactions that match this product variant
-      const matchedTransactions: TransactionRecord[] = [];
-      const diagnostics: TransactionDiagnostic[] = [];
-
-      data.forEach((txn: TransactionRecord) => {
-        const txnVariantId = normalizeId(txn.product_variant_id);
-        const isMatch = txnVariantId === targetVariantId && targetVariantId !== '';
-
-        // Log first few for debugging
-        if (matchedTransactions.length < 3 || isMatch) {
-          console.log('Transaction check:', {
-            txn_id: txn.id,
-            txn_variant_id: txnVariantId,
-            target_variant_id: targetVariantId,
-            isMatch,
-            type: txn.transaction_type,
-            date: txn.transaction_date
-          });
-        }
-
-        diagnostics.push({
-          id: txn.id,
-          matchType: txn.product_type === product.product_type,
-          matchBrand: txn.brand === product.brand,
-          matchParams: isMatch,
-          txnParams: txn.parameters || {}
-        });
-
-        if (isMatch) {
-          matchedTransactions.push(txn);
-        }
-      });
-
-      // Sort by date descending (most recent first)
-      matchedTransactions.sort((a, b) =>
-        new Date(b.transaction_date).getTime() - new Date(a.transaction_date).getTime()
-      );
-
-      console.log(`✅ Found ${matchedTransactions.length} matching transactions out of ${data.length} total`);
-
-      setProductHistory(matchedTransactions);
-      setProductHistoryDiagnostics(diagnostics);
-
-      if (matchedTransactions.length === 0) {
+      if (data.transactions.length === 0) {
         toast.info('No transactions found for this product variant');
       }
     } catch (error: any) {
@@ -1801,8 +1752,8 @@ const Inventory = () => {
 
       {/* Product History Dialog */}
       <Dialog open={productHistoryDialogOpen} onOpenChange={setProductHistoryDialogOpen}>
-        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
+        <DialogContent className="w-[calc(100vw-2rem)] max-w-[1400px] h-[calc(100vh-2rem)] max-h-[900px] p-0 flex flex-col">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b">
             <DialogTitle className="flex items-center gap-2 flex-wrap">
               Product History - {selectedProductForHistory?.product_type} ({selectedProductForHistory?.brand})
               {selectedProductForHistory?.parameters && (() => {
@@ -1827,7 +1778,7 @@ const Inventory = () => {
             </DialogDescription>
           </DialogHeader>
 
-          {loadingHistory ? (
+          <div className="flex-1 overflow-y-auto px-6 py-4">{loadingHistory ? (
             <div className="flex flex-col items-center justify-center py-12">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
               <p className="text-muted-foreground">Loading transaction history...</p>
@@ -1911,6 +1862,7 @@ const Inventory = () => {
                         <TableHead>Customer</TableHead>
                         <TableHead>Invoice</TableHead>
                         <TableHead>Notes</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1955,6 +1907,20 @@ const Inventory = () => {
                             {txn.notes || '-'}
                           </div>
                         </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedTransaction(txn);
+                              setTransactionDetailDialogOpen(true);
+                            }}
+                          >
+                            <FileText className="h-4 w-4 mr-1" />
+                            Details
+                          </Button>
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -1963,14 +1929,199 @@ const Inventory = () => {
               </div>
             </div>
           )}
+          </div>
 
-          <DialogFooter>
+          <DialogFooter className="px-6 py-4 border-t">
             <Button variant="outline" onClick={() => setProductHistoryDialogOpen(false)}>
               Close
             </Button>
             <Button onClick={exportProductHistoryCSV} disabled={productHistory.length === 0}>
               <Download className="h-4 w-4 mr-2" />
               Export CSV
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Transaction Detail Dialog */}
+      <Dialog open={transactionDetailDialogOpen} onOpenChange={setTransactionDetailDialogOpen}>
+        <DialogContent className="max-w-[95vw] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5" />
+              Transaction Details - {selectedTransaction?.transaction_type}
+            </DialogTitle>
+          </DialogHeader>
+
+          {selectedTransaction && (
+            <div className="space-y-4">
+              {/* Product Information */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <Package className="h-4 w-4" />
+                    Product Information
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-medium text-lg">{selectedTransaction.product_type}</span>
+                    <span className="text-muted-foreground">•</span>
+                    <span className="font-semibold text-lg">{selectedTransaction.brand}</span>
+                  </div>
+                  {selectedTransaction.parameters && Object.keys(selectedTransaction.parameters).length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {Object.entries(selectedTransaction.parameters).map(([key, value]) => (
+                        <Badge key={key} variant="secondary" className="text-sm">
+                          {key}: {String(value)}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Transaction Information */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <Clock className="h-4 w-4" />
+                    Transaction Information
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Transaction Date</p>
+                    <p className="font-medium">{new Date(selectedTransaction.transaction_date).toLocaleString('en-IN')}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Type</p>
+                    <Badge variant={selectedTransaction.transaction_type === 'PRODUCTION' ? 'default' : 'destructive'}>
+                      {selectedTransaction.transaction_type}
+                    </Badge>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Batch Code</p>
+                    <p className="font-mono font-medium">{selectedTransaction.batch_code || '-'}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Batch Number</p>
+                    <p className="font-medium">{selectedTransaction.batch_no || '-'}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Quantity Change</p>
+                    <p className={`font-semibold text-lg ${selectedTransaction.transaction_type === 'PRODUCTION' ? 'text-green-600' : 'text-red-600'}`}>
+                      {selectedTransaction.transaction_type === 'PRODUCTION' ? '+' : '-'}
+                      {Math.abs(selectedTransaction.quantity_change || 0).toFixed(2)} {selectedTransaction.unit_abbreviation || 'm'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Production Date</p>
+                    <p className="font-medium">{selectedTransaction.production_date ? new Date(selectedTransaction.production_date).toLocaleDateString('en-IN') : '-'}</p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Roll Details */}
+              {selectedTransaction.roll_length_meters != null && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <Package className="h-4 w-4" />
+                      Roll Details
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Roll Length</p>
+                      <p className="font-medium">{selectedTransaction.roll_length_meters.toFixed(2)} m</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Initial Length</p>
+                      <p className="font-medium">{selectedTransaction.roll_initial_length_meters?.toFixed(2)} m</p>
+                    </div>
+                    {selectedTransaction.roll_type && (
+                      <div>
+                        <p className="text-sm text-muted-foreground">Roll Type</p>
+                        <Badge variant="outline">{selectedTransaction.roll_type}</Badge>
+                      </div>
+                    )}
+                    {selectedTransaction.roll_is_cut && (
+                      <div>
+                        <p className="text-sm text-muted-foreground">Status</p>
+                        <Badge variant="secondary">Cut Roll</Badge>
+                      </div>
+                    )}
+                    {selectedTransaction.roll_bundle_size && (
+                      <div>
+                        <p className="text-sm text-muted-foreground">Bundle Size</p>
+                        <p className="font-medium">{selectedTransaction.roll_bundle_size} pieces</p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Customer & Invoice Information */}
+              {(selectedTransaction.customer_name || selectedTransaction.invoice_no) && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm">Customer & Invoice</CardTitle>
+                  </CardHeader>
+                  <CardContent className="grid grid-cols-2 gap-4">
+                    {selectedTransaction.customer_name && (
+                      <div>
+                        <p className="text-sm text-muted-foreground">Customer</p>
+                        <p className="font-medium">{selectedTransaction.customer_name}</p>
+                      </div>
+                    )}
+                    {selectedTransaction.invoice_no && (
+                      <div>
+                        <p className="text-sm text-muted-foreground">Invoice Number</p>
+                        <p className="font-mono font-medium">{selectedTransaction.invoice_no}</p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Notes */}
+              {selectedTransaction.notes && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <MessageCircle className="h-4 w-4" />
+                      Notes
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm whitespace-pre-wrap">{selectedTransaction.notes}</p>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Created By */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">Created By</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <div>
+                    <p className="text-sm text-muted-foreground">User</p>
+                    <p className="font-medium">{selectedTransaction.created_by_name || selectedTransaction.created_by_username || selectedTransaction.created_by_email || '-'}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Created At</p>
+                    <p className="font-medium">{new Date(selectedTransaction.created_at).toLocaleString('en-IN')}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTransactionDetailDialogOpen(false)}>
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>
