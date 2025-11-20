@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify
 from database import execute_insert, execute_query, get_db_cursor
 from auth import jwt_required_with_role
 
-parameter_bp = Blueprint('parameter', __name__, url_prefix='/api/parameters')
+parameter_bp = Blueprint('parameters', __name__, url_prefix='/api/parameters')
 
 @parameter_bp.route('/options', methods=['GET'])
 @jwt_required_with_role()
@@ -30,9 +30,7 @@ def get_parameter_options():
                 })
 
             return jsonify(grouped), 200
-    except Exception as e:
-        print(f"Error fetching parameter options: {e}")
-        return jsonify({'error': str(e)}), 500
+    except Exception as e:return jsonify({'error': str(e)}), 500
 
 @parameter_bp.route('/options/<parameter_name>', methods=['GET'])
 @jwt_required_with_role()
@@ -53,9 +51,7 @@ def get_parameter_options_by_name(parameter_name):
                 'value': opt['option_value'],
                 'created_at': opt['created_at'].isoformat() if opt['created_at'] else None
             } for opt in options]), 200
-    except Exception as e:
-        print(f"Error fetching parameter options: {e}")
-        return jsonify({'error': str(e)}), 500
+    except Exception as e:return jsonify({'error': str(e)}), 500
 
 @parameter_bp.route('/options', methods=['POST'])
 @jwt_required_with_role(['admin'])
@@ -88,7 +84,6 @@ def add_parameter_option():
     except Exception as e:
         if 'duplicate key value' in str(e):
             return jsonify({'error': 'This option already exists'}), 400
-        print(f"Error adding parameter option: {e}")
         return jsonify({'error': str(e)}), 500
 
 @parameter_bp.route('/options/<int:option_id>', methods=['PUT'])
@@ -139,9 +134,7 @@ def update_parameter_option(option_id):
                     'value': updated['option_value']
                 }
             }), 200
-    except Exception as e:
-        print(f"Error updating parameter option: {e}")
-        return jsonify({'error': str(e)}), 500
+    except Exception as e:return jsonify({'error': str(e)}), 500
 
 @parameter_bp.route('/options/<int:option_id>', methods=['DELETE'])
 @jwt_required_with_role(['admin'])
@@ -163,6 +156,4 @@ def delete_parameter_option(option_id):
             return jsonify({
                 'message': f"Deleted {deleted['parameter_name']}: {deleted['option_value']}"
             }), 200
-    except Exception as e:
-        print(f"Error deleting parameter option: {e}")
-        return jsonify({'error': str(e)}), 500
+    except Exception as e:return jsonify({'error': str(e)}), 500

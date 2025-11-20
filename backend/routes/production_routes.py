@@ -48,15 +48,6 @@ def create_batch():
         number_of_rolls = int(number_of_rolls_raw) if number_of_rolls_raw not in (None, '', 'null') else 1
         cut_rolls = json.loads(data.get('cut_rolls', '[]')) if isinstance(data.get('cut_rolls'), str) else data.get('cut_rolls', [])
 
-        # DEBUG: Log piece length extraction
-        print(f"\n{'='*60}")
-        print(f"🔍 PIECE LENGTH DEBUG")
-        print(f"Form/JSON keys: {list(data.keys())}")
-        print(f"length_per_roll: '{data.get('length_per_roll')}'")
-        print(f"lengthPerRoll: '{data.get('lengthPerRoll')}'")
-        print(f"piece_length: '{data.get('piece_length')}'")
-        print(f"{'='*60}\n")
-
         length_per_roll_input = float(data.get('length_per_roll') or data.get('lengthPerRoll') or data.get('roll_length') or data.get('piece_length') or 0)
 
         # Bundle/spare pipe data
@@ -74,11 +65,7 @@ def create_batch():
         # quantity should be: number_of_bundles × bundle_size (pieces)
         if quantity_based and roll_config_type == 'bundles' and number_of_bundles > 0 and bundle_size > 0:
             # Recalculate quantity as total pieces
-            quantity = float(number_of_bundles * bundle_size)
-            print(f"📦 Recalculated Sprinkler quantity: {number_of_bundles} bundles × {bundle_size} pcs = {quantity} pieces")
-
-
-        # Weight tracking - ensure proper conversion and default to None if missing
+            quantity = float(number_of_bundles * bundle_size)# Weight tracking - ensure proper conversion and default to None if missing
         # Note: CSV imports provide kg/m, but system stores g/m, so convert if from import
         weight_per_meter_raw = data.get('weight_per_meter')
         if weight_per_meter_raw not in (None, '', 'null'):
@@ -97,11 +84,6 @@ def create_batch():
         piece_length_value = None
         if quantity_based and length_per_roll_input > 0:
             piece_length_value = length_per_roll_input
-            print(f"📏 Sprinkler Pipe piece_length: {piece_length_value}m")
-        elif quantity_based:
-            print(f"⚠️  WARNING: Sprinkler Pipe missing piece length!")
-            print(f"   - length_per_roll_input: {length_per_roll_input}")
-            print(f"   - Received data keys: {list(data.keys())}")
 
         # Calculate total_weight from weight_per_meter if provided
         if weight_per_meter and not total_weight and quantity > 0:
@@ -110,11 +92,9 @@ def create_batch():
                 # total_length = quantity (pieces) × piece_length (meters/piece)
                 total_length = quantity * piece_length_value
                 total_weight = weight_per_meter * total_length
-                print(f"⚖️  Weight calculation (Sprinkler): {weight_per_meter}g/m × ({quantity} pcs × {piece_length_value}m) = {total_weight}g = {total_weight/1000}kg")
             else:
                 # For HDPE rolls: weight = weight_per_meter × quantity (meters)
                 total_weight = weight_per_meter * quantity
-                print(f"⚖️  Weight calculation (HDPE): {weight_per_meter}g/m × {quantity}m = {total_weight}g = {total_weight/1000}kg")
 
 
         # Handle file upload
@@ -131,15 +111,7 @@ def create_batch():
         with get_db_cursor() as cursor:
             # Create or get product variant
             # Normalize parameters JSON for consistent comparison
-            param_json = json.dumps(parameters, sort_keys=True)
-            print(f"\n{'='*80}")
-            print(f"DEBUG: Creating batch with parameters:")
-            print(f"  Product Type ID: {product_type_id}")
-            print(f"  Brand ID: {brand_id}")
-            print(f"  Parameters: {param_json}")
-            print(f"{'='*80}\n")
-
-            # First, try to find existing variant
+            param_json = json.dumps(parameters, sort_keys=True)# First, try to find existing variant
             cursor.execute("""
                 SELECT id, parameters FROM product_variants
                 WHERE product_type_id = %s
@@ -151,7 +123,6 @@ def create_batch():
 
             if variant:
                 variant_id = variant['id']
-                print(f"✓ Found existing variant: {variant_id} with params: {variant['parameters']}")
             else:
                 # Create new variant
                 cursor.execute("""
@@ -161,7 +132,6 @@ def create_batch():
                 """, (product_type_id, brand_id, param_json))
                 variant = cursor.fetchone()
                 variant_id = variant['id']
-                print(f"✨ Created new variant: {variant_id} with params: {param_json}")
 
             # Auto-generate batch_no and batch_code if not provided
             if not batch_no:
@@ -359,9 +329,7 @@ def create_batch():
             return jsonify({'error': f'Duplicate entry: {error_detail}'}), 409
     except ValueError as e:
         return jsonify({'error': f'Invalid data format: {str(e)}'}), 400
-    except Exception as e:
-        print(f"Error creating batch: {e}")
-        return jsonify({'error': f'Failed to create batch: {str(e)}'}), 500
+    except Exception as e:return jsonify({'error': f'Failed to create batch: {str(e)}'}), 500
 
 @production_bp.route('/attachment/<filename>', methods=['GET'])
 def get_attachment(filename):

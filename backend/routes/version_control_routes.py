@@ -4,7 +4,6 @@ from database import execute_query, execute_insert, get_db_cursor
 from auth import jwt_required_with_role, get_user_identity_details
 import json
 from datetime import datetime
-from google_drive_sync import sync_snapshot_to_drive, test_drive_connection, sync_all_recent_snapshots
 
 version_control_bp = Blueprint('version_control', __name__, url_prefix='/api/version-control')
 
@@ -412,46 +411,20 @@ def get_rollback_history():
 @version_control_bp.route('/drive/sync/<snapshot_id>', methods=['POST'])
 @jwt_required_with_role(['admin'])
 def sync_to_drive(snapshot_id):
-    """Manually sync a snapshot to Google Drive"""
-    try:
-        result = sync_snapshot_to_drive(snapshot_id)
-
-        if result:
-            return jsonify({
-                'message': 'Snapshot synced to Google Drive successfully',
-                'drive_info': result
-            }), 200
-        else:
-            return jsonify({
-                'error': 'Failed to sync to Google Drive',
-                'message': 'Check if Google Drive credentials are configured'
-            }), 500
-
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    """Manually sync a snapshot to Google Drive - Feature not configured"""
+    return jsonify({
+        'error': 'Google Drive sync not configured',
+        'message': 'Google Drive integration has been disabled'
+    }), 501
 
 @version_control_bp.route('/drive/sync-all', methods=['POST'])
 @jwt_required_with_role(['admin'])
 def sync_all_to_drive():
-    """Sync all recent snapshots to Google Drive"""
-    try:
-        days = request.json.get('days', 7) if request.json else 7
-        result = sync_all_recent_snapshots(days=days)
-
-        if result:
-            return jsonify({
-                'message': 'Sync completed',
-                'synced': result['synced'],
-                'failed': result['failed']
-            }), 200
-        else:
-            return jsonify({
-                'error': 'Failed to sync snapshots',
-                'message': 'Check if Google Drive credentials are configured'
-            }), 500
-
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    """Sync all recent snapshots to Google Drive - Feature not configured"""
+    return jsonify({
+        'error': 'Google Drive sync not configured',
+        'message': 'Google Drive integration has been disabled'
+    }), 501
 
 @version_control_bp.route('/drive/test', methods=['GET'])
 @jwt_required_with_role(['admin'])
@@ -479,33 +452,10 @@ def test_drive():
 def configure_drive():
     """Configure Google Drive credentials"""
     try:
-        data = request.json
-        credentials_json = data.get('credentials')
-
-        if not credentials_json:
-            return jsonify({'error': 'Credentials JSON is required'}), 400
-
-        # Validate JSON format
-        try:
-            json.loads(credentials_json)
-        except json.JSONDecodeError:
-            return jsonify({'error': 'Invalid JSON format'}), 400
-
-        # Save credentials to file
-        import os
-        backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        credentials_path = os.path.join(backend_dir, 'google_drive_credentials.json')
-
-        with open(credentials_path, 'w') as f:
-            f.write(credentials_json)
-
-        # Set proper permissions (read/write for owner only)
-        os.chmod(credentials_path, 0o600)
-
         return jsonify({
-            'message': 'Google Drive credentials configured successfully',
-            'path': credentials_path
-        }), 200
+            'error': 'Google Drive sync not configured',
+            'message': 'Google Drive integration has been disabled'
+        }), 501
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500

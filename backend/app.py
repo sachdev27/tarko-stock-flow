@@ -18,9 +18,6 @@ from routes.dispatch_routes import dispatch_bp
 from routes.version_control_routes import version_control_bp
 from routes.ledger_routes import ledger_bp
 
-# Import scheduler
-from scheduler import init_scheduler, start_scheduler, shutdown_scheduler
-
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -64,14 +61,6 @@ def not_found(error):
 @app.errorhandler(500)
 def internal_error(error):
     return jsonify({'error': 'Internal server error'}), 500
-
-# Initialize and start scheduler
-init_scheduler(app)
-start_scheduler(app)
-logger.info("Background scheduler started successfully")
-
-# Register cleanup function
-atexit.register(lambda: shutdown_scheduler(app))
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5500)

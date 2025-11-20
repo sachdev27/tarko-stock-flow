@@ -30,9 +30,7 @@ def get_available_rolls():
     product_type_id = data.get('product_type_id')
     brand_id = data.get('brand_id')  # Optional for "All Brands"
     parameters = data.get('parameters', {})
-
-    print(f"[DEBUG] Available rolls request: product_type_id={product_type_id}, brand_id={brand_id}, parameters={parameters}")
-
+    
     if not product_type_id:
         return jsonify({'error': 'product_type_id is required'}), 400
 
@@ -56,15 +54,12 @@ def get_available_rolls():
         """
         variants = execute_query(variant_query, (product_type_id,))
 
-    print(f"[DEBUG] Found {len(variants)} variants for product_type_id={product_type_id}, brand_id={brand_id}")
-
     # Match parameters
     matching_variants = []
 
     # If no parameters provided (empty dict), match ALL variants
     if not parameters or parameters == {}:
         matching_variants = variants
-        print(f"[DEBUG] No parameters filter, matched all {len(matching_variants)} variants")
     else:
         # Match exact parameters or partial match
         for variant in variants:
@@ -76,10 +71,8 @@ def get_available_rolls():
             )
             if matches:
                 matching_variants.append(variant)
-        print(f"[DEBUG] With parameters filter, matched {len(matching_variants)} variants")
 
     if not matching_variants:
-        print(f"[DEBUG] No matching variants found!")
         return jsonify({'products': [], 'message': 'No matching product variant found'}), 200
 
     # Get all available rolls for matching variants

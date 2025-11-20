@@ -124,9 +124,7 @@ const Admin = () => {
 
   const fetchAllData = async () => {
     setLoading(true);
-    try {
-      console.log('Fetching admin data...');
-      const [brandsRes, typesRes, customersRes, unitsRes, logsRes, paramsRes, usersRes] = await Promise.all([
+    try {const [brandsRes, typesRes, customersRes, unitsRes, logsRes, paramsRes, usersRes] = await Promise.all([
         admin.getBrands(),
         admin.getProductTypes(),
         admin.getCustomers(),
@@ -134,10 +132,7 @@ const Admin = () => {
         admin.getAuditLogs(),
         parameters.getOptions(),
         admin.getUsers(),
-      ]);
-
-      console.log('Admin data fetched:', { brandsRes, typesRes, customersRes, unitsRes, logsRes, paramsRes, usersRes });
-      setBrands(brandsRes.data || []);
+      ]);setBrands(brandsRes.data || []);
       setProductTypes(typesRes.data || []);
       setCustomers(customersRes.data || []);
       setUnits(unitsRes.data || []);

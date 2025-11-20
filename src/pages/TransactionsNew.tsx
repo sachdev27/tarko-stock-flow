@@ -278,9 +278,7 @@ export default function TransactionsNew() {
             console.error('Failed to parse parameters:', e);
             params = {};
           }
-        }
-        console.log('Transaction parameters:', t.batch_code, params, typeof params);
-        return {
+        }return {
           ...t,
           parameters: params || {}
         };
@@ -2218,17 +2216,6 @@ export default function TransactionsNew() {
                         {(() => {
                           const pieces = Math.abs(transaction.quantity_change || 0);
                           const pieceLength = transaction.piece_length || 0;
-
-                          // Fallback: try to get from spare_pieces_details if piece_length is 0
-                          if (pieceLength === 0 && transaction.spare_pieces_details && transaction.spare_pieces_details.length > 0) {
-                            // spare_pieces_details contains the actual piece count (stored in bundle_size)
-                            // We need a different approach - just show pieces for now
-                            console.log('Sprinkler Pipe - showing pieces (piece_length unavailable):', {
-                              batch_code: transaction.batch_code,
-                              pieces,
-                              spare_pieces_details: transaction.spare_pieces_details
-                            });
-                          }
 
                           const totalMeters = pieces * pieceLength;
                           return totalMeters > 0 ? `${totalMeters.toFixed(2)} m` : `${pieces.toFixed(0)} pcs`;

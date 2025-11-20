@@ -147,7 +147,6 @@ def get_product_ledger(product_variant_id):
     except Exception as e:
         import traceback
         error_details = traceback.format_exc()
-        print(f"Ledger error: {error_details}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -213,5 +212,4 @@ def get_batch_ledger(batch_id):
     except Exception as e:
         import traceback
         error_details = traceback.format_exc()
-        print(f"Batch ledger error: {error_details}")
         return jsonify({'error': str(e)}), 500

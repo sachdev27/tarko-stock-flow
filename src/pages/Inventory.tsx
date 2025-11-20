@@ -268,22 +268,14 @@ const Inventory = () => {
     setProductHistory([]);
     setProductHistoryDiagnostics([]);
 
-    try {
-      console.log('📊 Fetching history for product variant:', product.product_variant_id);
-
-      // Use the new dedicated ledger API endpoint
+    try {// Use the new dedicated ledger API endpoint
       const { data } = await ledgerAPI.getProductLedger(product.product_variant_id);
 
       if (!data || !data.transactions || data.transactions.length === 0) {
         toast.info('No transactions found for this product');
         setLoadingHistory(false);
         return;
-      }
-
-      console.log(`✅ Found ${data.transactions.length} transactions`);
-      console.log('📈 Summary:', data.summary);
-
-      setProductHistory(data.transactions);
+      }setProductHistory(data.transactions);
 
       if (data.transactions.length === 0) {
         toast.info('No transactions found for this product variant');
@@ -488,9 +480,7 @@ const Inventory = () => {
     const data = response.data || response;
 
     const batch = data.find((b: any) => b.id === batchId);
-    if (!batch || !batch.rolls) {
-      console.log('Batch not found or has no rolls:', batchId);
-      return [];
+    if (!batch || !batch.rolls) {return [];
     }
 
     const spares = batch.rolls.filter((r: any) => r.roll_type === 'spare').map((r: any) => ({
@@ -501,12 +491,7 @@ const Inventory = () => {
       roll_type: r.roll_type,
       bundle_size: r.bundle_size,
       batch_id: batchId,
-    }));
-
-    console.log(`Found ${spares.length} spare rolls in batch ${batchId}, total pieces:`,
-      spares.reduce((sum, s) => sum + (s.bundle_size || 1), 0));
-
-    return spares;
+    }));return spares;
   };
 
   const formatWeight = (weightInGrams: number | null | undefined): string => {
@@ -1061,9 +1046,7 @@ const Inventory = () => {
         const isHDPE = pe !== undefined && pe !== '';
         const isSprinkler = !isHDPE && type !== undefined && type !== '';
 
-        if (!isHDPE && !isSprinkler) {
-          console.warn('Skipping row - cannot determine product type:', row);
-          continue;
+        if (!isHDPE && !isSprinkler) {continue;
         }
 
         // Find matching product type and brand
@@ -1077,9 +1060,7 @@ const Inventory = () => {
           b.name.toLowerCase() === brandName?.toLowerCase()
         );
 
-        if (!productType || !brand) {
-          console.warn('Product type or brand not found:', productTypeName, brandName);
-          continue;
+        if (!productType || !brand) {continue;
         }
 
         // Build parameters - extract values with or without units
@@ -1137,11 +1118,7 @@ const Inventory = () => {
           piece_length: isSprinkler ? pieceLength : null,
           number_of_bundles: isSprinkler ? numBundles : null
         });
-      }
-
-      console.log('Importing batches:', batches);
-
-      // Create batches via API
+      }// Create batches via API
       for (const batch of batches) {
         await productionAPI.createBatch(batch);
       }

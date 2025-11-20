@@ -304,12 +304,6 @@ const Production = () => {
     allow_spare: false,
   };
 
-  // Debug logging
-  console.log('Selected Product Type:', selectedProductType?.name);
-  console.log('Roll Configuration:', rollConfig);
-  console.log('Allow Cut Rolls:', rollConfig.allow_cut_rolls);
-  console.log('Type check:', typeof rollConfig.allow_cut_rolls);
-
   return (
     <Layout>
       <div className="max-w-4xl mx-auto space-y-6">

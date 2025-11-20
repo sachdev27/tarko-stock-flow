@@ -29,9 +29,7 @@ const Auth = () => {
       return;
     }
 
-    setLoading(true);
-    console.log('Attempting sign in...');
-    const { error } = await signIn(identifier, password);
+    setLoading(true);const { error } = await signIn(identifier, password);
     setLoading(false);
 
     if (error) {
