@@ -22,36 +22,17 @@ export const applyTransactionFilters = (
 
   // Transaction type filter
   if (filters.typeFilter !== 'all') {
-    filtered = filtered.filter(t => {
-      if (filters.typeFilter === 'BUNDLED') {
-        return t.transaction_type === 'PRODUCTION' &&
-               t.notes?.includes('Combined') &&
-               t.notes?.includes('spare');
-      }
-      if (filters.typeFilter === 'CUT BUNDLE') {
-        return t.transaction_type === 'CUT' &&
-               t.notes?.includes('Cut bundle');
-      }
-      if (filters.typeFilter === 'PRODUCTION') {
-        return t.transaction_type === 'PRODUCTION' &&
-               !(t.notes?.includes('Combined') && t.notes?.includes('spare'));
-      }
-      if (filters.typeFilter === 'CUT') {
-        return t.transaction_type === 'CUT' &&
-               !t.notes?.includes('Cut bundle');
-      }
-      return t.transaction_type === filters.typeFilter;
-    });
+    filtered = filtered.filter(t => t.transaction_type === filters.typeFilter);
   }
 
   // Product type filter
   if (filters.productTypeFilter !== 'all') {
-    filtered = filtered.filter(t => t.product_type === filters.productTypeFilter);
+    filtered = filtered.filter(t => t.product_variant_id?.toString() === filters.productTypeFilter || t.product_type_id?.toString() === filters.productTypeFilter);
   }
 
   // Brand filter
   if (filters.brandFilter !== 'all') {
-    filtered = filtered.filter(t => t.brand === filters.brandFilter);
+    filtered = filtered.filter(t => t.brand_id?.toString() === filters.brandFilter);
   }
 
   // Parameter filters
@@ -68,40 +49,35 @@ export const applyTransactionFilters = (
     filtered = filtered.filter(t => t.parameters?.Type === filters.typeParamFilter);
   }
 
-  // Time preset filter
-  const now = new Date();
-  if (filters.timePreset === 'today') {
-    const todayStart = new Date(now.setHours(0, 0, 0, 0));
-    filtered = filtered.filter(t => new Date(t.transaction_date) >= todayStart);
-  } else if (filters.timePreset === 'yesterday') {
-    const yesterdayStart = new Date(now.setHours(0, 0, 0, 0));
-    yesterdayStart.setDate(yesterdayStart.getDate() - 1);
-    const yesterdayEnd = new Date(yesterdayStart);
-    yesterdayEnd.setDate(yesterdayEnd.getDate() + 1);
-    filtered = filtered.filter(t => new Date(t.transaction_date) >= yesterdayStart && new Date(t.transaction_date) < yesterdayEnd);
-  } else if (filters.timePreset === 'last7days') {
-    const sevenDaysAgo = new Date(now);
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    filtered = filtered.filter(t => new Date(t.transaction_date) >= sevenDaysAgo);
-  } else if (filters.timePreset === 'last30days') {
-    const thirtyDaysAgo = new Date(now);
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    filtered = filtered.filter(t => new Date(t.transaction_date) >= thirtyDaysAgo);
-  } else if (filters.timePreset === 'thisMonth') {
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    filtered = filtered.filter(t => new Date(t.transaction_date) >= monthStart);
-  } else if (filters.timePreset === 'lastMonth') {
-    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 1);
-    filtered = filtered.filter(t => new Date(t.transaction_date) >= lastMonthStart && new Date(t.transaction_date) < lastMonthEnd);
-  } else if (filters.timePreset === 'custom') {
+  // Time filter - either use preset or custom date range
+  if (filters.timePreset && filters.timePreset !== 'all' && filters.timePreset !== '') {
+    const now = new Date();
+    if (filters.timePreset === 'today') {
+      const todayStart = new Date(now.setHours(0, 0, 0, 0));
+      filtered = filtered.filter(t => new Date(t.transaction_date) >= todayStart);
+    } else if (filters.timePreset === '7days') {
+      const sevenDaysAgo = new Date(now);
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      filtered = filtered.filter(t => new Date(t.transaction_date) >= sevenDaysAgo);
+    } else if (filters.timePreset === '30days') {
+      const thirtyDaysAgo = new Date(now);
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      filtered = filtered.filter(t => new Date(t.transaction_date) >= thirtyDaysAgo);
+    } else if (filters.timePreset === 'month') {
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      filtered = filtered.filter(t => new Date(t.transaction_date) >= monthStart);
+    } else if (filters.timePreset === 'lastmonth') {
+      const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 1);
+      filtered = filtered.filter(t => new Date(t.transaction_date) >= lastMonthStart && new Date(t.transaction_date) < lastMonthEnd);
+    }
+  } else {
+    // Custom date range
     if (filters.startDate) {
       filtered = filtered.filter(t => new Date(t.transaction_date) >= new Date(filters.startDate));
     }
     if (filters.endDate) {
-      const endDateTime = new Date(filters.endDate);
-      endDateTime.setHours(23, 59, 59, 999);
-      filtered = filtered.filter(t => new Date(t.transaction_date) <= endDateTime);
+      filtered = filtered.filter(t => new Date(t.transaction_date) <= new Date(filters.endDate));
     }
   }
 

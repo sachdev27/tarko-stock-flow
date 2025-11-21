@@ -104,9 +104,9 @@ export function TransactionFilters({
                   <SelectItem value="all">All Types</SelectItem>
                   <SelectItem value="PRODUCTION">Production</SelectItem>
                   <SelectItem value="SALE">Sale</SelectItem>
-                  <SelectItem value="PURCHASE">Purchase</SelectItem>
-                  <SelectItem value="COMBINED">Combined Spares</SelectItem>
-                  <SelectItem value="CUT">Cut Rolls</SelectItem>
+                  <SelectItem value="CUT_ROLL">Cut Roll</SelectItem>
+                  <SelectItem value="SPLIT_BUNDLE">Split Bundle</SelectItem>
+                  <SelectItem value="COMBINE_SPARES">Combine Spares</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -275,19 +275,19 @@ export function TransactionFilters({
           {/* Date Range Filters */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="start-date">Start Date</Label>
+              <Label htmlFor="start-date">Start Date & Time</Label>
               <Input
                 id="start-date"
-                type="date"
+                type="datetime-local"
                 value={filters.startDate}
                 onChange={(e) => onFilterChange('startDate', e.target.value)}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="end-date">End Date</Label>
+              <Label htmlFor="end-date">End Date & Time</Label>
               <Input
                 id="end-date"
-                type="date"
+                type="datetime-local"
                 value={filters.endDate}
                 onChange={(e) => onFilterChange('endDate', e.target.value)}
               />
