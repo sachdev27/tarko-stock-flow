@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronUp, History } from 'lucide-react';
 import { StockEntryList } from './StockEntryList';
 
 interface Batch {
@@ -37,7 +37,9 @@ interface ProductVariantCardProps {
   brandName: string;
   parameters: Record<string, unknown>;
   batches: Batch[];
+  productVariantId: string;
   onUpdate: () => void;
+  onViewHistory: (productVariantId: string, productName: string) => void;
 }
 
 export const ProductVariantCard = ({
@@ -45,7 +47,9 @@ export const ProductVariantCard = ({
   brandName,
   parameters,
   batches,
-  onUpdate
+  productVariantId,
+  onUpdate,
+  onViewHistory
 }: ProductVariantCardProps) => {
   const [expanded, setExpanded] = useState(false);
 
@@ -126,24 +130,37 @@ export const ProductVariantCard = ({
             </div>
           </div>
 
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setExpanded(!expanded)}
-            className="ml-4 shrink-0"
-          >
-            {expanded ? (
-              <>
-                <ChevronUp className="h-4 w-4 mr-1" />
-                Hide
-              </>
-            ) : (
-              <>
-                <ChevronDown className="h-4 w-4 mr-1" />
-                Details
-              </>
-            )}
-          </Button>
+          <div className="flex items-center gap-2 ml-4 shrink-0">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const productName = `${brandName} ${Object.entries(parameters).map(([k, v]) => `${k}:${v}`).join(' ')}`;
+                onViewHistory(productVariantId, productName);
+              }}
+              className="gap-1"
+            >
+              <History className="h-4 w-4" />
+              History
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setExpanded(!expanded)}
+            >
+              {expanded ? (
+                <>
+                  <ChevronUp className="h-4 w-4 mr-1" />
+                  Hide
+                </>
+              ) : (
+                <>
+                  <ChevronDown className="h-4 w-4 mr-1" />
+                  Details
+                </>
+              )}
+            </Button>
+          </div>
         </div>
       </CardHeader>
 

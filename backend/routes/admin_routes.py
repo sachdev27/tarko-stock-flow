@@ -417,7 +417,7 @@ def get_audit_logs():
             u.email as user_email,
             u.username as user_username,
             u.full_name as user_name,
-            -- Get transaction details if entity is TRANSACTION or if there's a related transaction for ROLL
+            -- Get transaction details if entity is TRANSACTION
             t.customer_id,
             t.invoice_no,
             t.quantity_change,
@@ -425,19 +425,12 @@ def get_audit_logs():
             c.name as customer_name,
             -- Get batch details
             b.batch_code,
-            b.batch_no,
-            -- Get roll details if entity is ROLL
-            r.length_meters as roll_length,
-            r.initial_length_meters as roll_initial_length
+            b.batch_no
         FROM audit_logs al
         LEFT JOIN users u ON al.user_id = u.id
-        LEFT JOIN transactions t ON (
-            (al.entity_type = 'TRANSACTION' AND al.entity_id::text = t.id::text) OR
-            (al.entity_type = 'ROLL' AND al.entity_id::text = t.roll_id::text AND al.action_type = 'CUT_ROLL')
-        )
+        LEFT JOIN transactions t ON al.entity_type = 'TRANSACTION' AND al.entity_id::text = t.id::text
         LEFT JOIN customers c ON t.customer_id = c.id
         LEFT JOIN batches b ON t.batch_id = b.id
-        LEFT JOIN rolls r ON al.entity_type = 'ROLL' AND al.entity_id::text = r.id::text
         WHERE 1=1{where_sql}
         ORDER BY al.created_at DESC
         LIMIT %s
@@ -597,3 +590,193 @@ def delete_user(user_id):
     """, (admin_id, str(user_id), "Deleted user"), fetch_all=False)
 
     return jsonify({'message': 'User deleted successfully'}), 200
+
+
+# Database Reset Functions
+@admin_bp.route('/reset-database', methods=['POST'])
+@jwt_required_with_role('admin')
+def reset_database():
+    """
+    Reset database tables based on specified level.
+    Admin only - requires confirmation token.
+    """
+    try:
+        from flask_jwt_extended import get_jwt_identity
+        from auth import get_user_identity_details
+
+        user_id = get_jwt_identity()
+        data = request.get_json()
+
+        reset_level = data.get('reset_level')
+        confirmation_token = data.get('confirmation_token')
+
+        # Validate confirmation token
+        if confirmation_token != 'CONFIRM_RESET':
+            return jsonify({'error': 'Invalid confirmation token'}), 400
+
+        if not reset_level:
+            return jsonify({'error': 'Reset level is required'}), 400
+
+        # Get user details for audit
+        actor = get_user_identity_details(user_id)
+
+        with get_db_cursor() as cursor:
+            tables_cleared = []
+
+            if reset_level == 'transactions_only':
+                # Clear only transaction history, keep inventory
+                cursor.execute("DELETE FROM transactions")
+                cursor.execute("DELETE FROM inventory_transactions")
+                cursor.execute("DELETE FROM audit_logs WHERE action_type IN ('PRODUCTION', 'DISPATCH', 'CUT_ROLL', 'SPLIT_BUNDLE', 'COMBINE_SPARES')")
+                tables_cleared = ['transactions', 'inventory_transactions', 'audit_logs (filtered)']
+
+            elif reset_level == 'inventory_and_transactions':
+                # Clear inventory and transactions, keep batches and product setup
+                cursor.execute("DELETE FROM sprinkler_spare_pieces")
+                cursor.execute("DELETE FROM hdpe_cut_pieces")
+                cursor.execute("DELETE FROM inventory_stock")
+                cursor.execute("DELETE FROM inventory_transactions")
+                cursor.execute("DELETE FROM transactions")
+                cursor.execute("DELETE FROM audit_logs WHERE action_type IN ('PRODUCTION', 'DISPATCH', 'CUT_ROLL', 'SPLIT_BUNDLE', 'COMBINE_SPARES')")
+                tables_cleared = ['inventory_stock', 'hdpe_cut_pieces', 'sprinkler_spare_pieces', 'transactions', 'inventory_transactions', 'audit_logs (filtered)']
+
+            elif reset_level == 'batches_inventory_transactions':
+                # Clear batches, inventory, and transactions - keeps product types, brands, customers
+                cursor.execute("DELETE FROM sprinkler_spare_pieces")
+                cursor.execute("DELETE FROM hdpe_cut_pieces")
+                cursor.execute("DELETE FROM inventory_stock")
+                cursor.execute("DELETE FROM inventory_transactions")
+                cursor.execute("DELETE FROM transactions")
+                cursor.execute("DELETE FROM batches")
+                cursor.execute("DELETE FROM audit_logs WHERE action_type IN ('PRODUCTION', 'DISPATCH', 'CUT_ROLL', 'SPLIT_BUNDLE', 'COMBINE_SPARES', 'CREATE_BATCH')")
+                tables_cleared = ['batches', 'inventory_stock', 'hdpe_cut_pieces', 'sprinkler_spare_pieces', 'transactions', 'inventory_transactions', 'audit_logs (filtered)']
+
+            elif reset_level == 'full_reset':
+                # Full reset - keeps only users, product types, brands, and customers
+                cursor.execute("DELETE FROM sprinkler_spare_pieces")
+                cursor.execute("DELETE FROM hdpe_cut_pieces")
+                cursor.execute("DELETE FROM inventory_stock")
+                cursor.execute("DELETE FROM inventory_transactions")
+                cursor.execute("DELETE FROM transactions")
+                cursor.execute("DELETE FROM batches")
+                cursor.execute("DELETE FROM product_variants")
+                cursor.execute("DELETE FROM audit_logs WHERE entity_type NOT IN ('USER')")
+                tables_cleared = ['product_variants', 'batches', 'inventory_stock', 'hdpe_cut_pieces', 'sprinkler_spare_pieces', 'transactions', 'inventory_transactions', 'audit_logs (filtered)']
+
+            elif reset_level == 'complete_wipe':
+                # Complete wipe - removes everything except users
+                cursor.execute("DELETE FROM sprinkler_spare_pieces")
+                cursor.execute("DELETE FROM hdpe_cut_pieces")
+                cursor.execute("DELETE FROM inventory_stock")
+                cursor.execute("DELETE FROM inventory_transactions")
+                cursor.execute("DELETE FROM transactions")
+                cursor.execute("DELETE FROM batches")
+                cursor.execute("DELETE FROM product_variants")
+                cursor.execute("DELETE FROM customers")
+                cursor.execute("UPDATE brands SET deleted_at = NOW() WHERE deleted_at IS NULL")
+                cursor.execute("UPDATE product_types SET deleted_at = NOW() WHERE deleted_at IS NULL")
+                cursor.execute("DELETE FROM audit_logs WHERE entity_type != 'USER'")
+                tables_cleared = ['ALL DATA (except users)']
+
+            else:
+                return jsonify({'error': 'Invalid reset level'}), 400
+
+            # Create audit log for this action
+            cursor.execute("""
+                INSERT INTO audit_logs (
+                    user_id, action_type, entity_type, entity_id,
+                    description, created_at
+                ) VALUES (%s, 'DATABASE_RESET', 'SYSTEM', NULL, %s, NOW())
+            """, (user_id, f"{actor['name']} performed database reset: {reset_level}. Tables cleared: {', '.join(tables_cleared)}"))
+
+        return jsonify({
+            'message': 'Database reset successful',
+            'reset_level': reset_level,
+            'tables_cleared': tables_cleared,
+            'performed_by': actor['name']
+        }), 200
+
+    except Exception as e:
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"Error resetting database: {error_trace}")
+        return jsonify({'error': 'Failed to reset database', 'details': str(e)}), 500
+
+
+@admin_bp.route('/reset-options', methods=['GET'])
+@jwt_required_with_role('admin')
+def get_reset_options():
+    """Get available database reset options with descriptions"""
+    options = [
+        {
+            'value': 'transactions_only',
+            'label': 'Clear Transactions Only',
+            'description': 'Removes all transaction history but keeps inventory, batches, and products intact',
+            'impact': 'Low - Only historical records removed',
+            'keeps': 'Inventory, Batches, Products, Customers'
+        },
+        {
+            'value': 'inventory_and_transactions',
+            'label': 'Clear Inventory & Transactions',
+            'description': 'Removes all inventory stock and transaction history but keeps batch records',
+            'impact': 'Medium - Current stock removed',
+            'keeps': 'Batches, Products, Customers'
+        },
+        {
+            'value': 'batches_inventory_transactions',
+            'label': 'Clear Batches, Inventory & Transactions',
+            'description': 'Removes all batches, inventory, and transactions but keeps product setup',
+            'impact': 'High - All production data removed',
+            'keeps': 'Product Types, Brands, Product Variants, Customers'
+        },
+        {
+            'value': 'full_reset',
+            'label': 'Full Reset (Keep Product Setup)',
+            'description': 'Removes all operational data but keeps product types, brands, and customers',
+            'impact': 'Very High - Fresh start for operations',
+            'keeps': 'Product Types, Brands, Customers, Users'
+        },
+        {
+            'value': 'complete_wipe',
+            'label': 'Complete Wipe',
+            'description': 'Removes everything except user accounts - total fresh start',
+            'impact': 'CRITICAL - All data removed',
+            'keeps': 'Users only'
+        }
+    ]
+
+    return jsonify({'options': options}), 200
+
+
+@admin_bp.route('/database-stats', methods=['GET'])
+@jwt_required_with_role('admin')
+def get_database_stats():
+    """Get current database statistics for all tables"""
+    try:
+        with get_db_cursor() as cursor:
+            stats = {}
+
+            # Count records in each table
+            tables = [
+                'users', 'product_types', 'brands', 'customers', 'product_variants',
+                'batches', 'inventory_stock', 'hdpe_cut_pieces', 'sprinkler_spare_pieces',
+                'transactions', 'inventory_transactions', 'audit_logs'
+            ]
+
+            for table in tables:
+                try:
+                    if table in ['product_types', 'brands', 'customers', 'product_variants', 'batches']:
+                        # These tables have soft deletes
+                        cursor.execute(f"SELECT COUNT(*) as count FROM {table} WHERE deleted_at IS NULL")
+                    else:
+                        cursor.execute(f"SELECT COUNT(*) as count FROM {table}")
+
+                    result = cursor.fetchone()
+                    stats[table] = result['count'] if result else 0
+                except Exception as e:
+                    stats[table] = f"Error: {str(e)}"
+
+            return jsonify({'stats': stats}), 200
+
+    except Exception as e:
+        return jsonify({'error': 'Failed to get database stats', 'details': str(e)}), 500

@@ -195,6 +195,14 @@ export const admin = {
     api.put(`/admin/users/${id}`, data),
   deleteUser: (id: string) =>
     api.delete(`/admin/users/${id}`),
+
+  // Database Reset
+  getResetOptions: () =>
+    api.get('/admin/reset-options'),
+  getDatabaseStats: () =>
+    api.get('/admin/database-stats'),
+  resetDatabase: (resetLevel: string, confirmationToken: string) =>
+    api.post('/admin/reset-database', { reset_level: resetLevel, confirmation_token: confirmationToken }),
 };
 
 // Reports endpoints

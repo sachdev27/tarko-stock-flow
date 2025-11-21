@@ -15,87 +15,196 @@ def get_product_ledger(product_variant_id):
         end_date = request.args.get('end_date')
         transaction_type = request.args.get('transaction_type')
 
-        # Base query
-        query = """
-            SELECT
-                t.id,
-                t.transaction_type,
-                t.quantity_change,
-                t.transaction_date,
-                t.invoice_no,
-                t.notes,
-                t.created_at,
-                -- Batch information
-                b.batch_code,
-                b.batch_no,
-                b.initial_quantity as batch_initial_quantity,
-                b.current_quantity as batch_current_quantity,
-                b.weight_per_meter as batch_weight_per_meter,
-                b.total_weight as batch_total_weight,
-                b.attachment_url as batch_attachment_url,
-                b.production_date,
-                -- Roll information
-                r.length_meters as roll_length_meters,
-                r.initial_length_meters as roll_initial_length_meters,
-                r.is_cut_roll as roll_is_cut,
-                r.roll_type,
-                r.bundle_size as roll_bundle_size,
-                -- Product information
-                pt.name as product_type,
-                pt.id as product_type_id,
-                br.name as brand,
-                br.id as brand_id,
-                pv.id as product_variant_id,
-                pv.parameters,
-                u.abbreviation as unit_abbreviation,
-                -- Customer information
-                c.name as customer_name,
-                -- User information
-                usr.email as created_by_email,
-                usr.username as created_by_username,
-                usr.full_name as created_by_name
-            FROM transactions t
-            LEFT JOIN batches b ON t.batch_id = b.id
-            LEFT JOIN rolls r ON t.roll_id = r.id
-            LEFT JOIN product_variants pv ON b.product_variant_id = pv.id
-            LEFT JOIN product_types pt ON pv.product_type_id = pt.id
-            LEFT JOIN brands br ON pv.brand_id = br.id
-            LEFT JOIN units u ON pt.unit_id = u.id
-            LEFT JOIN customers c ON t.customer_id = c.id
-            LEFT JOIN users usr ON t.created_by = usr.id
-            WHERE t.deleted_at IS NULL
-            AND pv.id = %s
-        """
+        # Build filter conditions for both queries
+        date_filter = ""
+        date_params = []
 
-        params = [product_variant_id]
-
-        # Add date filters if provided
         if start_date:
-            query += " AND t.transaction_date >= %s"
-            params.append(start_date)
+            date_filter += " AND transaction_date >= %s"
+            date_params.append(start_date)
 
         if end_date:
-            query += " AND t.transaction_date <= %s"
-            params.append(end_date)
+            date_filter += " AND transaction_date <= %s"
+            date_params.append(end_date)
 
-        # Add transaction type filter if provided
-        if transaction_type:
-            query += " AND t.transaction_type = %s"
-            params.append(transaction_type)
+        # UNION query combining transactions and inventory_transactions tables
+        query = f"""
+            WITH all_transactions AS (
+                -- Batch-level transactions (PRODUCTION, DISPATCH, SALE)
+                SELECT
+                    t.id::text as id,
+                    t.transaction_type::text,
+                    t.quantity_change::numeric,
+                    t.transaction_date,
+                    t.invoice_no,
+                    t.notes,
+                    t.created_at,
+                    t.batch_id,
+                    t.roll_snapshot,
+                    'transactions' as source_table,
+                    -- Batch information
+                    b.batch_code,
+                    b.batch_no,
+                    b.initial_quantity as batch_initial_quantity,
+                    b.current_quantity as batch_current_quantity,
+                    b.weight_per_meter as batch_weight_per_meter,
+                    b.total_weight as batch_total_weight,
+                    b.attachment_url as batch_attachment_url,
+                    b.production_date,
+                    b.piece_length as batch_piece_length,
+                    -- Product information
+                    pt.name as product_type,
+                    pt.id as product_type_id,
+                    br.name as brand,
+                    br.id as brand_id,
+                    pv.id as product_variant_id,
+                    pv.parameters,
+                    u.abbreviation as unit_abbreviation,
+                    -- Customer information
+                    c.name as customer_name,
+                    -- User information
+                    usr.email as created_by_email,
+                    usr.username as created_by_username,
+                    usr.full_name as created_by_name
+                FROM transactions t
+                LEFT JOIN batches b ON t.batch_id = b.id
+                LEFT JOIN product_variants pv ON b.product_variant_id = pv.id
+                LEFT JOIN product_types pt ON pv.product_type_id = pt.id
+                LEFT JOIN brands br ON pv.brand_id = br.id
+                LEFT JOIN units u ON pt.unit_id = u.id
+                LEFT JOIN customers c ON t.customer_id = c.id
+                LEFT JOIN users usr ON t.created_by = usr.id
+                WHERE t.deleted_at IS NULL
+                AND pv.id = %s
+                {date_filter}
 
-        # Order by date descending (most recent first)
-        query += " ORDER BY t.transaction_date DESC, t.created_at DESC"
+                UNION ALL
+
+                -- Stock-level operations (CUT_ROLL, SPLIT_BUNDLE, COMBINE_SPARES)
+                SELECT
+                    it.id::text as id,
+                    it.transaction_type::text,
+                    COALESCE(it.to_quantity, it.from_quantity, 0)::numeric as quantity_change,
+                    it.created_at as transaction_date,
+                    NULL as invoice_no,
+                    it.notes,
+                    it.created_at,
+                    it.batch_id,
+                    it.cut_piece_details as roll_snapshot,
+                    'inventory_transactions' as source_table,
+                    -- Batch information (from batch_id if available, or from stock)
+                    b.batch_code,
+                    b.batch_no,
+                    b.initial_quantity as batch_initial_quantity,
+                    b.current_quantity as batch_current_quantity,
+                    b.weight_per_meter as batch_weight_per_meter,
+                    b.total_weight as batch_total_weight,
+                    b.attachment_url as batch_attachment_url,
+                    b.production_date,
+                    b.piece_length as batch_piece_length,
+                    -- Product information
+                    pt.name as product_type,
+                    pt.id as product_type_id,
+                    br.name as brand,
+                    br.id as brand_id,
+                    pv.id as product_variant_id,
+                    pv.parameters,
+                    u.abbreviation as unit_abbreviation,
+                    -- Customer information
+                    NULL as customer_name,
+                    -- User information
+                    usr.email as created_by_email,
+                    usr.username as created_by_username,
+                    usr.full_name as created_by_name
+                FROM inventory_transactions it
+                LEFT JOIN inventory_stock s ON it.from_stock_id = s.id
+                LEFT JOIN batches b ON COALESCE(it.batch_id, s.batch_id) = b.id
+                LEFT JOIN product_variants pv ON b.product_variant_id = pv.id
+                LEFT JOIN product_types pt ON pv.product_type_id = pt.id
+                LEFT JOIN brands br ON pv.brand_id = br.id
+                LEFT JOIN units u ON pt.unit_id = u.id
+                LEFT JOIN users usr ON it.created_by = usr.id
+                WHERE pv.id = %s
+                {date_filter}
+            )
+            SELECT *
+            FROM all_transactions
+            ORDER BY transaction_date DESC, created_at DESC
+        """
+
+        # Parameters: product_variant_id for transactions query + date filters,
+        # then product_variant_id for inventory_transactions query + date filters
+        params = [product_variant_id] + date_params + [product_variant_id] + date_params
 
         transactions = execute_query(query, tuple(params))
+
+        # Remove duplicate PRODUCTION entries (keep only one per batch)
+        seen_batch_productions = set()
+        unique_transactions = []
+
+        for txn in transactions:
+            # For PRODUCTION transactions, check if we've seen this batch already
+            if txn.get('transaction_type') == 'PRODUCTION':
+                batch_id = txn.get('batch_id')
+                if batch_id in seen_batch_productions:
+                    continue  # Skip duplicate
+                seen_batch_productions.add(batch_id)
+
+            unique_transactions.append(txn)
+
+        transactions = unique_transactions
+
+        # Enrich transactions with current stock counts from inventory_stock
+        for txn in transactions:
+            batch_id = txn.get('batch_id')
+            if batch_id:
+                stock_query = """
+                    SELECT
+                        stock_type,
+                        SUM(quantity) as count
+                    FROM inventory_stock
+                    WHERE batch_id = %s
+                    AND deleted_at IS NULL
+                    AND quantity > 0
+                    GROUP BY stock_type
+                """
+                stock_counts = execute_query(stock_query, (batch_id,))
+
+                txn['full_rolls'] = 0
+                txn['cut_rolls'] = 0
+                txn['bundles'] = 0
+                txn['spares'] = 0
+
+                for stock in stock_counts:
+                    if stock['stock_type'] == 'FULL_ROLL':
+                        txn['full_rolls'] = int(stock['count'] or 0)
+                    elif stock['stock_type'] == 'CUT_ROLL':
+                        txn['cut_rolls'] = int(stock['count'] or 0)
+                    elif stock['stock_type'] == 'BUNDLE':
+                        txn['bundles'] = int(stock['count'] or 0)
+                    elif stock['stock_type'] == 'SPARE':
+                        # For spares, get piece count from sprinkler_spare_pieces table
+                        spare_query = """
+                            SELECT COALESCE(SUM(ssp.piece_count), 0) as total_pieces
+                            FROM inventory_stock s
+                            JOIN sprinkler_spare_pieces ssp ON ssp.stock_id = s.id
+                            WHERE s.batch_id = %s
+                            AND s.stock_type = 'SPARE'
+                            AND s.deleted_at IS NULL
+                        """
+                        spare_result = execute_query(spare_query, (batch_id,), fetch_one=True)
+                        txn['spares'] = int(spare_result['total_pieces'] or 0) if spare_result else 0
 
         # Calculate summary statistics
         summary = {
             'total_transactions': len(transactions),
             'total_produced': 0,
             'total_sold': 0,
+            'total_cut_operations': 0,
+            'total_split_operations': 0,
+            'total_combine_operations': 0,
             'total_adjustments': 0,
-            'total_returns': 0,
-            'current_stock': 0
+            'total_returns': 0
         }
 
         for txn in transactions:
@@ -104,22 +213,84 @@ def get_product_ledger(product_variant_id):
 
             if txn_type == 'PRODUCTION':
                 summary['total_produced'] += qty
-            elif txn_type == 'SALE':
+            elif txn_type in ['SALE', 'DISPATCH']:
                 summary['total_sold'] += qty
+            elif txn_type == 'CUT_ROLL':
+                summary['total_cut_operations'] += 1
+            elif txn_type == 'SPLIT_BUNDLE':
+                summary['total_split_operations'] += 1
+            elif txn_type == 'COMBINE_SPARES':
+                summary['total_combine_operations'] += 1
             elif txn_type == 'RETURN':
                 summary['total_returns'] += qty
             elif txn_type == 'ADJUSTMENT':
                 summary['total_adjustments'] += qty
 
-        # Get current stock from batches
-        stock_query = """
-            SELECT COALESCE(SUM(b.current_quantity), 0) as current_stock
+        # Get current stock summary from inventory_stock
+        current_stock_query = """
+            SELECT
+                s.stock_type,
+                SUM(s.quantity) as count,
+                SUM(CASE
+                    WHEN s.stock_type = 'FULL_ROLL' THEN s.quantity * s.length_per_unit
+                    WHEN s.stock_type = 'CUT_ROLL' THEN s.length_per_unit
+                    ELSE 0
+                END) as total_length
+            FROM inventory_stock s
+            JOIN batches b ON s.batch_id = b.id
+            WHERE b.product_variant_id = %s
+            AND s.deleted_at IS NULL
+            AND s.quantity > 0
+            GROUP BY s.stock_type
+        """
+        current_stock = execute_query(current_stock_query, (product_variant_id,))
+
+        summary['current_stock'] = {
+            'full_rolls': 0,
+            'cut_rolls': 0,
+            'bundles': 0,
+            'spares': 0,
+            'total_length': 0,
+            'total_weight': 0
+        }
+
+        for stock in current_stock:
+            stock_type = stock['stock_type']
+            count = int(stock['count'] or 0)
+            total_length = float(stock['total_length'] or 0)
+
+            if stock_type == 'FULL_ROLL':
+                summary['current_stock']['full_rolls'] = count
+                summary['current_stock']['total_length'] += total_length
+            elif stock_type == 'CUT_ROLL':
+                summary['current_stock']['cut_rolls'] = count
+                summary['current_stock']['total_length'] += total_length
+            elif stock_type == 'BUNDLE':
+                summary['current_stock']['bundles'] = count
+            elif stock_type == 'SPARE':
+                # Get actual spare piece count
+                spare_query = """
+                    SELECT COALESCE(SUM(ssp.piece_count), 0) as total_pieces
+                    FROM inventory_stock s
+                    JOIN sprinkler_spare_pieces ssp ON ssp.stock_id = s.id
+                    JOIN batches b ON s.batch_id = b.id
+                    WHERE b.product_variant_id = %s
+                    AND s.stock_type = 'SPARE'
+                    AND s.deleted_at IS NULL
+                """
+                spare_result = execute_query(spare_query, (product_variant_id,), fetch_one=True)
+                summary['current_stock']['spares'] = int(spare_result['total_pieces'] or 0) if spare_result else 0
+
+        # Get total weight from batches
+        weight_query = """
+            SELECT COALESCE(SUM(b.total_weight), 0) as total_weight
             FROM batches b
             WHERE b.product_variant_id = %s
             AND b.deleted_at IS NULL
+            AND b.current_quantity > 0
         """
-        stock_result = execute_query(stock_query, (product_variant_id,), fetch_one=True)
-        summary['current_stock'] = float(stock_result['current_stock']) if stock_result else 0
+        weight_result = execute_query(weight_query, (product_variant_id,), fetch_one=True)
+        summary['current_stock']['total_weight'] = float(weight_result['total_weight'] or 0) if weight_result else 0
 
         # Get product details
         product_query = """
@@ -164,18 +335,13 @@ def get_batch_ledger(batch_id):
                 t.invoice_no,
                 t.notes,
                 t.created_at,
-                -- Roll information
-                r.length_meters as roll_length_meters,
-                r.initial_length_meters as roll_initial_length_meters,
-                r.is_cut_roll as roll_is_cut,
-                r.roll_type,
-                r.bundle_size as roll_bundle_size,
+                -- Roll snapshot data (if available)
+                t.roll_snapshot,
                 -- Customer information
                 c.name as customer_name,
                 -- User information
                 usr.full_name as created_by_name
             FROM transactions t
-            LEFT JOIN rolls r ON t.roll_id = r.id
             LEFT JOIN customers c ON t.customer_id = c.id
             LEFT JOIN users usr ON t.created_by = usr.id
             WHERE t.batch_id = %s

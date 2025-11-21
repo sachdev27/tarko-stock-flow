@@ -27,6 +27,7 @@ interface Batch {
   product_type_name: string;
   brand_name: string;
   parameters: Record<string, unknown>;
+  product_variant_id: string;
   stock_entries: StockEntry[];
 }
 
@@ -327,6 +328,12 @@ const InventoryNew = () => {
     setHistoryDialogOpen(true);
   };
 
+  // Helper to get product variant ID from batches
+  const getProductVariantId = (batches: Batch[]): string => {
+    // All batches in a variant group should have the same product_variant_id
+    return batches[0]?.product_variant_id || '';
+  };
+
   const handleParameterFilterChange = (key: string, value: string) => {
     setParameterFilters(prev => ({
       ...prev,
@@ -341,6 +348,21 @@ const InventoryNew = () => {
     setParameterFilters({});
     setSearchTerm('');
   };
+
+  // Group batches by product variant (product type + brand + parameters)
+  const groupedByProductVariant = filteredBatches.reduce((acc, batch) => {
+    const key = `${batch.product_type_name}_${batch.brand_name}_${JSON.stringify(batch.parameters)}`;
+    if (!acc[key]) {
+      acc[key] = {
+        productTypeName: batch.product_type_name,
+        brandName: batch.brand_name,
+        parameters: batch.parameters,
+        batches: []
+      };
+    }
+    acc[key].batches.push(batch);
+    return acc;
+  }, {} as Record<string, { productTypeName: string; brandName: string; parameters: Record<string, unknown>; batches: Batch[] }>);
 
   const isAdmin = user?.role === 'admin';
 
@@ -456,37 +478,22 @@ const InventoryNew = () => {
               </div>
             </CardContent>
           </Card>
-        ) : (() => {
-          // Group batches by product variant (product type + brand + parameters)
-          const groupedByProductVariant = filteredBatches.reduce((acc, batch) => {
-            const key = `${batch.product_type_name}_${batch.brand_name}_${JSON.stringify(batch.parameters)}`;
-            if (!acc[key]) {
-              acc[key] = {
-                productTypeName: batch.product_type_name,
-                brandName: batch.brand_name,
-                parameters: batch.parameters,
-                batches: []
-              };
-            }
-            acc[key].batches.push(batch);
-            return acc;
-          }, {} as Record<string, { productTypeName: string; brandName: string; parameters: Record<string, unknown>; batches: Batch[] }>);
-
-          return (
-            <div className="space-y-4">
-              {Object.entries(groupedByProductVariant).map(([key, variant]) => (
-                <ProductVariantCard
-                  key={key}
-                  productTypeName={variant.productTypeName}
-                  brandName={variant.brandName}
-                  parameters={variant.parameters}
-                  batches={variant.batches}
-                  onUpdate={fetchBatches}
-                />
-              ))}
-            </div>
-          );
-        })()}
+        ) : (
+          <div className="space-y-4">
+            {Object.entries(groupedByProductVariant).map(([key, variant]) => (
+              <ProductVariantCard
+                key={key}
+                productTypeName={variant.productTypeName}
+                brandName={variant.brandName}
+                parameters={variant.parameters}
+                batches={variant.batches}
+                productVariantId={getProductVariantId(variant.batches)}
+                onUpdate={fetchBatches}
+                onViewHistory={openProductHistory}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Dialogs */}
