@@ -471,6 +471,92 @@ def revert_transactions():
     with get_db_cursor() as cursor:
         for transaction_id in transaction_ids:
             try:
+                # Check if this is a dispatch transaction
+                if transaction_id.startswith('dispatch_'):
+                    clean_id = transaction_id.replace('dispatch_', '')
+
+                    # Get dispatch details
+                    cursor.execute("""
+                        SELECT d.*, COUNT(di.id) as item_count
+                        FROM dispatches d
+                        LEFT JOIN dispatch_items di ON d.id = di.dispatch_id
+                        WHERE d.id = %s AND d.deleted_at IS NULL
+                        GROUP BY d.id
+                    """, (clean_id,))
+
+                    dispatch = cursor.fetchone()
+                    if not dispatch:
+                        failed_transactions.append({'id': transaction_id, 'error': 'Dispatch not found or already reverted'})
+                        continue
+
+                    # Get all dispatch items
+                    cursor.execute("""
+                        SELECT di.*, ist.stock_type
+                        FROM dispatch_items di
+                        JOIN inventory_stock ist ON di.stock_id = ist.id
+                        WHERE di.dispatch_id = %s
+                    """, (clean_id,))
+
+                    dispatch_items = cursor.fetchall()
+
+                    # Revert each dispatch item
+                    for item in dispatch_items:
+                        stock_id = item['stock_id']
+                        quantity = item['quantity']
+                        item_type = item['item_type']
+
+                        # Restore inventory_stock quantity
+                        cursor.execute("""
+                            UPDATE inventory_stock
+                            SET quantity = quantity + %s,
+                                status = 'IN_STOCK',
+                                updated_at = NOW()
+                            WHERE id = %s
+                        """, (quantity, stock_id))
+
+                        # Handle item-type specific reversals
+                        if item_type == 'CUT_PIECE' and item.get('cut_piece_id'):
+                            # Restore cut piece status
+                            cursor.execute("""
+                                UPDATE hdpe_cut_pieces
+                                SET status = 'IN_STOCK', dispatch_id = NULL, updated_at = NOW()
+                                WHERE id = %s
+                            """, (item['cut_piece_id'],))
+
+                        elif item_type == 'SPARE_PIECES':
+                            # Restore spare pieces
+                            if item.get('spare_piece_ids'):
+                                # Mark dispatched spare pieces as IN_STOCK and clear dispatch_id
+                                cursor.execute("""
+                                    UPDATE sprinkler_spare_pieces
+                                    SET status = 'IN_STOCK', dispatch_id = NULL, updated_at = NOW()
+                                    WHERE dispatch_id = %s
+                                """, (clean_id,))
+
+                                # Also restore piece_count to original spare records if they were partially dispatched
+                                # This is complex - for now, keep the dispatched records but mark them as available
+
+                    # Soft delete the dispatch
+                    cursor.execute("""
+                        UPDATE dispatches
+                        SET deleted_at = NOW(), status = 'CANCELLED'
+                        WHERE id = %s
+                    """, (clean_id,))
+
+                    # Create audit log
+                    actor_label = f"{actor['name']} ({actor['role']})"
+                    log_msg = f"{actor_label} reverted dispatch {dispatch['dispatch_number']}"
+
+                    cursor.execute("""
+                        INSERT INTO audit_logs (
+                            user_id, action_type, entity_type, entity_id,
+                            description, created_at
+                        ) VALUES (%s, 'REVERT_DISPATCH', 'DISPATCH', %s, %s, NOW())
+                    """, (user_id, clean_id, log_msg))
+
+                    reverted_count += 1
+                    continue
+
                 # Check if this is an inventory transaction
                 if transaction_id.startswith('inv_'):
                     # Handle inventory operations (CUT_ROLL, SPLIT_BUNDLE, COMBINE_SPARES)

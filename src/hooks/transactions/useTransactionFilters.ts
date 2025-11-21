@@ -44,6 +44,13 @@ export const useTransactionFilters = (transactions: TransactionRecord[]) => {
     setFilters(prev => {
       const newFilters = { ...prev, [key]: value };
 
+      // When time preset changes to 'All Time', clear dates
+      if (key === 'timePreset' && (value === 'all' || value === '')) {
+        newFilters.startDate = '';
+        newFilters.endDate = '';
+        return newFilters;
+      }
+
       // When time preset changes, populate start and end dates
       if (key === 'timePreset' && value !== 'all' && value !== '') {
         const now = new Date();

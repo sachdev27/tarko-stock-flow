@@ -1233,7 +1233,7 @@ def create_dispatch():
                         dispatch_number, customer_id, bill_to_id, transport_id,
                         vehicle_id, invoice_number, notes, status, created_by, dispatch_date
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, 'DISPATCHED', %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, 'DISPATCHED', %s, COALESCE(%s, CURRENT_DATE))
                     RETURNING id, dispatch_number
                 """, (
                     dispatch_number, customer_id, bill_to_id, transport_id,
@@ -1344,6 +1344,21 @@ def create_dispatch():
                         print(f"DEBUG: spare_id_counts: {spare_id_counts}")
 
                         # For each unique spare_id, check if we're taking all pieces or partial
+                        # Also get the piece length for meter calculation
+                        cursor.execute("""
+                            SELECT
+                                sp.piece_count,
+                                sp.status,
+                                st.piece_length_meters
+                            FROM sprinkler_spare_pieces sp
+                            JOIN inventory_stock st ON sp.stock_id = st.id
+                            WHERE sp.id = ANY(%s::uuid[])
+                            LIMIT 1
+                        """, (list(spare_id_counts.keys()),))
+
+                        first_spare = cursor.fetchone()
+                        piece_length_meters = first_spare['piece_length_meters'] if first_spare else None
+
                         for spare_id, count_needed in spare_id_counts.items():
                             cursor.execute("""
                                 SELECT piece_count, status
@@ -1393,28 +1408,36 @@ def create_dispatch():
                         cursor.execute("""
                             INSERT INTO dispatch_items (
                                 dispatch_id, stock_id, product_variant_id, item_type,
-                                quantity, spare_piece_ids, piece_count
+                                quantity, spare_piece_ids, piece_count, piece_length_meters
                             )
-                            VALUES (%s, %s, %s, %s, %s, %s::uuid[], %s)
+                            VALUES (%s, %s, %s, %s, %s, %s::uuid[], %s, %s)
                             RETURNING id
                         """, (
                             dispatch_id, stock_id, product_variant_id, item_type,
-                            quantity, spare_piece_ids, piece_count
+                            quantity, spare_piece_ids, piece_count, piece_length_meters
                         ))
 
                         dispatch_item_id = cursor.fetchone()['id']
 
-                        # Reduce inventory_stock quantity
+                        # Check if any spare pieces remain IN_STOCK for this stock_id
+                        cursor.execute("""
+                            SELECT COALESCE(SUM(piece_count), 0) as remaining_pieces
+                            FROM sprinkler_spare_pieces
+                            WHERE stock_id = %s AND status = 'IN_STOCK'
+                        """, (stock_id,))
+
+                        remaining = cursor.fetchone()['remaining_pieces']
+
+                        # Update inventory_stock status based on remaining pieces
                         cursor.execute("""
                             UPDATE inventory_stock
-                            SET quantity = quantity - %s,
-                                status = CASE
-                                    WHEN quantity - %s <= 0 THEN 'SOLD_OUT'
+                            SET status = CASE
+                                    WHEN %s <= 0 THEN 'SOLD_OUT'
                                     ELSE 'IN_STOCK'
                                 END,
                                 updated_at = NOW()
                             WHERE id = %s
-                        """, (quantity, quantity, stock_id))
+                        """, (remaining, stock_id))
 
                         # Record in inventory_transactions
                         cursor.execute("""

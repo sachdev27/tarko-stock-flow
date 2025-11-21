@@ -113,7 +113,9 @@ export const CustomerDetailsSection = ({
         </div>
 
         <div>
-          <Label>Dispatch Date</Label>
+          <Label>
+            Dispatch Date <span className="text-red-500">*</span>
+          </Label>
           <Popover>
             <PopoverTrigger asChild>
               <Button

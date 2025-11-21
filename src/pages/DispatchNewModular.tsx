@@ -223,6 +223,11 @@ const DispatchNewModular = () => {
       return;
     }
 
+    if (!dispatchDate) {
+      toast.error('Please select a dispatch date');
+      return;
+    }
+
     if (selectedRolls.length === 0) {
       toast.error('Please select at least one roll');
       productSearchRef.current?.querySelector('input')?.focus();

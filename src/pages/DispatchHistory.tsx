@@ -2,7 +2,15 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   Table,
   TableBody,
@@ -18,7 +26,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Search, Eye, TruckIcon, Package } from 'lucide-react';
+import { Search, Eye, TruckIcon, Package, Filter, X } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { DispatchAPI } from '@/components/dispatch/dispatchAPI';
 
@@ -70,6 +78,21 @@ const DispatchHistory = () => {
   const [loading, setLoading] = useState(false);
   const [selectedDispatch, setSelectedDispatch] = useState<DispatchDetails | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
+
+  // Filter states
+  const [timePreset, setTimePreset] = useState('all');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+
+  const timePresets = [
+    { label: 'All Time', value: 'all' },
+    { label: 'Today', value: 'today' },
+    { label: 'Last 7 Days', value: '7days' },
+    { label: 'Last 30 Days', value: '30days' },
+    { label: 'This Month', value: 'month' },
+    { label: 'Last Month', value: 'lastmonth' },
+  ];
 
   const fetchDispatches = useCallback(async () => {
     setLoading(true);
@@ -92,21 +115,79 @@ const DispatchHistory = () => {
   }, [token, fetchDispatches]);
 
   useEffect(() => {
-    if (!searchTerm.trim()) {
+    if (!searchTerm.trim() && (!startDate || !endDate)) {
       setFilteredDispatches(dispatches);
       return;
     }
 
-    const term = searchTerm.toLowerCase();
-    const filtered = dispatches.filter(d =>
-      d.dispatch_number.toLowerCase().includes(term) ||
-      d.customer_name.toLowerCase().includes(term) ||
-      d.invoice_number?.toLowerCase().includes(term) ||
-      d.transport_name?.toLowerCase().includes(term) ||
-      d.vehicle_driver?.toLowerCase().includes(term)
-    );
+    let filtered = dispatches;
+
+    // Text search filter
+    if (searchTerm.trim()) {
+      const term = searchTerm.toLowerCase();
+      filtered = filtered.filter(d =>
+        d.dispatch_number.toLowerCase().includes(term) ||
+        d.customer_name.toLowerCase().includes(term) ||
+        d.invoice_number?.toLowerCase().includes(term) ||
+        d.transport_name?.toLowerCase().includes(term) ||
+        d.vehicle_driver?.toLowerCase().includes(term)
+      );
+    }
+
+    // Date range filter
+    if (startDate && endDate) {
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      filtered = filtered.filter(d => {
+        const dispatchDate = new Date(d.dispatch_date);
+        return dispatchDate >= start && dispatchDate <= end;
+      });
+    }
+
     setFilteredDispatches(filtered);
-  }, [searchTerm, dispatches]);
+  }, [searchTerm, dispatches, startDate, endDate]);
+
+  // Handle time preset changes
+  useEffect(() => {
+    if (timePreset === 'all' || timePreset === '') {
+      setStartDate('');
+      setEndDate('');
+      return;
+    }
+
+    const now = new Date();
+    const formatDate = (date: Date) => {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
+    if (timePreset === 'today') {
+      const today = formatDate(now);
+      setStartDate(today);
+      setEndDate(today);
+    } else if (timePreset === '7days') {
+      const sevenDaysAgo = new Date(now);
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      setStartDate(formatDate(sevenDaysAgo));
+      setEndDate(formatDate(now));
+    } else if (timePreset === '30days') {
+      const thirtyDaysAgo = new Date(now);
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      setStartDate(formatDate(thirtyDaysAgo));
+      setEndDate(formatDate(now));
+    } else if (timePreset === 'month') {
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      setStartDate(formatDate(monthStart));
+      setEndDate(formatDate(now));
+    } else if (timePreset === 'lastmonth') {
+      const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+      setStartDate(formatDate(lastMonthStart));
+      setEndDate(formatDate(lastMonthEnd));
+    }
+  }, [timePreset]);
 
   const fetchDispatchDetails = async (dispatchId: string) => {
     try {
@@ -163,15 +244,102 @@ const DispatchHistory = () => {
         </CardHeader>
 
         <CardContent className="space-y-4">
-          {/* Search */}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <Input
-              placeholder="Search by dispatch number, customer, invoice, transport, or driver..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-            />
+          {/* Search and Filters */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-4">
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <Input
+                  placeholder="Search by dispatch number, customer, invoice, transport, or driver..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              <Button
+                variant="outline"
+                onClick={() => setShowFilters(!showFilters)}
+                className="flex items-center gap-2"
+              >
+                <Filter className="h-4 w-4" />
+                <span className="hidden sm:inline">Filters</span>
+                {(timePreset !== 'all' || startDate || endDate) && (
+                  <span className="ml-1 rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">
+                    {(timePreset !== 'all' ? 1 : 0) + (startDate && endDate ? 1 : 0)}
+                  </span>
+                )}
+              </Button>
+              {(timePreset !== 'all' || startDate || endDate) && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setTimePreset('all');
+                    setStartDate('');
+                    setEndDate('');
+                  }}
+                  className="flex items-center gap-2"
+                >
+                  <X className="h-4 w-4" />
+                  <span className="hidden sm:inline">Clear</span>
+                </Button>
+              )}
+            </div>
+
+            {/* Expanded Filters Panel */}
+            {showFilters && (
+              <div className="rounded-lg border bg-card p-4 space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* Time Period Filter */}
+                  <div className="space-y-2">
+                    <Label htmlFor="time-filter">Time Period</Label>
+                    <Select
+                      value={timePreset}
+                      onValueChange={(value) => setTimePreset(value)}
+                    >
+                      <SelectTrigger id="time-filter">
+                        <SelectValue placeholder="All Time" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {timePresets.map((preset) => (
+                          <SelectItem key={preset.value} value={preset.value}>
+                            {preset.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Start Date */}
+                  <div className="space-y-2">
+                    <Label htmlFor="start-date">Start Date</Label>
+                    <Input
+                      id="start-date"
+                      type="date"
+                      value={startDate}
+                      onChange={(e) => {
+                        setStartDate(e.target.value);
+                        if (timePreset !== 'all') setTimePreset('all');
+                      }}
+                    />
+                  </div>
+
+                  {/* End Date */}
+                  <div className="space-y-2">
+                    <Label htmlFor="end-date">End Date</Label>
+                    <Input
+                      id="end-date"
+                      type="date"
+                      value={endDate}
+                      onChange={(e) => {
+                        setEndDate(e.target.value);
+                        if (timePreset !== 'all') setTimePreset('all');
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Table */}

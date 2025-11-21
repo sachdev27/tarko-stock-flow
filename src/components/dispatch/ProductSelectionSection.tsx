@@ -117,6 +117,7 @@ export const ProductSelectionSection = ({
   const [splitDialogOpen, setSplitDialogOpen] = useState(false);
   const [combineDialogOpen, setCombineDialogOpen] = useState(false);
   const [selectedStock, setSelectedStock] = useState<StockEntry | null>(null);
+  const [parameterKeysFilter, setParameterKeysFilter] = useState<string[] | null>(null);
 
   // For HDPE: Track number of full rolls to add
   const [fullRollsQuantity, setFullRollsQuantity] = useState<Record<string, number>>({});
@@ -174,13 +175,66 @@ export const ProductSelectionSection = ({
   }, [availableRolls]);
 
   const filteredVariants = useMemo(() => {
-    if (!productSearch.trim()) return groupedVariants;
+    if (!productSearch.trim()) {
+      setParameterKeysFilter(null);
+      return groupedVariants;
+    }
 
-    const searchLower = productSearch.toLowerCase();
+    const searchLower = productSearch.toLowerCase().trim();
+
+    // Advanced search patterns:
+    // 1. "32,6,63 gold" -> parameters contain 32 OR 6 OR 63, AND brand matches gold
+    // 2. "(OD,PN,PE)" -> show only these parameter keys
+    // 3. "(OD,PN,TYPE)" -> show only these parameter keys
+
+    // Check for parameter key filter pattern: (KEY1,KEY2,KEY3)
+    const keyFilterMatch = searchLower.match(/^\(([^)]+)\)$/);
+    if (keyFilterMatch) {
+      const allowedKeys = keyFilterMatch[1].split(',').map(k => k.trim().toUpperCase());
+      setParameterKeysFilter(allowedKeys);
+      return groupedVariants;
+    }
+
+    setParameterKeysFilter(null);
+
+    // Check for combined pattern: "numbers brand" or "numbers"
+    const parts = searchLower.split(/\s+/).filter(Boolean);
+
+    if (parts.length === 0) return groupedVariants;
+
+    // First part could be comma-separated numbers (parameter values)
+    const firstPart = parts[0];
+    const hasCommas = firstPart.includes(',');
+
+    if (hasCommas) {
+      // Extract numbers and brand pattern
+      const numbers = firstPart.split(',').map(n => n.trim()).filter(Boolean);
+      const brandPattern = parts.slice(1).join(' '); // Rest is brand search
+
+      return groupedVariants.filter(variant => {
+        // Check if any parameter value matches any of the numbers
+        const paramValues = Object.values(variant.parameters).map(v => String(v).toLowerCase());
+        const hasMatchingParam = numbers.some(num =>
+          paramValues.some(pv => pv.includes(num))
+        );
+
+        // If brand pattern provided, also check brand
+        if (brandPattern) {
+          const brandMatch = variant.brand_name?.toLowerCase().includes(brandPattern);
+          return hasMatchingParam && brandMatch;
+        }
+
+        return hasMatchingParam;
+      });
+    }
+
+    // Fallback to original search (brand or any parameter)
     return groupedVariants.filter(variant => {
       const brandName = variant.brand_name?.toLowerCase() || '';
       const params = JSON.stringify(variant.parameters).toLowerCase();
-      return brandName.includes(searchLower) || params.includes(searchLower);
+      return searchLower.split(/\s+/).every(term =>
+        brandName.includes(term) || params.includes(term)
+      );
     });
   }, [groupedVariants, productSearch]);
 
@@ -401,15 +455,16 @@ export const ProductSelectionSection = ({
         </div>
 
         <div ref={productSearchRef}>
-          <Label>Filter Products</Label>
+          <Label>Advanced Search</Label>
           <Input
             value={productSearch}
             onChange={(e) => onProductSearchChange(e.target.value)}
-            placeholder="Search by brand or specs..."
-            className="w-full"
+            placeholder="e.g., 32,6,63 gold or (OD,PN,PE)"
+            className="w-full font-mono"
           />
           <p className="text-xs text-gray-500 mt-1">
-            Showing {filteredVariants.length} product variant{filteredVariants.length !== 1 ? 's' : ''}
+            {filteredVariants.length} variant{filteredVariants.length !== 1 ? 's' : ''} •
+            Examples: <span className="font-mono">32,6</span> or <span className="font-mono">32 gold</span> or <span className="font-mono">(OD,PN,TYPE)</span>
           </p>
         </div>
       </div>
@@ -447,8 +502,15 @@ export const ProductSelectionSection = ({
                     </Badge>
                     <span className="text-lg font-bold">{variant.brand_name}</span>
                     {Object.entries(variant.parameters)
+                      .filter(([key]) => {
+                        // If parameter key filter is active, only show those keys
+                        if (parameterKeysFilter && parameterKeysFilter.length > 0) {
+                          return parameterKeysFilter.includes(key.toUpperCase());
+                        }
+                        return true;
+                      })
                       .sort(([keyA], [keyB]) => {
-                        const order = ['OD', 'PN', 'PE', 'outer_diameter', 'pressure_class', 'material'];
+                        const order = ['OD', 'PN', 'PE', 'TYPE', 'outer_diameter', 'pressure_class', 'material'];
                         const indexA = order.indexOf(keyA);
                         const indexB = order.indexOf(keyB);
                         if (indexA !== -1 && indexB !== -1) return indexA - indexB;
