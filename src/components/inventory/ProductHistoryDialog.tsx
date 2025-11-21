@@ -26,6 +26,9 @@ interface TransactionRecord {
   batch_current_quantity?: number;
   batch_piece_length?: number;
   production_date?: string;
+  // Cut operation details
+  from_length?: number;
+  cut_piece_details?: string | Array<{ length: number; piece_id: string; is_remainder?: boolean }>;
   // Stock counts
   full_rolls?: number;
   cut_rolls?: number;
@@ -399,7 +402,11 @@ export const ProductHistoryDialog = ({ open, onOpenChange, productVariantId, pro
                               <span className="text-muted-foreground">{transactionDetails}</span>
                             </TableCell>
                             <TableCell className="text-sm">
-                              {txn.batch_total_weight ? formatWeight(txn.batch_total_weight) : '-'}
+                              {(txn.transaction_type === 'CUT_ROLL' ||
+                                txn.transaction_type === 'SPLIT_BUNDLE' ||
+                                txn.transaction_type === 'COMBINE_SPARES')
+                                ? '-'
+                                : (txn.batch_total_weight ? formatWeight(txn.batch_total_weight) : '-')}
                             </TableCell>
                             <TableCell className="text-sm">
                               {txn.customer_name || '-'}
@@ -463,6 +470,42 @@ export const ProductHistoryDialog = ({ open, onOpenChange, productVariantId, pro
               {selectedTransaction.notes && (
                 <div className="p-4 bg-primary/5 rounded-lg border border-primary/20">
                   <p className="text-sm">{selectedTransaction.notes}</p>
+                </div>
+              )}
+
+              {/* Cut Piece Details (for CUT_ROLL transactions) */}
+              {selectedTransaction.transaction_type === 'CUT_ROLL' && selectedTransaction.cut_piece_details && (
+                <div className="border rounded-lg p-4 space-y-3">
+                  <h4 className="text-sm font-semibold text-muted-foreground">Cut Piece Details</h4>
+                  {selectedTransaction.from_length && (
+                    <div className="text-sm">
+                      <span className="text-muted-foreground">Original Length: </span>
+                      <span className="font-semibold">{selectedTransaction.from_length}m</span>
+                    </div>
+                  )}
+                  <div className="space-y-2">
+                    {(() => {
+                      try {
+                        const pieces = typeof selectedTransaction.cut_piece_details === 'string'
+                          ? JSON.parse(selectedTransaction.cut_piece_details)
+                          : selectedTransaction.cut_piece_details;
+
+                        if (Array.isArray(pieces) && pieces.length > 0) {
+                          return pieces.map((piece: { length: number; piece_id: string; is_remainder?: boolean }, index: number) => (
+                            <div key={index} className="flex items-center justify-between p-2 bg-muted/30 rounded">
+                              <span className="text-sm">
+                                {piece.is_remainder ? '↳ Remainder' : `Piece ${index + 1}`}
+                              </span>
+                              <span className="font-mono font-semibold">{piece.length}m</span>
+                            </div>
+                          ));
+                        }
+                      } catch (e) {
+                        return null;
+                      }
+                      return null;
+                    })()}
+                  </div>
                 </div>
               )}
 

@@ -21,19 +21,48 @@ def get_brands():
 @jwt_required_with_role('admin')
 def create_brand():
     """Create a new brand"""
+    from psycopg2.errors import UniqueViolation
+
     data = request.json
     name = data.get('name')
 
     if not name:
         return jsonify({'error': 'Brand name is required'}), 400
 
-    query = """
-        INSERT INTO brands (name)
-        VALUES (%s)
-        RETURNING id, name
+    # Check if a deleted brand with this name exists
+    check_query = """
+        SELECT id, name, deleted_at FROM brands
+        WHERE LOWER(TRIM(name)) = LOWER(TRIM(%s))
     """
-    result = execute_insert(query, (name,))
-    return jsonify(result), 201
+    existing = execute_query(check_query, (name,))
+
+    if existing:
+        if existing[0].get('deleted_at'):
+            # Restore the deleted brand
+            restore_query = """
+                UPDATE brands
+                SET deleted_at = NULL, updated_at = NOW()
+                WHERE id = %s
+                RETURNING id, name
+            """
+            result = execute_query(restore_query, (existing[0]['id'],))
+            return jsonify({'message': 'Brand restored', 'brand': result[0]}), 200
+        else:
+            return jsonify({'error': f'Brand "{name}" already exists'}), 409
+
+    try:
+        query = """
+            INSERT INTO brands (name)
+            VALUES (%s)
+            RETURNING id, name
+        """
+        result = execute_insert(query, (name,))
+        return jsonify(result), 201
+    except UniqueViolation:
+        return jsonify({'error': f'Brand "{name}" already exists'}), 409
+    except Exception as e:
+        print(f"Error creating brand: {e}")
+        return jsonify({'error': 'Failed to create brand'}), 500
 
 @admin_bp.route('/brands/<uuid:brand_id>', methods=['PUT'])
 @jwt_required_with_role('admin')
@@ -87,6 +116,8 @@ def get_product_types():
 @jwt_required_with_role('admin')
 def create_product_type():
     """Create a new product type"""
+    from psycopg2.errors import UniqueViolation
+
     data = request.json
     name = data.get('name')
     unit_id = data.get('unit_id')
@@ -103,13 +134,19 @@ def create_product_type():
     if not name or not unit_id:
         return jsonify({'error': 'Product type name and unit are required'}), 400
 
-    query = """
-        INSERT INTO product_types (name, unit_id, description, parameter_schema, roll_configuration)
-        VALUES (%s, %s, %s, %s, %s)
-        RETURNING id, name, unit_id, description, parameter_schema, roll_configuration
-    """
-    result = execute_insert(query, (name, unit_id, description, json.dumps(parameter_schema), json.dumps(roll_configuration)))
-    return jsonify(result), 201
+    try:
+        query = """
+            INSERT INTO product_types (name, unit_id, description, parameter_schema, roll_configuration)
+            VALUES (%s, %s, %s, %s, %s)
+            RETURNING id, name, unit_id, description, parameter_schema, roll_configuration
+        """
+        result = execute_insert(query, (name, unit_id, description, json.dumps(parameter_schema), json.dumps(roll_configuration)))
+        return jsonify(result), 201
+    except UniqueViolation:
+        return jsonify({'error': f'Product type "{name}" already exists'}), 409
+    except Exception as e:
+        print(f"Error creating product type: {e}")
+        return jsonify({'error': 'Failed to create product type'}), 500
 
 @admin_bp.route('/product-types/<uuid:product_type_id>', methods=['PUT'])
 @jwt_required_with_role('admin')

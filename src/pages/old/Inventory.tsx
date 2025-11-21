@@ -634,9 +634,9 @@ const Inventory = () => {
           'Product Type': 'HDPE Pipe',
           'Brand': 'Tarko',
           'Production Date': '2025-01-15',
-          'Roll Length (m)': '100',
-          'Number of Rolls': '10',
-          'Weight per Meter': '0.85',
+          'roll_length (m)': '100',
+          'number_of_rolls': '10',
+          'weight_per_meter (kg/m)': '0.85',
           'PE (SDR)': '100',
           'OD (mm)': '32',
           'PN (bar)': '10'
@@ -645,9 +645,9 @@ const Inventory = () => {
           'Product Type': 'HDPE Pipe',
           'Brand': 'Tarko',
           'Production Date': '2025-01-20',
-          'Roll Length (m)': '100',
-          'Number of Rolls': '8',
-          'Weight per Meter': '1.20',
+          'roll_length (m)': '100',
+          'number_of_rolls': '8',
+          'weight_per_meter (kg/m)': '1.20',
           'PE (SDR)': '100',
           'OD (mm)': '40',
           'PN (bar)': '10'
@@ -656,9 +656,9 @@ const Inventory = () => {
           'Product Type': 'HDPE Pipe',
           'Brand': 'Tarko',
           'Production Date': '2025-01-25',
-          'Roll Length (m)': '100',
-          'Number of Rolls': '6',
-          'Weight per Meter': '1.85',
+          'roll_length (m)': '100',
+          'number_of_rolls': '6',
+          'weight_per_meter (kg/m)': '1.85',
           'PE (SDR)': '100',
           'OD (mm)': '50',
           'PN (bar)': '10'
@@ -671,36 +671,36 @@ const Inventory = () => {
           'Product Type': 'Sprinkler Pipe',
           'Brand': 'Tarko',
           'Production Date': '2025-01-10',
-          'Bundle Size (pcs)': '10',
-          'Piece Length (m)': '6',
-          'Number of Bundles': '20',
+          'bundle_size (pcs)': '10',
+          'piece_length (m)': '6',
+          'number_of_bundles': '20',
           'OD (mm)': '16',
           'PN (bar)': '4',
-          'Weight per Meter': '0.15',
+          'weight_per_meter (kg/m)': '0.15',
           'Type/PE': 'L'
         },
         {
           'Product Type': 'Sprinkler Pipe',
           'Brand': 'Tarko',
           'Production Date': '2025-01-15',
-          'Bundle Size (pcs)': '20',
-          'Piece Length (m)': '6',
-          'Number of Bundles': '15',
+          'bundle_size (pcs)': '20',
+          'piece_length (m)': '6',
+          'number_of_bundles': '15',
           'OD (mm)': '20',
           'PN (bar)': '4',
-          'Weight per Meter': '0.20',
+          'weight_per_meter (kg/m)': '0.20',
           'Type/PE': 'L'
         },
         {
           'Product Type': 'Sprinkler Pipe',
           'Brand': 'Tarko',
           'Production Date': '2025-01-20',
-          'Bundle Size (pcs)': '10',
-          'Piece Length (m)': '6',
-          'Number of Bundles': '25',
+          'bundle_size (pcs)': '10',
+          'piece_length (m)': '6',
+          'number_of_bundles': '25',
           'OD (mm)': '16',
           'PN (bar)': '4',
-          'Weight per Meter': '0.15',
+          'weight_per_meter (kg/m)': '0.15',
           'Type/PE': 'C'
         }
       ];
@@ -1018,6 +1018,10 @@ const Inventory = () => {
       const lines = text.split('\n').filter(line => line.trim());
       const headers = lines[0].split(',').map(h => h.trim());
 
+      console.log('CSV Headers:', headers);
+      console.log('Available Product Types:', productTypes.map(pt => pt.name));
+      console.log('Available Brands:', brands.map(b => b.name));
+
       const data = lines.slice(1).map(line => {
         const values = line.split(',').map(v => v.trim().replace(/^"|"$/g, '')); // Remove quotes
         const obj: any = {};
@@ -1029,8 +1033,12 @@ const Inventory = () => {
 
       // Group by product variant to create batches
       const batches: any[] = [];
+      const errors: string[] = [];
+      let rowNum = 1; // Start from 1 (after header)
 
       for (const row of data) {
+        rowNum++;
+
         // Helper function to extract value from column with or without units
         const getValue = (key: string, alternatives: string[] = []) => {
           if (row[key]) return row[key];
@@ -1043,10 +1051,12 @@ const Inventory = () => {
         // Determine if it's HDPE or Sprinkler based on available fields
         const pe = getValue('PE (SDR)', ['PE', 'pe']);
         const type = getValue('Type/PE', ['Type', 'type']);
-        const isHDPE = pe !== undefined && pe !== '';
-        const isSprinkler = !isHDPE && type !== undefined && type !== '';
+        const isHDPE = pe && pe !== '';
+        const isSprinkler = !isHDPE && type && type !== '';
 
-        if (!isHDPE && !isSprinkler) {continue;
+        if (!isHDPE && !isSprinkler) {
+          errors.push(`Row ${rowNum}: Missing PE (SDR) or Type/PE field. Cannot determine if HDPE or Sprinkler.`);
+          continue;
         }
 
         // Find matching product type and brand
@@ -1060,7 +1070,14 @@ const Inventory = () => {
           b.name.toLowerCase() === brandName?.toLowerCase()
         );
 
-        if (!productType || !brand) {continue;
+        if (!productType) {
+          errors.push(`Row ${rowNum}: Product type "${productTypeName}" not found. Available: ${productTypes.map(pt => pt.name).join(', ')}`);
+          continue;
+        }
+
+        if (!brand) {
+          errors.push(`Row ${rowNum}: Brand "${brandName}" not found. Available: ${brands.map(b => b.name).join(', ')}`);
+          continue;
         }
 
         // Build parameters - extract values with or without units
@@ -1118,12 +1135,56 @@ const Inventory = () => {
           piece_length: isSprinkler ? pieceLength : null,
           number_of_bundles: isSprinkler ? numBundles : null
         });
-      }// Create batches via API
+      }
+
+      // Show errors if any rows were skipped
+      if (errors.length > 0) {
+        console.error('Import errors:', errors);
+
+        // Show detailed error dialog
+        const errorList = errors.slice(0, 10).join('\n');
+        const moreErrors = errors.length > 10 ? `\n\n...and ${errors.length - 10} more errors. Check console for full list.` : '';
+
+        toast.error(
+          <div className="space-y-2">
+            <div className="font-semibold">Import Errors Found:</div>
+            <pre className="text-xs whitespace-pre-wrap max-h-[300px] overflow-auto">{errorList}{moreErrors}</pre>
+          </div>,
+          { duration: 15000 }
+        );
+      }
+
+      // If no batches were created, stop here
+      if (batches.length === 0) {
+        console.log('Total rows in CSV:', data.length);
+        console.log('Total errors:', errors.length);
+        console.log('Headers found:', headers);
+        console.log('First row data:', data[0]);
+
+        toast.error(
+          <div className="space-y-2">
+            <div className="font-semibold">No valid rows found in CSV</div>
+            <div className="text-xs">
+              <div>Total rows: {data.length}</div>
+              <div>Errors: {errors.length}</div>
+              <div className="mt-2">Check the error messages above for details.</div>
+            </div>
+          </div>,
+          { duration: 15000 }
+        );
+        return;
+      }
+
+      // Create batches via API
       for (const batch of batches) {
         await productionAPI.createBatch(batch);
       }
 
-      toast.success(`Successfully imported ${batches.length} batches`);
+      const successMsg = batches.length === data.length
+        ? `Successfully imported all ${batches.length} batches`
+        : `Successfully imported ${batches.length} of ${data.length} batches. ${errors.length} rows had errors.`;
+
+      toast.success(successMsg);
       setImportDialogOpen(false);
       setImportFile(null);
       fetchInventory();

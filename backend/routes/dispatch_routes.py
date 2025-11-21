@@ -15,17 +15,6 @@ def get_available_rolls():
     Get available rolls/cut rolls for dispatch based on product selection.
     Request body: { product_type_id, brand_id, parameters }
     """
-    # Cleanup HDPE rolls with zero length before fetching
-    execute_query("""
-        UPDATE inventory_items
-        SET deleted_at = NOW(), status = 'SOLD_OUT'
-        WHERE id IN (
-            SELECT i.id FROM inventory_items i
-            JOIN hdpe_rolls h ON i.id = h.id
-            WHERE h.length_meters = 0 AND i.deleted_at IS NULL
-        )
-    """, params=None, fetch_all=False)
-
     data = request.json
     product_type_id = data.get('product_type_id')
     brand_id = data.get('brand_id')  # Optional for "All Brands"
@@ -210,82 +199,99 @@ def cut_roll():
     """
     Cut a standard roll or cut roll into smaller cut rolls.
     Request body: {
-        roll_id: UUID,
+        stock_id: UUID (inventory_stock id for FULL_ROLL),
         cuts: [{ length: float }, { length: float }, ...]
     }
     """
     user_id = get_jwt_identity()
     data = request.json
-    roll_id = data.get('roll_id')
+    stock_id = data.get('stock_id') or data.get('roll_id')  # Support both for backward compatibility
     cuts = data.get('cuts', [])
 
-    if not roll_id or not cuts:
-        return jsonify({'error': 'roll_id and cuts are required'}), 400
+    if not stock_id or not cuts:
+        return jsonify({'error': 'stock_id and cuts are required'}), 400
 
-    # Validate cuts
-    total_cut_length = sum(float(cut['length']) for cut in cuts)
+    # Validate cuts and extract lengths
+    cut_lengths = []
+    for cut in cuts:
+        try:
+            cut_lengths.append(float(cut['length']))
+        except (KeyError, ValueError, TypeError):
+            return jsonify({'error': 'Invalid cut length format'}), 400
+
+    total_cut_length = sum(cut_lengths)
 
     try:
         with get_db_cursor() as cursor:
-            # Get the roll details - must be HDPE (only HDPE can be cut)
-            roll = InventoryHelper.get_hdpe_roll(cursor, roll_id)
+            # Get the stock details - must be FULL_ROLL (only full rolls can be cut)
+            cursor.execute("""
+                SELECT s.id, s.batch_id, s.product_variant_id, s.length_per_unit, s.quantity,
+                       b.batch_code, pv.parameters, pt.name as product_type
+                FROM inventory_stock s
+                JOIN batches b ON s.batch_id = b.id
+                JOIN product_variants pv ON s.product_variant_id = pv.id
+                JOIN product_types pt ON pv.product_type_id = pt.id
+                WHERE s.id = %s
+                  AND s.stock_type = 'FULL_ROLL'
+                  AND s.status = 'IN_STOCK'
+                  AND s.deleted_at IS NULL
+            """, (stock_id,))
 
-            if not roll:
-                return jsonify({'error': 'HDPE roll not found'}), 404
+            stock = cursor.fetchone()
+            if not stock:
+                return jsonify({'error': 'HDPE roll not found or not available for cutting'}), 404
 
-            available_length = float(roll['length_meters'])
+            available_length = float(stock['length_per_unit'])
 
             if total_cut_length > available_length:
                 return jsonify({'error': f'Total cut length ({total_cut_length}m) exceeds available length ({available_length}m)'}), 400
 
-            # Create new cut rolls (children of this roll)
-            new_cut_rolls = []
-            for cut in cuts:
-                cut_length = float(cut['length'])
-                new_roll_id = InventoryHelper.create_hdpe_roll(
-                    cursor,
-                    batch_id=roll['batch_id'],
-                    product_variant_id=roll['product_variant_id'],
-                    length_meters=cut_length,
-                    is_cut_roll=True,
-                    parent_roll_id=roll_id,  # Track parent
-                    weight_grams=None  # Can calculate if needed
-                )
-                new_cut_rolls.append({
-                    'id': new_roll_id,
-                    'length_meters': cut_length
-                })
+            # Use AggregateInventoryHelper to cut the roll
+            notes = f"Cut {available_length}m roll into {len(cut_lengths)} pieces: {', '.join([str(l) + 'm' for l in cut_lengths])}"
+            cut_stock_id, cut_piece_ids = InventoryHelper.cut_hdpe_roll(
+                cursor,
+                from_stock_id=stock_id,
+                cut_lengths=cut_lengths,
+                notes=notes,
+                created_by=user_id
+            )
 
-            # Update original roll
-            remaining_length = available_length - total_cut_length
-            InventoryHelper.update_hdpe_roll_length(cursor, roll_id, remaining_length)
-
-            # Update batch quantity
+            # Update batch current_quantity (sum of all stock lengths)
             cursor.execute("""
                 UPDATE batches
                 SET current_quantity = (
-                    SELECT COALESCE(SUM(h.length_meters), 0)
-                    FROM inventory_items i
-                    JOIN hdpe_rolls h ON i.id = h.id
-                    WHERE i.batch_id = %s AND i.deleted_at IS NULL
+                    SELECT COALESCE(
+                        SUM(CASE
+                            WHEN s.stock_type = 'FULL_ROLL' THEN s.quantity * s.length_per_unit
+                            WHEN s.stock_type = 'CUT_ROLL' THEN (
+                                SELECT COALESCE(SUM(cp.length_meters), 0)
+                                FROM hdpe_cut_pieces cp
+                                WHERE cp.stock_id = s.id AND cp.status = 'IN_STOCK'
+                            )
+                            ELSE 0
+                        END), 0
+                    )
+                    FROM inventory_stock s
+                    WHERE s.batch_id = %s
+                      AND s.status = 'IN_STOCK'
+                      AND s.deleted_at IS NULL
                 ),
                 updated_at = NOW()
                 WHERE id = %s
-            """, (roll['batch_id'], roll['batch_id']))
+            """, (stock['batch_id'], stock['batch_id']))
 
-            # Create CUT transaction
+            # Get cut piece details for response
             cursor.execute("""
-                INSERT INTO transactions (
-                    batch_id, roll_id, transaction_type, quantity_change,
-                    transaction_date, notes, created_by, created_at, updated_at
-                ) VALUES (%s, %s, 'CUT', %s, NOW(), %s, %s, NOW(), NOW())
-            """, (
-                roll['batch_id'],
-                roll_id,
-                -total_cut_length,  # Negative because it's reducing the original roll
-                f"Cut roll into {len(cuts)} pieces: {', '.join([str(c['length']) + 'm' for c in cuts])}",
-                user_id
-            ))
+                SELECT id, length_meters
+                FROM hdpe_cut_pieces
+                WHERE id = ANY(%s)
+                ORDER BY length_meters DESC
+            """, (cut_piece_ids,))
+
+            new_cut_pieces = [
+                {'id': str(row['id']), 'length_meters': float(row['length_meters'])}
+                for row in cursor.fetchall()
+            ]
 
             # Create audit log
             actor = get_user_identity_details(user_id)
@@ -293,19 +299,22 @@ def cut_roll():
                 INSERT INTO audit_logs (
                     user_id, action_type, entity_type, entity_id,
                     description, created_at
-                ) VALUES (%s, 'CUT_ROLL', 'ROLL', %s, %s, NOW())
+                ) VALUES (%s, 'CUT_ROLL', 'STOCK', %s, %s, NOW())
             """, (
                 user_id,
-                roll_id,
-                f"{actor['name']} cut roll into {len(cuts)} pieces totaling {total_cut_length}m"
+                stock_id,
+                f"{actor['name']} cut {available_length}m roll into {len(cut_lengths)} pieces totaling {total_cut_length}m"
             ))
 
         return jsonify({
             'message': 'Roll cut successfully',
-            'new_cut_rolls': new_cut_rolls,
-            'original_roll_remaining': float(remaining_length)
+            'cut_stock_id': cut_stock_id,
+            'new_cut_pieces': new_cut_pieces,
+            'pieces_created': len(cut_piece_ids)
         }), 200
 
+    except ValueError as ve:
+        return jsonify({'error': str(ve)}), 400
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -316,104 +325,111 @@ def cut_bundle():
     """
     Cut a sprinkler bundle into spare pieces.
     Request body: {
-        roll_id: UUID,
+        stock_id: UUID (inventory_stock id for BUNDLE),
         cuts: [{ pieces: int }, { pieces: int }, ...]
     }
     """
     user_id = get_jwt_identity()
     data = request.json
-    roll_id = data.get('roll_id')
+    stock_id = data.get('stock_id') or data.get('roll_id')  # Support both for backward compatibility
     cuts = data.get('cuts', [])
 
-    if not roll_id or not cuts:
-        return jsonify({'error': 'roll_id and cuts are required'}), 400
-
-    # Validate cuts
-    total_cut_pieces = sum(int(cut['pieces']) for cut in cuts)
+    if not stock_id or not cuts:
+        return jsonify({'error': 'stock_id and cuts are required'}), 400
 
     try:
         with get_db_cursor() as cursor:
             # Get the bundle details
             cursor.execute("""
-                SELECT r.*, r.batch_id, pv.id as product_variant_id, r.bundle_size
-                FROM rolls r
-                JOIN batches b ON r.batch_id = b.id
-                JOIN product_variants pv ON b.product_variant_id = pv.id
-                WHERE r.id = %s AND r.deleted_at IS NULL
-            """, (roll_id,))
+                SELECT s.id, s.batch_id, s.product_variant_id, s.pieces_per_bundle,
+                       s.piece_length_meters, s.quantity,
+                       b.batch_code, pv.parameters, pt.name as product_type
+                FROM inventory_stock s
+                JOIN batches b ON s.batch_id = b.id
+                JOIN product_variants pv ON s.product_variant_id = pv.id
+                JOIN product_types pt ON pv.product_type_id = pt.id
+                WHERE s.id = %s
+                  AND s.stock_type = 'BUNDLE'
+                  AND s.status = 'IN_STOCK'
+                  AND s.deleted_at IS NULL
+            """, (stock_id,))
 
-            bundle = cursor.fetchone()
-            if not bundle:
-                return jsonify({'error': 'Bundle not found'}), 404
+            stock = cursor.fetchone()
+            if not stock:
+                return jsonify({'error': 'Bundle not found or not available for splitting'}), 404
 
-            available_pieces = int(bundle['bundle_size'] or 0)
+            pieces_per_bundle = int(stock['pieces_per_bundle'])
 
-            if total_cut_pieces > available_pieces:
-                return jsonify({'error': f'Total cut pieces ({total_cut_pieces}) exceeds available pieces ({available_pieces})'}), 400
-
-            # Create new spare piece rolls
-            new_spare_rolls = []
+            # Process each cut
+            new_spare_pieces = []
             for cut in cuts:
-                pieces_count = int(cut['pieces'])
-                cursor.execute("""
-                    INSERT INTO rolls (
-                        batch_id, product_variant_id, length_meters,
-                        initial_length_meters, status, roll_type, bundle_size
-                    )
-                    VALUES (%s, %s, %s, %s, 'AVAILABLE', 'spare', %s)
-                    RETURNING id, bundle_size
-                """, (
-                    bundle['batch_id'],
-                    bundle['product_variant_id'],
-                    pieces_count,  # length_meters stores the piece count for spares
-                    pieces_count,  # initial_length_meters stores the piece count for spares
-                    pieces_count
-                ))
-                new_roll = cursor.fetchone()
-                new_spare_rolls.append({
-                    'id': new_roll['id'],
-                    'pieces': int(new_roll['bundle_size'])
+                pieces_to_split = int(cut['pieces'])
+
+                if pieces_to_split <= 0 or pieces_to_split >= pieces_per_bundle:
+                    return jsonify({'error': f'Invalid split: {pieces_to_split} pieces (bundle has {pieces_per_bundle})'}), 400
+
+                # Use AggregateInventoryHelper to split the bundle
+                notes = f"Split {pieces_to_split} pieces from bundle of {pieces_per_bundle}"
+                spare_stock_id, spare_piece_id = InventoryHelper.split_sprinkler_bundle(
+                    cursor,
+                    from_stock_id=stock_id,
+                    pieces_to_split=pieces_to_split,
+                    notes=notes,
+                    created_by=user_id
+                )
+
+                new_spare_pieces.append({
+                    'spare_stock_id': spare_stock_id,
+                    'spare_piece_id': spare_piece_id,
+                    'pieces': pieces_to_split
                 })
 
-            # Delete the original bundle (mark as deleted)
+            # Update batch current_quantity (sum of all pieces)
             cursor.execute("""
-                UPDATE rolls
-                SET status = 'SOLD_OUT', deleted_at = NOW(), updated_at = NOW()
+                UPDATE batches
+                SET current_quantity = (
+                    SELECT COALESCE(
+                        SUM(CASE
+                            WHEN s.stock_type = 'BUNDLE' THEN s.quantity * s.pieces_per_bundle
+                            WHEN s.stock_type = 'SPARE' THEN (
+                                SELECT COALESCE(SUM(sp.piece_count), 0)
+                                FROM sprinkler_spare_pieces sp
+                                WHERE sp.stock_id = s.id AND sp.status = 'IN_STOCK'
+                            )
+                            ELSE 0
+                        END), 0
+                    )
+                    FROM inventory_stock s
+                    WHERE s.batch_id = %s
+                      AND s.status = 'IN_STOCK'
+                      AND s.deleted_at IS NULL
+                ),
+                updated_at = NOW()
                 WHERE id = %s
-            """, (roll_id,))
-
-            # Create CUT transaction
-            cursor.execute("""
-                INSERT INTO transactions (
-                    batch_id, roll_id, transaction_type, quantity_change,
-                    transaction_date, notes, created_by, created_at, updated_at
-                ) VALUES (%s, %s, 'CUT', %s, NOW(), %s, %s, NOW(), NOW())
-            """, (
-                bundle['batch_id'],
-                roll_id,
-                -available_pieces,
-                f"Cut bundle into {len(cuts)} spare batches: {', '.join([str(c['pieces']) + ' pcs' for c in cuts])}",
-                user_id
-            ))
+            """, (stock['batch_id'], stock['batch_id']))
 
             # Create audit log
             actor = get_user_identity_details(user_id)
+            total_pieces = sum(int(cut['pieces']) for cut in cuts)
             cursor.execute("""
                 INSERT INTO audit_logs (
                     user_id, action_type, entity_type, entity_id,
                     description, created_at
-                ) VALUES (%s, 'CUT_BUNDLE', 'ROLL', %s, %s, NOW())
+                ) VALUES (%s, 'SPLIT_BUNDLE', 'STOCK', %s, %s, NOW())
             """, (
                 user_id,
-                roll_id,
-                f"{actor['name']} cut bundle into {len(cuts)} spare batches totaling {total_cut_pieces} pieces"
+                stock_id,
+                f"{actor['name']} split {len(cuts)} spare groups totaling {total_pieces} pieces from bundle"
             ))
 
         return jsonify({
-            'message': 'Bundle cut successfully',
-            'new_spare_rolls': new_spare_rolls
+            'message': 'Bundle split successfully',
+            'new_spare_pieces': new_spare_pieces,
+            'spares_created': len(new_spare_pieces)
         }), 200
 
+    except ValueError as ve:
+        return jsonify({'error': str(ve)}), 400
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -422,6 +438,13 @@ def cut_bundle():
 @jwt_required()
 def combine_spares():
     """
+    DEPRECATED: This endpoint uses old 'rolls' table which no longer exists.
+    TODO: Implement using AggregateInventoryHelper and inventory_stock table.
+    """
+    return jsonify({'error': 'This endpoint is currently disabled during schema migration'}), 503
+
+    """
+    OLD CODE - REFERENCES NON-EXISTENT 'rolls' TABLE:
     Combine spare pieces into bundles.
     Request body: {
         spare_roll_ids: [UUID, ...],

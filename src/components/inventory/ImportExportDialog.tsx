@@ -62,9 +62,9 @@ export const ImportExportDialog = ({
           'Product Type': 'HDPE Pipe',
           'Brand': 'Tarko',
           'Production Date': '2025-01-15',
-          'Roll Length (m)': '100',
-          'Number of Rolls': '10',
-          'Weight per Meter': '0.85',
+          'roll_length (m)': '100',
+          'number_of_rolls': '10',
+          'weight_per_meter (kg/m)': '0.85',
           'PE (SDR)': '100',
           'OD (mm)': '32',
           'PN (bar)': '10'
@@ -73,9 +73,9 @@ export const ImportExportDialog = ({
           'Product Type': 'HDPE Pipe',
           'Brand': 'Tarko',
           'Production Date': '2025-01-20',
-          'Roll Length (m)': '100',
-          'Number of Rolls': '8',
-          'Weight per Meter': '1.20',
+          'roll_length (m)': '100',
+          'number_of_rolls': '8',
+          'weight_per_meter (kg/m)': '1.20',
           'PE (SDR)': '100',
           'OD (mm)': '40',
           'PN (bar)': '10'
@@ -88,24 +88,24 @@ export const ImportExportDialog = ({
           'Product Type': 'Sprinkler Pipe',
           'Brand': 'Tarko',
           'Production Date': '2025-01-10',
-          'Bundle Size (pcs)': '10',
-          'Piece Length (m)': '6',
-          'Number of Bundles': '20',
+          'bundle_size (pcs)': '10',
+          'piece_length (m)': '6',
+          'number_of_bundles': '20',
           'OD (mm)': '16',
           'PN (bar)': '4',
-          'Weight per Meter': '0.15',
+          'weight_per_meter (kg/m)': '0.15',
           'Type/PE': 'L'
         },
         {
           'Product Type': 'Sprinkler Pipe',
           'Brand': 'Tarko',
           'Production Date': '2025-01-15',
-          'Bundle Size (pcs)': '20',
-          'Piece Length (m)': '6',
-          'Number of Bundles': '15',
+          'bundle_size (pcs)': '20',
+          'piece_length (m)': '6',
+          'number_of_bundles': '15',
           'OD (mm)': '20',
           'PN (bar)': '4',
-          'Weight per Meter': '0.20',
+          'weight_per_meter (kg/m)': '0.20',
           'Type/PE': 'L'
         }
       ];
@@ -189,6 +189,10 @@ export const ImportExportDialog = ({
       const lines = text.split('\n').filter(line => line.trim());
       const headers = lines[0].split(',').map(h => h.trim());
 
+      console.log('CSV Headers:', headers);
+      console.log('Available Product Types:', productTypes.map(pt => pt.name));
+      console.log('Available Brands:', brands.map(b => b.name));
+
       const data = lines.slice(1).map(line => {
         const values = line.split(',').map(v => v.trim().replace(/^"|"$/g, ''));
         const obj: Record<string, string> = {};
@@ -200,15 +204,19 @@ export const ImportExportDialog = ({
 
       // Process each row and create batches
       let successCount = 0;
+      const errors: string[] = [];
+      let rowNum = 1; // Start from 1 (after header)
+
       for (const row of data) {
+        rowNum++;
         try {
           const getValue = (key: string, alternatives: string[] = []) => {
             const value = row[key] || alternatives.map(alt => row[alt]).find(v => v);
-            return value?.replace(/[^0-9.]/g, '') || '';
+            return value || '';
           };
 
-          const productTypeName = row['Product Type'] || row['product_type'];
-          const brandName = row['Brand'] || row['brand'];
+          const productTypeName = getValue('Product Type', ['product_type']);
+          const brandName = getValue('Brand', ['brand']);
 
           const productType = productTypes.find(pt =>
             pt.name.toLowerCase() === productTypeName?.toLowerCase()
@@ -217,8 +225,13 @@ export const ImportExportDialog = ({
             b.name.toLowerCase() === brandName?.toLowerCase()
           );
 
-          if (!productType || !brand) {
-            console.warn(`Skipping row: Product type or brand not found`);
+          if (!productType) {
+            errors.push(`Row ${rowNum}: Product type "${productTypeName}" not found. Available: ${productTypes.map(pt => pt.name).join(', ')}`);
+            continue;
+          }
+
+          if (!brand) {
+            errors.push(`Row ${rowNum}: Brand "${brandName}" not found. Available: ${brands.map(b => b.name).join(', ')}`);
             continue;
           }
 
@@ -229,60 +242,118 @@ export const ImportExportDialog = ({
           const isSprinkler = !isHDPE && type !== '';
 
           if (!isHDPE && !isSprinkler) {
-            console.warn(`Skipping row: Cannot determine product type`);
+            errors.push(`Row ${rowNum}: Missing PE (SDR) or Type/PE field. Cannot determine if HDPE or Sprinkler.`);
             continue;
           }
 
           const od = getValue('OD (mm)', ['OD', 'od']);
           const pn = getValue('PN (bar)', ['PN', 'pn']);
-          const weightPerMeter = getValue('Weight per Meter', ['weight_per_meter']);
-          const prodDate = row['Production Date'] || row['production_date'];
+          const weightPerMeter = getValue('weight_per_meter (kg/m)', ['weight_per_meter', 'Weight per Meter']);
+          const prodDate = getValue('Production Date', ['production_date']);
+
+          // Build parameters object based on product type
+          const parameters: Record<string, string> = {
+            OD: od,
+            PN: pn
+          };
+
+          if (isHDPE) {
+            parameters.PE = pe;
+          } else {
+            parameters.Type = type;
+          }
 
           // Build form data based on product type
           const formData = new FormData();
           formData.append('product_type_id', productType.id);
           formData.append('brand_id', brand.id);
           formData.append('production_date', prodDate);
+          formData.append('parameters', JSON.stringify(parameters));
 
           if (weightPerMeter) {
-            formData.append('weight_per_meter', weightPerMeter);
+            // Convert kg/m to grams if needed
+            const weightInGrams = parseFloat(weightPerMeter) * 1000;
+            formData.append('weight_per_meter', weightInGrams.toString());
           }
 
           if (isHDPE) {
-            const rollLength = getValue('Roll Length (m)', ['roll_length']);
-            const numRolls = getValue('Number of Rolls', ['number_of_rolls']);
+            const rollLength = getValue('roll_length (m)', ['roll_length', 'Roll Length (m)']);
+            const numRolls = getValue('number_of_rolls', ['Number of Rolls']);
 
-            formData.append('config_type', 'standard_rolls');
+            // Calculate quantity for HDPE: rollLength * numRolls
+            const quantity = parseFloat(rollLength) * parseInt(numRolls);
+
+            formData.append('roll_config_type', 'standard_rolls');
+            formData.append('quantity_based', 'false');
             formData.append('roll_length', rollLength);
+            formData.append('length_per_roll', rollLength);
             formData.append('number_of_rolls', numRolls);
-            formData.append('OD', od);
-            formData.append('PN', pn);
-            formData.append('PE', pe);
+            formData.append('quantity', quantity.toString());
           } else {
-            const bundleSize = getValue('Bundle Size (pcs)', ['bundle_size']);
-            const pieceLength = getValue('Piece Length (m)', ['piece_length']);
-            const numBundles = getValue('Number of Bundles', ['number_of_bundles']);
+            const bundleSize = getValue('bundle_size (pcs)', ['bundle_size', 'Bundle Size (pcs)']);
+            const pieceLength = getValue('piece_length (m)', ['piece_length', 'Piece Length (m)']);
+            const numBundles = getValue('number_of_bundles', ['Number of Bundles']);
 
-            formData.append('config_type', 'bundles');
+            // Calculate quantity for Sprinkler: numBundles * bundleSize * pieceLength
+            const quantity = parseInt(numBundles) * parseInt(bundleSize) * parseFloat(pieceLength);
+
+            formData.append('roll_config_type', 'bundles');
+            formData.append('quantity_based', 'true');
             formData.append('bundle_size', bundleSize);
             formData.append('piece_length', pieceLength);
+            formData.append('length_per_roll', pieceLength);
             formData.append('number_of_bundles', numBundles);
-            formData.append('OD', od);
-            formData.append('PN', pn);
-            formData.append('Type', type);
+            formData.append('quantity', quantity.toString());
           }
 
           await productionAPI.createBatch(formData);
           successCount++;
         } catch (err) {
           console.error('Error importing row:', err);
+          errors.push(`Row ${rowNum}: ${err instanceof Error ? err.message : 'Unknown error'}`);
         }
       }
 
-      toast.success(`Successfully imported ${successCount} batches`);
-      onImportComplete();
-      onOpenChange(false);
-      setImportFile(null);
+      // Show errors if any rows were skipped
+      if (errors.length > 0) {
+        console.error('Import errors:', errors);
+
+        const errorList = errors.slice(0, 10).join('\n');
+        const moreErrors = errors.length > 10 ? `\n\n...and ${errors.length - 10} more errors. Check console for full list.` : '';
+
+        toast.error(
+          <div className="space-y-2">
+            <div className="font-semibold">Import Errors Found:</div>
+            <pre className="text-xs whitespace-pre-wrap max-h-[300px] overflow-auto">{errorList}{moreErrors}</pre>
+          </div>,
+          { duration: 15000 }
+        );
+      }
+
+      // Show appropriate message based on results
+      if (successCount === 0) {
+        toast.error(
+          <div className="space-y-2">
+            <div className="font-semibold">No batches imported</div>
+            <div className="text-xs">
+              <div>Total rows: {data.length}</div>
+              <div>Errors: {errors.length}</div>
+              <div className="mt-2">Check the error messages above for details.</div>
+            </div>
+          </div>,
+          { duration: 15000 }
+        );
+      } else if (successCount === data.length) {
+        toast.success(`Successfully imported all ${successCount} batches`);
+        onImportComplete();
+        onOpenChange(false);
+        setImportFile(null);
+      } else {
+        toast.success(`Successfully imported ${successCount} of ${data.length} batches. ${errors.length} rows had errors.`);
+        onImportComplete();
+        onOpenChange(false);
+        setImportFile(null);
+      }
     } catch (error) {
       console.error('Import error:', error);
       toast.error('Failed to import inventory');

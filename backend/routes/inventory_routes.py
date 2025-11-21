@@ -457,13 +457,17 @@ def cut_roll():
 
                 # Add individual cut pieces
                 pieces_created = []
+                cut_piece_details = []
                 for length in cut_lengths:
                     cursor.execute("""
                         INSERT INTO hdpe_cut_pieces (
                             stock_id, length_meters, status, notes, created_at
                         ) VALUES (%s, %s, 'IN_STOCK', %s, NOW())
-                    """, (cut_stock_id, length, f'Cut {length}m from full roll'))
+                        RETURNING id
+                    """, (cut_stock_id, length, f'Cut {length}m from {length_per_unit}m roll'))
+                    piece_id = cursor.fetchone()['id']
                     pieces_created.append(length)
+                    cut_piece_details.append({"length": float(length), "piece_id": str(piece_id)})
 
                 # Add remainder piece if there's leftover length
                 remainder = length_per_unit - total_cut_length
@@ -472,8 +476,11 @@ def cut_roll():
                         INSERT INTO hdpe_cut_pieces (
                             stock_id, length_meters, status, notes, created_at
                         ) VALUES (%s, %s, 'IN_STOCK', %s, NOW())
-                    """, (cut_stock_id, remainder, f'Remainder {remainder}m from cutting full roll'))
+                        RETURNING id
+                    """, (cut_stock_id, remainder, f'Remainder {remainder}m from {length_per_unit}m roll'))
+                    piece_id = cursor.fetchone()['id']
                     pieces_created.append(remainder)
+                    cut_piece_details.append({"length": float(remainder), "piece_id": str(piece_id), "is_remainder": True})
 
                 # Update the quantity to reflect all pieces (cut + remainder)
                 cursor.execute("""
@@ -482,14 +489,20 @@ def cut_roll():
                     WHERE id = %s
                 """, (len(pieces_created), cut_stock_id))
 
-                # Create transaction
+                # Create transaction with complete information
+                import json
+                all_pieces_str = ", ".join([f"{l}m" for l in cut_lengths])
+                notes = f'Cut {length_per_unit}m roll into {len(cut_lengths)} pieces: {all_pieces_str}'
+                if remainder > 0:
+                    notes += f'. Remainder: {remainder}m'
+
                 cursor.execute("""
                     INSERT INTO inventory_transactions (
-                        transaction_type, from_stock_id, from_quantity,
-                        to_stock_id, to_quantity, notes, created_at
-                    ) VALUES ('CUT_ROLL', %s, 1, %s, %s, %s, NOW())
-                """, (stock_id, cut_stock_id, len(cut_lengths),
-                      f'Cut 1 full roll into {len(cut_lengths)} pieces: {", ".join([f"{l}m" for l in cut_lengths])}'))
+                        transaction_type, from_stock_id, from_quantity, from_length,
+                        to_stock_id, to_quantity, cut_piece_details, notes, created_at
+                    ) VALUES ('CUT_ROLL', %s, 1, %s, %s, %s, %s, %s, NOW())
+                """, (stock_id, length_per_unit, cut_stock_id, len(pieces_created),
+                      json.dumps(cut_piece_details), notes))
 
                 # Audit log
                 cursor.execute("""
@@ -534,13 +547,17 @@ def cut_roll():
 
                     # Create the cut piece(s)
                     pieces_created = []
+                    cut_piece_details = []
                     for length in cut_lengths:
                         cursor.execute("""
                             INSERT INTO hdpe_cut_pieces (
                                 stock_id, length_meters, status, notes, created_at
                             ) VALUES (%s, %s, 'IN_STOCK', %s, NOW())
+                            RETURNING id
                         """, (stock_id, length, f'Cut {length}m from {piece_length}m piece'))
+                        new_piece_id = cursor.fetchone()['id']
                         pieces_created.append(length)
+                        cut_piece_details.append({"length": float(length), "piece_id": str(new_piece_id)})
 
                     # Create remainder piece if there's leftover
                     remainder = piece_length - total_cut_length
@@ -549,8 +566,11 @@ def cut_roll():
                             INSERT INTO hdpe_cut_pieces (
                                 stock_id, length_meters, status, notes, created_at
                             ) VALUES (%s, %s, 'IN_STOCK', %s, NOW())
-                        """, (stock_id, remainder, f'Remainder {remainder}m from cutting {piece_length}m piece'))
+                            RETURNING id
+                        """, (stock_id, remainder, f'Remainder {remainder}m from {piece_length}m piece'))
+                        new_piece_id = cursor.fetchone()['id']
                         pieces_created.append(remainder)
+                        cut_piece_details.append({"length": float(remainder), "piece_id": str(new_piece_id), "is_remainder": True})
 
                     # Update quantity
                     cursor.execute("""
@@ -561,6 +581,21 @@ def cut_roll():
                         ), updated_at = NOW()
                         WHERE id = %s
                     """, (stock_id, stock_id))
+
+                    # Create transaction with complete information
+                    import json
+                    all_pieces_str = ", ".join([f"{l}m" for l in cut_lengths])
+                    notes = f'Cut {piece_length}m piece into {len(cut_lengths)} pieces: {all_pieces_str}'
+                    if remainder > 0:
+                        notes += f'. Remainder: {remainder}m'
+
+                    cursor.execute("""
+                        INSERT INTO inventory_transactions (
+                            transaction_type, from_stock_id, from_quantity, from_length,
+                            to_stock_id, to_quantity, cut_piece_details, notes, created_at
+                        ) VALUES ('CUT_ROLL', %s, 1, %s, %s, %s, %s, %s, NOW())
+                    """, (stock_id, piece_length, stock_id, len(pieces_created),
+                          json.dumps(cut_piece_details), notes))
 
                     # Audit log
                     cursor.execute("""

@@ -229,19 +229,43 @@ def get_product_ledger(product_variant_id):
         # Get current stock summary from inventory_stock
         current_stock_query = """
             SELECT
-                s.stock_type,
-                SUM(s.quantity) as count,
-                SUM(CASE
-                    WHEN s.stock_type = 'FULL_ROLL' THEN s.quantity * s.length_per_unit
-                    WHEN s.stock_type = 'CUT_ROLL' THEN s.length_per_unit
-                    ELSE 0
-                END) as total_length
-            FROM inventory_stock s
-            JOIN batches b ON s.batch_id = b.id
-            WHERE b.product_variant_id = %s
-            AND s.deleted_at IS NULL
-            AND s.quantity > 0
-            GROUP BY s.stock_type
+                stock_type,
+                SUM(count) as count,
+                SUM(total_length) as total_length
+            FROM (
+                SELECT
+                    s.stock_type,
+                    CASE
+                        WHEN s.stock_type = 'FULL_ROLL' THEN s.quantity
+                        WHEN s.stock_type = 'CUT_ROLL' THEN (
+                            SELECT COUNT(*)
+                            FROM hdpe_cut_pieces cp
+                            WHERE cp.stock_id = s.id AND cp.status = 'IN_STOCK'
+                        )
+                        WHEN s.stock_type = 'BUNDLE' THEN s.quantity
+                        WHEN s.stock_type = 'SPARE' THEN (
+                            SELECT COALESCE(SUM(sp.piece_count), 0)
+                            FROM sprinkler_spare_pieces sp
+                            WHERE sp.stock_id = s.id AND sp.status = 'IN_STOCK'
+                        )
+                        ELSE s.quantity
+                    END as count,
+                    CASE
+                        WHEN s.stock_type = 'FULL_ROLL' THEN s.quantity * s.length_per_unit
+                        WHEN s.stock_type = 'CUT_ROLL' THEN (
+                            SELECT COALESCE(SUM(cp.length_meters), 0)
+                            FROM hdpe_cut_pieces cp
+                            WHERE cp.stock_id = s.id AND cp.status = 'IN_STOCK'
+                        )
+                        ELSE 0
+                    END as total_length
+                FROM inventory_stock s
+                JOIN batches b ON s.batch_id = b.id
+                WHERE b.product_variant_id = %s
+                AND s.deleted_at IS NULL
+                AND s.quantity > 0
+            ) subquery
+            GROUP BY stock_type
         """
         current_stock = execute_query(current_stock_query, (product_variant_id,))
 
@@ -268,18 +292,7 @@ def get_product_ledger(product_variant_id):
             elif stock_type == 'BUNDLE':
                 summary['current_stock']['bundles'] = count
             elif stock_type == 'SPARE':
-                # Get actual spare piece count
-                spare_query = """
-                    SELECT COALESCE(SUM(ssp.piece_count), 0) as total_pieces
-                    FROM inventory_stock s
-                    JOIN sprinkler_spare_pieces ssp ON ssp.stock_id = s.id
-                    JOIN batches b ON s.batch_id = b.id
-                    WHERE b.product_variant_id = %s
-                    AND s.stock_type = 'SPARE'
-                    AND s.deleted_at IS NULL
-                """
-                spare_result = execute_query(spare_query, (product_variant_id,), fetch_one=True)
-                summary['current_stock']['spares'] = int(spare_result['total_pieces'] or 0) if spare_result else 0
+                summary['current_stock']['spares'] = count
 
         # Get total weight from batches
         weight_query = """
