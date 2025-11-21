@@ -117,6 +117,7 @@ def get_transactions():
 
     # Build WHERE clause for date filtering
     date_filter = ""
+    date_filter_inv = ""
     params = []
 
     if start_date_ist and end_date_ist:
@@ -134,7 +135,8 @@ def get_transactions():
         end_ist = end_naive.replace(tzinfo=ist_tz)
 
         date_filter = " AND t.created_at >= %s AND t.created_at <= %s"
-        params = [start_ist, end_ist]
+        date_filter_inv = " AND it.created_at >= %s AND it.created_at <= %s"
+        params = [start_ist, end_ist, start_ist, end_ist]  # Duplicate for both queries
 
     # Query both transactions and inventory_transactions tables
     query = f"""
@@ -325,6 +327,7 @@ def get_transactions():
         LEFT JOIN brands br ON pv.brand_id = br.id
         LEFT JOIN units u_unit ON pt.unit_id = u_unit.id
         WHERE it.transaction_type IN ('CUT_ROLL', 'SPLIT_BUNDLE', 'COMBINE_SPARES')
+        AND (it.notes IS NULL OR it.notes NOT LIKE '%%[REVERTED]%%'){date_filter_inv}
 
         ORDER BY transaction_date DESC
         LIMIT 1000
@@ -360,12 +363,206 @@ def revert_transactions():
     with get_db_cursor() as cursor:
         for transaction_id in transaction_ids:
             try:
-                # Check if this is an inventory transaction (cannot be reverted)
+                # Check if this is an inventory transaction
                 if transaction_id.startswith('inv_'):
-                    failed_transactions.append({
-                        'id': transaction_id,
-                        'error': 'Inventory operations (Cut Roll, Split Bundle, Combine Spares) cannot be reverted'
-                    })
+                    # Handle inventory operations (CUT_ROLL, SPLIT_BUNDLE, COMBINE_SPARES)
+                    clean_id = transaction_id.replace('inv_', '')
+
+                    # Get inventory transaction details with dispatch status
+                    cursor.execute("""
+                        SELECT it.*, ist_to.batch_id as to_batch_id, ist_from.batch_id as from_batch_id,
+                               ist_to.stock_type as to_stock_type, ist_from.stock_type as from_stock_type,
+                               ist_to.id as to_stock_id, ist_from.id as from_stock_id,
+                               ist_to.status as to_status, ist_from.status as from_status
+                        FROM inventory_transactions it
+                        LEFT JOIN inventory_stock ist_to ON it.to_stock_id = ist_to.id
+                        LEFT JOIN inventory_stock ist_from ON it.from_stock_id = ist_from.id
+                        WHERE it.id = %s
+                    """, (clean_id,))
+
+                    inv_transaction = cursor.fetchone()
+
+                    if not inv_transaction:
+                        failed_transactions.append({'id': transaction_id, 'error': 'Inventory transaction not found or already reverted'})
+                        continue
+
+                    # Handle different inventory operation types
+                    if inv_transaction['transaction_type'] == 'CUT_ROLL':
+                        # Validate: Check if any cut pieces were already dispatched
+                        cursor.execute("""
+                            SELECT COUNT(*) as dispatched_count
+                            FROM hdpe_cut_pieces
+                            WHERE stock_id = %s
+                            AND created_at >= %s - INTERVAL '1 minute'
+                            AND created_at <= %s + INTERVAL '1 minute'
+                            AND status = 'DISPATCHED'
+                        """, (inv_transaction['to_stock_id'], inv_transaction['created_at'], inv_transaction['created_at']))
+
+                        dispatched_check = cursor.fetchone()
+                        if dispatched_check['dispatched_count'] > 0:
+                            failed_transactions.append({
+                                'id': transaction_id,
+                                'error': f"Cannot revert: {dispatched_check['dispatched_count']} cut pieces have already been dispatched"
+                            })
+                            continue
+
+                        # Count how many pieces will be reverted
+                        cursor.execute("""
+                            SELECT COUNT(*) as piece_count
+                            FROM hdpe_cut_pieces
+                            WHERE stock_id = %s
+                            AND created_at >= %s - INTERVAL '1 minute'
+                            AND created_at <= %s + INTERVAL '1 minute'
+                            AND status = 'IN_STOCK'
+                        """, (inv_transaction['to_stock_id'], inv_transaction['created_at'], inv_transaction['created_at']))
+
+                        piece_count = cursor.fetchone()['piece_count']
+
+                        # Mark cut pieces as sold_out (soft delete alternative)
+                        cursor.execute("""
+                            UPDATE hdpe_cut_pieces
+                            SET status = 'SOLD_OUT', updated_at = NOW()
+                            WHERE stock_id = %s
+                            AND created_at >= %s - INTERVAL '1 minute'
+                            AND created_at <= %s + INTERVAL '1 minute'
+                            AND status = 'IN_STOCK'
+                        """, (inv_transaction['to_stock_id'], inv_transaction['created_at'], inv_transaction['created_at']))
+
+                        # Reduce CUT_ROLL stock quantity
+                        if inv_transaction['to_stock_id']:
+                            cursor.execute("""
+                                UPDATE inventory_stock
+                                SET quantity = quantity - %s,
+                                    updated_at = NOW()
+                                WHERE id = %s
+                            """, (piece_count, inv_transaction['to_stock_id']))
+
+                        # Restore the original FULL_ROLL quantity (+1)
+                        if inv_transaction['from_stock_id']:
+                            cursor.execute("""
+                                UPDATE inventory_stock
+                                SET quantity = quantity + 1,
+                                    status = 'IN_STOCK',
+                                    updated_at = NOW()
+                                WHERE id = %s
+                            """, (inv_transaction['from_stock_id'],))
+
+                    elif inv_transaction['transaction_type'] == 'SPLIT_BUNDLE':
+                        # Validate: Check if spare pieces were already dispatched
+                        cursor.execute("""
+                            SELECT COUNT(*) as dispatched_count
+                            FROM sprinkler_spare_pieces
+                            WHERE stock_id = %s
+                            AND created_at >= %s - INTERVAL '1 minute'
+                            AND created_at <= %s + INTERVAL '1 minute'
+                            AND status = 'DISPATCHED'
+                        """, (inv_transaction['to_stock_id'], inv_transaction['created_at'], inv_transaction['created_at']))
+
+                        dispatched_check = cursor.fetchone()
+                        if dispatched_check['dispatched_count'] > 0:
+                            failed_transactions.append({
+                                'id': transaction_id,
+                                'error': f"Cannot revert: {dispatched_check['dispatched_count']} spare pieces have already been dispatched"
+                            })
+                            continue
+
+                        # Count how many spare pieces will be reverted
+                        cursor.execute("""
+                            SELECT COUNT(*) as piece_count
+                            FROM sprinkler_spare_pieces
+                            WHERE stock_id = %s
+                            AND created_at >= %s - INTERVAL '1 minute'
+                            AND created_at <= %s + INTERVAL '1 minute'
+                            AND status = 'IN_STOCK'
+                        """, (inv_transaction['to_stock_id'], inv_transaction['created_at'], inv_transaction['created_at']))
+
+                        piece_count = cursor.fetchone()['piece_count']
+
+                        # Mark spare pieces as sold_out (soft delete alternative)
+                        cursor.execute("""
+                            UPDATE sprinkler_spare_pieces
+                            SET status = 'SOLD_OUT', updated_at = NOW()
+                            WHERE stock_id = %s
+                            AND created_at >= %s - INTERVAL '1 minute'
+                            AND created_at <= %s + INTERVAL '1 minute'
+                            AND status = 'IN_STOCK'
+                        """, (inv_transaction['to_stock_id'], inv_transaction['created_at'], inv_transaction['created_at']))
+
+                        # Reduce SPARE stock quantity
+                        if inv_transaction['to_stock_id']:
+                            cursor.execute("""
+                                UPDATE inventory_stock
+                                SET quantity = quantity - %s,
+                                    updated_at = NOW()
+                                WHERE id = %s
+                            """, (piece_count, inv_transaction['to_stock_id']))
+
+                        # Restore the original bundle: undelete + increase quantity by 1
+                        if inv_transaction['from_stock_id']:
+                            cursor.execute("""
+                                UPDATE inventory_stock
+                                SET deleted_at = NULL,
+                                    status = 'IN_STOCK',
+                                    quantity = quantity + 1,
+                                    updated_at = NOW()
+                                WHERE id = %s
+                            """, (inv_transaction['from_stock_id'],))
+
+
+                    elif inv_transaction['transaction_type'] == 'COMBINE_SPARES':
+                        # Validate: Check if combined bundle was already dispatched
+                        if inv_transaction['to_stock_id']:
+                            cursor.execute("""
+                                SELECT status FROM inventory_stock WHERE id = %s
+                            """, (inv_transaction['to_stock_id'],))
+                            bundle_status = cursor.fetchone()
+                            if bundle_status and bundle_status['status'] == 'DISPATCHED':
+                                failed_transactions.append({
+                                    'id': transaction_id,
+                                    'error': 'Cannot revert: Combined bundle has already been dispatched'
+                                })
+                                continue
+
+                            # Mark combined bundle as deleted
+                            cursor.execute("""
+                                UPDATE inventory_stock
+                                SET deleted_at = NOW(), status = 'SOLD_OUT'
+                                WHERE id = %s
+                            """, (inv_transaction['to_stock_id'],))
+
+                        # Restore the spare pieces that were combined using from_stock_id
+                        if inv_transaction['from_stock_id']:
+                            # Restore spares deleted around transaction time
+                            cursor.execute("""
+                                UPDATE inventory_stock
+                                SET deleted_at = NULL,
+                                    status = 'IN_STOCK',
+                                    updated_at = NOW()
+                                WHERE batch_id = %s
+                                AND stock_type = 'SPARE'
+                                AND deleted_at >= %s - INTERVAL '1 minute'
+                                AND deleted_at <= %s + INTERVAL '1 minute'
+                            """, (inv_transaction['from_batch_id'], inv_transaction['created_at'], inv_transaction['created_at']))
+
+                    # Soft delete inventory transaction by marking in notes (no deleted_at column)
+                    cursor.execute("""
+                        UPDATE inventory_transactions
+                        SET notes = COALESCE(notes || ' ', '') || '[REVERTED]'
+                        WHERE id = %s
+                    """, (clean_id,))
+
+                    # Create audit log
+                    actor_label = f"{actor['name']} ({actor['role']})"
+                    log_msg = f"{actor_label} reverted inventory operation {clean_id} - {inv_transaction['transaction_type']}"
+
+                    cursor.execute("""
+                        INSERT INTO audit_logs (
+                            user_id, action_type, entity_type, entity_id,
+                            description, created_at
+                        ) VALUES (%s, 'REVERT_INVENTORY_TRANSACTION', 'INVENTORY_TRANSACTION', %s, %s, NOW())
+                    """, (user_id, clean_id, log_msg))
+
+                    reverted_count += 1
                     continue
 
                 # Strip 'txn_' prefix if present (frontend adds this prefix)
@@ -410,11 +607,31 @@ def revert_transactions():
 
                 new_batch_qty = cursor.fetchone()
 
-                # For PRODUCTION, delete associated inventory stock entries
+                # For PRODUCTION, validate and soft-delete associated inventory stock entries
                 if transaction['transaction_type'] == 'PRODUCTION':
+                    # Check if any stock from this production was dispatched
+                    cursor.execute("""
+                        SELECT COUNT(*) as dispatched_count
+                        FROM inventory_stock
+                        WHERE batch_id = %s
+                        AND deleted_at IS NULL
+                        AND status = 'DISPATCHED'
+                        AND created_at >= %s - INTERVAL '1 minute'
+                        AND created_at <= %s + INTERVAL '1 minute'
+                    """, (transaction['batch_id'], transaction['created_at'], transaction['created_at']))
+
+                    dispatch_check = cursor.fetchone()
+                    if dispatch_check['dispatched_count'] > 0:
+                        failed_transactions.append({
+                            'id': transaction_id,
+                            'error': f"Cannot revert: {dispatch_check['dispatched_count']} items from this production have been dispatched"
+                        })
+                        continue
+
+                    # Soft delete inventory stock
                     cursor.execute("""
                         UPDATE inventory_stock
-                        SET deleted_at = NOW()
+                        SET deleted_at = NOW(), status = 'SOLD_OUT'
                         WHERE batch_id = %s
                         AND deleted_at IS NULL
                         AND created_at >= %s - INTERVAL '1 minute'

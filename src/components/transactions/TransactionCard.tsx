@@ -27,7 +27,6 @@ export function TransactionCard({
   isAdmin = false,
 }: TransactionCardProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const isInventoryOperation = ['CUT_ROLL', 'SPLIT_BUNDLE', 'COMBINE_SPARES'].includes(transaction.transaction_type);
 
   return (
     <Card
@@ -45,9 +44,7 @@ export function TransactionCard({
                   checked={selected}
                   onCheckedChange={() => onSelect?.(transaction.id)}
                   onClick={(e) => e.stopPropagation()}
-                  disabled={isInventoryOperation}
                   aria-label={`Select transaction ${transaction.id}`}
-                  title={isInventoryOperation ? 'Inventory operations cannot be reverted' : undefined}
                 />
               )}
               <TransactionTypeBadge transaction={transaction} />

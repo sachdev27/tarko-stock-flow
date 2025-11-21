@@ -423,7 +423,17 @@ def cut_roll():
                     UPDATE inventory_stock
                     SET quantity = quantity - 1, updated_at = NOW()
                     WHERE id = %s
+                    RETURNING quantity
                 """, (stock_id,))
+
+                # Check if quantity is now 0 and soft delete if needed
+                updated_quantity = cursor.fetchone()
+                if updated_quantity and updated_quantity['quantity'] <= 0:
+                    cursor.execute("""
+                        UPDATE inventory_stock
+                        SET deleted_at = NOW(), status = 'SOLD_OUT'
+                        WHERE id = %s
+                    """, (stock_id,))
 
                 # Create or update CUT_ROLL stock for this batch
                 cursor.execute("""

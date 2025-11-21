@@ -188,8 +188,6 @@ export function TransactionTable({
             </TableRow>
           ) : (
             sortedTransactions.map((transaction) => {
-              const isInventoryOperation = ['CUT_ROLL', 'SPLIT_BUNDLE', 'COMBINE_SPARES'].includes(transaction.transaction_type);
-
               return (
               <TableRow
                 key={transaction.id}
@@ -201,9 +199,7 @@ export function TransactionTable({
                     <Checkbox
                       checked={selectedIds.has(transaction.id)}
                       onCheckedChange={() => onSelectTransaction(transaction.id)}
-                      disabled={isInventoryOperation}
                       aria-label={`Select transaction ${transaction.id}`}
-                      title={isInventoryOperation ? 'Inventory operations cannot be reverted' : undefined}
                     />
                   </TableCell>
                 )}
