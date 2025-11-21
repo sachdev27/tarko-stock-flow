@@ -271,9 +271,8 @@ export const ImportExportDialog = ({
           formData.append('parameters', JSON.stringify(parameters));
 
           if (weightPerMeter) {
-            // Convert kg/m to grams if needed
-            const weightInGrams = parseFloat(weightPerMeter) * 1000;
-            formData.append('weight_per_meter', weightInGrams.toString());
+            // weight_per_meter is stored in kg/m in the database
+            formData.append('weight_per_meter', parseFloat(weightPerMeter).toString());
           }
 
           if (isHDPE) {

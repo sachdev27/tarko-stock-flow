@@ -150,7 +150,6 @@ export function TransactionTable({
               </Button>
             </TableHead>
             <TableHead>Parameters</TableHead>
-            <TableHead>Batch/Invoice</TableHead>
             <TableHead>Quantity</TableHead>
             <TableHead>
               <Button
@@ -162,6 +161,7 @@ export function TransactionTable({
                 <SortIcon field="weight" />
               </Button>
             </TableHead>
+            <TableHead>Weight/Meter</TableHead>
             <TableHead>Meters</TableHead>
             <TableHead>
               <Button
@@ -215,15 +215,17 @@ export function TransactionTable({
                   <ParameterBadges parameters={transaction.parameters} />
                 </TableCell>
                 <TableCell className="text-sm">
-                  {transaction.batch_no || transaction.invoice_no || '-'}
-                </TableCell>
-                <TableCell className="text-sm">
                   {transaction.quantity_breakdown
                     ? formatQuantityShort(transaction.quantity_breakdown)
                     : transaction.total_rolls_count || transaction.roll_snapshot?.total_rolls || '0'}
                 </TableCell>
                 <TableCell className="font-medium">
                   {formatWeight(transaction.total_weight)}
+                </TableCell>
+                <TableCell className="text-sm">
+                  {transaction.weight_per_meter && typeof transaction.weight_per_meter === 'number'
+                    ? `${transaction.weight_per_meter.toFixed(3)} kg/m`
+                    : '-'}
                 </TableCell>
                 <TableCell className="text-sm">
                   {typeof transaction.roll_length_meters === 'number'

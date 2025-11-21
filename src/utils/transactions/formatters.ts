@@ -12,10 +12,9 @@ export const getProductName = (transaction: {
   return `${transaction.product_type} - ${transaction.brand}`;
 };
 
-export const formatWeight = (grams: number | null | undefined, unitAbbreviation?: string): string => {
-  if (!grams) return '0 kg';
+export const formatWeight = (kg: number | null | undefined, unitAbbreviation?: string): string => {
+  if (!kg || typeof kg !== 'number' || isNaN(kg)) return '0 kg';
 
-  const kg = grams / 1000;
   const tons = kg / 1000;
 
   return tons >= 1 ? `${tons.toFixed(2)} t` : `${kg.toFixed(2)} kg`;

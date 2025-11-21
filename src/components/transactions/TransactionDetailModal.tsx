@@ -154,6 +154,17 @@ export function TransactionDetailModal({
                         {formatWeight(transaction.total_weight, transaction.unit_abbreviation)}
                       </div>
                     </div>
+                    {transaction.weight_per_meter && typeof transaction.weight_per_meter === 'number' && (
+                      <div>
+                        <div className="text-sm text-muted-foreground mb-1 flex items-center gap-1">
+                          <Weight className="h-4 w-4" />
+                          Weight/Meter
+                        </div>
+                        <div className="text-lg font-bold">
+                          {transaction.weight_per_meter.toFixed(3)} kg/m
+                        </div>
+                      </div>
+                    )}
                     <div>
                       <div className="text-sm text-muted-foreground mb-1">Quantity Change</div>
                       <div className="text-lg font-bold">
@@ -418,8 +429,8 @@ export function TransactionDetailModal({
                               </div>
                             )}
                           </div>
-                          {/* Calculate total meters for this entry */}
-                          <div className="mt-3 pt-3 border-t">
+                          {/* Calculate total meters and weight for this entry */}
+                          <div className="mt-3 pt-3 border-t space-y-2">
                             <div className="text-sm font-medium">
                               {entry.stock_type === 'FULL_ROLL' ? (
                                 <>Total: {(entry.quantity * (entry.length_per_unit || 0)).toFixed(2)}m</>
@@ -431,6 +442,27 @@ export function TransactionDetailModal({
                                 <>Total: {((entry.spare_piece_count || entry.quantity) * (entry.piece_length_meters || 0)).toFixed(2)}m ({entry.spare_piece_count || entry.quantity} piece{(entry.spare_piece_count || entry.quantity) !== 1 ? 's' : ''})</>
                               ) : null}
                             </div>
+                            {transaction.weight_per_meter && typeof transaction.weight_per_meter === 'number' && (
+                              <div className="text-sm text-muted-foreground">
+                                {entry.stock_type === 'FULL_ROLL' ? (
+                                  <>Weight: {(entry.quantity * (entry.length_per_unit || 0) * transaction.weight_per_meter).toFixed(2)} kg
+                                    <span className="text-xs ml-1">({entry.quantity} rolls × {(entry.length_per_unit || 0).toFixed(2)}m × {transaction.weight_per_meter.toFixed(3)} kg/m)</span>
+                                  </>
+                                ) : entry.stock_type === 'CUT_ROLL' ? (
+                                  <>Weight: {((entry.total_cut_length || 0) * transaction.weight_per_meter).toFixed(2)} kg
+                                    <span className="text-xs ml-1">({(entry.total_cut_length || 0).toFixed(2)}m × {transaction.weight_per_meter.toFixed(3)} kg/m)</span>
+                                  </>
+                                ) : entry.stock_type === 'BUNDLE' ? (
+                                  <>Weight: {(entry.quantity * (entry.pieces_per_bundle || 0) * (entry.piece_length_meters || 0) * transaction.weight_per_meter).toFixed(2)} kg
+                                    <span className="text-xs ml-1">({entry.quantity * (entry.pieces_per_bundle || 0)} pieces × {(entry.piece_length_meters || 0).toFixed(2)}m × {transaction.weight_per_meter.toFixed(3)} kg/m)</span>
+                                  </>
+                                ) : (entry.stock_type === 'SPARE_PIECES' || entry.stock_type === 'SPARE') ? (
+                                  <>Weight: {((entry.spare_piece_count || entry.quantity) * (entry.piece_length_meters || 0) * transaction.weight_per_meter).toFixed(2)} kg
+                                    <span className="text-xs ml-1">({entry.spare_piece_count || entry.quantity} pieces × {(entry.piece_length_meters || 0).toFixed(2)}m × {transaction.weight_per_meter.toFixed(3)} kg/m)</span>
+                                  </>
+                                ) : null}
+                              </div>
+                            )}
                           </div>
                         </div>
                       ))}

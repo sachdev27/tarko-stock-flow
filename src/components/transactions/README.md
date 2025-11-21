@@ -37,7 +37,7 @@ src/
 #### `src/utils/transactions/formatters.ts`
 - `getProductCode(transaction)` - Get product code
 - `getProductName(transaction)` - Build full product name
-- `formatWeight(grams, unitAbbreviation)` - Format weight (kg/tons)
+- `formatWeight(kg, unitAbbreviation)` - Format weight (kg/tons)
 - `formatDate(date)` - Format date
 - `formatDateTime(date)` - Format date with time
 

@@ -188,7 +188,7 @@ export default function ExportHDPE() {
           firstRow.production_date,
           avgLength.toFixed(0),
           totalRolls.toString(),
-          firstRow.weight_per_meter ? (firstRow.weight_per_meter / 1000).toFixed(3) : '0', // Convert g/m to kg/m
+          firstRow.weight_per_meter ? firstRow.weight_per_meter.toFixed(3) : '0', // weight_per_meter is already in kg/m
           firstRow.pe,
           firstRow.od,
           firstRow.pn
@@ -204,7 +204,7 @@ export default function ExportHDPE() {
           cutRow.production_date,
           (cutRow.original_length || 0).toFixed(2),
           '1', // Cut rolls are individual
-          cutRow.weight_per_meter ? (cutRow.weight_per_meter / 1000).toFixed(3) : '0',
+          cutRow.weight_per_meter ? cutRow.weight_per_meter.toFixed(3) : '0', // weight_per_meter is already in kg/m
           cutRow.pe,
           cutRow.od,
           cutRow.pn

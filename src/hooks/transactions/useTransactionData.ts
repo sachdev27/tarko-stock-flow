@@ -72,6 +72,10 @@ export const useTransactionData = () => {
           roll_length_meters: totalMeters || t.roll_length_meters,
           total_rolls_count: quantityBreakdown.totalItems,
           quantity_breakdown: quantityBreakdown,
+          // Ensure numeric fields are properly typed
+          total_weight: typeof t.total_weight === 'string' ? parseFloat(t.total_weight) : t.total_weight,
+          weight_per_meter: typeof t.weight_per_meter === 'string' ? parseFloat(t.weight_per_meter) : t.weight_per_meter,
+          quantity_change: typeof t.quantity_change === 'string' ? parseFloat(t.quantity_change) : t.quantity_change,
         };
       });
 

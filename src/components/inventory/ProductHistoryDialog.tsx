@@ -140,14 +140,12 @@ export const ProductHistoryDialog = ({ open, onOpenChange, productVariantId, pro
     toast.success('History exported to CSV');
   };
 
-  const formatWeight = (weightInGrams: number | string | null | undefined): string => {
-    if (weightInGrams == null) return '-';
-    const weight = typeof weightInGrams === 'string' ? parseFloat(weightInGrams) : weightInGrams;
+  const formatWeight = (weightInKg: number | string | null | undefined): string => {
+    if (weightInKg == null) return '-';
+    const weight = typeof weightInKg === 'string' ? parseFloat(weightInKg) : weightInKg;
     if (isNaN(weight)) return '-';
-    if (weight >= 1000) {
-      return `${(weight / 1000).toFixed(2)} kg`;
-    }
-    return `${weight.toFixed(0)} g`;
+    const tons = weight / 1000;
+    return tons >= 1 ? `${tons.toFixed(2)} t` : `${weight.toFixed(2)} kg`;
   };
 
   return (

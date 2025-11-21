@@ -1,11 +1,11 @@
 {
   "rootFolder": "/Users/sachdevs/Projects/Tarko-Inv/tarko-stock-flow",
-  "analyzedAt": "2025-11-21T11:13:14.721Z",
+  "analyzedAt": "2025-11-21T11:13:19.315Z",
   "rootStructure": [
     {
       "name": ".gitignore",
       "type": "file",
-      "size": 1053,
+      "size": 1061,
       "lines": 84
     },
     {
@@ -632,7 +632,7 @@
   "totals": {
     "numFiles": 866,
     "numDirs": 94,
-    "totalSizeBytes": 5727825,
+    "totalSizeBytes": 5727833,
     "totalLinesOfCode": 28454
   },
   "fileCategories": {
