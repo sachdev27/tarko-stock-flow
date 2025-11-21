@@ -49,15 +49,18 @@ export const BatchDetailsForm = ({
       {/* Production Date */}
       <div className="space-y-2">
         <Label htmlFor="productionDate">
-          Production Date <span className="text-red-500">*</span>
+          Production Date & Time (IST) <span className="text-red-500">*</span>
         </Label>
         <Input
           id="productionDate"
-          type="date"
+          type="datetime-local"
           value={formData.productionDate}
           onChange={(e) => onChange('productionDate', e.target.value)}
           className="h-12"
         />
+        <p className="text-xs text-muted-foreground">
+          All times are in Indian Standard Time (IST)
+        </p>
         {submitAttempted && !formData.productionDate && (
           <p className="text-xs text-red-500">Production date is required</p>
         )}

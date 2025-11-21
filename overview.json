@@ -1,6 +1,6 @@
 {
   "rootFolder": "/Users/sachdevs/Projects/Tarko-Inv/tarko-stock-flow",
-  "analyzedAt": "2025-11-20T14:40:55.051Z",
+  "analyzedAt": "2025-11-21T05:41:36.049Z",
   "rootStructure": [
     {
       "name": ".gitignore",
@@ -11,14 +11,20 @@
     {
       "name": "DEPLOYMENT.md",
       "type": "file",
-      "size": 8162,
-      "lines": 413
+      "size": 8730,
+      "lines": 430
+    },
+    {
+      "name": "DEV_SETUP.md",
+      "type": "file",
+      "size": 5592,
+      "lines": 304
     },
     {
       "name": "DOCKER_README.md",
       "type": "file",
-      "size": 7197,
-      "lines": 384
+      "size": 7838,
+      "lines": 405
     },
     {
       "name": "Dockerfile.frontend",
@@ -35,8 +41,20 @@
     {
       "name": "IMPLEMENTATION_SUMMARY.md",
       "type": "file",
-      "size": 7168,
-      "lines": 307
+      "size": 8497,
+      "lines": 348
+    },
+    {
+      "name": "INVENTORY_FUNDAMENTALS.md",
+      "type": "file",
+      "size": 8273,
+      "lines": 299
+    },
+    {
+      "name": "MIGRATION_STATUS.md",
+      "type": "file",
+      "size": 7260,
+      "lines": 161
     },
     {
       "name": "README.md",
@@ -77,10 +95,6 @@
       "lines": 103
     },
     {
-      "name": "dist",
-      "type": "dir"
-    },
-    {
       "name": "docker-compose.yml",
       "type": "file",
       "size": 2735,
@@ -109,9 +123,13 @@
       "type": "dir"
     },
     {
+      "name": "oldcode",
+      "type": "dir"
+    },
+    {
       "name": "overview.json",
       "type": "file",
-      "size": 27296,
+      "size": 27297,
       "lines": 918
     },
     {
@@ -194,6 +212,18 @@
       "- Open ports: 80, 5432, 5500",
       ""
     ],
+    "DEV_SETUP.md": [
+      "# Local Development Setup",
+      "",
+      "## Quick Start",
+      "",
+      "### Backend Setup",
+      "",
+      "1. **Navigate to backend directory**",
+      "```bash",
+      "cd backend",
+      "```"
+    ],
     "DOCKER_README.md": [
       "# Tarko Inventory - Production Docker Setup",
       "",
@@ -241,6 +271,30 @@
       "- **PostgreSQL Database**: Persistent data with volume, health checks, automatic schema initialization",
       "- **Flask Backend**: REST API with JWT authentication, health endpoints",
       "- **React Frontend**: Nginx-served production build with API proxy"
+    ],
+    "INVENTORY_FUNDAMENTALS.md": [
+      "# Inventory System Fundamentals",
+      "",
+      "## Database Schema - Core Principles",
+      "",
+      "### 1. Aggregate Inventory (`inventory_stock` table)",
+      "",
+      "This is the **master table** that tracks aggregate stock levels:",
+      "",
+      "```sql",
+      "CREATE TABLE inventory_stock ("
+    ],
+    "MIGRATION_STATUS.md": [
+      "# Aggregate Inventory System Migration Status",
+      "",
+      "## ✅ Completed",
+      "",
+      "### Database Schema",
+      "- ✅ Created `inventory_stock` table (aggregate quantity-based tracking)",
+      "- ✅ Created `hdpe_cut_pieces` table (individual cut piece tracking)",
+      "- ✅ Created `sprinkler_spare_pieces` table (individual spare tracking)",
+      "- ✅ Created `inventory_transactions` table (complete audit trail)",
+      "- ✅ Created helper views: `hdpe_stock_details`, `sprinkler_stock_details`, `inventory_unified`"
     ],
     "README.md": [
       "# Tarko Inventory Management System",
@@ -353,7 +407,7 @@
     "overview.json": [
       "{",
       "\"rootFolder\": \"/Users/sachdevs/Projects/Tarko-Inv/tarko-stock-flow\",",
-      "\"analyzedAt\": \"2025-11-20T14:40:40.605Z\",",
+      "\"analyzedAt\": \"2025-11-20T14:40:55.051Z\",",
       "\"rootStructure\": [",
       "{",
       "\"name\": \".gitignore\",",
@@ -472,13 +526,13 @@
     {
       "path": "backend",
       "category": "backend",
-      "fileCount": 48,
+      "fileCount": 61,
       "primaryLanguage": "Python"
     },
     {
       "path": "backend/routes",
       "category": "build",
-      "fileCount": 11,
+      "fileCount": 12,
       "primaryLanguage": "Python"
     },
     {
@@ -489,7 +543,7 @@
     {
       "path": "src/components",
       "category": "frontend",
-      "fileCount": 52,
+      "fileCount": 69,
       "primaryLanguage": "TypeScript"
     },
     {
@@ -507,31 +561,32 @@
   ],
   "readmeParagraphs": {
     "backend": "# Tarko Inventory - Backend API",
+    "src/components/dispatch": "# Dispatch Module - Modular Architecture",
     "root": "# Tarko Inventory Management System"
   },
   "totals": {
-    "numFiles": 224,
-    "numDirs": 30,
-    "totalSizeBytes": 2495618,
-    "totalLinesOfCode": 22943
+    "numFiles": 831,
+    "numDirs": 87,
+    "totalSizeBytes": 5649258,
+    "totalLinesOfCode": 29599
   },
   "fileCategories": {
-    "other": 48,
-    "documentation": 11,
-    "source": 96,
-    "config": 69
+    "other": 110,
+    "documentation": 16,
+    "source": 120,
+    "config": 585
   },
   "linesOfCodePerLanguage": {
-    "Python": 5032,
-    "Shell": 255,
+    "Python": 7933,
+    "Shell": 311,
     "JavaScript": 34,
-    "TypeScript": 17622
+    "TypeScript": 21321
   },
   "filesPerLanguage": {
-    "Python": 17,
-    "Shell": 4,
+    "Python": 21,
+    "Shell": 5,
     "JavaScript": 2,
-    "TypeScript": 73
+    "TypeScript": 92
   },
   "projectTypes": [
     "Python (requirements)",
@@ -545,6 +600,8 @@
   "entryPoints": [
     "backend/backup_scheduler.py",
     "backend/docker-entrypoint-scheduler.sh",
+    "backend/docker-entrypoint.sh",
+    "backend/init_admin.py",
     "backend/setup_db.sh",
     "deploy.sh",
     "status.sh"
@@ -558,15 +615,20 @@
   "topLevelDirectories": [
     {
       "name": "src",
-      "numFiles": 73,
-      "totalLoc": 17507,
+      "numFiles": 93,
+      "totalLoc": 21206,
       "dominantLanguage": "TypeScript"
     },
     {
       "name": "backend",
-      "numFiles": 48,
-      "totalLoc": 5117,
+      "numFiles": 61,
+      "totalLoc": 8074,
       "dominantLanguage": "Python"
+    },
+    {
+      "name": "oldcode",
+      "numFiles": 1,
+      "totalLoc": 0
     },
     {
       "name": "public",
@@ -575,7 +637,7 @@
     },
     {
       "name": "snapshots",
-      "numFiles": 70,
+      "numFiles": 640,
       "totalLoc": 0
     }
   ],
@@ -584,32 +646,32 @@
       "path": "src",
       "name": "src",
       "level": 1,
-      "numFiles": 73,
-      "totalLoc": 17507,
+      "numFiles": 93,
+      "totalLoc": 21206,
       "dominantLanguage": "TypeScript",
       "category": "General",
-      "description": "General module with 73 files (TypeScript)",
+      "description": "General module with 93 files (TypeScript)",
       "subdirectories": [
         {
           "path": "src/pages",
           "name": "pages",
           "level": 2,
-          "numFiles": 11,
-          "totalLoc": 12469,
+          "numFiles": 14,
+          "totalLoc": 13413,
           "dominantLanguage": "TypeScript",
           "category": "General",
-          "description": "General module with 11 files (TypeScript)",
+          "description": "General module with 14 files (TypeScript)",
           "subdirectories": []
         },
         {
           "path": "src/components",
           "name": "components",
           "level": 2,
-          "numFiles": 52,
-          "totalLoc": 4275,
+          "numFiles": 69,
+          "totalLoc": 7019,
           "dominantLanguage": "TypeScript",
           "category": "General",
-          "description": "General module with 52 files (TypeScript)",
+          "description": "General module with 69 files (TypeScript)",
           "subdirectories": [
             {
               "path": "src/components/ui",
@@ -620,6 +682,39 @@
               "dominantLanguage": "TypeScript",
               "category": "Web/UI",
               "description": "Web/UI module with 49 files (TypeScript)",
+              "subdirectories": []
+            },
+            {
+              "path": "src/components/inventory",
+              "name": "inventory",
+              "level": 3,
+              "numFiles": 7,
+              "totalLoc": 1095,
+              "dominantLanguage": "TypeScript",
+              "category": "General",
+              "description": "General module with 7 files (TypeScript)",
+              "subdirectories": []
+            },
+            {
+              "path": "src/components/dispatch",
+              "name": "dispatch",
+              "level": 3,
+              "numFiles": 7,
+              "totalLoc": 1086,
+              "dominantLanguage": "TypeScript",
+              "category": "General",
+              "description": "# Dispatch Module - Modular Architecture",
+              "subdirectories": []
+            },
+            {
+              "path": "src/components/production",
+              "name": "production",
+              "level": 3,
+              "numFiles": 3,
+              "totalLoc": 561,
+              "dominantLanguage": "TypeScript",
+              "category": "General",
+              "description": "General module with 3 files (TypeScript)",
               "subdirectories": []
             }
           ]
@@ -651,7 +746,7 @@
           "name": "contexts",
           "level": 2,
           "numFiles": 1,
-          "totalLoc": 116,
+          "totalLoc": 118,
           "dominantLanguage": "TypeScript",
           "category": "General",
           "description": "General module with 1 files (TypeScript)",
@@ -663,8 +758,8 @@
       "path": "backend",
       "name": "backend",
       "level": 1,
-      "numFiles": 48,
-      "totalLoc": 5117,
+      "numFiles": 61,
+      "totalLoc": 8074,
       "dominantLanguage": "Python",
       "category": "General",
       "description": "# Tarko Inventory - Backend API",
@@ -673,21 +768,21 @@
           "path": "backend/routes",
           "name": "routes",
           "level": 2,
-          "numFiles": 11,
-          "totalLoc": 4292,
+          "numFiles": 12,
+          "totalLoc": 5982,
           "dominantLanguage": "Python",
           "category": "General",
-          "description": "General module with 11 files (Python)",
+          "description": "General module with 12 files (Python)",
           "subdirectories": []
         },
         {
           "path": "backend/migrations",
           "name": "migrations",
           "level": 2,
-          "numFiles": 16,
+          "numFiles": 19,
           "totalLoc": 0,
           "category": "General",
-          "description": "General module with 16 files",
+          "description": "General module with 19 files",
           "subdirectories": []
         },
         {
@@ -717,10 +812,10 @@
       "path": "snapshots",
       "name": "snapshots",
       "level": 1,
-      "numFiles": 70,
+      "numFiles": 640,
       "totalLoc": 0,
       "category": "General",
-      "description": "General module with 70 files",
+      "description": "General module with 640 files",
       "subdirectories": [
         {
           "path": "snapshots/daily_backup_20251120_143806",
@@ -783,6 +878,16 @@
       "category": "General",
       "description": "General module with 3 files",
       "subdirectories": []
+    },
+    {
+      "path": "oldcode",
+      "name": "oldcode",
+      "level": 1,
+      "numFiles": 1,
+      "totalLoc": 0,
+      "category": "General",
+      "description": "General module with 1 files",
+      "subdirectories": []
     }
   ],
   "architecturalInsights": {
@@ -795,6 +900,16 @@
       },
       {
         "path": "../../../../../backend/docker-entrypoint-scheduler.sh",
+        "type": "Unknown",
+        "description": ""
+      },
+      {
+        "path": "../../../../../backend/docker-entrypoint.sh",
+        "type": "Unknown",
+        "description": ""
+      },
+      {
+        "path": "../../../../../backend/init_admin.py",
         "type": "Unknown",
         "description": ""
       },
@@ -901,14 +1016,14 @@
     "total": 66
   },
   "complexity": {
-    "averageFileSize": 102.42410714285714,
+    "averageFileSize": 35.61853188929001,
     "maxFileSize": 0,
     "nestedDepth": 0,
     "estimatedComplexity": "high"
   },
   "gitRepo": {
-    "firstCommitDate": "2025-11-20",
-    "totalCommits": 24,
+    "firstCommitDate": "2025-11-21",
+    "totalCommits": 28,
     "numContributors": 0,
     "currentBranch": "sachdevs/ready_for_prod",
     "remoteUrls": [

@@ -74,15 +74,12 @@ def create_batch():
         # quantity should be: number_of_bundles × bundle_size (pieces)
         if quantity_based and roll_config_type == 'bundles' and number_of_bundles > 0 and bundle_size > 0:
             # Recalculate quantity as total pieces
-            quantity = float(number_of_bundles * bundle_size)# Weight tracking - ensure proper conversion and default to None if missing
-        # Note: CSV imports provide kg/m, but system stores g/m, so convert if from import
+            quantity = float(number_of_bundles * bundle_size)
+
+        # Weight tracking - weight_per_meter in kg/m, total_weight in kg
         weight_per_meter_raw = data.get('weight_per_meter')
         if weight_per_meter_raw not in (None, '', 'null'):
             weight_per_meter = float(weight_per_meter_raw)
-            # If value is less than 100, assume it's kg/m and convert to g/m
-            # (typical HDPE pipes range from 50-5000 g/m, so kg values would be 0.05-5)
-            if weight_per_meter < 100:
-                weight_per_meter = weight_per_meter * 1000  # Convert kg/m to g/m
         else:
             weight_per_meter = None
 
@@ -95,14 +92,15 @@ def create_batch():
             piece_length_value = length_per_roll_input
 
         # Calculate total_weight from weight_per_meter if provided
+        # weight_per_meter is in kg/m, total_weight is in kg
         if weight_per_meter and not total_weight and quantity > 0:
             if quantity_based and piece_length_value:
-                # For sprinkler pipes: weight = weight_per_meter × total_length
+                # For sprinkler pipes: weight (kg) = weight_per_meter (kg/m) × total_length (m)
                 # total_length = quantity (pieces) × piece_length (meters/piece)
                 total_length = quantity * piece_length_value
                 total_weight = weight_per_meter * total_length
             else:
-                # For HDPE rolls: weight = weight_per_meter × quantity (meters)
+                # For HDPE rolls: weight (kg) = weight_per_meter (kg/m) × quantity (meters)
                 total_weight = weight_per_meter * quantity
 
 

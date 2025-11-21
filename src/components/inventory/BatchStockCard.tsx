@@ -25,6 +25,7 @@ interface StockEntry {
   length_per_unit?: number;
   pieces_per_bundle?: number;
   piece_length_meters?: number;
+  piece_count?: number;
   total_available: number;
   product_type_name: string;
 }
@@ -80,11 +81,14 @@ export const BatchStockCard = ({ batch, onUpdate }: BatchStockCardProps) => {
                   {stockByType.BUNDLE.reduce((sum, e) => sum + e.quantity, 0)} Bundles
                 </Badge>
               )}
-              {stockByType.SPARE.length > 0 && (
-                <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300">
-                  {stockByType.SPARE.reduce((sum, e) => sum + e.quantity, 0)} Spare Pieces
-                </Badge>
-              )}
+              {stockByType.SPARE.length > 0 && (() => {
+                const totalSparePieces = stockByType.SPARE.reduce((sum, e) => sum + (e.piece_count || e.total_available), 0);
+                return (
+                  <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300">
+                    {totalSparePieces} Spare Pieces
+                  </Badge>
+                );
+              })()}
             </div>
           </div>
 

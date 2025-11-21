@@ -5,12 +5,17 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
-import { Package, Search, Box, Scissors, Layers } from 'lucide-react';
+import { Package, Search, Box, Scissors, Layers, MessageCircle, Upload, Download, FileText, History } from 'lucide-react';
 import { inventory as inventoryAPI } from '@/lib/api';
 import { BatchStockCard } from '@/components/inventory/BatchStockCard';
-import { StockFilters } from '@/components/inventory/StockFilters';
 import { StockSummary } from '@/components/inventory/StockSummary';
+import { ProductHistoryDialog } from '@/components/inventory/ProductHistoryDialog';
+import { WhatsAppShareDialog } from '@/components/inventory/WhatsAppShareDialog';
+import { ImportExportDialog } from '@/components/inventory/ImportExportDialog';
+import { AdvancedFilters } from '@/components/inventory/AdvancedFilters';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface Batch {
   id: string;
@@ -32,17 +37,33 @@ interface StockEntry {
   length_per_unit?: number;
   pieces_per_bundle?: number;
   piece_length_meters?: number;
+  piece_count?: number;
   total_available: number;
   product_type_name: string;
 }
 
 const InventoryNew = () => {
+  const { user } = useAuth();
   const [batches, setBatches] = useState<Batch[]>([]);
   const [filteredBatches, setFilteredBatches] = useState<Batch[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedProduct, setSelectedProduct] = useState<string>('HDPE Pipe');
+  const [selectedProduct, setSelectedProduct] = useState<string>(''); // Will be set to HDPE after data loads
+  const [selectedBrand, setSelectedBrand] = useState<string>('all');
   const [selectedStockType, setSelectedStockType] = useState<string>('all');
+  const [parameterFilters, setParameterFilters] = useState<Record<string, string>>({});
+
+  // Product types and brands
+  const [productTypes, setProductTypes] = useState<Array<{ id: string; name: string }>>([]);
+  const [brands, setBrands] = useState<Array<{ id: string; name: string }>>([]);
+
+  // Dialogs
+  const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
+  const [selectedProductVariantId, setSelectedProductVariantId] = useState<string | null>(null);
+  const [selectedProductName, setSelectedProductName] = useState('');
+
+  const [whatsappDialogOpen, setWhatsappDialogOpen] = useState(false);
+  const [importExportDialogOpen, setImportExportDialogOpen] = useState(false);
 
   const filterBatches = () => {
     let filtered = [...batches];
@@ -57,10 +78,29 @@ const InventoryNew = () => {
       );
     }
 
-    // Filter by product type (always filter, no 'all' option)
-    filtered = filtered.filter(batch =>
-      batch.product_type_name === selectedProduct
-    );
+    // Filter by product type
+    if (selectedProduct !== 'all') {
+      filtered = filtered.filter(batch =>
+        batch.product_type_name === productTypes.find(pt => pt.id === selectedProduct)?.name
+      );
+    }
+
+    // Filter by brand
+    if (selectedBrand !== 'all') {
+      filtered = filtered.filter(batch =>
+        batch.brand_name === brands.find(b => b.id === selectedBrand)?.name
+      );
+    }
+
+    // Filter by parameters
+    Object.entries(parameterFilters).forEach(([key, value]) => {
+      if (value) {
+        filtered = filtered.filter(batch => {
+          const params = batch.parameters as Record<string, string>;
+          return params[key]?.toString().toLowerCase().includes(value.toLowerCase());
+        });
+      }
+    });
 
     // Filter by stock type
     if (selectedStockType !== 'all') {
@@ -73,13 +113,39 @@ const InventoryNew = () => {
   };
 
   useEffect(() => {
+    fetchProductTypes();
+    fetchBrands();
     fetchBatches();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     filterBatches();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchTerm, selectedProduct, selectedStockType, batches]);
+  }, [searchTerm, selectedProduct, selectedBrand, selectedStockType, parameterFilters, batches]);
+
+  const fetchProductTypes = async () => {
+    try {
+      const { data } = await inventoryAPI.getProductTypes();
+      setProductTypes(data || []);
+      // Set HDPE as default if available
+      if (selectedProduct === '' && data && data.length > 0) {
+        const hdpeType = data.find((pt: { name: string }) => pt.name.toLowerCase().includes('hdpe'));
+        setSelectedProduct(hdpeType ? hdpeType.id : data[0].id);
+      }
+    } catch (error) {
+      console.error('Error fetching product types:', error);
+    }
+  };
+
+  const fetchBrands = async () => {
+    try {
+      const { data } = await inventoryAPI.getBrands();
+      setBrands(data || []);
+    } catch (error) {
+      console.error('Error fetching brands:', error);
+    }
+  };
 
   const fetchBatches = async () => {
     try {
@@ -111,11 +177,17 @@ const InventoryNew = () => {
       sum + b.stock_entries.filter(e => e.stock_type === 'BUNDLE').reduce((s, e) => s + e.quantity, 0), 0
     ),
     totalSpares: batches.reduce((sum, b) =>
-      sum + b.stock_entries.filter(e => e.stock_type === 'SPARE').reduce((s, e) => s + e.quantity, 0), 0
+      sum + b.stock_entries.filter(e => e.stock_type === 'SPARE').reduce((s, e) => s + (e.piece_count || e.total_available || 0), 0), 0
     )
   };
 
-  const productTypes = [...new Set(batches.map(b => b.product_type_name))].sort();
+  // Get available parameters from batches
+  const availableParameters = Array.from(
+    new Set(
+      batches.flatMap(b => Object.keys(b.parameters as Record<string, unknown>))
+    )
+  ).sort();
+
   const stockTypes = [
     { value: 'all', label: 'All Types' },
     { value: 'FULL_ROLL', label: 'Full Rolls', icon: Box },
@@ -124,20 +196,62 @@ const InventoryNew = () => {
     { value: 'SPARE', label: 'Spares', icon: Package }
   ];
 
+  const openProductHistory = (productVariantId: string, productName: string) => {
+    setSelectedProductVariantId(productVariantId);
+    setSelectedProductName(productName);
+    setHistoryDialogOpen(true);
+  };
+
+  const handleParameterFilterChange = (key: string, value: string) => {
+    setParameterFilters(prev => ({
+      ...prev,
+      [key]: value
+    }));
+  };
+
+  const clearAllFilters = () => {
+    setSelectedProduct('all');
+    setSelectedBrand('all');
+    setSelectedStockType('all');
+    setParameterFilters({});
+    setSearchTerm('');
+  };
+
+  const isAdmin = user?.role === 'admin';
+
   return (
     <Layout>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Inventory</h1>
             <p className="text-muted-foreground mt-1">
               Manage and track your stock inventory
             </p>
           </div>
-          <Button onClick={fetchBatches} disabled={loading}>
-            {loading ? 'Refreshing...' : 'Refresh'}
-          </Button>
+          <div className="flex items-center gap-2 flex-wrap">
+            {isAdmin && (
+              <Button
+                variant="outline"
+                onClick={() => setImportExportDialogOpen(true)}
+              >
+                <Upload className="h-4 w-4 mr-2" />
+                Import/Export
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              onClick={() => setWhatsappDialogOpen(true)}
+              className="bg-green-50 hover:bg-green-100 border-green-200"
+            >
+              <MessageCircle className="h-4 w-4 mr-2 text-green-600" />
+              <span className="text-green-700">WhatsApp</span>
+            </Button>
+            <Button onClick={fetchBatches} disabled={loading}>
+              {loading ? 'Refreshing...' : 'Refresh'}
+            </Button>
+          </div>
         </div>
 
         {/* Summary Stats */}
@@ -145,75 +259,42 @@ const InventoryNew = () => {
 
         {/* Filters */}
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Search className="h-5 w-5" />
-              Filters
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Search className="h-4 w-4" />
+              Search & Filters
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* Search */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Search</label>
-                <Input
-                  placeholder="Batch code, batch no, or brand..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-              </div>
+          <CardContent className="space-y-3">
+            {/* Search Bar */}
+            <Input
+              placeholder="Search by batch code, batch no, or brand..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="h-9"
+            />
 
-              {/* Product Type Filter */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Product Type</label>
-                <select
-                  className="w-full h-10 px-3 border rounded-md"
-                  value={selectedProduct}
-                  onChange={(e) => setSelectedProduct(e.target.value)}
-                >
-                  {productTypes.map(type => (
-                    <option key={type} value={type}>
-                      {type}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            {/* Advanced Filters */}
+            <AdvancedFilters
+              productTypes={productTypes}
+              brands={brands}
+              selectedProductType={selectedProduct}
+              selectedBrand={selectedBrand}
+              parameterFilters={parameterFilters}
+              onProductTypeChange={setSelectedProduct}
+              onBrandChange={setSelectedBrand}
+              onParameterFilterChange={handleParameterFilterChange}
+              onClearFilters={clearAllFilters}
+              availableParameters={availableParameters}
+              selectedStockType={selectedStockType}
+              onStockTypeChange={setSelectedStockType}
+              stockTypes={stockTypes}
+            />
 
-              {/* Stock Type Filter */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Stock Type</label>
-                <select
-                  className="w-full h-10 px-3 border rounded-md"
-                  value={selectedStockType}
-                  onChange={(e) => setSelectedStockType(e.target.value)}
-                >
-                  {stockTypes.map(type => (
-                    <option key={type.value} value={type.value}>
-                      {type.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            {/* Results Count */}
+            <div className="text-xs text-muted-foreground">
+              Showing {filteredBatches.length} of {batches.length} batches
             </div>
-
-            {searchTerm || selectedProduct !== 'all' || selectedStockType !== 'all' ? (
-              <div className="mt-4 flex items-center justify-between">
-                <p className="text-sm text-muted-foreground">
-                  Showing {filteredBatches.length} of {batches.length} batches
-                </p>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setSearchTerm('');
-                    setSelectedProduct('all');
-                    setSelectedStockType('all');
-                  }}
-                >
-                  Clear Filters
-                </Button>
-              </div>
-            ) : null}
           </CardContent>
         </Card>
 
@@ -252,6 +333,29 @@ const InventoryNew = () => {
           </div>
         )}
       </div>
+
+      {/* Dialogs */}
+      <ProductHistoryDialog
+        open={historyDialogOpen}
+        onOpenChange={setHistoryDialogOpen}
+        productVariantId={selectedProductVariantId}
+        productName={selectedProductName}
+      />
+
+      <WhatsAppShareDialog
+        open={whatsappDialogOpen}
+        onOpenChange={setWhatsappDialogOpen}
+        batches={filteredBatches}
+      />
+
+      <ImportExportDialog
+        open={importExportDialogOpen}
+        onOpenChange={setImportExportDialogOpen}
+        batches={batches}
+        productTypes={productTypes}
+        brands={brands}
+        onImportComplete={fetchBatches}
+      />
     </Layout>
   );
 };

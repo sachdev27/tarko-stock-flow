@@ -105,30 +105,59 @@ const Production = () => {
     setFormData(prev => ({ ...prev, quantity: total > 0 ? total.toFixed(2) : '' }));
   }, [formData.numberOfRolls, formData.lengthPerRoll, formData.cutRolls, formData.numberOfBundles, formData.bundleSize, formData.sparePipes, formData.productTypeId, productTypes]);
 
-  // Auto-calculate total weight when quantity or weight per meter changes
+  // Auto-calculate total weight when inputs change
+  // HDPE: (no. of rolls * roll length + length of cut rolls) * weight per meter
+  // Sprinkler: (no. of bundles * bundle size * pipe length + no. of spares * pipe length) * weight per meter
   useEffect(() => {
-    const qty = parseFloat(formData.quantity) || 0;
     const weightPerM = parseFloat(formData.weightPerMeter) || 0;
-    const lengthPerPiece = parseFloat(formData.lengthPerPiece) || 0;
 
-    if (qty > 0 && weightPerM > 0) {
-      // Check if this is a quantity-based product (like sprinkler pipes)
+    if (weightPerM > 0) {
       const selectedPT = productTypes.find(pt => pt.id === formData.productTypeId);
-      const isQuantityBased = selectedPT?.roll_configuration?.quantity_based;
+      const config = selectedPT?.roll_configuration || { type: 'standard_rolls' };
 
-      let totalWeightGrams;
-      if (isQuantityBased && lengthPerPiece > 0) {
-        // For quantity-based: total_weight = quantity * lengthPerPiece * weightPerMeter
-        totalWeightGrams = qty * lengthPerPiece * weightPerM;
-      } else {
-        // For length-based: total_weight = quantity * weightPerMeter
-        totalWeightGrams = qty * weightPerM;
+      let totalLengthMeters = 0;
+
+      if (config.type === 'standard_rolls') {
+        // HDPE: Calculate total length from rolls
+        const rolls = parseInt(formData.numberOfRolls) || 0;
+        const lengthPerRoll = parseFloat(formData.lengthPerRoll) || 0;
+        totalLengthMeters += rolls * lengthPerRoll;
+
+        // Add cut rolls
+        formData.cutRolls.forEach(roll => {
+          const length = parseFloat(roll.length) || 0;
+          totalLengthMeters += length;
+        });
+      } else if (config.type === 'bundles') {
+        // Sprinkler: Calculate total length from bundles and spares
+        const bundles = parseInt(formData.numberOfBundles) || 0;
+        const bundleSize = parseInt(formData.bundleSize) || 0;
+        const lengthPerPiece = parseFloat(formData.lengthPerRoll) || parseFloat(formData.lengthPerPiece) || 0;
+
+        // Bundles total length
+        totalLengthMeters += bundles * bundleSize * lengthPerPiece;
+
+        // Spare pipes total length
+        if (config.quantity_based) {
+          // For quantity-based (sprinkler): each spare is a piece
+          const spareCount = formData.sparePipes.reduce((sum, pipe) => sum + (parseInt(pipe.length) || 0), 0);
+          totalLengthMeters += spareCount * lengthPerPiece;
+        } else {
+          // For length-based: spare pipes have their own lengths
+          formData.sparePipes.forEach(pipe => {
+            const length = parseFloat(pipe.length) || 0;
+            totalLengthMeters += length;
+          });
+        }
       }
-      setFormData(prev => ({ ...prev, totalWeight: totalWeightGrams.toFixed(2) }));
+
+      // Total weight in kg = total length (m) * weight per meter (kg/m)
+      const totalWeightKg = totalLengthMeters * weightPerM;
+      setFormData(prev => ({ ...prev, totalWeight: totalWeightKg.toFixed(3) }));
     } else {
       setFormData(prev => ({ ...prev, totalWeight: '' }));
     }
-  }, [formData.quantity, formData.weightPerMeter, formData.lengthPerPiece, formData.productTypeId, productTypes]);
+  }, [formData.numberOfRolls, formData.lengthPerRoll, formData.cutRolls, formData.numberOfBundles, formData.bundleSize, formData.sparePipes, formData.lengthPerPiece, formData.weightPerMeter, formData.productTypeId, productTypes]);
 
   const fetchMasterData = async () => {
     try {
@@ -731,6 +760,50 @@ const Production = () => {
                       )}
                     </>
                   )}
+
+                  {/* Weight Tracking */}
+                  <Card className="p-4 bg-red-100 dark:bg-red-900 border-4 border-red-500" style={{minHeight: '200px', display: 'block !important', visibility: 'visible !important'}}>
+                    <h3 className="font-bold text-xl mb-3 text-red-900 dark:text-red-100">⚖️ WEIGHT TRACKING SECTION - CAN YOU SEE THIS?</h3>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="weightPerMeter" className="text-lg font-bold text-red-900">
+                          Weight per Meter (kg/m) ← ENTER VALUE HERE
+                        </Label>
+                        <Input
+                          id="weightPerMeter"
+                          type="number"
+                          step="0.001"
+                          min="0"
+                          placeholder="e.g., 0.450"
+                          value={formData.weightPerMeter}
+                          onChange={(e) => setFormData({...formData, weightPerMeter: e.target.value})}
+                          className="h-12 text-lg border-4 border-blue-500"
+                        />
+                        <p className="text-sm font-bold text-red-900">
+                          Weight in kilograms per meter
+                        </p>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="totalWeight" className="text-lg font-bold text-red-900">
+                          Total Production Weight (Auto-calculated) ← WILL SHOW HERE
+                        </Label>
+                        <Input
+                          id="totalWeight"
+                          type="number"
+                          step="0.001"
+                          placeholder="Auto-calculated"
+                          value={formData.totalWeight}
+                          readOnly
+                          className="h-12 text-lg font-bold bg-yellow-200 border-4 border-green-500"
+                        />
+                        {formData.totalWeight && (
+                          <p className="text-sm font-bold text-green-900">
+                            Total: {parseFloat(formData.totalWeight).toFixed(2)} kg
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </Card>
                 </div>
               )}
 
@@ -788,70 +861,6 @@ const Production = () => {
                   </p>
                 )}
               </div>
-
-              {/* Weight Tracking */}
-              <Card className="p-4 bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800">
-                <h3 className="font-medium mb-3 text-blue-900 dark:text-blue-100">Weight Tracking (Optional)</h3>
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="weightPerMeter">
-                      Weight per Meter (g/m)
-                    </Label>
-                    <Input
-                      id="weightPerMeter"
-                      type="number"
-                      step="0.001"
-                      min="0"
-                      placeholder="e.g., 450.5"
-                      value={formData.weightPerMeter}
-                      onChange={(e) => setFormData({...formData, weightPerMeter: e.target.value})}
-                      className="h-12"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Weight in grams per meter
-                    </p>
-                  </div>
-                  {productTypes.find(pt => pt.id === formData.productTypeId)?.roll_configuration?.quantity_based && (
-                    <div className="space-y-2">
-                      <Label htmlFor="lengthPerPiece">
-                        Length per Piece (m)
-                      </Label>
-                      <Input
-                        id="lengthPerPiece"
-                        type="number"
-                        step="0.1"
-                        min="0"
-                        placeholder="e.g., 6"
-                        value={formData.lengthPerPiece}
-                        onChange={(e) => setFormData({...formData, lengthPerPiece: e.target.value})}
-                        className="h-12"
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        Default length for each piece
-                      </p>
-                    </div>
-                  )}
-                  <div className="space-y-2">
-                    <Label htmlFor="totalWeight">
-                      Total Weight (Auto-calculated)
-                    </Label>
-                    <Input
-                      id="totalWeight"
-                      type="number"
-                      step="0.001"
-                      placeholder="Auto-calculated"
-                      value={formData.totalWeight}
-                      readOnly
-                      className="h-12 bg-muted font-semibold"
-                    />
-                    {formData.totalWeight && (
-                      <p className="text-xs text-muted-foreground">
-                        = {(parseFloat(formData.totalWeight) / 1000).toFixed(2)} kg
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </Card>
 
               {/* Batch Number */}
               <div className="space-y-2">

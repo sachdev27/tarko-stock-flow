@@ -35,7 +35,7 @@ const ProductionNew = () => {
   const [formData, setFormData] = useState({
     productTypeId: '',
     brandId: '',
-    productionDate: toISTDateTimeLocal(new Date()).split('T')[0],
+    productionDate: toISTDateTimeLocal(new Date()),
     quantity: '',
     batchNo: '',
     autoBatchNo: true,
@@ -50,6 +50,9 @@ const ProductionNew = () => {
     bundleSize: '10',
     lengthPerPiece: '6',
     sparePipes: [] as { length: string }[],
+    // Weight tracking
+    weightPerMeter: '',
+    totalWeight: '',
   });
 
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
@@ -108,6 +111,45 @@ const ProductionNew = () => {
     formData.sparePipes.length,
     productTypes.length
   ]);
+
+  // Auto-calculate total weight
+  useEffect(() => {
+    const weightPerM = parseFloat(formData.weightPerMeter) || 0;
+    if (weightPerM <= 0) {
+      setFormData(prev => ({ ...prev, totalWeight: '' }));
+      return;
+    }
+
+    const selectedPT = productTypes.find(pt => pt.id === formData.productTypeId);
+    const config = selectedPT?.roll_configuration || { type: 'standard_rolls' };
+    let totalLengthMeters = 0;
+
+    if (config.type === 'standard_rolls') {
+      const rolls = parseInt(formData.numberOfRolls) || 0;
+      const lengthPerRoll = parseFloat(formData.lengthPerRoll) || 0;
+      totalLengthMeters += rolls * lengthPerRoll;
+      formData.cutRolls.forEach(roll => {
+        totalLengthMeters += parseFloat(roll.length) || 0;
+      });
+    } else if (config.type === 'bundles') {
+      const bundles = parseInt(formData.numberOfBundles) || 0;
+      const bundleSize = parseInt(formData.bundleSize) || 0;
+      const lengthPerPiece = parseFloat(formData.lengthPerPiece) || 0;
+      totalLengthMeters += bundles * bundleSize * lengthPerPiece;
+
+      if (config.quantity_based) {
+        const spareCount = formData.sparePipes.reduce((sum, pipe) => sum + (parseInt(pipe.length) || 0), 0);
+        totalLengthMeters += spareCount * lengthPerPiece;
+      } else {
+        formData.sparePipes.forEach(pipe => {
+          totalLengthMeters += parseFloat(pipe.length) || 0;
+        });
+      }
+    }
+
+    const totalWeightKg = totalLengthMeters * weightPerM;
+    setFormData(prev => ({ ...prev, totalWeight: totalWeightKg.toFixed(3) }));
+  }, [formData.weightPerMeter, formData.numberOfRolls, formData.lengthPerRoll, formData.cutRolls, formData.numberOfBundles, formData.bundleSize, formData.lengthPerPiece, formData.sparePipes, formData.productTypeId, productTypes]);
 
   const fetchMasterData = async () => {
     try {
@@ -192,6 +234,14 @@ const ProductionNew = () => {
         formDataToSend.append('spare_pipes', JSON.stringify(formData.sparePipes));
       }
 
+      // Add weight tracking if provided
+      if (formData.weightPerMeter) {
+        formDataToSend.append('weight_per_meter', formData.weightPerMeter);
+      }
+      if (formData.totalWeight) {
+        formDataToSend.append('total_weight', formData.totalWeight);
+      }
+
       if (attachmentFile) {
         formDataToSend.append('attachment', attachmentFile);
       }
@@ -204,7 +254,7 @@ const ProductionNew = () => {
       setFormData({
         productTypeId: '',
         brandId: '',
-        productionDate: toISTDateTimeLocal(new Date()).split('T')[0],
+        productionDate: toISTDateTimeLocal(new Date()),
         quantity: '',
         batchNo: '',
         autoBatchNo: true,
@@ -217,6 +267,8 @@ const ProductionNew = () => {
         bundleSize: '10',
         lengthPerPiece: '6',
         sparePipes: [],
+        weightPerMeter: '',
+        totalWeight: '',
       });
       setAttachmentFile(null);
       setSubmitAttempted(false);
@@ -324,6 +376,48 @@ const ProductionNew = () => {
                     </span>
                   </div>
                 </div>
+              )}
+
+              {/* Weight Tracking */}
+              {formData.productTypeId && (
+                <Card className="p-4 bg-red-50 dark:bg-red-950/20 border-2 border-red-400 dark:border-red-600">
+                  <h3 className="font-bold text-lg mb-3 text-red-900 dark:text-red-100">⚖️ Weight Tracking</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="weightPerMeter">
+                        Weight per Meter (kg/m)
+                      </Label>
+                      <input
+                        id="weightPerMeter"
+                        type="number"
+                        step="0.001"
+                        min="0"
+                        placeholder="e.g., 0.450"
+                        value={formData.weightPerMeter}
+                        onChange={(e) => handleFieldChange('weightPerMeter', e.target.value)}
+                        className="flex h-12 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Weight in kilograms per meter
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="totalWeight">
+                        Total Production Weight (Auto-calculated)
+                      </Label>
+                      <div className="bg-red-100 dark:bg-red-900/20 p-3 rounded-lg border-2 border-red-400">
+                        <span className="text-3xl font-bold text-red-600 dark:text-red-400">
+                          {formData.totalWeight ? `${parseFloat(formData.totalWeight).toFixed(2)} kg` : '0.00 kg'}
+                        </span>
+                      </div>
+                      {formData.totalWeight && (
+                        <p className="text-xs font-semibold text-red-600">
+                          Total Production Weight
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </Card>
               )}
 
               {/* Batch Details */}
