@@ -158,7 +158,10 @@ export function TransactionDetailModal({
                       <div className="text-sm text-muted-foreground mb-1">Quantity Change</div>
                       <div className="text-lg font-bold">
                         {transaction.quantity_change > 0 ? '+' : ''}
-                        {transaction.quantity_change}
+                        {/* Use actual quantity breakdown if available, otherwise use quantity_change */}
+                        {transaction.quantity_breakdown && transaction.quantity_breakdown.totalItems > 0
+                          ? transaction.quantity_breakdown.totalItems
+                          : transaction.quantity_change}
                       </div>
                     </div>
                     {transaction.roll_length_meters && typeof transaction.roll_length_meters === 'number' && (
@@ -371,20 +374,19 @@ export function TransactionDetailModal({
                           className="border rounded-lg p-4 hover:bg-muted/50 transition-colors"
                         >
                           <div className="flex items-start justify-between mb-3">
-                            <div className="font-medium text-lg">{entry.quantity} × {entry.stock_type.replace('_', ' ')}</div>
+                            <div className="font-medium text-lg">
+                              {entry.stock_type === 'SPARE' || entry.stock_type === 'SPARE_PIECES' ? (
+                                // Show actual piece count for spares
+                                <>{entry.spare_piece_count || entry.quantity} × {entry.stock_type.replace('_', ' ')}{entry.spare_piece_count && ` (${entry.quantity} group${entry.quantity !== 1 ? 's' : ''})`}</>
+                              ) : (
+                                <>{entry.quantity} × {entry.stock_type.replace('_', ' ')}</>
+                              )}
+                            </div>
                             <Badge variant={entry.status === 'IN_STOCK' ? 'default' : 'secondary'}>
                               {entry.status}
                             </Badge>
                           </div>
                           <div className="grid grid-cols-2 gap-3 text-sm">
-                            <div>
-                              <span className="text-muted-foreground">Stock ID:</span>
-                              <span className="ml-2 font-mono text-xs">{entry.stock_id.substring(0, 8)}...</span>
-                            </div>
-                            <div>
-                              <span className="text-muted-foreground">Batch ID:</span>
-                              <span className="ml-2 font-mono text-xs">{entry.batch_id.substring(0, 8)}...</span>
-                            </div>
                             {entry.length_per_unit && (
                               <div>
                                 <span className="text-muted-foreground">Length per unit:</span>
@@ -403,16 +405,30 @@ export function TransactionDetailModal({
                                 <span className="ml-2 font-medium">{Number(entry.piece_length_meters).toFixed(2)}m</span>
                               </div>
                             )}
+                            {entry.cut_piece_lengths && entry.cut_piece_lengths.length > 0 && (
+                              <div className="col-span-2">
+                                <span className="text-muted-foreground">Cut pieces:</span>
+                                <div className="ml-2 mt-1 flex flex-wrap gap-1">
+                                  {entry.cut_piece_lengths.map((length, idx) => (
+                                    <span key={idx} className="text-xs bg-amber-100 dark:bg-amber-900 px-2 py-1 rounded">
+                                      {length.toFixed(2)}m
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                           </div>
                           {/* Calculate total meters for this entry */}
                           <div className="mt-3 pt-3 border-t">
                             <div className="text-sm font-medium">
-                              {entry.stock_type === 'FULL_ROLL' || entry.stock_type === 'CUT_ROLL' ? (
+                              {entry.stock_type === 'FULL_ROLL' ? (
                                 <>Total: {(entry.quantity * (entry.length_per_unit || 0)).toFixed(2)}m</>
+                              ) : entry.stock_type === 'CUT_ROLL' ? (
+                                <>Total: {(entry.total_cut_length || 0).toFixed(2)}m ({entry.quantity} piece{entry.quantity !== 1 ? 's' : ''})</>
                               ) : entry.stock_type === 'BUNDLE' ? (
                                 <>Total: {(entry.quantity * (entry.pieces_per_bundle || 0) * (entry.piece_length_meters || 0)).toFixed(2)}m ({entry.quantity * (entry.pieces_per_bundle || 0)} pieces)</>
-                              ) : entry.stock_type === 'SPARE_PIECES' ? (
-                                <>Total: {(entry.quantity * (entry.piece_length_meters || 0)).toFixed(2)}m ({entry.quantity} pieces)</>
+                              ) : (entry.stock_type === 'SPARE_PIECES' || entry.stock_type === 'SPARE') ? (
+                                <>Total: {((entry.spare_piece_count || entry.quantity) * (entry.piece_length_meters || 0)).toFixed(2)}m ({entry.spare_piece_count || entry.quantity} piece{(entry.spare_piece_count || entry.quantity) !== 1 ? 's' : ''})</>
                               ) : null}
                             </div>
                           </div>
@@ -483,15 +499,9 @@ export function TransactionDetailModal({
                   <CardTitle className="text-lg">System Information</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <div className="text-sm text-muted-foreground mb-1">Product Variant ID</div>
-                      <div className="font-mono text-sm">{transaction.product_variant_id}</div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-muted-foreground mb-1">Batch Code</div>
-                      <div className="font-mono text-sm">{transaction.batch_code}</div>
-                    </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground mb-1">Batch Code</div>
+                    <div className="font-mono text-sm">{transaction.batch_code}</div>
                   </div>
 
                   {transaction.dispatch_id && (

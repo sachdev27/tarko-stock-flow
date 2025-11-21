@@ -107,7 +107,6 @@ export function TransactionFilters({
                   <SelectItem value="PURCHASE">Purchase</SelectItem>
                   <SelectItem value="COMBINED">Combined Spares</SelectItem>
                   <SelectItem value="CUT">Cut Rolls</SelectItem>
-                  <SelectItem value="ADJUSTMENT">Adjustment</SelectItem>
                 </SelectContent>
               </Select>
             </div>

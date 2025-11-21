@@ -13,14 +13,9 @@ export function TransactionSummaryCards({ transactions }: TransactionSummaryCard
     (t) => t.transaction_type === 'PRODUCTION'
   );
   const saleTransactions = transactions.filter((t) => t.transaction_type === 'SALE');
-  const adjustmentTransactions = transactions.filter((t) => t.transaction_type === 'ADJUSTMENT');
 
   const totalProductionWeight = getTotalProductionWeight(productionTransactions);
   const totalSaleWeight = saleTransactions.reduce((sum, t) => sum + (t.total_weight || 0), 0);
-  const totalAdjustmentWeight = adjustmentTransactions.reduce(
-    (sum, t) => sum + (t.total_weight || 0),
-    0
-  );
 
   const cards = [
     {
@@ -40,15 +35,7 @@ export function TransactionSummaryCards({ transactions }: TransactionSummaryCard
       bgColor: 'bg-green-50 dark:bg-green-950',
     },
     {
-      title: 'Total Adjustments',
-      value: formatWeight(totalAdjustmentWeight),
-      count: adjustmentTransactions.length,
-      icon: TrendingUp,
-      iconColor: 'text-purple-500',
-      bgColor: 'bg-purple-50 dark:bg-purple-950',
-    },
-    {
-      title: 'All Transactions',
+      title: 'All Activities',
       value: transactions.length.toString(),
       count: transactions.length,
       icon: Activity,
@@ -58,7 +45,7 @@ export function TransactionSummaryCards({ transactions }: TransactionSummaryCard
   ];
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
       {cards.map((card, idx) => {
         const Icon = card.icon;
         return (
@@ -71,9 +58,9 @@ export function TransactionSummaryCards({ transactions }: TransactionSummaryCard
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{card.value}</div>
-              {idx < 3 && (
+              {idx < 2 && (
                 <p className="text-xs text-muted-foreground mt-1">
-                  {card.count} transaction{card.count !== 1 ? 's' : ''}
+                  {card.count} activit{card.count !== 1 ? 'ies' : 'y'}
                 </p>
               )}
             </CardContent>

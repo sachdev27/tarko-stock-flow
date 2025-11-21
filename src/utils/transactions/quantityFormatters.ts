@@ -6,6 +6,9 @@ interface StockEntry {
   length_per_unit?: number;
   pieces_per_bundle?: number;
   piece_length_meters?: number;
+  spare_piece_count?: number; // Actual piece count for SPARE stock type
+  cut_piece_lengths?: number[]; // Individual lengths for CUT_ROLL stock type
+  total_cut_length?: number; // Total length of all cut pieces
 }
 
 interface QuantityBreakdown {
@@ -33,21 +36,31 @@ export function calculateQuantityBreakdown(
 
   stockEntries.forEach((entry) => {
     const quantity = Number(entry.quantity) || 0;
-    breakdown.totalItems += quantity;
 
     switch (entry.stock_type) {
       case 'FULL_ROLL':
         breakdown.fullRolls += quantity;
+        breakdown.totalItems += quantity;
         break;
       case 'CUT_ROLL':
         breakdown.cutRolls += quantity;
+        breakdown.totalItems += quantity;
         break;
-      case 'BUNDLE':
+      case 'BUNDLE': {
         breakdown.bundles += quantity;
+        // For bundles, totalItems should be the number of pieces, not bundles
+        const piecesPerBundle = entry.pieces_per_bundle || 0;
+        breakdown.totalItems += quantity * piecesPerBundle;
         break;
+      }
       case 'SPARE_PIECES':
-        breakdown.sparePieces += quantity;
+      case 'SPARE': {
+        // Use spare_piece_count if available, otherwise use quantity
+        const spareCount = entry.spare_piece_count || quantity;
+        breakdown.sparePieces += spareCount;
+        breakdown.totalItems += spareCount;
         break;
+      }
     }
   });
 
@@ -96,14 +109,19 @@ export function calculateTotalMeters(stockEntries?: StockEntry[]): number {
 
     if (entry.stock_type === 'FULL_ROLL' || entry.stock_type === 'CUT_ROLL') {
       const lengthPerUnit = Number(entry.length_per_unit) || 0;
-      totalMeters += quantity * lengthPerUnit;
+      // For CUT_ROLL, use total_cut_length if available
+      const totalLength = entry.stock_type === 'CUT_ROLL' && entry.total_cut_length
+        ? entry.total_cut_length
+        : quantity * lengthPerUnit;
+      totalMeters += totalLength;
     } else if (entry.stock_type === 'BUNDLE') {
       const piecesPerBundle = Number(entry.pieces_per_bundle) || 0;
       const pieceLengthMeters = Number(entry.piece_length_meters) || 0;
       totalMeters += quantity * piecesPerBundle * pieceLengthMeters;
-    } else if (entry.stock_type === 'SPARE_PIECES') {
+    } else if (entry.stock_type === 'SPARE_PIECES' || entry.stock_type === 'SPARE') {
+      const actualPieceCount = entry.spare_piece_count || quantity;
       const pieceLengthMeters = Number(entry.piece_length_meters) || 0;
-      totalMeters += quantity * pieceLengthMeters;
+      totalMeters += actualPieceCount * pieceLengthMeters;
     }
   });
 

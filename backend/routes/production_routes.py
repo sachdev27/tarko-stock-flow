@@ -304,18 +304,26 @@ def create_batch():
 
             # Capture stock snapshot for production transaction
             cursor.execute("""
-                SELECT id, stock_type, quantity, status,
-                       length_per_unit, pieces_per_bundle, piece_length_meters
-                FROM inventory_stock
-                WHERE batch_id = %s
-                ORDER BY created_at
+                SELECT
+                    ist.id,
+                    ist.stock_type,
+                    ist.quantity,
+                    ist.status,
+                    ist.length_per_unit,
+                    ist.pieces_per_bundle,
+                    ist.piece_length_meters,
+                    ssp.piece_count as spare_piece_count
+                FROM inventory_stock ist
+                LEFT JOIN sprinkler_spare_pieces ssp ON ist.id = ssp.stock_id
+                WHERE ist.batch_id = %s
+                ORDER BY ist.created_at
             """, (batch_id,))
 
             stock_at_production = cursor.fetchall()
             stock_snapshots = []
 
             for stock in stock_at_production:
-                stock_snapshots.append({
+                snapshot = {
                     'stock_id': str(stock['id']),
                     'batch_id': str(batch_id),
                     'stock_type': stock['stock_type'],
@@ -324,7 +332,27 @@ def create_batch():
                     'length_per_unit': float(stock['length_per_unit']) if stock['length_per_unit'] else None,
                     'pieces_per_bundle': int(stock['pieces_per_bundle']) if stock['pieces_per_bundle'] else None,
                     'piece_length_meters': float(stock['piece_length_meters']) if stock['piece_length_meters'] else None
-                })
+                }
+
+                # Add actual piece count for spare pieces
+                if stock['stock_type'] in ['SPARE', 'SPARE_PIECES'] and stock['spare_piece_count']:
+                    snapshot['spare_piece_count'] = int(stock['spare_piece_count'])
+
+                # Add cut piece lengths for HDPE cut rolls
+                if stock['stock_type'] == 'CUT_ROLL':
+                    cursor.execute("""
+                        SELECT length_meters FROM hdpe_cut_pieces
+                        WHERE stock_id = %s
+                        ORDER BY created_at
+                    """, (stock['id'],))
+                    cut_pieces = cursor.fetchall()
+                    if cut_pieces:
+                        snapshot['cut_piece_lengths'] = [float(cp['length_meters']) for cp in cut_pieces]
+                        # Calculate total length for cut rolls
+                        total_cut_length = sum(float(cp['length_meters']) for cp in cut_pieces)
+                        snapshot['total_cut_length'] = total_cut_length
+
+                stock_snapshots.append(snapshot)
 
             stock_snapshot_json = json.dumps({
                 'stock_entries': stock_snapshots,

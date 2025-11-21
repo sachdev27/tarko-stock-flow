@@ -73,6 +73,7 @@ backend/google_drive_credentials.json
 snapshots/
 backups/
 backend/uploads/
+backend/scripts/
 
 # Images and pdf
 *.png

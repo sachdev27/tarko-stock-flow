@@ -83,6 +83,9 @@ export interface TransactionRecord {
       length_per_unit: number;
       pieces_per_bundle?: number;
       piece_length_meters?: number;
+      spare_piece_count?: number; // Actual piece count for SPARE stock type
+      cut_piece_lengths?: number[]; // Individual lengths for CUT_ROLL stock type
+      total_cut_length?: number; // Total length of all cut pieces
     }>;
     total_items?: number;
     total_stock_entries?: number;
