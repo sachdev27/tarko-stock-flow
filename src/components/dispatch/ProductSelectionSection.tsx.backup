@@ -1,0 +1,742 @@
+import { useState, useMemo, useEffect } from 'react';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Checkbox } from '@/components/ui/checkbox';
+import { SearchableCombobox } from './SearchableCombobox';
+import { X, Package, Scissors, Box, Package2, Plus, Minus } from 'lucide-react';
+import { CutRollDialog } from '../inventory/CutRollDialog';
+import { SplitBundleDialog } from '../inventory/SplitBundleDialog';
+import { CombineSparesDialog } from '../inventory/CombineSparesDialog';
+import { toast } from 'sonner';
+
+interface StockEntry {
+  stock_id: string;
+  stock_type: 'FULL_ROLL' | 'CUT_ROLL' | 'BUNDLE' | 'SPARE';
+  quantity: number;
+  length_per_unit?: number;
+  pieces_per_bundle?: number;
+  piece_length_meters?: number;
+  piece_count?: number;
+  piece_id?: string;
+  spare_id?: string;
+  total_available?: number;
+  product_type_name?: string;
+  batch_code?: string;
+}
+
+interface ProductVariant {
+  variant_key: string;
+  brand_name: string;
+  product_type_name: string;
+  product_category: string;
+  parameters: Record<string, unknown>;
+  stock_entries: StockEntry[];
+}
+
+interface ProductType {
+  id: string;
+  name: string;
+}
+
+interface ProductSelectionProps {
+  productTypeId: string;
+  onProductTypeChange: (id: string) => void;
+  productSearch: string;
+  onProductSearchChange: (search: string) => void;
+  selectedRolls: any[];
+  onRemoveRoll: (index: number) => void;
+  onAddRoll: (roll: any) => void;
+  onUpdateRollQuantity: (index: number, quantity: number, dispatchLength?: number) => void;
+  productTypes: ProductType[];
+  availableRolls: any[];
+  onSearchProducts: () => void;
+  productTypeRef?: React.RefObject<HTMLDivElement>;
+  productSearchRef?: React.RefObject<HTMLDivElement>;
+}
+
+export const ProductSelectionSection = ({
+  productTypeId,
+  onProductTypeChange,
+  productSearch,
+  onProductSearchChange,
+  selectedRolls,
+  onRemoveRoll,
+  onAddRoll,
+  productTypes,
+  availableRolls,
+  onSearchProducts,
+  productTypeRef,
+  productSearchRef
+}: ProductSelectionProps) => {
+  const [expandedVariants, setExpandedVariants] = useState<Set<string>>(new Set());
+  const [cutDialogOpen, setCutDialogOpen] = useState(false);
+  const [splitDialogOpen, setSplitDialogOpen] = useState(false);
+  const [combineDialogOpen, setCombineDialogOpen] = useState(false);
+  const [selectedStock, setSelectedStock] = useState<StockEntry | null>(null);
+  const [quantityInputs, setQuantityInputs] = useState<Record<string, number>>({});
+
+  // Group available rolls by product variant (brand + parameters, ignoring batch and stock_type)
+  const groupedVariants = useMemo(() => {
+    const variants: Record<string, ProductVariant> = {};
+
+    availableRolls.forEach((roll) => {
+      const paramStr = JSON.stringify(roll.parameters || {});
+      const key = `${roll.brand_name}-${paramStr}`;
+
+      if (!variants[key]) {
+        variants[key] = {
+          variant_key: key,
+          brand_name: roll.brand_name || '',
+          product_type_name: roll.product_type_name || '',
+          product_category: roll.product_category || 'HDPE',
+          parameters: roll.parameters || {},
+          stock_entries: []
+        };
+      }
+
+      // Convert roll to stock entry format
+      const stockType = roll.stock_type || (roll.is_cut_roll ? 'CUT_ROLL' : roll.bundle_type === 'bundle' ? 'BUNDLE' : roll.bundle_type === 'spare' ? 'SPARE' : 'FULL_ROLL');
+      
+      variants[key].stock_entries.push({
+        stock_id: roll.id || roll.stock_id,
+        stock_type: stockType,
+        quantity: roll.quantity || 1,
+        length_per_unit: roll.length_meters,
+        pieces_per_bundle: roll.bundle_size,
+        piece_length_meters: roll.piece_length_meters,
+        piece_count: roll.piece_count,
+        piece_id: roll.piece_id,
+        spare_id: roll.spare_id,
+        total_available: roll.total_available || roll.length_meters,
+        product_type_name: roll.product_type_name,
+        batch_code: roll.batch_code
+      });
+    });
+
+    return Object.values(variants);
+  }, [availableRolls]);
+
+  // Filter variants by search
+  const filteredVariants = useMemo(() => {
+    if (!productSearch.trim()) return groupedVariants;
+
+    const searchLower = productSearch.toLowerCase();
+    return groupedVariants.filter(variant => {
+      const brandName = variant.brand_name?.toLowerCase() || '';
+      const params = JSON.stringify(variant.parameters).toLowerCase();
+      return brandName.includes(searchLower) || params.includes(searchLower);
+    });
+  }, [groupedVariants, productSearch]);
+
+  // Auto-expand variants that have cut pieces
+  useMemo(() => {
+    const variantsWithCutPieces = new Set<string>();
+    filteredVariants.forEach(variant => {
+      const hasCutPieces = variant.stock_entries.some(e => e.stock_type === 'CUT_ROLL');
+      if (hasCutPieces) {
+        variantsWithCutPieces.add(variant.variant_key);
+      }
+    });
+    setExpandedVariants(variantsWithCutPieces);
+  }, [filteredVariants]);
+
+  const toggleVariant = (key: string) => {
+    setExpandedVariants(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(key)) {
+        newSet.delete(key);
+      } else {
+        newSet.add(key);
+      }
+      return newSet;
+    });
+  };
+
+  const handleCutRoll = (entry: StockEntry) => {
+    setSelectedStock(entry);
+    setCutDialogOpen(true);
+  };
+
+  const handleSplitBundle = (entry: StockEntry) => {
+    setSelectedStock(entry);
+    setSplitDialogOpen(true);
+  };
+
+  const handleCombineSpares = (spares: StockEntry[]) => {
+    if (spares.length > 0) {
+      setSelectedStock(spares[0]);
+      setCombineDialogOpen(true);
+    }
+  };
+
+  const handleDialogSuccess = () => {
+    onSearchProducts(); // Refresh available products
+    setSelectedStock(null);
+  };
+
+  const handleQuantityChange = (stockId: string, value: number) => {
+    setQuantityInputs(prev => ({ ...prev, [stockId]: Math.max(0, value) }));
+  };
+
+  const handleAddStock = (entry: StockEntry, variant: ProductVariant) => {
+    const quantity = quantityInputs[entry.stock_id] || 0;
+    if (quantity <= 0) return;
+
+    // Create a roll object to add
+    const roll = {
+      id: entry.stock_id,
+      batch_code: entry.batch_code || '',
+      length_meters: entry.length_per_unit || 0,
+      status: 'AVAILABLE',
+      stock_type: entry.stock_type,
+      bundle_size: entry.pieces_per_bundle,
+      piece_count: entry.piece_count,
+      piece_length_meters: entry.piece_length_meters,
+      parameters: variant.parameters,
+      brand_name: variant.brand_name,
+      product_type_name: variant.product_type_name,
+      product_category: variant.product_category,
+      quantity
+    };
+
+    onAddRoll(roll);
+    setQuantityInputs(prev => ({ ...prev, [entry.stock_id]: 0 }));
+  };
+
+  // Calculate totals for each variant
+  const getVariantTotals = (variant: ProductVariant) => {
+    const stockByType = {
+      FULL_ROLL: variant.stock_entries.filter(e => e.stock_type === 'FULL_ROLL'),
+      CUT_ROLL: variant.stock_entries.filter(e => e.stock_type === 'CUT_ROLL'),
+      BUNDLE: variant.stock_entries.filter(e => e.stock_type === 'BUNDLE'),
+      SPARE: variant.stock_entries.filter(e => e.stock_type === 'SPARE')
+    };
+
+    const totalFullRolls = stockByType.FULL_ROLL.reduce((sum, e) => sum + e.quantity, 0);
+    const totalCutPieces = stockByType.CUT_ROLL.reduce((sum, e) => sum + e.quantity, 0);
+    const totalBundles = stockByType.BUNDLE.reduce((sum, e) => sum + e.quantity, 0);
+    const totalSparePieces = stockByType.SPARE.reduce((sum, e) => sum + (e.piece_count || 0), 0);
+
+    return { stockByType, totalFullRolls, totalCutPieces, totalBundles, totalSparePieces };
+  };
+
+  return (
+    <div className="space-y-4 p-4 border rounded-lg">
+      <h3 className="font-semibold text-lg flex items-center gap-2">
+        <Package className="h-5 w-5" />
+        Product Selection
+      </h3>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div ref={productTypeRef}>
+          <Label>Product Type *</Label>
+          <SearchableCombobox
+            value={productTypeId}
+            onChange={onProductTypeChange}
+            options={productTypes}
+            placeholder="Select product type"
+            displayFormat={(pt) => pt.name}
+          />
+        </div>
+
+        <div ref={productSearchRef}>
+          <Label>Filter Products</Label>
+          <Input
+            value={productSearch}
+            onChange={(e) => onProductSearchChange(e.target.value)}
+            placeholder="Search by brand or specs..."
+            className="w-full"
+          />
+          <p className="text-xs text-gray-500 mt-1">
+            Showing {filteredVariants.length} product variant{filteredVariants.length !== 1 ? 's' : ''}
+          </p>
+        </div>
+      </div>
+
+      {/* Product Variants */}
+      {filteredVariants.length > 0 && (
+        <div className="space-y-3 max-h-[600px] overflow-y-auto">
+          {filteredVariants.map((variant) => {
+            const { stockByType, totalFullRolls, totalCutPieces, totalBundles, totalSparePieces } = getVariantTotals(variant);
+            const isExpanded = expandedVariants.has(variant.variant_key);
+
+            // Group bundles by size
+            const bundlesBySize = stockByType.BUNDLE.reduce((acc, entry) => {
+              const size = entry.pieces_per_bundle || 0;
+              if (!acc[size]) {
+                acc[size] = [];
+              }
+              acc[size].push(entry);
+              return acc;
+            }, {} as Record<number, StockEntry[]>);
+
+            return (
+              <Card key={variant.variant_key}>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      {/* Product Info */}
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <Badge variant={variant.product_category === 'HDPE' ? 'default' : 'secondary'} className="text-base px-4 py-1.5">
+                          {variant.product_type_name}
+                        </Badge>
+                        <span className="text-lg font-bold">{variant.brand_name}</span>
+                        {Object.entries(variant.parameters)
+                          .sort(([keyA], [keyB]) => {
+                            const order = ['OD', 'PN', 'PE', 'outer_diameter', 'pressure_class', 'material'];
+                            const indexA = order.indexOf(keyA);
+                            const indexB = order.indexOf(keyB);
+                            if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+                            if (indexA !== -1) return -1;
+                            if (indexB !== -1) return 1;
+                            return keyA.localeCompare(keyB);
+                          })
+                          .map(([key, value]) => (
+                            <Badge key={key} variant="outline" className="text-base font-mono px-3 py-1">
+                              {key}: {String(value)}
+                            </Badge>
+                          ))}
+                      </div>
+
+                      {/* Stock Summary */}
+                      <div className="flex items-center gap-2 flex-wrap mt-3">
+                        {totalFullRolls > 0 && (
+                          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-300">
+                            {totalFullRolls} Full Rolls
+                          </Badge>
+                        )}
+                        {totalCutPieces > 0 && (
+                          <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-300">
+                            {totalCutPieces} Cut Pieces
+                          </Badge>
+                        )}
+                        {totalBundles > 0 && (
+                          <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-300">
+                            {totalBundles} Bundles
+                          </Badge>
+                        )}
+                        {totalSparePieces > 0 && (
+                          <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300">
+                            {totalSparePieces} Spare Pieces
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => toggleVariant(variant.variant_key)}
+                      className="ml-4"
+                    >
+                      {isExpanded ? (
+                        <>
+                          <ChevronUp className="h-4 w-4 mr-1" />
+                          Hide
+                        </>
+                      ) : (
+                        <>
+                          <ChevronDown className="h-4 w-4 mr-1" />
+                          Details
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </CardHeader>
+
+                {isExpanded && (
+                  <CardContent className="pt-0">
+                    <div className="space-y-3">
+                      {/* Full Rolls */}
+                      {stockByType.FULL_ROLL.map(entry => {
+                        const inputValue = quantityInputs[entry.stock_id] || 0;
+                        const totalMeters = (entry.length_per_unit || 0) * (entry.quantity || 0);
+                        return (
+                          <div key={entry.stock_id} className="flex items-center justify-between p-3 bg-green-50 rounded-lg border border-green-200">
+                            <div className="flex items-center gap-3 flex-1">
+                              <Box className="h-5 w-5 text-green-600" />
+                              <div>
+                                <div className="font-medium">{entry.quantity} Full Rolls</div>
+                                <div className="text-sm text-muted-foreground">
+                                  {entry.length_per_unit}m each • {totalMeters.toFixed(0)}m total
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleCutRoll(entry)}
+                                className="gap-1"
+                              >
+                                <Scissors className="h-4 w-4" />
+                                Cut Roll
+                              </Button>
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleQuantityChange(entry.stock_id, inputValue - 1)}
+                                  disabled={inputValue <= 0}
+                                  className="h-8 w-8 p-0"
+                                >
+                                  <Minus className="h-3 w-3" />
+                                </Button>
+                                <Input
+                                  type="number"
+                                  value={inputValue}
+                                  onChange={(e) => handleQuantityChange(entry.stock_id, parseInt(e.target.value) || 0)}
+                                  className="w-14 h-8 text-center"
+                                  min="0"
+                                  max={entry.quantity}
+                                />
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleQuantityChange(entry.stock_id, inputValue + 1)}
+                                  disabled={inputValue >= entry.quantity}
+                                  className="h-8 w-8 p-0"
+                                >
+                                  <Plus className="h-3 w-3" />
+                                </Button>
+                                <Button
+                                  onClick={() => handleAddStock(entry, variant)}
+                                  disabled={inputValue <= 0}
+                                  size="sm"
+                                  className="h-8 ml-1"
+                                >
+                                  Add
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                      {/* Cut Rolls */}
+                      {stockByType.CUT_ROLL.map(entry => {
+                        const inputValue = quantityInputs[entry.stock_id] || 0;
+                        const length = entry.length_per_unit || 0;
+                        return (
+                          <div key={entry.piece_id || entry.stock_id} className="flex items-center justify-between p-3 bg-orange-50 rounded-lg border border-orange-200">
+                            <div className="flex items-center gap-3 flex-1">
+                              <Scissors className="h-5 w-5 text-orange-600" />
+                              <div>
+                                <div className="font-medium">Cut Piece</div>
+                                <div className="text-sm font-mono font-semibold">
+                                  {length.toFixed(1)}m
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleCutRoll(entry)}
+                                className="gap-1"
+                              >
+                                <Scissors className="h-4 w-4" />
+                                Cut Further
+                              </Button>
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleQuantityChange(entry.stock_id, inputValue - 1)}
+                                  disabled={inputValue <= 0}
+                                  className="h-8 w-8 p-0"
+                                >
+                                  <Minus className="h-3 w-3" />
+                                </Button>
+                                <Input
+                                  type="number"
+                                  value={inputValue}
+                                  onChange={(e) => handleQuantityChange(entry.stock_id, parseInt(e.target.value) || 0)}
+                                  className="w-14 h-8 text-center"
+                                  min="0"
+                                  max={1}
+                                />
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleQuantityChange(entry.stock_id, inputValue + 1)}
+                                  disabled={inputValue >= 1}
+                                  className="h-8 w-8 p-0"
+                                >
+                                  <Plus className="h-3 w-3" />
+                                </Button>
+                                <Button
+                                  onClick={() => handleAddStock(entry, variant)}
+                                  disabled={inputValue <= 0}
+                                  size="sm"
+                                  className="h-8 ml-1"
+                                >
+                                  Add
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                      {/* Bundles */}
+                      {Object.entries(bundlesBySize)
+                        .sort(([a], [b]) => Number(b) - Number(a))
+                        .map(([size, bundleGroup]) => {
+                          const firstBundle = bundleGroup[0];
+                          const totalBundlesInGroup = bundleGroup.reduce((sum, b) => sum + b.quantity, 0);
+                          const inputValue = quantityInputs[firstBundle.stock_id] || 0;
+
+                          return (
+                            <div key={`bundle-${size}`} className="flex items-center justify-between p-3 bg-purple-50 rounded-lg border border-purple-200">
+                              <div className="flex items-center gap-3 flex-1">
+                                <Package className="h-5 w-5 text-purple-600" />
+                                <div>
+                                  <div className="font-medium">{totalBundlesInGroup} Bundles</div>
+                                  <div className="text-sm text-muted-foreground">
+                                    {size} pieces each • {firstBundle.piece_length_meters}m per piece
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleSplitBundle(firstBundle)}
+                                  className="gap-1"
+                                >
+                                  <Scissors className="h-4 w-4" />
+                                  Split Bundle
+                                </Button>
+                                <div className="flex items-center gap-1">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleQuantityChange(firstBundle.stock_id, inputValue - 1)}
+                                    disabled={inputValue <= 0}
+                                    className="h-8 w-8 p-0"
+                                  >
+                                    <Minus className="h-3 w-3" />
+                                  </Button>
+                                  <Input
+                                    type="number"
+                                    value={inputValue}
+                                    onChange={(e) => handleQuantityChange(firstBundle.stock_id, parseInt(e.target.value) || 0)}
+                                    className="w-14 h-8 text-center"
+                                    min="0"
+                                    max={totalBundlesInGroup}
+                                  />
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleQuantityChange(firstBundle.stock_id, inputValue + 1)}
+                                    disabled={inputValue >= totalBundlesInGroup}
+                                    className="h-8 w-8 p-0"
+                                  >
+                                    <Plus className="h-3 w-3" />
+                                  </Button>
+                                  <Button
+                                    onClick={() => handleAddStock(firstBundle, variant)}
+                                    disabled={inputValue <= 0}
+                                    size="sm"
+                                    className="h-8 ml-1"
+                                  >
+                                    Add
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+
+                      {/* Spare Pieces */}
+                      {stockByType.SPARE.length > 0 && (() => {
+                        const totalSpares = stockByType.SPARE.reduce((sum, s) => sum + (s.piece_count || 0), 0);
+                        const pieceLength = stockByType.SPARE[0]?.piece_length_meters || 0;
+                        const firstSpare = stockByType.SPARE[0];
+                        const inputValue = quantityInputs[firstSpare.stock_id] || 0;
+
+                        return (
+                          <div className="flex items-center justify-between p-3 bg-amber-50 rounded-lg border border-amber-200">
+                            <div className="flex items-center gap-3 flex-1">
+                              <Box className="h-5 w-5 text-amber-600" />
+                              <div>
+                                <div className="font-medium">{totalSpares} Spare Pieces</div>
+                                <div className="text-sm text-muted-foreground">
+                                  {pieceLength}m per piece
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleCombineSpares(stockByType.SPARE)}
+                                className="gap-1"
+                              >
+                                <Package2 className="h-4 w-4" />
+                                Bundle Spares
+                              </Button>
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleQuantityChange(firstSpare.stock_id, inputValue - 1)}
+                                  disabled={inputValue <= 0}
+                                  className="h-8 w-8 p-0"
+                                >
+                                  <Minus className="h-3 w-3" />
+                                </Button>
+                                <Input
+                                  type="number"
+                                  value={inputValue}
+                                  onChange={(e) => handleQuantityChange(firstSpare.stock_id, parseInt(e.target.value) || 0)}
+                                  className="w-14 h-8 text-center"
+                                  min="0"
+                                  max={totalSpares}
+                                />
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleQuantityChange(firstSpare.stock_id, inputValue + 1)}
+                                  disabled={inputValue >= totalSpares}
+                                  className="h-8 w-8 p-0"
+                                >
+                                  <Plus className="h-3 w-3" />
+                                </Button>
+                                <Button
+                                  onClick={() => handleAddStock(firstSpare, variant)}
+                                  disabled={inputValue <= 0}
+                                  size="sm"
+                                  className="h-8 ml-1"
+                                >
+                                  Add
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </CardContent>
+                )}
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Selected Items */}
+      {selectedRolls.length > 0 && (
+        <div className="mt-4">
+          <h4 className="font-medium mb-2 flex items-center justify-between">
+            <span>Selected Items ({selectedRolls.length})</span>
+            {selectedRolls.some(r => r.product_category === 'HDPE') && (
+              <span className="text-sm text-gray-600">
+                Total: {selectedRolls
+                  .filter(r => r.product_category === 'HDPE')
+                  .reduce((sum, r) => sum + (r.length_meters || 0) * (r.quantity || 1), 0)
+                  .toFixed(2)}m
+              </span>
+            )}
+          </h4>
+          <div className="space-y-2 max-h-60 overflow-y-auto border rounded-lg p-2 bg-blue-50">
+            {selectedRolls.map((roll, idx) => (
+              <div
+                key={idx}
+                className="flex items-center justify-between p-2 bg-white border border-blue-200 rounded"
+              >
+                <div className="flex-1">
+                  <div className="font-medium text-sm">{roll.brand_name} - {roll.product_type_name}</div>
+                  <div className="text-xs text-gray-600 flex items-center gap-2">
+                    <Badge variant="outline" className="text-xs">
+                      Qty: {roll.quantity}
+                    </Badge>
+                    {roll.product_category === 'HDPE' && (
+                      <>
+                        <span>{roll.length_meters}m each</span>
+                        {roll.stock_type === 'CUT_ROLL' && <span>• Cut Roll</span>}
+                      </>
+                    )}
+                    {roll.product_category === 'SPRINKLER' && (
+                      <>
+                        {roll.stock_type === 'BUNDLE' && <span>Bundle {roll.bundle_size}</span>}
+                        {roll.stock_type === 'SPARE' && <span>Spare - {roll.piece_count} pieces</span>}
+                      </>
+                    )}
+                  </div>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => onRemoveRoll(idx)}
+                  className="text-red-500 hover:text-red-700 hover:bg-red-50 h-8 w-8 p-0"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {filteredVariants.length === 0 && availableRolls.length > 0 && (
+        <div className="text-center py-8 text-gray-500">
+          <Package className="h-12 w-12 mx-auto mb-2 opacity-30" />
+          <p>No products match your filter</p>
+        </div>
+      )}
+
+      {availableRolls.length === 0 && productTypeId && (
+        <div className="text-center py-8 text-gray-500">
+          <Package className="h-12 w-12 mx-auto mb-2 opacity-30" />
+          <p>No available products for this type</p>
+        </div>
+      )}
+
+      {/* Dialogs */}
+      {selectedStock && (selectedStock.stock_type === 'FULL_ROLL' || selectedStock.stock_type === 'CUT_ROLL') && (
+        <CutRollDialog
+          open={cutDialogOpen}
+          onOpenChange={setCutDialogOpen}
+          stockId={selectedStock.stock_id}
+          pieceId={selectedStock.piece_id}
+          stockType={selectedStock.stock_type}
+          quantity={selectedStock.quantity}
+          lengthPerUnit={selectedStock.length_per_unit}
+          totalAvailable={selectedStock.total_available}
+          onSuccess={handleDialogSuccess}
+        />
+      )}
+
+      {selectedStock && selectedStock.stock_type === 'BUNDLE' && (
+        <SplitBundleDialog
+          open={splitDialogOpen}
+          onOpenChange={setSplitDialogOpen}
+          stockId={selectedStock.stock_id}
+          piecesPerBundle={selectedStock.pieces_per_bundle || 0}
+          pieceLength={selectedStock.piece_length_meters || 0}
+          onSuccess={handleDialogSuccess}
+        />
+      )}
+
+      {selectedStock && selectedStock.stock_type === 'SPARE' && (
+        <CombineSparesDialog
+          open={combineDialogOpen}
+          onOpenChange={setCombineDialogOpen}
+          stockId={selectedStock.stock_id}
+          spareGroups={[{
+            spare_id: selectedStock.spare_id || selectedStock.stock_id,
+            piece_count: selectedStock.piece_count || 0
+          }]}
+          pieceLength={selectedStock.piece_length_meters || 0}
+          onSuccess={handleDialogSuccess}
+        />
+      )}
+    </div>
+  );
+};

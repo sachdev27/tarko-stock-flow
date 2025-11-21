@@ -221,7 +221,7 @@ const DispatchNewModular = () => {
 
   return (
     <Layout>
-      <div className="p-4 max-w-7xl mx-auto space-y-4">
+      <div className="p-4 w-full space-y-4">
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center justify-between">

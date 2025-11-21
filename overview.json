@@ -1,6 +1,6 @@
 {
   "rootFolder": "/Users/sachdevs/Projects/Tarko-Inv/tarko-stock-flow",
-  "analyzedAt": "2025-11-21T13:10:39.049Z",
+  "analyzedAt": "2025-11-21T13:31:37.530Z",
   "rootStructure": [
     {
       "name": ".gitignore",
@@ -151,8 +151,8 @@
     {
       "name": "overview.json",
       "type": "file",
-      "size": 34948,
-      "lines": 1168
+      "size": 35142,
+      "lines": 1174
     },
     {
       "name": "package-lock.json",
@@ -465,7 +465,7 @@
     "overview.json": [
       "{",
       "\"rootFolder\": \"/Users/sachdevs/Projects/Tarko-Inv/tarko-stock-flow\",",
-      "\"analyzedAt\": \"2025-11-21T11:13:19.315Z\",",
+      "\"analyzedAt\": \"2025-11-21T13:10:39.049Z\",",
       "\"rootStructure\": [",
       "{",
       "\"name\": \".gitignore\",",
@@ -632,8 +632,8 @@
   "totals": {
     "numFiles": 876,
     "numDirs": 94,
-    "totalSizeBytes": 5758006,
-    "totalLinesOfCode": 29235
+    "totalSizeBytes": 5765795,
+    "totalLinesOfCode": 29367
   },
   "fileCategories": {
     "other": 114,
@@ -642,7 +642,7 @@
     "config": 585
   },
   "linesOfCodePerLanguage": {
-    "Python": 9316,
+    "Python": 9448,
     "Shell": 311,
     "JavaScript": 34,
     "TypeScript": 19574
@@ -694,7 +694,7 @@
     {
       "name": "backend",
       "numFiles": 78,
-      "totalLoc": 9457,
+      "totalLoc": 9589,
       "dominantLanguage": "Python"
     },
     {
@@ -854,7 +854,7 @@
       "name": "backend",
       "level": 1,
       "numFiles": 78,
-      "totalLoc": 9457,
+      "totalLoc": 9589,
       "dominantLanguage": "Python",
       "category": "General",
       "description": "# Tarko Inventory - Backend API",
@@ -864,7 +864,7 @@
           "name": "routes",
           "level": 2,
           "numFiles": 12,
-          "totalLoc": 6506,
+          "totalLoc": 6638,
           "dominantLanguage": "Python",
           "category": "General",
           "description": "General module with 12 files (Python)",
@@ -1157,16 +1157,16 @@
     "total": 66
   },
   "complexity": {
-    "averageFileSize": 33.37328767123287,
+    "averageFileSize": 33.523972602739725,
     "maxFileSize": 0,
     "nestedDepth": 0,
     "estimatedComplexity": "high"
   },
   "gitRepo": {
     "firstCommitDate": "2025-11-21",
-    "totalCommits": 41,
+    "totalCommits": 42,
     "numContributors": 0,
-    "currentBranch": "sachdevs/ready_for_prod",
+    "currentBranch": "sachdevs/modularize",
     "remoteUrls": [
       "https://github.com/sachdev27/tarko-stock-flow.git"
     ]

@@ -735,43 +735,55 @@ def search_inventory():
             if not pt_result:
                 return jsonify([]), 200
 
-            product_type_name = pt_result[0]
+            product_type_name = pt_result['name']
             is_hdpe = product_type_name == 'HDPE Pipe'
 
-            # Use inventory_unified view for compatibility
+            # Query inventory_stock directly with necessary joins
             query = """
                 SELECT
-                    iu.id,
-                    iu.batch_id,
-                    iu.batch_code,
-                    iu.status,
-                    iu.stock_type,
-                    iu.quantity,
-                    iu.product_variant_id,
-                    iu.parameters,
-                    iu.product_type_name,
-                    iu.brand_name,
-                    iu.product_category,
-                    iu.length_meters,
-                    iu.is_cut_roll,
-                    iu.bundle_type,
-                    iu.bundle_size,
-                    iu.piece_count,
-                    iu.piece_length_meters
-                FROM inventory_unified iu
-                JOIN product_variants pv ON iu.product_variant_id = pv.id
-                WHERE iu.deleted_at IS NULL
-                AND iu.status = 'IN_STOCK'
+                    s.id,
+                    s.batch_id,
+                    s.status,
+                    s.stock_type,
+                    s.quantity,
+                    s.length_per_unit as length_meters,
+                    s.pieces_per_bundle as bundle_size,
+                    s.piece_length_meters,
+                    s.product_variant_id,
+                    s.created_at,
+                    b.batch_code,
+                    b.batch_no,
+                    pt.name as product_type_name,
+                    br.name as brand_name,
+                    pt.name as product_category,
+                    pv.parameters,
+                    CASE WHEN s.stock_type = 'CUT_ROLL' THEN TRUE ELSE FALSE END as is_cut_roll,
+                    CASE
+                        WHEN s.stock_type = 'BUNDLE' THEN 'bundle'
+                        WHEN s.stock_type = 'SPARE' THEN 'spare'
+                        ELSE NULL
+                    END as bundle_type,
+                    CASE
+                        WHEN s.stock_type = 'BUNDLE' THEN s.pieces_per_bundle * s.quantity
+                        WHEN s.stock_type = 'SPARE' THEN (
+                            SELECT COALESCE(SUM(piece_count), 0)
+                            FROM sprinkler_spare_pieces
+                            WHERE stock_id = s.id AND status = 'IN_STOCK'
+                        )
+                        ELSE NULL
+                    END as piece_count
+                FROM inventory_stock s
+                JOIN batches b ON s.batch_id = b.id
+                JOIN product_variants pv ON s.product_variant_id = pv.id
+                JOIN product_types pt ON pv.product_type_id = pt.id
+                JOIN brands br ON pv.brand_id = br.id
+                WHERE s.deleted_at IS NULL
+                AND s.status = 'IN_STOCK'
+                AND s.quantity > 0
                 AND pv.product_type_id = %s
             """
 
             params = [product_type_id]
-
-            # Filter by quantity/availability
-            if is_hdpe:
-                query += " AND iu.quantity > 0"
-            else:
-                query += " AND iu.quantity > 0"
 
             # Optional: filter by brand
             if brand_id:
@@ -782,19 +794,21 @@ def search_inventory():
             if parameters:
                 for key, value in parameters.items():
                     if value:
-                        query += f" AND iu.parameters->>%s = %s"
+                        query += f" AND pv.parameters->>%s = %s"
                         params.extend([key, str(value)])
 
             # Sort by batch and type
-            query += " ORDER BY iu.batch_code, iu.stock_type, iu.created_at DESC"
+            query += " ORDER BY b.batch_code, s.stock_type, s.created_at DESC"
 
             cursor.execute(query, tuple(params))
-            columns = [desc[0] for desc in cursor.description]
-            rolls = [dict(zip(columns, row)) for row in cursor.fetchall()]
+            results = cursor.fetchall()
 
-        return jsonify(rolls), 200
+        return jsonify(results), 200
 
     except Exception as e:
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"Error in search_inventory: {error_trace}")
         return jsonify({'error': 'Failed to search inventory', 'details': str(e)}), 500
 
 @inventory_bp.route('/product-variants/search', methods=['GET', 'OPTIONS'])

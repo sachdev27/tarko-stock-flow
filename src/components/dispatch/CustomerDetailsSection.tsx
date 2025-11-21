@@ -49,7 +49,7 @@ export const CustomerDetailsSection = ({
     <div className="space-y-4 p-4 border rounded-lg bg-gray-50">
       <h3 className="font-semibold text-lg">Customer Details</h3>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <div ref={customerRef}>
           <Label>
             Customer <span className="text-red-500">*</span>
