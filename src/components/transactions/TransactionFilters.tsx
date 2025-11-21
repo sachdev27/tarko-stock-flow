@@ -90,9 +90,9 @@ export function TransactionFilters({
       {showFilters && (
         <div className="rounded-lg border bg-card p-4 space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* Transaction Type Filter */}
+            {/* Activity Type Filter */}
             <div className="space-y-2">
-              <Label htmlFor="type-filter">Transaction Type</Label>
+              <Label htmlFor="type-filter">Activity Type</Label>
               <Select
                 value={filters.typeFilter}
                 onValueChange={(value) => onFilterChange('typeFilter', value)}
@@ -103,7 +103,7 @@ export function TransactionFilters({
                 <SelectContent>
                   <SelectItem value="all">All Types</SelectItem>
                   <SelectItem value="PRODUCTION">Production</SelectItem>
-                  <SelectItem value="SALE">Sale</SelectItem>
+                  <SelectItem value="DISPATCH">Dispatch</SelectItem>
                   <SelectItem value="CUT_ROLL">Cut Roll</SelectItem>
                   <SelectItem value="SPLIT_BUNDLE">Split Bundle</SelectItem>
                   <SelectItem value="COMBINE_SPARES">Combine Spares</SelectItem>

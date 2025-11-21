@@ -315,7 +315,10 @@ export function TransactionTable({
                     : '-'}
                 </TableCell>
                 <TableCell className="text-sm">
-                  {transaction.customer_name || '-'}
+                  {transaction.customer_name
+                    ? `${transaction.customer_name}${transaction.customer_city ? ` - ${transaction.customer_city}` : ''}`
+                    : '-'
+                  }
                 </TableCell>
                 <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
                   {transaction.notes || '-'}

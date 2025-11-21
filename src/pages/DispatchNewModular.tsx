@@ -97,6 +97,13 @@ const DispatchNewModular = () => {
       shift: true,
       action: () => productSearchRef.current?.querySelector('input')?.focus(),
       description: 'Product Search'
+    },
+    {
+      key: 'D',
+      ctrl: true,
+      shift: true,
+      action: () => handleDispatch(),
+      description: 'Submit Dispatch'
     }
   ];
 

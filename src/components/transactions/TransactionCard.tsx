@@ -157,7 +157,10 @@ export function TransactionCard({
           {transaction.customer_name && (
             <div className="col-span-2">
               <span className="text-muted-foreground">Customer:</span>
-              <span className="ml-2 font-medium">{transaction.customer_name}</span>
+              <span className="ml-2 font-medium">
+                {transaction.customer_name}
+                {transaction.customer_city && ` - ${transaction.customer_city}`}
+              </span>
             </div>
           )}
         </div>

@@ -183,9 +183,9 @@ export const ProductSelectionSection = ({
     const searchLower = productSearch.toLowerCase().trim();
 
     // Advanced search patterns:
-    // 1. "32,6,63 gold" -> parameters contain 32 OR 6 OR 63, AND brand matches gold
-    // 2. "(OD,PN,PE)" -> show only these parameter keys
-    // 3. "(OD,PN,TYPE)" -> show only these parameter keys
+    // 1. "32,6,10 astral" -> OD=32 AND PN=6 AND PE=10, AND brand contains "astral"
+    // 2. "32,6,10" -> OD=32 AND PN=6 AND PE=10 (or OD=32 AND PN=6 AND Type=C)
+    // 3. "(OD,PN,PE)" -> show only these parameter keys
 
     // Check for parameter key filter pattern: (KEY1,KEY2,KEY3)
     const keyFilterMatch = searchLower.match(/^\(([^)]+)\)$/);
@@ -208,23 +208,36 @@ export const ProductSelectionSection = ({
 
     if (hasCommas) {
       // Extract numbers and brand pattern
-      const numbers = firstPart.split(',').map(n => n.trim()).filter(Boolean);
+      const searchValues = firstPart.split(',').map(n => n.trim()).filter(Boolean);
       const brandPattern = parts.slice(1).join(' '); // Rest is brand search
 
       return groupedVariants.filter(variant => {
-        // Check if any parameter value matches any of the numbers
-        const paramValues = Object.values(variant.parameters).map(v => String(v).toLowerCase());
-        const hasMatchingParam = numbers.some(num =>
-          paramValues.some(pv => pv.includes(num))
-        );
+        // Get parameter values in a normalized way
+        const paramEntries = Object.entries(variant.parameters).map(([key, value]) => ({
+          key: key.toUpperCase(),
+          value: String(value).toLowerCase()
+        }));
+
+        // For each search value, check if it matches ANY parameter value exactly
+        const allValuesMatch = searchValues.every(searchVal => {
+          return paramEntries.some(param => {
+            // Check for exact match or match with common units (e.g., "32" matches "32mm" or "32")
+            return param.value === searchVal ||
+                   param.value === `${searchVal}mm` ||
+                   param.value === `${searchVal}bar` ||
+                   param.value.startsWith(`${searchVal}mm`) ||
+                   param.value === searchVal.replace(/mm$/, '') ||
+                   param.value === searchVal.replace(/bar$/, '');
+          });
+        });
 
         // If brand pattern provided, also check brand
         if (brandPattern) {
           const brandMatch = variant.brand_name?.toLowerCase().includes(brandPattern);
-          return hasMatchingParam && brandMatch;
+          return allValuesMatch && brandMatch;
         }
 
-        return hasMatchingParam;
+        return allValuesMatch;
       });
     }
 
@@ -459,12 +472,12 @@ export const ProductSelectionSection = ({
           <Input
             value={productSearch}
             onChange={(e) => onProductSearchChange(e.target.value)}
-            placeholder="e.g., 32,6,63 gold or (OD,PN,PE)"
+            placeholder="e.g., 32,6,10 astral (OD,PN,PE match)"
             className="w-full font-mono"
           />
           <p className="text-xs text-gray-500 mt-1">
             {filteredVariants.length} variant{filteredVariants.length !== 1 ? 's' : ''} •
-            Examples: <span className="font-mono">32,6</span> or <span className="font-mono">32 gold</span> or <span className="font-mono">(OD,PN,TYPE)</span>
+            Format: <span className="font-mono">value1,value2,value3 brandname</span> matches ALL values + brand
           </p>
         </div>
       </div>

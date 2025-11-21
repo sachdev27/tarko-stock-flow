@@ -60,6 +60,7 @@ export interface TransactionRecord {
 
   // Customer Information
   customer_name?: string;
+  customer_city?: string;
 
   // User/Creator Information
   created_by_email?: string;
