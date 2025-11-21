@@ -143,25 +143,114 @@ const InventoryNew = () => {
         return;
       }
 
-      // Load shortcuts from localStorage
-      const savedShortcuts = localStorage.getItem('inventory_keyboard_shortcuts');
-      if (!savedShortcuts) return;
-
+      // Load shortcuts from localStorage or use defaults
       interface KeyboardShortcut {
         key: string;
         action: string;
         label: string;
+        ctrlKey?: boolean;
+        shiftKey?: boolean;
+        altKey?: boolean;
       }
 
-      const shortcuts: KeyboardShortcut[] = JSON.parse(savedShortcuts);
+      const defaultShortcuts: KeyboardShortcut[] = [
+        { key: '/', action: 'clear_filters', label: 'Clear All Filters' },
+        { key: 'b', action: 'focus_brand', label: 'Focus Brand Filter' },
+        { key: 'o', action: 'focus_parameter_OD', label: 'Focus OD Filter' },
+        { key: 'n', action: 'focus_parameter_PN', label: 'Focus PN Filter' },
+        { key: 'e', action: 'focus_parameter_PE', label: 'Focus PE Filter' },
+        { key: 't', action: 'focus_parameter_Type', label: 'Focus Type Filter' },
+      ];
+
+      const savedShortcuts = localStorage.getItem('inventory_keyboard_shortcuts');
+      let shortcuts: KeyboardShortcut[] = savedShortcuts 
+        ? JSON.parse(savedShortcuts) 
+        : defaultShortcuts;
+      
+      // Merge default shortcuts that aren't in saved shortcuts
+      if (savedShortcuts) {
+        const savedActions = shortcuts.map(s => s.action);
+        defaultShortcuts.forEach(defaultShortcut => {
+          if (!savedActions.includes(defaultShortcut.action)) {
+            shortcuts.push(defaultShortcut);
+          }
+        });
+      }
       const key = e.key.toLowerCase();
-      const shortcut = shortcuts.find((s) => s.key === key);
+      
+      // Match shortcut with modifier keys
+      const ctrlKey = e.ctrlKey || e.metaKey;
+      const shiftKey = e.shiftKey;
+      const altKey = e.altKey;
+      
+      const shortcut = shortcuts.find((s) => 
+        s.key === key && 
+        (s.ctrlKey || false) === ctrlKey &&
+        (s.shiftKey || false) === shiftKey &&
+        (s.altKey || false) === altKey
+      );
 
       if (shortcut) {
         e.preventDefault();
         const [type, value] = shortcut.action.split('_');
 
-        if (type === 'product' && value === 'type') {
+        if (shortcut.action === 'clear_filters') {
+          // Clear all filters
+          setSelectedProduct('');
+          setSelectedBrand('');
+          setSelectedStockType('all');
+          setParameterFilters({});
+          setSearchTerm('');
+          toast.success('All filters cleared');
+        } else if (shortcut.action === 'focus_parameters') {
+          // Focus on parameter filters - scroll to or activate parameter filter section
+          const paramSection = document.querySelector('[data-param-filters]');
+          if (paramSection) {
+            paramSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            // Find first button in parameter section and click it to open dropdown
+            const firstButton = paramSection.querySelector('button');
+            if (firstButton) {
+              (firstButton as HTMLButtonElement).click();
+            }
+          }
+          toast.success('Focused on parameter filters');
+        } else if (shortcut.action === 'focus_brand') {
+          // Focus on brand filter
+          const brandSection = document.querySelector('[data-brand-filter]');
+          if (brandSection) {
+            brandSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            // Find the select trigger button and click it to open dropdown
+            const selectButton = brandSection.querySelector('button');
+            if (selectButton) {
+              (selectButton as HTMLButtonElement).click();
+            }
+          }
+          toast.success('Focused on brand filter');
+        } else if (shortcut.action.startsWith('focus_parameter_')) {
+          // Focus on specific parameter filter (OD, PN, PE, Type)
+          const paramName = shortcut.action.replace('focus_parameter_', '');
+          // Find the parameter filter by looking for a button with the parameter name
+          const allParamSections = document.querySelectorAll('[data-param-filters]');
+          let found = false;
+          
+          allParamSections.forEach((section) => {
+            const label = section.querySelector('label');
+            if (label && label.textContent?.trim() === paramName) {
+              section.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+              const button = section.querySelector('button');
+              if (button) {
+                (button as HTMLButtonElement).click();
+                found = true;
+              }
+            }
+          });
+          
+          if (found) {
+            toast.success(`Focused on ${paramName} filter`);
+          } else {
+            toast.info(`${paramName} filter not available for current product`);
+          }
+        } else if (type === 'product' && value === 'type') {
           // Handle product_type_0, product_type_1, etc.
           const index = parseInt(shortcut.action.split('_')[2]);
           if (productTypes[index]) {
@@ -181,18 +270,6 @@ const InventoryNew = () => {
           setSelectedStockType(stockType);
           const stockTypeLabel = stockTypes.find(st => st.value === stockType)?.label || stockType;
           toast.success(`Filtered by ${stockTypeLabel}`);
-        } else if (type === 'parameter') {
-          // Handle parameter_OD_32, parameter_PN_10, etc.
-          const parts = shortcut.action.split('_');
-          if (parts.length >= 3) {
-            const paramKey = parts[1];
-            const paramValue = parts.slice(2).join('_'); // Handle values with underscores
-            setParameterFilters(prev => ({
-              ...prev,
-              [paramKey]: paramValue
-            }));
-            toast.success(`Filtered by ${paramKey}=${paramValue}`);
-          }
         }
       }
     };

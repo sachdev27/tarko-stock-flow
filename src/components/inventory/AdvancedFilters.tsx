@@ -80,7 +80,7 @@ export const AdvancedFilters = ({
         </div>
 
         {/* Brand */}
-        <div className="space-y-1 min-w-[120px]">
+        <div className="space-y-1 min-w-[120px]" data-brand-filter>
           <Label className="text-xs">Brand</Label>
           <Select value={selectedBrand} onValueChange={onBrandChange}>
             <SelectTrigger className="h-9 text-sm">
@@ -103,7 +103,7 @@ export const AdvancedFilters = ({
           const selectedValue = parameterFilters[param] || '';
 
           return (
-            <div key={param} className="space-y-1 min-w-[100px]">
+            <div key={param} className="space-y-1 min-w-[100px]" data-param-filters>
               <Label className="text-xs">{param}</Label>
               <Popover
                 open={openPopovers[param]}
