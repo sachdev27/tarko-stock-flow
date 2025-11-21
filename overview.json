@@ -1,6 +1,6 @@
 {
   "rootFolder": "/Users/sachdevs/Projects/Tarko-Inv/tarko-stock-flow",
-  "analyzedAt": "2025-11-21T05:41:36.049Z",
+  "analyzedAt": "2025-11-21T09:48:23.605Z",
   "rootStructure": [
     {
       "name": ".gitignore",
@@ -63,6 +63,12 @@
       "lines": 212
     },
     {
+      "name": "TRANSACTIONS_PAGE_FEATURES.md",
+      "type": "file",
+      "size": 22067,
+      "lines": 803
+    },
+    {
       "name": "VERSION_CONTROL_README.md",
       "type": "file",
       "size": 5660,
@@ -93,6 +99,10 @@
       "type": "file",
       "size": 3641,
       "lines": 103
+    },
+    {
+      "name": "dist",
+      "type": "dir"
     },
     {
       "name": "docker-compose.yml",
@@ -129,8 +139,8 @@
     {
       "name": "overview.json",
       "type": "file",
-      "size": 27297,
-      "lines": 918
+      "size": 30719,
+      "lines": 1033
     },
     {
       "name": "package-lock.json",
@@ -308,6 +318,18 @@
       "- ✅ **Dynamic Product Configuration** - Parameter-driven product definitions",
       "- ✅ **Production Entry** - Daily production recording with batch and roll creation"
     ],
+    "TRANSACTIONS_PAGE_FEATURES.md": [
+      "# Transactions Page - Complete Feature Documentation",
+      "",
+      "## Page Overview",
+      "**File**: `src/pages/TransactionsNew.tsx`",
+      "**Route**: `/transactions`",
+      "**Purpose**: View, filter, and manage all inventory transactions (Production, Sale, Cut, Adjustment, Bundling)",
+      "",
+      "---",
+      "",
+      "## 1. DATA STRUCTURES & INTERFACES"
+    ],
     "VERSION_CONTROL_README.md": [
       "# Version Control & Rollback System",
       "",
@@ -407,7 +429,7 @@
     "overview.json": [
       "{",
       "\"rootFolder\": \"/Users/sachdevs/Projects/Tarko-Inv/tarko-stock-flow\",",
-      "\"analyzedAt\": \"2025-11-20T14:40:55.051Z\",",
+      "\"analyzedAt\": \"2025-11-21T05:41:36.049Z\",",
       "\"rootStructure\": [",
       "{",
       "\"name\": \".gitignore\",",
@@ -526,7 +548,7 @@
     {
       "path": "backend",
       "category": "backend",
-      "fileCount": 61,
+      "fileCount": 64,
       "primaryLanguage": "Python"
     },
     {
@@ -543,7 +565,7 @@
     {
       "path": "src/components",
       "category": "frontend",
-      "fileCount": 69,
+      "fileCount": 75,
       "primaryLanguage": "TypeScript"
     },
     {
@@ -565,28 +587,28 @@
     "root": "# Tarko Inventory Management System"
   },
   "totals": {
-    "numFiles": 831,
-    "numDirs": 87,
-    "totalSizeBytes": 5649258,
-    "totalLinesOfCode": 29599
+    "numFiles": 841,
+    "numDirs": 89,
+    "totalSizeBytes": 5811552,
+    "totalLinesOfCode": 32754
   },
   "fileCategories": {
-    "other": 110,
-    "documentation": 16,
-    "source": 120,
+    "other": 112,
+    "documentation": 17,
+    "source": 127,
     "config": 585
   },
   "linesOfCodePerLanguage": {
-    "Python": 7933,
+    "Python": 8136,
     "Shell": 311,
     "JavaScript": 34,
-    "TypeScript": 21321
+    "TypeScript": 24273
   },
   "filesPerLanguage": {
-    "Python": 21,
+    "Python": 22,
     "Shell": 5,
     "JavaScript": 2,
-    "TypeScript": 92
+    "TypeScript": 98
   },
   "projectTypes": [
     "Python (requirements)",
@@ -599,8 +621,10 @@
   ],
   "entryPoints": [
     "backend/backup_scheduler.py",
+    "backend/cleanup_zero_stock.py",
     "backend/docker-entrypoint-scheduler.sh",
     "backend/docker-entrypoint.sh",
+    "backend/hard_delete_zero_stock.py",
     "backend/init_admin.py",
     "backend/setup_db.sh",
     "deploy.sh",
@@ -615,14 +639,14 @@
   "topLevelDirectories": [
     {
       "name": "src",
-      "numFiles": 93,
-      "totalLoc": 21206,
+      "numFiles": 99,
+      "totalLoc": 24158,
       "dominantLanguage": "TypeScript"
     },
     {
       "name": "backend",
-      "numFiles": 61,
-      "totalLoc": 8074,
+      "numFiles": 64,
+      "totalLoc": 8277,
       "dominantLanguage": "Python"
     },
     {
@@ -646,32 +670,44 @@
       "path": "src",
       "name": "src",
       "level": 1,
-      "numFiles": 93,
-      "totalLoc": 21206,
+      "numFiles": 99,
+      "totalLoc": 24158,
       "dominantLanguage": "TypeScript",
       "category": "General",
-      "description": "General module with 93 files (TypeScript)",
+      "description": "General module with 99 files (TypeScript)",
       "subdirectories": [
         {
           "path": "src/pages",
           "name": "pages",
           "level": 2,
           "numFiles": 14,
-          "totalLoc": 13413,
+          "totalLoc": 14045,
           "dominantLanguage": "TypeScript",
           "category": "General",
           "description": "General module with 14 files (TypeScript)",
-          "subdirectories": []
+          "subdirectories": [
+            {
+              "path": "src/pages/old",
+              "name": "old",
+              "level": 3,
+              "numFiles": 2,
+              "totalLoc": 5110,
+              "dominantLanguage": "TypeScript",
+              "category": "General",
+              "description": "General module with 2 files (TypeScript)",
+              "subdirectories": []
+            }
+          ]
         },
         {
           "path": "src/components",
           "name": "components",
           "level": 2,
-          "numFiles": 69,
-          "totalLoc": 7019,
+          "numFiles": 75,
+          "totalLoc": 9331,
           "dominantLanguage": "TypeScript",
           "category": "General",
-          "description": "General module with 69 files (TypeScript)",
+          "description": "General module with 75 files (TypeScript)",
           "subdirectories": [
             {
               "path": "src/components/ui",
@@ -688,11 +724,11 @@
               "path": "src/components/inventory",
               "name": "inventory",
               "level": 3,
-              "numFiles": 7,
-              "totalLoc": 1095,
+              "numFiles": 13,
+              "totalLoc": 3407,
               "dominantLanguage": "TypeScript",
               "category": "General",
-              "description": "General module with 7 files (TypeScript)",
+              "description": "General module with 13 files (TypeScript)",
               "subdirectories": []
             },
             {
@@ -724,7 +760,7 @@
           "name": "lib",
           "level": 2,
           "numFiles": 2,
-          "totalLoc": 318,
+          "totalLoc": 326,
           "dominantLanguage": "TypeScript",
           "category": "Library",
           "description": "Library module with 2 files (TypeScript)",
@@ -758,8 +794,8 @@
       "path": "backend",
       "name": "backend",
       "level": 1,
-      "numFiles": 61,
-      "totalLoc": 8074,
+      "numFiles": 64,
+      "totalLoc": 8277,
       "dominantLanguage": "Python",
       "category": "General",
       "description": "# Tarko Inventory - Backend API",
@@ -769,7 +805,7 @@
           "name": "routes",
           "level": 2,
           "numFiles": 12,
-          "totalLoc": 5982,
+          "totalLoc": 6441,
           "dominantLanguage": "Python",
           "category": "General",
           "description": "General module with 12 files (Python)",
@@ -779,10 +815,10 @@
           "path": "backend/migrations",
           "name": "migrations",
           "level": 2,
-          "numFiles": 19,
+          "numFiles": 21,
           "totalLoc": 0,
           "category": "General",
-          "description": "General module with 19 files",
+          "description": "General module with 21 files",
           "subdirectories": []
         },
         {
@@ -899,12 +935,22 @@
         "description": ""
       },
       {
+        "path": "../../../../../backend/cleanup_zero_stock.py",
+        "type": "Unknown",
+        "description": ""
+      },
+      {
         "path": "../../../../../backend/docker-entrypoint-scheduler.sh",
         "type": "Unknown",
         "description": ""
       },
       {
         "path": "../../../../../backend/docker-entrypoint.sh",
+        "type": "Unknown",
+        "description": ""
+      },
+      {
+        "path": "../../../../../backend/hard_delete_zero_stock.py",
         "type": "Unknown",
         "description": ""
       },
@@ -1016,14 +1062,14 @@
     "total": 66
   },
   "complexity": {
-    "averageFileSize": 35.61853188929001,
+    "averageFileSize": 38.946492271105825,
     "maxFileSize": 0,
     "nestedDepth": 0,
     "estimatedComplexity": "high"
   },
   "gitRepo": {
     "firstCommitDate": "2025-11-21",
-    "totalCommits": 28,
+    "totalCommits": 34,
     "numContributors": 0,
     "currentBranch": "sachdevs/ready_for_prod",
     "remoteUrls": [

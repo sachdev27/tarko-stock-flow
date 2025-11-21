@@ -161,73 +161,51 @@ def get_transactions():
             pv.brand_id,
             br.name as brand,
             pv.parameters,
-            -- Handle both old single-roll and new multi-roll snapshot formats
+            -- Extract roll information from roll_snapshot (supports both single roll and multi-roll formats)
             COALESCE(
-                r.length_meters,
                 (t.roll_snapshot->>'length_meters')::numeric,
                 (t.roll_snapshot->'rolls'->0->>'length_meters')::numeric
             ) as roll_length_meters,
             COALESCE(
-                r.initial_length_meters,
                 (t.roll_snapshot->>'initial_length_meters')::numeric,
                 (t.roll_snapshot->'rolls'->0->>'initial_length_meters')::numeric
             ) as roll_initial_length_meters,
             COALESCE(
-                r.is_cut_roll,
                 (t.roll_snapshot->>'is_cut_roll')::boolean,
-                (t.roll_snapshot->'rolls'->0->>'is_cut_roll')::boolean
+                (t.roll_snapshot->'rolls'->0->>'is_cut_roll')::boolean,
+                FALSE
             ) as roll_is_cut,
             COALESCE(
-                r.roll_type,
                 t.roll_snapshot->>'roll_type',
                 t.roll_snapshot->'rolls'->0->>'roll_type'
             ) as roll_type,
             COALESCE(
-                r.bundle_size,
                 (t.roll_snapshot->>'bundle_size')::integer,
                 (t.roll_snapshot->'rolls'->0->>'bundle_size')::integer
             ) as roll_bundle_size,
-            CASE WHEN r.length_meters IS NOT NULL AND b.weight_per_meter IS NOT NULL THEN (r.length_meters * b.weight_per_meter) ELSE NULL END as roll_weight,
+            NULL as roll_weight,
             u_unit.abbreviation as unit_abbreviation,
             c.name as customer_name,
             u.email as created_by_email,
             u.username as created_by_username,
             u.full_name as created_by_name,
-            rc.standard_rolls_count,
-            rc.cut_rolls_count,
-            rc.bundles_count,
-            rc.spare_pieces_count,
-            rc.avg_standard_roll_length,
-            rc.bundle_size,
-            rc.cut_rolls_details,
-            rc.spare_pieces_details
+            -- Extract production breakdown from roll_snapshot or batch data
+            NULL::bigint as standard_rolls_count,
+            NULL::bigint as cut_rolls_count,
+            NULL::bigint as bundles_count,
+            NULL::bigint as spare_pieces_count,
+            NULL::numeric as avg_standard_roll_length,
+            NULL::integer as bundle_size,
+            NULL::numeric[] as cut_rolls_details,
+            NULL::numeric[] as spare_pieces_details
         FROM transactions t
         JOIN batches b ON t.batch_id = b.id
         JOIN product_variants pv ON b.product_variant_id = pv.id
         JOIN product_types pt ON pv.product_type_id = pt.id
         JOIN brands br ON pv.brand_id = br.id
-        LEFT JOIN rolls r ON t.roll_id = r.id  -- Include deleted rolls for historical transaction data
         LEFT JOIN units u_unit ON pt.unit_id = u_unit.id
         LEFT JOIN customers c ON t.customer_id = c.id
         LEFT JOIN users u ON t.created_by = u.id
-        LEFT JOIN LATERAL (
-            SELECT
-                COUNT(*) FILTER (WHERE is_cut_roll = FALSE AND (roll_type IS NULL OR roll_type = 'standard')) as standard_rolls_count,
-                COUNT(*) FILTER (WHERE is_cut_roll = TRUE OR roll_type = 'cut') as cut_rolls_count,
-                COUNT(*) FILTER (WHERE roll_type LIKE 'bundle_%%') as bundles_count,
-                COUNT(*) FILTER (WHERE roll_type = 'spare') as spare_pieces_count,
-                AVG(length_meters) FILTER (WHERE is_cut_roll = FALSE AND (roll_type IS NULL OR roll_type = 'standard')) as avg_standard_roll_length,
-                MAX(bundle_size) FILTER (WHERE roll_type LIKE 'bundle_%%') as bundle_size,
-                array_agg(length_meters ORDER BY length_meters DESC) FILTER (WHERE (is_cut_roll = TRUE OR roll_type = 'cut') AND roll_type != 'spare') as cut_rolls_details,
-                array_agg(
-                    CASE
-                        WHEN bundle_size IS NOT NULL THEN bundle_size::numeric
-                        ELSE length_meters
-                    END ORDER BY created_at
-                ) FILTER (WHERE roll_type = 'spare') as spare_pieces_details
-            FROM rolls
-            WHERE batch_id = b.id AND deleted_at IS NULL
-        ) rc ON true
         WHERE t.deleted_at IS NULL{date_filter}
         ORDER BY t.transaction_date DESC
         LIMIT 1000

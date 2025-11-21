@@ -33,7 +33,7 @@ export const Layout = ({ children }: LayoutProps) => {
     { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
     { icon: Package, label: 'Production', path: '/production' },
     { icon: Package, label: 'Inventory', path: '/inventory' },
-    { icon: ArrowRightLeft, label: 'Transactions', path: '/transactions' },
+    { icon: ArrowRightLeft, label: 'Activity', path: '/transactions' },
     { icon: TruckIcon, label: 'Dispatch', path: '/dispatch' },
     { icon: FileText, label: 'Reports', path: '/reports' },
     { icon: Database, label: 'Details', path: '/details' },

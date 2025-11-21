@@ -1,0 +1,559 @@
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { TransactionRecord } from '@/types/transaction';
+import { TransactionTypeBadge } from './TransactionTypeBadge';
+import { ParameterBadges } from './ParameterBadges';
+import { formatWeight, formatDateTime, getProductName } from '@/utils/transactions/formatters';
+import {
+  Calendar,
+  Package,
+  User,
+  FileText,
+  Weight,
+  Ruler,
+  Box,
+  Factory,
+  Tag,
+} from 'lucide-react';
+
+interface TransactionDetailModalProps {
+  transaction: TransactionRecord | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
+
+export function TransactionDetailModal({
+  transaction,
+  open,
+  onOpenChange,
+}: TransactionDetailModalProps) {
+  if (!transaction) return null;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-4xl max-h-[90vh]">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-3">
+            <TransactionTypeBadge transaction={transaction} />
+            <span>{getProductName(transaction)}</span>
+          </DialogTitle>
+          <DialogDescription>
+            Transaction ID: {transaction.id}
+          </DialogDescription>
+        </DialogHeader>
+
+        <ScrollArea className="max-h-[calc(90vh-120px)]">
+          <Tabs defaultValue="overview" className="w-full">
+            <TabsList className="grid w-full grid-cols-4">
+              <TabsTrigger value="overview">Overview</TabsTrigger>
+              <TabsTrigger value="product">Product</TabsTrigger>
+              <TabsTrigger value="rolls">Stock</TabsTrigger>
+              <TabsTrigger value="metadata">Metadata</TabsTrigger>
+            </TabsList>
+
+            {/* Overview Tab */}
+            <TabsContent value="overview" className="space-y-4 mt-4">
+              {/* Transaction Info Card */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <FileText className="h-5 w-5" />
+                    Transaction Information
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <div className="text-sm text-muted-foreground mb-1 flex items-center gap-2">
+                        <Calendar className="h-4 w-4" />
+                        Transaction Date
+                      </div>
+                      <div className="font-medium">
+                        {formatDateTime(transaction.transaction_date)}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-muted-foreground mb-1 flex items-center gap-2">
+                        <Calendar className="h-4 w-4" />
+                        Created At
+                      </div>
+                      <div className="font-medium">
+                        {formatDateTime(transaction.created_at)}
+                      </div>
+                    </div>
+                  </div>
+
+                  {transaction.batch_no && (
+                    <div>
+                      <div className="text-sm text-muted-foreground mb-1 flex items-center gap-2">
+                        <Package className="h-4 w-4" />
+                        Batch Number
+                      </div>
+                      <Badge variant="outline" className="font-mono">
+                        {transaction.batch_no}
+                      </Badge>
+                    </div>
+                  )}
+
+                  {transaction.invoice_no && (
+                    <div>
+                      <div className="text-sm text-muted-foreground mb-1 flex items-center gap-2">
+                        <FileText className="h-4 w-4" />
+                        Invoice Number
+                      </div>
+                      <Badge variant="outline" className="font-mono">
+                        {transaction.invoice_no}
+                      </Badge>
+                    </div>
+                  )}
+
+                  {transaction.customer_name && (
+                    <div>
+                      <div className="text-sm text-muted-foreground mb-1 flex items-center gap-2">
+                        <User className="h-4 w-4" />
+                        Customer
+                      </div>
+                      <div className="font-medium">{transaction.customer_name}</div>
+                    </div>
+                  )}
+
+                  {transaction.notes && (
+                    <div>
+                      <div className="text-sm text-muted-foreground mb-1">Notes</div>
+                      <div className="text-sm bg-muted p-3 rounded-md">
+                        {transaction.notes}
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Weight & Quantity Card */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Weight className="h-5 w-5" />
+                    Weight & Quantity
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div>
+                      <div className="text-sm text-muted-foreground mb-1">Total Weight</div>
+                      <div className="text-lg font-bold">
+                        {formatWeight(transaction.total_weight, transaction.unit_abbreviation)}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-muted-foreground mb-1">Quantity Change</div>
+                      <div className="text-lg font-bold">
+                        {transaction.quantity_change > 0 ? '+' : ''}
+                        {transaction.quantity_change}
+                      </div>
+                    </div>
+                    {transaction.roll_length_meters && typeof transaction.roll_length_meters === 'number' && (
+                      <div>
+                        <div className="text-sm text-muted-foreground mb-1 flex items-center gap-1">
+                          <Ruler className="h-4 w-4" />
+                          Length
+                        </div>
+                        <div className="text-lg font-bold">
+                          {transaction.roll_length_meters.toFixed(2)} m
+                        </div>
+                      </div>
+                    )}
+                    {transaction.roll_snapshot?.total_rolls && (
+                      <div>
+                        <div className="text-sm text-muted-foreground mb-1 flex items-center gap-1">
+                          <Box className="h-4 w-4" />
+                          Total Rolls
+                        </div>
+                        <div className="text-lg font-bold">
+                          {transaction.roll_snapshot.total_rolls}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* Product Tab */}
+            <TabsContent value="product" className="space-y-4 mt-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Factory className="h-5 w-5" />
+                    Product Details
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <div className="text-sm text-muted-foreground mb-1">Product Type</div>
+                      <div className="font-medium">{transaction.product_type}</div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-muted-foreground mb-1 flex items-center gap-1">
+                        <Tag className="h-4 w-4" />
+                        Brand
+                      </div>
+                      <Badge variant="outline">{transaction.brand}</Badge>
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  {/* Parameters */}
+                  {transaction.parameters && Object.keys(transaction.parameters).length > 0 && (
+                    <div>
+                      <div className="text-sm text-muted-foreground mb-2">Parameters</div>
+                      <ParameterBadges parameters={transaction.parameters} />
+                    </div>
+                  )}
+
+                  <Separator />
+
+                  {/* Production Details */}
+                  {transaction.production_date && (
+                    <div>
+                      <div className="text-sm text-muted-foreground mb-1">Production Date</div>
+                      <div className="font-medium">
+                        {formatDateTime(transaction.production_date)}
+                      </div>
+                    </div>
+                  )}
+
+                  {transaction.weight_per_meter && typeof transaction.weight_per_meter === 'number' && (
+                    <div>
+                      <div className="text-sm text-muted-foreground mb-1">Weight per Meter</div>
+                      <div className="font-medium">
+                        {transaction.weight_per_meter.toFixed(3)} kg/m
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Production Breakdown */}
+                  {/* Production Breakdown from quantity_breakdown */}
+                  {transaction.quantity_breakdown &&
+                    (transaction.quantity_breakdown.fullRolls > 0 ||
+                    transaction.quantity_breakdown.cutRolls > 0 ||
+                    transaction.quantity_breakdown.bundles > 0 ||
+                    transaction.quantity_breakdown.sparePieces > 0) && (
+                    <>
+                      <Separator />
+                      <div>
+                        <div className="text-sm font-medium mb-3">Quantity Breakdown</div>
+                        <div className="grid grid-cols-2 gap-3">
+                          {transaction.quantity_breakdown.fullRolls > 0 && (
+                            <div className="bg-blue-50 dark:bg-blue-950 p-3 rounded-md">
+                              <div className="text-xs text-muted-foreground">Full Rolls</div>
+                              <div className="text-lg font-bold">
+                                {transaction.quantity_breakdown.fullRolls}
+                              </div>
+                            </div>
+                          )}
+                          {transaction.quantity_breakdown.cutRolls > 0 && (
+                            <div className="bg-amber-50 dark:bg-amber-950 p-3 rounded-md">
+                              <div className="text-xs text-muted-foreground">Cut Rolls</div>
+                              <div className="text-lg font-bold">
+                                {transaction.quantity_breakdown.cutRolls}
+                              </div>
+                            </div>
+                          )}
+                          {transaction.quantity_breakdown.bundles > 0 && (
+                            <div className="bg-green-50 dark:bg-green-950 p-3 rounded-md">
+                              <div className="text-xs text-muted-foreground">Bundles</div>
+                              <div className="text-lg font-bold">
+                                {transaction.quantity_breakdown.bundles}
+                              </div>
+                            </div>
+                          )}
+                          {transaction.quantity_breakdown.sparePieces > 0 && (
+                            <div className="bg-purple-50 dark:bg-purple-950 p-3 rounded-md">
+                              <div className="text-xs text-muted-foreground">Spare Pieces</div>
+                              <div className="text-lg font-bold">
+                                {transaction.quantity_breakdown.sparePieces}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Legacy Production Breakdown (fallback) */}
+                  {!transaction.quantity_breakdown &&
+                    (transaction.standard_rolls_count ||
+                    transaction.cut_rolls_count ||
+                    transaction.bundles_count ||
+                    transaction.spare_pieces_count) && (
+                    <>
+                      <Separator />
+                      <div>
+                        <div className="text-sm font-medium mb-3">Production Breakdown</div>
+                        <div className="grid grid-cols-2 gap-3">
+                          {transaction.standard_rolls_count ? (
+                            <div className="bg-blue-50 dark:bg-blue-950 p-3 rounded-md">
+                              <div className="text-xs text-muted-foreground">Standard Rolls</div>
+                              <div className="text-lg font-bold">
+                                {transaction.standard_rolls_count}
+                              </div>
+                              {transaction.avg_standard_roll_length && typeof transaction.avg_standard_roll_length === 'number' && (
+                                <div className="text-xs text-muted-foreground mt-1">
+                                  Avg: {transaction.avg_standard_roll_length.toFixed(2)}m
+                                </div>
+                              )}
+                            </div>
+                          ) : null}
+                          {transaction.cut_rolls_count ? (
+                            <div className="bg-amber-50 dark:bg-amber-950 p-3 rounded-md">
+                              <div className="text-xs text-muted-foreground">Cut Rolls</div>
+                              <div className="text-lg font-bold">
+                                {transaction.cut_rolls_count}
+                              </div>
+                            </div>
+                          ) : null}
+                          {transaction.bundles_count ? (
+                            <div className="bg-green-50 dark:bg-green-950 p-3 rounded-md">
+                              <div className="text-xs text-muted-foreground">Bundles</div>
+                              <div className="text-lg font-bold">
+                                {transaction.bundles_count}
+                              </div>
+                              {transaction.bundle_size && (
+                                <div className="text-xs text-muted-foreground mt-1">
+                                  Size: {transaction.bundle_size} pieces
+                                </div>
+                              )}
+                            </div>
+                          ) : null}
+                          {transaction.spare_pieces_count ? (
+                            <div className="bg-purple-50 dark:bg-purple-950 p-3 rounded-md">
+                              <div className="text-xs text-muted-foreground">Spare Pieces</div>
+                              <div className="text-lg font-bold">
+                                {transaction.spare_pieces_count}
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* Rolls Tab */}
+            <TabsContent value="rolls" className="space-y-4 mt-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Box className="h-5 w-5" />
+                    Stock Details
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {transaction.roll_snapshot?.stock_entries && transaction.roll_snapshot.stock_entries.length > 0 ? (
+                    <div className="space-y-2">
+                      {transaction.roll_snapshot.stock_entries.map((entry, idx) => (
+                        <div
+                          key={idx}
+                          className="border rounded-lg p-4 hover:bg-muted/50 transition-colors"
+                        >
+                          <div className="flex items-start justify-between mb-3">
+                            <div className="font-medium text-lg">{entry.quantity} × {entry.stock_type.replace('_', ' ')}</div>
+                            <Badge variant={entry.status === 'IN_STOCK' ? 'default' : 'secondary'}>
+                              {entry.status}
+                            </Badge>
+                          </div>
+                          <div className="grid grid-cols-2 gap-3 text-sm">
+                            <div>
+                              <span className="text-muted-foreground">Stock ID:</span>
+                              <span className="ml-2 font-mono text-xs">{entry.stock_id.substring(0, 8)}...</span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">Batch ID:</span>
+                              <span className="ml-2 font-mono text-xs">{entry.batch_id.substring(0, 8)}...</span>
+                            </div>
+                            {entry.length_per_unit && (
+                              <div>
+                                <span className="text-muted-foreground">Length per unit:</span>
+                                <span className="ml-2 font-medium">{Number(entry.length_per_unit).toFixed(2)}m</span>
+                              </div>
+                            )}
+                            {entry.pieces_per_bundle && (
+                              <div>
+                                <span className="text-muted-foreground">Pieces per bundle:</span>
+                                <span className="ml-2 font-medium">{entry.pieces_per_bundle}</span>
+                              </div>
+                            )}
+                            {entry.piece_length_meters && (
+                              <div>
+                                <span className="text-muted-foreground">Piece length:</span>
+                                <span className="ml-2 font-medium">{Number(entry.piece_length_meters).toFixed(2)}m</span>
+                              </div>
+                            )}
+                          </div>
+                          {/* Calculate total meters for this entry */}
+                          <div className="mt-3 pt-3 border-t">
+                            <div className="text-sm font-medium">
+                              {entry.stock_type === 'FULL_ROLL' || entry.stock_type === 'CUT_ROLL' ? (
+                                <>Total: {(entry.quantity * (entry.length_per_unit || 0)).toFixed(2)}m</>
+                              ) : entry.stock_type === 'BUNDLE' ? (
+                                <>Total: {(entry.quantity * (entry.pieces_per_bundle || 0) * (entry.piece_length_meters || 0)).toFixed(2)}m ({entry.quantity * (entry.pieces_per_bundle || 0)} pieces)</>
+                              ) : entry.stock_type === 'SPARE_PIECES' ? (
+                                <>Total: {(entry.quantity * (entry.piece_length_meters || 0)).toFixed(2)}m ({entry.quantity} pieces)</>
+                              ) : null}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : transaction.roll_snapshot?.rolls && transaction.roll_snapshot.rolls.length > 0 ? (
+                    <div className="space-y-2">
+                      {transaction.roll_snapshot.rolls.map((roll, idx) => (
+                        <div
+                          key={idx}
+                          className="border rounded-lg p-3 hover:bg-muted/50 transition-colors"
+                        >
+                          <div className="flex items-start justify-between mb-2">
+                            <div className="font-mono font-medium">{roll.roll_id}</div>
+                            <Badge variant={roll.is_cut_roll ? 'destructive' : 'default'}>
+                              {roll.roll_type}
+                            </Badge>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 text-sm">
+                            <div>
+                              <span className="text-muted-foreground">Batch:</span>
+                              <span className="ml-2">{roll.batch_code}</span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">Qty Dispatched:</span>
+                              <span className="ml-2">{roll.quantity_dispatched}</span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">Length:</span>
+                              <span className="ml-2">{Number(roll.length_meters).toFixed(2)}m</span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground">Initial Length:</span>
+                              <span className="ml-2">
+                                {Number(roll.initial_length_meters).toFixed(2)}m
+                              </span>
+                            </div>
+                            {roll.bundle_size && (
+                              <div>
+                                <span className="text-muted-foreground">Bundle Size:</span>
+                                <span className="ml-2">{roll.bundle_size}</span>
+                              </div>
+                            )}
+                            <div>
+                              <span className="text-muted-foreground">Status:</span>
+                              <Badge variant="outline" className="ml-2">
+                                {roll.status}
+                              </Badge>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-muted-foreground">
+                      No stock details available
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* Metadata Tab */}
+            <TabsContent value="metadata" className="space-y-4 mt-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">System Information</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <div className="text-sm text-muted-foreground mb-1">Product Variant ID</div>
+                      <div className="font-mono text-sm">{transaction.product_variant_id}</div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-muted-foreground mb-1">Batch Code</div>
+                      <div className="font-mono text-sm">{transaction.batch_code}</div>
+                    </div>
+                  </div>
+
+                  {transaction.dispatch_id && (
+                    <div>
+                      <div className="text-sm text-muted-foreground mb-1">Dispatch ID</div>
+                      <div className="font-mono text-sm">{transaction.dispatch_id}</div>
+                    </div>
+                  )}
+
+                  {(transaction.created_by_username ||
+                    transaction.created_by_email ||
+                    transaction.created_by_name) && (
+                    <>
+                      <Separator />
+                      <div>
+                        <div className="text-sm font-medium mb-2">Created By</div>
+                        <div className="space-y-1 text-sm">
+                          {transaction.created_by_name && (
+                            <div>
+                              <span className="text-muted-foreground">Name:</span>
+                              <span className="ml-2">{transaction.created_by_name}</span>
+                            </div>
+                          )}
+                          {transaction.created_by_username && (
+                            <div>
+                              <span className="text-muted-foreground">Username:</span>
+                              <span className="ml-2">{transaction.created_by_username}</span>
+                            </div>
+                          )}
+                          {transaction.created_by_email && (
+                            <div>
+                              <span className="text-muted-foreground">Email:</span>
+                              <span className="ml-2">{transaction.created_by_email}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {transaction.attachment_url && (
+                    <>
+                      <Separator />
+                      <div>
+                        <div className="text-sm text-muted-foreground mb-2">Attachment</div>
+                        <a
+                          href={transaction.attachment_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm text-primary hover:underline"
+                        >
+                          View Attachment
+                        </a>
+                      </div>
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+        </ScrollArea>
+      </DialogContent>
+    </Dialog>
+  );
+}
