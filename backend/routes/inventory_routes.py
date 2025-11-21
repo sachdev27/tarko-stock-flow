@@ -803,7 +803,7 @@ def search_inventory():
             cursor.execute(query, tuple(params))
             results = cursor.fetchall()
 
-            # Expand CUT_ROLL entries to show individual cut pieces
+            # Expand CUT_ROLL and SPARE entries to show individual pieces
             expanded_results = []
             for row in results:
                 if row['stock_type'] == 'CUT_ROLL':
@@ -821,6 +821,23 @@ def search_inventory():
                         piece_entry = dict(row)
                         piece_entry['piece_id'] = piece['piece_id']
                         piece_entry['length_meters'] = piece['length_meters']
+                        expanded_results.append(piece_entry)
+                elif row['stock_type'] == 'SPARE':
+                    # Fetch individual spare pieces for this stock
+                    cursor.execute("""
+                        SELECT id::text as spare_id, piece_count
+                        FROM sprinkler_spare_pieces
+                        WHERE stock_id = %s AND status = 'IN_STOCK'
+                        ORDER BY piece_count DESC
+                    """, (row['id'],))
+                    spare_pieces = cursor.fetchall()
+
+                    # Add each spare piece group as a separate entry
+                    for piece in spare_pieces:
+                        piece_entry = dict(row)
+                        piece_entry['spare_id'] = piece['spare_id']
+                        piece_entry['piece_count'] = piece['piece_count']
+                        # piece_length_meters is already in row from the parent stock
                         expanded_results.append(piece_entry)
                 else:
                     expanded_results.append(dict(row))

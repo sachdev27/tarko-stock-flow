@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react';
-import { Layout } from '@/components/Layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -32,6 +31,7 @@ const DispatchNewModular = () => {
   const [billToId, setBillToId] = useState('');
   const [transportId, setTransportId] = useState('');
   const [vehicleId, setVehicleId] = useState('');
+  const [dispatchDate, setDispatchDate] = useState<Date | undefined>(new Date());
   const [notes, setNotes] = useState('');
 
   // Product Selection State
@@ -141,6 +141,7 @@ const DispatchNewModular = () => {
     // Map roll_id to id if needed
     const normalizedRoll = {
       id: roll.roll_id || roll.id,
+      product_variant_id: roll.product_variant_id,
       piece_id: roll.piece_id,
       batch_code: roll.batch_code,
       length_meters: roll.length_meters,
@@ -155,7 +156,10 @@ const DispatchNewModular = () => {
       quantity: roll.quantity || 1,
       dispatchLength: roll.length_meters,
       piece_length_meters: roll.piece_length_meters,
-      piece_count: roll.piece_count
+      piece_count: roll.piece_count,
+      spare_id: roll.spare_id,
+      spare_ids: roll.spare_ids,
+      length_per_unit: roll.length_per_unit
     };
 
     // Check for duplicates - for cut pieces, each piece is unique; for others, increase quantity
@@ -192,11 +196,17 @@ const DispatchNewModular = () => {
     toast.info(`Removed ${removed.batch_code}`);
   };
 
+  const handleClearCart = () => {
+    setSelectedRolls([]);
+    toast.info('Cart cleared');
+  };
+
   const handleClearAll = () => {
     setCustomerId('');
     setBillToId('');
     setTransportId('');
     setVehicleId('');
+    setDispatchDate(new Date());
     setNotes('');
     setProductTypeId('');
     setProductSearch('');
@@ -221,33 +231,82 @@ const DispatchNewModular = () => {
 
     setLoading(true);
     try {
-      await api.dispatchSale({
+      // Format items for new dispatch endpoint
+      const items = selectedRolls.map(roll => {
+        if (!roll.product_variant_id) {
+          console.error('Missing product_variant_id for roll:', roll);
+          throw new Error(`Missing product variant information for ${roll.batch_code || 'item'}`);
+        }
+
+        const baseItem = {
+          stock_id: roll.id,
+          product_variant_id: roll.product_variant_id,
+          quantity: roll.quantity || 1
+        };
+
+        // Determine item type and add specific fields
+        if (roll.piece_id) {
+          // Cut piece
+          return {
+            ...baseItem,
+            item_type: 'CUT_PIECE' as const,
+            cut_piece_id: roll.piece_id,
+            length_meters: roll.length_meters
+          };
+        } else if (roll.stock_type === 'SPARE' || roll.spare_id) {
+          // Spare pieces
+          return {
+            ...baseItem,
+            item_type: 'SPARE_PIECES' as const,
+            spare_piece_ids: roll.spare_ids || (roll.spare_id ? [roll.spare_id] : []),
+            piece_count: roll.piece_count || 1
+          };
+        } else if (roll.stock_type === 'BUNDLE' || roll.bundle_size) {
+          // Bundle
+          return {
+            ...baseItem,
+            item_type: 'BUNDLE' as const,
+            bundle_size: roll.bundle_size,
+            pieces_per_bundle: roll.pieces_per_bundle,
+            piece_length_meters: roll.piece_length_meters
+          };
+        } else {
+          // Full roll
+          return {
+            ...baseItem,
+            item_type: 'FULL_ROLL' as const,
+            length_meters: roll.length_meters || roll.length_per_unit
+          };
+        }
+      });
+
+      const response = await api.createDispatch({
         customer_id: customerId,
         bill_to_id: billToId || undefined,
         transport_id: transportId || undefined,
         vehicle_id: vehicleId || undefined,
+        dispatch_date: dispatchDate ?
+          `${dispatchDate.getFullYear()}-${String(dispatchDate.getMonth() + 1).padStart(2, '0')}-${String(dispatchDate.getDate()).padStart(2, '0')}`
+          : undefined,
         notes: notes || undefined,
-        rolls: selectedRolls.map(roll => ({
-          roll_id: roll.id,
-          quantity: roll.length_meters
-        }))
+        items
       });
 
-      toast.success('🚚 Dispatch completed successfully!');
+      toast.success(`🚚 Dispatch ${response.dispatch_number} completed successfully!`);
 
       // Reset form and focus on customer field
       handleClearAll();
-    } catch (error) {
-      toast.error('Failed to complete dispatch');
+    } catch (error: any) {
+      console.error('Dispatch error:', error);
+      toast.error(error.message || 'Failed to complete dispatch');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <Layout>
-      <div className="p-4 w-full space-y-4">
-        <Card>
+    <div className="w-full space-y-4">
+      <Card>
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -278,6 +337,8 @@ const DispatchNewModular = () => {
               onTransportChange={setTransportId}
               vehicleId={vehicleId}
               onVehicleChange={setVehicleId}
+              dispatchDate={dispatchDate}
+              onDispatchDateChange={setDispatchDate}
               notes={notes}
               onNotesChange={setNotes}
               customers={customers}
@@ -299,6 +360,7 @@ const DispatchNewModular = () => {
               onProductSearchChange={setProductSearch}
               selectedRolls={selectedRolls}
               onRemoveRoll={handleRemoveRoll}
+              onClearCart={handleClearCart}
               onAddRoll={handleAddRoll}
               onUpdateRollQuantity={(index, quantity, dispatchLength) => {
                 // Update quantity or dispatch length for a selected roll
@@ -332,7 +394,6 @@ const DispatchNewModular = () => {
           </CardContent>
         </Card>
       </div>
-    </Layout>
   );
 };
 

@@ -27,6 +27,7 @@ interface StockEntry {
 }
 
 interface ProductVariant {
+  id: string;
   variant_key: string;
   brand_name: string;
   product_type_name: string;
@@ -67,6 +68,7 @@ interface ProductSelectionProps {
   onProductSearchChange: (search: string) => void;
   selectedRolls: any[];
   onRemoveRoll: (index: number) => void;
+  onClearCart: () => void;
   onAddRoll: (roll: any) => void;
   onUpdateRollQuantity: (index: number, quantity: number, dispatchLength?: number) => void;
   productTypes: ProductType[];
@@ -93,6 +95,7 @@ export const ProductSelectionSection = ({
   onProductSearchChange,
   selectedRolls,
   onRemoveRoll,
+  onClearCart,
   onAddRoll,
   productTypes,
   availableRolls,
@@ -127,12 +130,19 @@ export const ProductSelectionSection = ({
   const groupedVariants = useMemo(() => {
     const variants: Record<string, ProductVariant> = {};
 
+    // Debug: Check if spare_id exists in raw data
+    const sparesInRaw = availableRolls.filter(r => r.stock_type === 'SPARE' || r.bundle_type === 'spare');
+    if (sparesInRaw.length > 0) {
+      console.log('Spare rolls in raw data:', sparesInRaw.slice(0, 2));
+    }
+
     availableRolls.forEach((roll) => {
       const paramStr = JSON.stringify(roll.parameters || {});
       const key = `${roll.brand_name}-${paramStr}`;
 
       if (!variants[key]) {
         variants[key] = {
+          id: roll.product_variant_id,
           variant_key: key,
           brand_name: roll.brand_name || '',
           product_type_name: roll.product_type_name || '',
@@ -217,6 +227,7 @@ export const ProductSelectionSection = ({
 
     const roll = {
       id: fullRollEntry.stock_id,
+      product_variant_id: variant.id,
       batch_code: fullRollEntry.batch_code || '',
       length_meters: fullRollEntry.length_per_unit || 0,
       status: 'AVAILABLE',
@@ -237,6 +248,7 @@ export const ProductSelectionSection = ({
   const handleAddCutRoll = (variant: ProductVariant, entry: StockEntry) => {
     const roll = {
       id: entry.stock_id,
+      product_variant_id: variant.id,
       piece_id: entry.piece_id,
       batch_code: entry.batch_code || '',
       length_meters: entry.length_per_unit || 0,
@@ -278,6 +290,7 @@ export const ProductSelectionSection = ({
     const firstBundle = bundleEntries[0];
     const roll = {
       id: firstBundle.stock_id,
+      product_variant_id: variant.id,
       batch_code: firstBundle.batch_code || '',
       status: 'AVAILABLE',
       stock_type: 'BUNDLE',
@@ -301,15 +314,53 @@ export const ProductSelectionSection = ({
     const quantity = parseInt(String(spareQuantities[key])) || 0;
 
     console.log('handleAddSpares:', { key, spareQuantities, rawValue: spareQuantities[key], quantity, available });
+    console.log('spareEntries received:', spareEntries);
+    console.log('First entry details:', spareEntries[0]);
 
     if (quantity <= 0 || quantity > available) {
       toast.error(`Please enter a valid quantity (1-${available} pieces)`);
       return;
     }
 
+    // Each spareEntry represents a GROUP of spare pieces with the same length and piece_count
+    // The spare_id is the ID of the sprinkler_spare_pieces record (the group)
+    // We need to collect spare_ids, potentially repeating them if we take multiple pieces from one group
+    const spare_ids: string[] = [];
+    let remaining = quantity;
+
+    for (const entry of spareEntries) {
+      if (remaining <= 0) break;
+
+      const piecesFromThisGroup = Math.min(remaining, entry.piece_count || 1);
+
+      // Add this group's spare_id once for each piece we're taking from it
+      if (entry.spare_id) {
+        for (let i = 0; i < piecesFromThisGroup; i++) {
+          spare_ids.push(entry.spare_id);
+        }
+        remaining -= piecesFromThisGroup;
+      } else {
+        console.error('Entry missing spare_id:', entry);
+      }
+    }
+
+    console.log('Collection result:', { spare_ids, length: spare_ids.length, needed: quantity });
+
+    if (spare_ids.length !== quantity) {
+      console.error('spare_ids collection failed:', {
+        collected: spare_ids.length,
+        needed: quantity,
+        spare_ids,
+        entries: spareEntries
+      });
+      toast.error(`Unable to collect all spare piece IDs (got ${spare_ids.length}/${quantity})`);
+      return;
+    }
+
     const firstSpare = spareEntries[0];
     const roll = {
       id: firstSpare.stock_id,
+      product_variant_id: variant.id,
       batch_code: firstSpare.batch_code || '',
       status: 'AVAILABLE',
       stock_type: 'SPARE',
@@ -319,7 +370,8 @@ export const ProductSelectionSection = ({
       brand_name: variant.brand_name,
       product_type_name: variant.product_type_name,
       product_category: variant.product_category,
-      quantity: 1 // For spares, quantity represents number of pieces
+      quantity: 1, // For spares, quantity represents number of pieces
+      spare_ids: spare_ids // Array of individual spare piece IDs
     };
 
     onAddRoll(roll);
@@ -835,6 +887,17 @@ export const ProductSelectionSection = ({
                 <Package className="h-4 w-4" />
                 Cart ({selectedRolls.length} {selectedRolls.length === 1 ? 'item' : 'items'})
               </span>
+              {selectedRolls.length > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onClearCart}
+                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                >
+                  <X className="h-4 w-4 mr-1" />
+                  Clear Cart
+                </Button>
+              )}
             </h4>
           </CardHeader>
           <CardContent>
@@ -970,7 +1033,7 @@ export const ProductSelectionSection = ({
                   <div className="flex items-center gap-2">
                     <span className="text-gray-600 font-medium">Vehicle:</span>
                     <span className="font-semibold">
-                      {vehicles.find(v => v.id === vehicleId)?.name || '-'}
+                      {vehicles.find(v => v.id === vehicleId)?.driver_name || '-'}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">

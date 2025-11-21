@@ -118,6 +118,7 @@ def get_transactions():
     # Build WHERE clause for date filtering
     date_filter = ""
     date_filter_inv = ""
+    date_filter_dispatch = ""
     params = []
 
     if start_date_ist and end_date_ist:
@@ -136,7 +137,8 @@ def get_transactions():
 
         date_filter = " AND t.created_at >= %s AND t.created_at <= %s"
         date_filter_inv = " AND it.created_at >= %s AND it.created_at <= %s"
-        params = [start_ist, end_ist, start_ist, end_ist]  # Duplicate for both queries
+        date_filter_dispatch = " AND d.created_at >= %s AND d.created_at <= %s"
+        params = [start_ist, end_ist, start_ist, end_ist, start_ist, end_ist]  # For transactions, inventory_transactions, and dispatches
 
     # Query both transactions and inventory_transactions tables
     query = f"""
@@ -328,6 +330,112 @@ def get_transactions():
         LEFT JOIN units u_unit ON pt.unit_id = u_unit.id
         WHERE it.transaction_type IN ('CUT_ROLL', 'SPLIT_BUNDLE', 'COMBINE_SPARES')
         AND (it.notes IS NULL OR it.notes NOT LIKE '%%[REVERTED]%%'){date_filter_inv}
+
+        UNION ALL
+
+        -- Dispatch transactions from new dispatch system (grouped by dispatch)
+        SELECT
+            CONCAT('dispatch_', d.id) as id,
+            d.id as dispatch_id,
+            'DISPATCH' as transaction_type,
+            -COALESCE(SUM(di.quantity), 0) as quantity_change,
+            d.dispatch_date as transaction_date,
+            d.invoice_number as invoice_no,
+            CONCAT('Dispatch: ', d.dispatch_number,
+                   CASE
+                       WHEN COUNT(DISTINCT di.product_variant_id) > 1
+                       THEN ' (Mixed Products)'
+                       ELSE ''
+                   END) as notes,
+            d.created_at,
+            jsonb_build_object(
+                'dispatch_number', d.dispatch_number,
+                'dispatch_id', d.id,
+                'total_items', COUNT(di.id),
+                'item_types', jsonb_agg(DISTINCT di.item_type),
+                'mixed_products', COUNT(DISTINCT di.product_variant_id) > 1,
+                'vehicle_number', v.vehicle_number,
+                'driver_name', v.driver_name,
+                'transport_name', t.name,
+                'bill_to_name', bt.name,
+                'item_breakdown', jsonb_agg(DISTINCT jsonb_build_object(
+                    'item_type', di.item_type,
+                    'quantity', di.quantity,
+                    'product_type', pt.name,
+                    'brand', br.name,
+                    'parameters', pv.parameters,
+                    'piece_count', di.piece_count,
+                    'piece_length', di.piece_length_meters,
+                    'length_meters', di.length_meters,
+                    'bundle_size', di.bundle_size
+                ))
+            ) as roll_snapshot,
+            CASE
+                WHEN COUNT(DISTINCT di.product_variant_id) > 1 THEN NULL
+                ELSE MAX(b.batch_code)
+            END as batch_code,
+            CASE
+                WHEN COUNT(DISTINCT di.product_variant_id) > 1 THEN NULL
+                ELSE MAX(b.batch_no)
+            END as batch_no,
+            NULL as initial_quantity,
+            NULL as weight_per_meter,
+            NULL as total_weight,
+            NULL as piece_length,
+            NULL as attachment_url,
+            NULL as production_date,
+            CASE
+                WHEN COUNT(DISTINCT di.product_variant_id) > 1 THEN 'Mixed'
+                ELSE MAX(pt.name)
+            END as product_type,
+            CASE
+                WHEN COUNT(DISTINCT di.product_variant_id) > 1 THEN NULL
+                ELSE MAX(pv.id::text)::uuid
+            END as product_variant_id,
+            NULL as product_type_id,
+            NULL as brand_id,
+            CASE
+                WHEN COUNT(DISTINCT di.product_variant_id) > 1 THEN 'Mixed'
+                ELSE MAX(br.name)
+            END as brand,
+            CASE
+                WHEN COUNT(DISTINCT di.product_variant_id) > 1 THEN '{{}}'::jsonb
+                ELSE (array_agg(pv.parameters))[1]
+            END as parameters,
+            NULL as roll_length_meters,
+            NULL as roll_initial_length_meters,
+            FALSE as roll_is_cut,
+            NULL as roll_type,
+            NULL as roll_bundle_size,
+            NULL as roll_weight,
+            NULL as unit_abbreviation,
+            MAX(c.name) as customer_name,
+            MAX(u.email) as created_by_email,
+            MAX(u.username) as created_by_username,
+            MAX(u.full_name) as created_by_name,
+            NULL::bigint as standard_rolls_count,
+            NULL::bigint as cut_rolls_count,
+            NULL::bigint as bundles_count,
+            NULL::bigint as spare_pieces_count,
+            NULL::numeric as avg_standard_roll_length,
+            NULL as bundle_size,
+            NULL::numeric[] as cut_rolls_details,
+            NULL::numeric[] as spare_pieces_details
+        FROM dispatches d
+        LEFT JOIN dispatch_items di ON d.id = di.dispatch_id
+        LEFT JOIN inventory_stock ist ON di.stock_id = ist.id
+        LEFT JOIN batches b ON ist.batch_id = b.id
+        LEFT JOIN product_variants pv ON di.product_variant_id = pv.id
+        LEFT JOIN product_types pt ON pv.product_type_id = pt.id
+        LEFT JOIN brands br ON pv.brand_id = br.id
+        LEFT JOIN units u_unit ON pt.unit_id = u_unit.id
+        LEFT JOIN customers c ON d.customer_id = c.id
+        LEFT JOIN bill_to bt ON d.bill_to_id = bt.id
+        LEFT JOIN transports t ON d.transport_id = t.id
+        LEFT JOIN vehicles v ON d.vehicle_id = v.id
+        LEFT JOIN users u ON d.created_by = u.id
+        WHERE d.deleted_at IS NULL{date_filter_dispatch}
+        GROUP BY d.id, d.dispatch_number, d.dispatch_date, d.invoice_number, d.created_at, v.vehicle_number, v.driver_name, t.name, bt.name
 
         ORDER BY transaction_date DESC
         LIMIT 1000

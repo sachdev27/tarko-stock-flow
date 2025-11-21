@@ -3,11 +3,70 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { TransactionTypeBadge } from './TransactionTypeBadge';
 import { ParameterBadges } from './ParameterBadges';
-import { formatWeight, formatDateTime, getProductName } from '@/utils/transactions/formatters';
+import { formatWeight, formatDateTime, formatDate, getProductName } from '@/utils/transactions/formatters';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ChevronDown } from 'lucide-react';
 import { useState } from 'react';
+
+// Helper functions for dispatch calculations
+const calculateDispatchQuantity = (transaction: TransactionRecord): number => {
+  if (!transaction.roll_snapshot?.item_breakdown || !Array.isArray(transaction.roll_snapshot.item_breakdown)) {
+    return 0;
+  }
+  return transaction.roll_snapshot.item_breakdown.reduce((total: number, item: any) => {
+    return total + (item.quantity || 0);
+  }, 0);
+};
+
+const formatDispatchQuantityShort = (transaction: TransactionRecord): string => {
+  if (!transaction.roll_snapshot?.item_breakdown || !Array.isArray(transaction.roll_snapshot.item_breakdown)) {
+    return '0';
+  }
+
+  const counts: { [key: string]: number } = {};
+
+  transaction.roll_snapshot.item_breakdown.forEach((item: any) => {
+    const type = item.item_type;
+    const qty = item.quantity || 0;
+    counts[type] = (counts[type] || 0) + qty;
+  });
+
+  const parts: string[] = [];
+  if (counts['FULL_ROLL']) parts.push(`${counts['FULL_ROLL']}R`);
+  if (counts['CUT_PIECE']) parts.push(`${counts['CUT_PIECE']}C`);
+  if (counts['BUNDLE']) parts.push(`${counts['BUNDLE']}B`);
+  if (counts['SPARE_PIECES']) parts.push(`${counts['SPARE_PIECES']}SP`);
+
+  return parts.length > 0 ? parts.join(' + ') : '0';
+};
+
+const calculateDispatchMeters = (transaction: TransactionRecord): number => {
+  if (!transaction.roll_snapshot?.item_breakdown || !Array.isArray(transaction.roll_snapshot.item_breakdown)) {
+    return 0;
+  }
+  return transaction.roll_snapshot.item_breakdown.reduce((total: number, item: any) => {
+    let itemMeters = 0;
+
+    // For FULL_ROLL and CUT_PIECE - use length_meters
+    if (item.length_meters && typeof item.length_meters === 'number' && item.length_meters > 0) {
+      itemMeters = item.length_meters * (item.quantity || 1);
+    }
+    // For BUNDLE and SPARE_PIECES - use piece_length/piece_length_meters and piece_count
+    else if (item.piece_count && (item.piece_length || item.piece_length_meters)) {
+      const pieceLength = item.piece_length || item.piece_length_meters;
+      if (typeof pieceLength === 'number' && pieceLength > 0) {
+        itemMeters = pieceLength * item.piece_count * (item.quantity || 1);
+      }
+    }
+    // Fallback: check for bundle_size and piece_length
+    else if (item.bundle_size && item.piece_length && typeof item.piece_length === 'number' && item.piece_length > 0) {
+      itemMeters = item.piece_length * item.bundle_size * (item.quantity || 1);
+    }
+
+    return total + itemMeters;
+  }, 0);
+};
 
 interface TransactionCardProps {
   transaction: TransactionRecord;
@@ -50,11 +109,19 @@ export function TransactionCard({
               <TransactionTypeBadge transaction={transaction} />
             </div>
             <CardTitle className="text-lg">
-              {getProductName(transaction)}
+              {transaction.product_type === 'Mixed' || transaction.product_type === 'Mixed Products'
+                ? 'Mixed'
+                : (transaction.product_type && transaction.brand && transaction.product_type !== 'null' && transaction.brand !== 'null')
+                ? getProductName(transaction)
+                : transaction.transaction_type === 'DISPATCH'
+                ? 'No Products'
+                : getProductName(transaction)}
             </CardTitle>
           </div>
           <div className="text-right text-sm text-muted-foreground">
-            {formatDateTime(transaction.created_at)}
+            {transaction.transaction_type === 'DISPATCH'
+              ? formatDateTime(transaction.created_at)
+              : formatDateTime(transaction.transaction_date || transaction.created_at)}
           </div>
         </div>
       </CardHeader>
@@ -68,16 +135,21 @@ export function TransactionCard({
             </span>
           </div>
           <div>
-            <span className="text-muted-foreground">Rolls:</span>
+            <span className="text-muted-foreground">Quantity:</span>
             <span className="ml-2 font-medium">
-              {transaction.total_rolls_count || transaction.roll_snapshot?.total_rolls || 0}
+              {transaction.transaction_type === 'DISPATCH'
+                ? formatDispatchQuantityShort(transaction)
+                : transaction.total_rolls_count || transaction.roll_snapshot?.total_rolls || 0}
             </span>
           </div>
-          {transaction.roll_length_meters && typeof transaction.roll_length_meters === 'number' && (
+          {((transaction.transaction_type === 'DISPATCH' && calculateDispatchMeters(transaction) > 0) ||
+            (transaction.roll_length_meters && typeof transaction.roll_length_meters === 'number')) && (
             <div>
               <span className="text-muted-foreground">Meters:</span>
               <span className="ml-2 font-medium">
-                {transaction.roll_length_meters.toFixed(2)}
+                {transaction.transaction_type === 'DISPATCH'
+                  ? calculateDispatchMeters(transaction).toFixed(2)
+                  : transaction.roll_length_meters!.toFixed(2)}
               </span>
             </div>
           )}

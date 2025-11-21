@@ -70,16 +70,28 @@ def create_customer():
             return jsonify({'error': 'Customer name is required'}), 400
 
         with get_db_cursor(commit=True) as cursor:
-            # Check for duplicate
+            # Check for duplicate (including soft-deleted)
             cursor.execute("""
-                SELECT id, name FROM customers
+                SELECT id, name, deleted_at FROM customers
                 WHERE LOWER(TRIM(name)) = LOWER(%s)
-                AND deleted_at IS NULL
             """, (name,))
             existing = cursor.fetchone()
 
             if existing:
-                return jsonify({'error': f'Customer "{existing["name"]}" already exists'}), 409
+                if existing['deleted_at']:
+                    # Restore soft-deleted customer
+                    cursor.execute("""
+                        UPDATE customers
+                        SET deleted_at = NULL, city = %s, contact_person = %s, phone = %s,
+                            email = %s, gstin = %s, address = %s, updated_at = NOW()
+                        WHERE id = %s
+                        RETURNING id, name, city, contact_person, phone, email, gstin, address
+                    """, (city, contact_person, phone, email, gstin, address, existing['id']))
+                    restored = cursor.fetchone()
+                    logger.info(f"Restored customer: {name}")
+                    return jsonify(restored), 201
+                else:
+                    return jsonify({'error': f'Customer "{existing["name"]}" already exists'}), 409
 
             # Insert new customer
             cursor.execute("""
@@ -98,11 +110,17 @@ def create_customer():
 
 
 @dispatch_entities_bp.route('/customers/<customer_id>', methods=['PUT', 'OPTIONS'])
-@jwt_required()
 def update_customer(customer_id):
     """Update a customer"""
+    if request.method == 'OPTIONS':
+        return jsonify({'message': 'OK'}), 200
+
+    # Apply JWT only for non-OPTIONS
+    from flask_jwt_extended import verify_jwt_in_request
+    verify_jwt_in_request()
+
     try:
-        data = request.json
+        data = request.get_json(force=True)
         name = data.get('name', '').strip()
 
         if not name:
@@ -139,9 +157,15 @@ def update_customer(customer_id):
 
 
 @dispatch_entities_bp.route('/customers/<customer_id>', methods=['DELETE', 'OPTIONS'])
-@jwt_required()
 def delete_customer(customer_id):
     """Soft delete a customer"""
+    if request.method == 'OPTIONS':
+        return jsonify({'message': 'OK'}), 200
+
+    # Apply JWT only for non-OPTIONS
+    from flask_jwt_extended import verify_jwt_in_request
+    verify_jwt_in_request()
+
     try:
         with get_db_cursor(commit=True) as cursor:
             cursor.execute("""
@@ -210,7 +234,32 @@ def create_bill_to():
             if field not in data:
                 return jsonify({'error': f'Missing required field: {field}'}), 400
 
-        with get_db_cursor() as cursor:
+        with get_db_cursor(commit=True) as cursor:
+            # Check if bill-to with this name exists (including soft-deleted)
+            cursor.execute("""
+                SELECT id, deleted_at FROM bill_to WHERE LOWER(TRIM(name)) = LOWER(TRIM(%s))
+            """, (data['name'],))
+            existing = cursor.fetchone()
+
+            if existing:
+                if existing['deleted_at']:
+                    # Restore soft-deleted bill-to
+                    cursor.execute("""
+                        UPDATE bill_to
+                        SET deleted_at = NULL, city = %s, gstin = %s, address = %s,
+                            contact_person = %s, phone = %s, email = %s, updated_at = NOW()
+                        WHERE id = %s
+                        RETURNING id, name, city, gstin, address, contact_person, phone, email
+                    """, (data.get('city'), data.get('gstin'), data.get('address'),
+                          data.get('contact_person'), data.get('phone'), data.get('email'),
+                          existing['id']))
+                    restored = cursor.fetchone()
+                    logger.info(f"Restored bill-to: {data['name']}")
+                    return jsonify(restored), 201
+                else:
+                    return jsonify({'error': f'Bill-to "{data["name"]}" already exists'}), 409
+
+            # Create new bill-to
             cursor.execute("""
                 INSERT INTO bill_to (name, city, gstin, address, contact_person, phone, email)
                 VALUES (%s, %s, %s, %s, %s, %s, %s)
@@ -234,11 +283,17 @@ def create_bill_to():
 
 
 @dispatch_entities_bp.route('/bill-to/<bill_to_id>', methods=['PUT', 'OPTIONS'])
-@jwt_required()
 def update_bill_to(bill_to_id):
     """Update a bill-to entity"""
+    if request.method == 'OPTIONS':
+        return jsonify({'message': 'OK'}), 200
+
+    # Apply JWT only for non-OPTIONS
+    from flask_jwt_extended import verify_jwt_in_request
+    verify_jwt_in_request()
+
     try:
-        data = request.json
+        data = request.get_json(force=True)
         if 'name' not in data:
             return jsonify({'error': 'Name is required'}), 400
 
@@ -272,9 +327,15 @@ def update_bill_to(bill_to_id):
 
 
 @dispatch_entities_bp.route('/bill-to/<bill_to_id>', methods=['DELETE', 'OPTIONS'])
-@jwt_required()
 def delete_bill_to(bill_to_id):
     """Soft delete a bill-to entity"""
+    if request.method == 'OPTIONS':
+        return jsonify({'message': 'OK'}), 200
+
+    # Apply JWT only for non-OPTIONS
+    from flask_jwt_extended import verify_jwt_in_request
+    verify_jwt_in_request()
+
     try:
         with get_db_cursor(commit=True) as cursor:
             cursor.execute("""
@@ -342,7 +403,29 @@ def create_transport():
             if field not in data:
                 return jsonify({'error': f'Missing required field: {field}'}), 400
 
-        with get_db_cursor() as cursor:
+        with get_db_cursor(commit=True) as cursor:
+            # Check if transport with this name exists (including soft-deleted)
+            cursor.execute("""
+                SELECT id, deleted_at FROM transports WHERE LOWER(TRIM(name)) = LOWER(TRIM(%s))
+            """, (data['name'],))
+            existing = cursor.fetchone()
+
+            if existing:
+                if existing['deleted_at']:
+                    # Restore soft-deleted transport
+                    cursor.execute("""
+                        UPDATE transports
+                        SET deleted_at = NULL, contact_person = %s, phone = %s, updated_at = NOW()
+                        WHERE id = %s
+                        RETURNING id, name, contact_person, phone
+                    """, (data.get('contact_person'), data.get('phone'), existing['id']))
+                    restored = cursor.fetchone()
+                    logger.info(f"Restored transport: {data['name']}")
+                    return jsonify(restored), 201
+                else:
+                    return jsonify({'error': f'Transport "{data["name"]}" already exists'}), 409
+
+            # Create new transport
             cursor.execute("""
                 INSERT INTO transports (name, contact_person, phone)
                 VALUES (%s, %s, %s)
@@ -362,11 +445,17 @@ def create_transport():
 
 
 @dispatch_entities_bp.route('/transports/<transport_id>', methods=['PUT', 'OPTIONS'])
-@jwt_required()
 def update_transport(transport_id):
     """Update a transport company"""
+    if request.method == 'OPTIONS':
+        return jsonify({'message': 'OK'}), 200
+
+    # Apply JWT only for non-OPTIONS
+    from flask_jwt_extended import verify_jwt_in_request
+    verify_jwt_in_request()
+
     try:
-        data = request.json
+        data = request.get_json(force=True)
         if 'name' not in data:
             return jsonify({'error': 'Name is required'}), 400
 
@@ -395,9 +484,15 @@ def update_transport(transport_id):
 
 
 @dispatch_entities_bp.route('/transports/<transport_id>', methods=['DELETE', 'OPTIONS'])
-@jwt_required()
 def delete_transport(transport_id):
     """Soft delete a transport company"""
+    if request.method == 'OPTIONS':
+        return jsonify({'message': 'OK'}), 200
+
+    # Apply JWT only for non-OPTIONS
+    from flask_jwt_extended import verify_jwt_in_request
+    verify_jwt_in_request()
+
     try:
         with get_db_cursor(commit=True) as cursor:
             cursor.execute("""
@@ -436,14 +531,14 @@ def get_vehicles_list():
                     FROM vehicles
                     WHERE deleted_at IS NULL
                     AND (vehicle_number ILIKE %s OR driver_name ILIKE %s)
-                    ORDER BY vehicle_number
+                    ORDER BY driver_name
                 """, (f'%{search}%', f'%{search}%'))
             else:
                 cursor.execute("""
                     SELECT id, vehicle_number, vehicle_type, driver_name, driver_phone
                     FROM vehicles
                     WHERE deleted_at IS NULL
-                    ORDER BY vehicle_number
+                    ORDER BY driver_name
                 """)
 
             vehicles = cursor.fetchall()
@@ -459,13 +554,12 @@ def create_vehicle():
     """Create a new vehicle"""
     try:
         data = request.json
-        required_fields = ['vehicle_number']
 
-        for field in required_fields:
-            if field not in data:
-                return jsonify({'error': f'Missing required field: {field}'}), 400
+        # Validate required fields
+        if not data.get('driver_name', '').strip():
+            return jsonify({'error': 'Driver name is required'}), 400
 
-        with get_db_cursor() as cursor:
+        with get_db_cursor(commit=True) as cursor:
             cursor.execute("""
                 INSERT INTO vehicles (vehicle_number, vehicle_type, driver_name, driver_phone)
                 VALUES (%s, %s, %s, %s)
@@ -486,13 +580,22 @@ def create_vehicle():
 
 
 @dispatch_entities_bp.route('/vehicles/<vehicle_id>', methods=['PUT', 'OPTIONS'])
-@jwt_required()
 def update_vehicle(vehicle_id):
     """Update a vehicle"""
+    # Handle OPTIONS request
+    if request.method == 'OPTIONS':
+        return jsonify({'message': 'OK'}), 200
+
+    # Apply JWT only for non-OPTIONS
+    from flask_jwt_extended import verify_jwt_in_request
+    verify_jwt_in_request()
+
     try:
-        data = request.json
-        if 'vehicle_number' not in data:
-            return jsonify({'error': 'Vehicle number is required'}), 400
+        data = request.get_json(force=True)
+
+        # Validate required fields
+        if not data.get('driver_name', '').strip():
+            return jsonify({'error': 'Driver name is required'}), 400
 
         with get_db_cursor(commit=True) as cursor:
             cursor.execute("""
@@ -521,9 +624,15 @@ def update_vehicle(vehicle_id):
 
 
 @dispatch_entities_bp.route('/vehicles/<vehicle_id>', methods=['DELETE', 'OPTIONS'])
-@jwt_required()
 def delete_vehicle(vehicle_id):
     """Soft delete a vehicle"""
+    if request.method == 'OPTIONS':
+        return jsonify({'message': 'OK'}), 200
+
+    # Apply JWT only for non-OPTIONS
+    from flask_jwt_extended import verify_jwt_in_request
+    verify_jwt_in_request()
+
     try:
         with get_db_cursor(commit=True) as cursor:
             cursor.execute("""

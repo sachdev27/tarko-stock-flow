@@ -13,7 +13,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { TransactionRecord } from '@/types/transaction';
 import { TransactionTypeBadge } from './TransactionTypeBadge';
 import { ParameterBadges } from './ParameterBadges';
-import { formatWeight, formatDateTime, getProductName } from '@/utils/transactions/formatters';
+import { formatWeight, formatDateTime, formatDate, getProductName } from '@/utils/transactions/formatters';
 import {
   Calendar,
   Package,
@@ -41,6 +41,12 @@ export function TransactionDetailModal({
 
   // Check if this is an inventory operation (CUT_ROLL, SPLIT_BUNDLE, COMBINE_SPARES)
   const isInventoryOperation = ['CUT_ROLL', 'SPLIT_BUNDLE', 'COMBINE_SPARES'].includes(transaction.transaction_type);
+
+  // Check if this is a dispatch transaction
+  const isDispatch = transaction.transaction_type === 'DISPATCH';
+
+  // Check if dispatch has mixed products
+  const hasMixedProducts = isDispatch && transaction.roll_snapshot?.mixed_products === true;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -145,8 +151,17 @@ export function TransactionDetailModal({
               <TabsList className="grid w-full grid-cols-4">
                 <TabsTrigger value="overview">Overview</TabsTrigger>
                 <TabsTrigger value="product">Product</TabsTrigger>
-                <TabsTrigger value="rolls">Stock</TabsTrigger>
-                <TabsTrigger value="metadata">Metadata</TabsTrigger>
+                {isDispatch ? (
+                  <>
+                    <TabsTrigger value="logistics">Logistics</TabsTrigger>
+                    <TabsTrigger value="metadata">Metadata</TabsTrigger>
+                  </>
+                ) : (
+                  <>
+                    <TabsTrigger value="rolls">Stock</TabsTrigger>
+                    <TabsTrigger value="metadata">Metadata</TabsTrigger>
+                  </>
+                )}
               </TabsList>
 
               {/* Overview Tab */}
@@ -167,7 +182,9 @@ export function TransactionDetailModal({
                         Transaction Date
                       </div>
                       <div className="font-medium">
-                        {formatDateTime(transaction.transaction_date)}
+                        {transaction.transaction_type === 'DISPATCH'
+                          ? formatDate(transaction.transaction_date)
+                          : formatDateTime(transaction.transaction_date)}
                       </div>
                     </div>
                     <div>
@@ -181,7 +198,7 @@ export function TransactionDetailModal({
                     </div>
                   </div>
 
-                  {transaction.batch_no && (
+                  {!isDispatch && transaction.batch_no && (
                     <div>
                       <div className="text-sm text-muted-foreground mb-1 flex items-center gap-2">
                         <Package className="h-4 w-4" />
@@ -215,7 +232,31 @@ export function TransactionDetailModal({
                     </div>
                   )}
 
-                  {transaction.notes && (
+                  {/* Dispatch-specific information in overview */}
+                  {isDispatch && transaction.roll_snapshot && (
+                    <>
+                      <Separator />
+                      <div className="space-y-3">
+                        {transaction.roll_snapshot.dispatch_number && (
+                          <div>
+                            <div className="text-sm text-muted-foreground mb-1">Dispatch Number</div>
+                            <Badge variant="outline" className="font-mono text-base">
+                              {transaction.roll_snapshot.dispatch_number}
+                            </Badge>
+                          </div>
+                        )}
+
+                        {transaction.roll_snapshot.total_items && (
+                          <div>
+                            <div className="text-sm text-muted-foreground mb-1">Total Items</div>
+                            <div className="font-bold text-lg">{transaction.roll_snapshot.total_items}</div>
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
+
+                  {!isDispatch && transaction.notes && (
                     <div>
                       <div className="text-sm text-muted-foreground mb-1">Notes</div>
                       <div className="text-sm bg-muted p-3 rounded-md">
@@ -226,7 +267,8 @@ export function TransactionDetailModal({
                 </CardContent>
               </Card>
 
-              {/* Weight & Quantity Card */}
+              {/* Weight & Quantity Card - hide for dispatches */}
+              {!isDispatch && (
               <Card>
                 <CardHeader>
                   <CardTitle className="text-lg flex items-center gap-2">
@@ -288,6 +330,7 @@ export function TransactionDetailModal({
                   </div>
                 </CardContent>
               </Card>
+              )}
             </TabsContent>
 
             {/* Product Tab */}
@@ -300,30 +343,96 @@ export function TransactionDetailModal({
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
+                  {isDispatch && transaction.roll_snapshot?.item_breakdown && transaction.roll_snapshot.item_breakdown.length > 0 ? (
                     <div>
-                      <div className="text-sm text-muted-foreground mb-1">Product Type</div>
-                      <div className="font-medium">{transaction.product_type}</div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-muted-foreground mb-1 flex items-center gap-1">
-                        <Tag className="h-4 w-4" />
-                        Brand
+                      <div className="text-sm font-medium mb-3">Items in This Dispatch</div>
+                      <div className="space-y-3">
+                        {transaction.roll_snapshot.item_breakdown.map((item: any, idx: number) => (
+                          <div key={idx} className="border rounded-lg p-4">
+                            <div className="flex items-center justify-between mb-3">
+                              <Badge variant="outline" className="text-base">{item.item_type?.replace('_', ' ')}</Badge>
+                              <span className="font-bold text-lg">Qty: {item.quantity}</span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3 text-sm">
+                              <div>
+                                <span className="text-muted-foreground">Product:</span>
+                                <span className="ml-2 font-medium">{item.product_type}</span>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground">Brand:</span>
+                                <span className="ml-2 font-medium">{item.brand}</span>
+                              </div>
+                              {item.bundle_size && (
+                                <div>
+                                  <span className="text-muted-foreground">Bundle Size:</span>
+                                  <span className="ml-2 font-medium">{item.bundle_size} pieces</span>
+                                </div>
+                              )}
+                              {item.piece_count && (
+                                <div>
+                                  <span className="text-muted-foreground">Pieces:</span>
+                                  <span className="ml-2 font-medium">{item.piece_count}</span>
+                                </div>
+                              )}
+                              {item.piece_length && (
+                                <div>
+                                  <span className="text-muted-foreground">Length per piece:</span>
+                                  <span className="ml-2 font-medium">{Number(item.piece_length).toFixed(2)}m</span>
+                                </div>
+                              )}
+                              {item.length_meters && item.item_type !== 'SPARE_PIECES' && item.item_type !== 'BUNDLE' && (
+                                <div>
+                                  <span className="text-muted-foreground">Length:</span>
+                                  <span className="ml-2 font-medium">{Number(item.length_meters).toFixed(2)}m</span>
+                                </div>
+                              )}
+                            </div>
+                            {item.parameters && Object.keys(item.parameters).length > 0 && (
+                              <div className="mt-3">
+                                <div className="text-xs text-muted-foreground mb-2">Parameters:</div>
+                                <div className="flex flex-wrap gap-2">
+                                  {Object.entries(item.parameters).map(([key, value]) => (
+                                    <Badge key={key} variant="secondary">
+                                      {key}: {String(value)}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ))}
                       </div>
-                      <Badge variant="outline">{transaction.brand}</Badge>
                     </div>
-                  </div>
+                  ) : !isDispatch ? (
+                    <>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <div className="text-sm text-muted-foreground mb-1">Product Type</div>
+                          <div className="font-medium">{transaction.product_type}</div>
+                        </div>
+                        <div>
+                          <div className="text-sm text-muted-foreground mb-1 flex items-center gap-1">
+                            <Tag className="h-4 w-4" />
+                            Brand
+                          </div>
+                          <Badge variant="outline">{transaction.brand}</Badge>
+                        </div>
+                      </div>
 
-                  <Separator />
+                      <Separator />
 
-                  {/* Parameters */}
-                  {transaction.parameters && Object.keys(transaction.parameters).length > 0 && (
-                    <div>
-                      <div className="text-sm text-muted-foreground mb-2">Parameters</div>
-                      <ParameterBadges parameters={transaction.parameters} />
-                    </div>
-                  )}
+                      {/* Parameters */}
+                      {transaction.parameters && Object.keys(transaction.parameters).length > 0 && (
+                        <div>
+                          <div className="text-sm text-muted-foreground mb-2">Parameters</div>
+                          <ParameterBadges parameters={transaction.parameters} />
+                        </div>
+                      )}
+                    </>
+                  ) : null}
 
+                  {!isDispatch && (
+                  <>
                   <Separator />
 
                   {/* Production Details */}
@@ -451,11 +560,94 @@ export function TransactionDetailModal({
                       </div>
                     </>
                   )}
+                  </>
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>
 
-            {/* Rolls Tab */}
+            {/* Logistics Tab - for dispatches */}
+            {isDispatch && (
+            <TabsContent value="logistics" className="space-y-4 mt-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <FileText className="h-5 w-5" />
+                    Logistics Information
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    {transaction.customer_name && (
+                      <div>
+                        <div className="text-sm text-muted-foreground mb-1 flex items-center gap-2">
+                          <User className="h-4 w-4" />
+                          Customer
+                        </div>
+                        <div className="font-medium text-lg">{transaction.customer_name}</div>
+                      </div>
+                    )}
+
+                    {transaction.roll_snapshot?.bill_to_name && (
+                      <div>
+                        <div className="text-sm text-muted-foreground mb-1">Bill To</div>
+                        <div className="font-medium text-lg">{transaction.roll_snapshot.bill_to_name}</div>
+                      </div>
+                    )}
+
+                    {transaction.roll_snapshot?.vehicle_number && (
+                      <div>
+                        <div className="text-sm text-muted-foreground mb-1">Vehicle Number</div>
+                        <div className="font-medium text-lg font-mono">{transaction.roll_snapshot.vehicle_number}</div>
+                      </div>
+                    )}
+
+                    {transaction.roll_snapshot?.driver_name && (
+                      <div>
+                        <div className="text-sm text-muted-foreground mb-1">Driver Name</div>
+                        <div className="font-medium text-lg">{transaction.roll_snapshot.driver_name}</div>
+                      </div>
+                    )}
+
+                    {transaction.roll_snapshot?.transport_name && (
+                      <div>
+                        <div className="text-sm text-muted-foreground mb-1">Transport Company</div>
+                        <div className="font-medium text-lg">{transaction.roll_snapshot.transport_name}</div>
+                      </div>
+                    )}
+
+                    {transaction.invoice_no && (
+                      <div>
+                        <div className="text-sm text-muted-foreground mb-1">Invoice Number</div>
+                        <Badge variant="outline" className="font-mono text-base">
+                          {transaction.invoice_no}
+                        </Badge>
+                      </div>
+                    )}
+                  </div>
+
+                  {transaction.roll_snapshot?.item_types && transaction.roll_snapshot.item_types.length > 0 && (
+                    <>
+                      <Separator />
+                      <div>
+                        <div className="text-sm text-muted-foreground mb-2">Item Types Dispatched</div>
+                        <div className="flex flex-wrap gap-2">
+                          {transaction.roll_snapshot.item_types.map((type: string, idx: number) => (
+                            <Badge key={idx} variant="secondary" className="text-base">
+                              {type.replace('_', ' ')}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+            )}
+
+            {/* Rolls Tab - hide for dispatches */}
+            {!isDispatch && (
             <TabsContent value="rolls" className="space-y-4 mt-4">
               <Card>
                 <CardHeader>
@@ -607,6 +799,7 @@ export function TransactionDetailModal({
                 </CardContent>
               </Card>
             </TabsContent>
+            )}
 
             {/* Metadata Tab */}
             <TabsContent value="metadata" className="space-y-4 mt-4">

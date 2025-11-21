@@ -9,6 +9,9 @@ interface TransactionTypeBadgeProps {
 export const TransactionTypeBadge = ({ transaction }: TransactionTypeBadgeProps) => {
   const getDisplayType = () => {
     // Handle new transaction types
+    if (transaction.transaction_type === 'DISPATCH') {
+      return 'DISPATCH';
+    }
     if (transaction.transaction_type === 'CUT_ROLL') {
       return 'CUT ROLL';
     }
@@ -46,6 +49,8 @@ export const TransactionTypeBadge = ({ transaction }: TransactionTypeBadgeProps)
         return 'secondary' as const;
       case 'SALE':
         return 'default' as const;
+      case 'DISPATCH':
+        return 'destructive' as const;
       case 'CUT':
       case 'CUT ROLL':
         return 'secondary' as const;
@@ -66,6 +71,8 @@ export const TransactionTypeBadge = ({ transaction }: TransactionTypeBadgeProps)
         return 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300';
       case 'SALE':
         return 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300';
+      case 'DISPATCH':
+        return 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300';
       case 'CUT':
       case 'CUT ROLL':
         return 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300';

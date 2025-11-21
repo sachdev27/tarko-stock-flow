@@ -178,8 +178,8 @@ const Details = () => {
 
   // Vehicle handlers
   const handleAddVehicle = async () => {
-    if (!vehicleForm.vehicle_number.trim()) {
-      toast.error('Vehicle number is required');
+    if (!vehicleForm.driver_name.trim()) {
+      toast.error('Driver name is required');
       return;
     }
 
@@ -612,7 +612,8 @@ const Details = () => {
                 <Input
                   value={customerForm.name}
                   onChange={(e) => setCustomerForm({ ...customerForm, name: e.target.value })}
-                  placeholder="Customer name"
+                  placeholder="e.g. ABC Industries"
+                  autoFocus
                 />
               </div>
               <div>
@@ -620,7 +621,7 @@ const Details = () => {
                 <Input
                   value={customerForm.city}
                   onChange={(e) => setCustomerForm({ ...customerForm, city: e.target.value })}
-                  placeholder="City"
+                  placeholder="e.g. Mumbai, Delhi, Ahmedabad"
                 />
               </div>
               <div>
@@ -628,7 +629,7 @@ const Details = () => {
                 <Input
                   value={customerForm.contact_person}
                   onChange={(e) => setCustomerForm({ ...customerForm, contact_person: e.target.value })}
-                  placeholder="Contact person"
+                  placeholder="e.g. Mr. Sharma"
                 />
               </div>
               <div>
@@ -636,7 +637,8 @@ const Details = () => {
                 <Input
                   value={customerForm.phone}
                   onChange={(e) => setCustomerForm({ ...customerForm, phone: e.target.value })}
-                  placeholder="Phone number"
+                  placeholder="e.g. +91 98765 43210"
+                  type="tel"
                 />
               </div>
               <div>
@@ -644,7 +646,8 @@ const Details = () => {
                 <Input
                   value={customerForm.email}
                   onChange={(e) => setCustomerForm({ ...customerForm, email: e.target.value })}
-                  placeholder="Email"
+                  placeholder="e.g. contact@example.com"
+                  type="email"
                 />
               </div>
               <div>
@@ -652,7 +655,8 @@ const Details = () => {
                 <Input
                   value={customerForm.gstin}
                   onChange={(e) => setCustomerForm({ ...customerForm, gstin: e.target.value })}
-                  placeholder="GSTIN"
+                  placeholder="e.g. 22AAAAA0000A1Z5"
+                  maxLength={15}
                 />
               </div>
               <div>
@@ -660,7 +664,7 @@ const Details = () => {
                 <Input
                   value={customerForm.address}
                   onChange={(e) => setCustomerForm({ ...customerForm, address: e.target.value })}
-                  placeholder="Address"
+                  placeholder="e.g. 123 Street Name, Area"
                 />
               </div>
             </div>
@@ -681,27 +685,20 @@ const Details = () => {
             </DialogHeader>
             <div className="space-y-4">
               <div>
-                <Label>Vehicle Number *</Label>
-                <Input
-                  value={vehicleForm.vehicle_number}
-                  onChange={(e) => setVehicleForm({ ...vehicleForm, vehicle_number: e.target.value })}
-                  placeholder="Vehicle number"
-                />
-              </div>
-              <div>
-                <Label>Vehicle Type</Label>
-                <Input
-                  value={vehicleForm.vehicle_type}
-                  onChange={(e) => setVehicleForm({ ...vehicleForm, vehicle_type: e.target.value })}
-                  placeholder="Vehicle type"
-                />
-              </div>
-              <div>
-                <Label>Driver Name</Label>
+                <Label>Driver Name *</Label>
                 <Input
                   value={vehicleForm.driver_name}
                   onChange={(e) => setVehicleForm({ ...vehicleForm, driver_name: e.target.value })}
-                  placeholder="Driver name"
+                  placeholder="e.g. Rajesh Kumar"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <Label>Vehicle Number</Label>
+                <Input
+                  value={vehicleForm.vehicle_number}
+                  onChange={(e) => setVehicleForm({ ...vehicleForm, vehicle_number: e.target.value })}
+                  placeholder="e.g. GJ01AB1234"
                 />
               </div>
               <div>
@@ -709,7 +706,16 @@ const Details = () => {
                 <Input
                   value={vehicleForm.driver_phone}
                   onChange={(e) => setVehicleForm({ ...vehicleForm, driver_phone: e.target.value })}
-                  placeholder="Driver phone"
+                  placeholder="e.g. +91 98765 43210"
+                  type="tel"
+                />
+              </div>
+              <div>
+                <Label>Vehicle Type</Label>
+                <Input
+                  value={vehicleForm.vehicle_type}
+                  onChange={(e) => setVehicleForm({ ...vehicleForm, vehicle_type: e.target.value })}
+                  placeholder="e.g. Truck, Tempo, Mini Truck"
                 />
               </div>
             </div>
@@ -734,7 +740,8 @@ const Details = () => {
                 <Input
                   value={transportForm.name}
                   onChange={(e) => setTransportForm({ ...transportForm, name: e.target.value })}
-                  placeholder="Transport company name"
+                  placeholder="e.g. Express Logistics, Fast Transport"
+                  autoFocus
                 />
               </div>
               <div>
@@ -742,7 +749,7 @@ const Details = () => {
                 <Input
                   value={transportForm.contact_person}
                   onChange={(e) => setTransportForm({ ...transportForm, contact_person: e.target.value })}
-                  placeholder="Contact person"
+                  placeholder="e.g. Mr. Patel"
                 />
               </div>
               <div>
@@ -750,7 +757,8 @@ const Details = () => {
                 <Input
                   value={transportForm.phone}
                   onChange={(e) => setTransportForm({ ...transportForm, phone: e.target.value })}
-                  placeholder="Phone number"
+                  placeholder="e.g. +91 98765 43210"
+                  type="tel"
                 />
               </div>
             </div>
@@ -775,7 +783,8 @@ const Details = () => {
                 <Input
                   value={billToForm.name}
                   onChange={(e) => setBillToForm({ ...billToForm, name: e.target.value })}
-                  placeholder="Bill to name"
+                  placeholder="e.g. XYZ Corporation"
+                  autoFocus
                 />
               </div>
               <div>
@@ -783,7 +792,7 @@ const Details = () => {
                 <Input
                   value={billToForm.city}
                   onChange={(e) => setBillToForm({ ...billToForm, city: e.target.value })}
-                  placeholder="City"
+                  placeholder="e.g. Mumbai, Delhi, Ahmedabad"
                 />
               </div>
               <div>
@@ -791,7 +800,8 @@ const Details = () => {
                 <Input
                   value={billToForm.gstin}
                   onChange={(e) => setBillToForm({ ...billToForm, gstin: e.target.value })}
-                  placeholder="GSTIN"
+                  placeholder="e.g. 22AAAAA0000A1Z5"
+                  maxLength={15}
                 />
               </div>
               <div>
@@ -799,7 +809,7 @@ const Details = () => {
                 <Input
                   value={billToForm.address}
                   onChange={(e) => setBillToForm({ ...billToForm, address: e.target.value })}
-                  placeholder="Address"
+                  placeholder="e.g. 456 Business Park, Sector"
                 />
               </div>
               <div>
@@ -807,7 +817,7 @@ const Details = () => {
                 <Input
                   value={billToForm.contact_person}
                   onChange={(e) => setBillToForm({ ...billToForm, contact_person: e.target.value })}
-                  placeholder="Contact person"
+                  placeholder="e.g. Ms. Gupta"
                 />
               </div>
               <div>
@@ -815,7 +825,8 @@ const Details = () => {
                 <Input
                   value={billToForm.phone}
                   onChange={(e) => setBillToForm({ ...billToForm, phone: e.target.value })}
-                  placeholder="Phone number"
+                  placeholder="e.g. +91 98765 43210"
+                  type="tel"
                 />
               </div>
               <div>
@@ -823,7 +834,8 @@ const Details = () => {
                 <Input
                   value={billToForm.email}
                   onChange={(e) => setBillToForm({ ...billToForm, email: e.target.value })}
-                  placeholder="Email"
+                  placeholder="e.g. billing@example.com"
+                  type="email"
                 />
               </div>
             </div>

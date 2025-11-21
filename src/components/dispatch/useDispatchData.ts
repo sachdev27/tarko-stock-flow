@@ -109,11 +109,11 @@ export const useDispatchData = (token: string) => {
     }
   }, [api]);
 
-  const createVehicle = useCallback(async (vehicleNumber: string) => {
+  const createVehicle = useCallback(async (driverName: string) => {
     try {
-      const newVehicle = await api.createVehicle({ vehicle_number: vehicleNumber });
+      const newVehicle = await api.createVehicle({ driver_name: driverName });
       setVehicles(prev => [...prev, newVehicle]);
-      toast.success(`Vehicle "${vehicleNumber}" created`);
+      toast.success(`Driver "${driverName}" added`);
       return newVehicle;
     } catch (error: any) {
       toast.error(error.message || 'Failed to create vehicle');

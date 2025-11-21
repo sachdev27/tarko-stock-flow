@@ -14,6 +14,7 @@ interface SearchableComboboxProps {
   placeholder?: string;
   onCreateNew?: (searchTerm: string) => Promise<ComboboxOption | void>;
   displayFormat?: (item: ComboboxOption) => string;
+  searchFields?: string[];
   filterFn?: (item: ComboboxOption, search: string) => boolean;
   disabled?: boolean;
   className?: string;
@@ -26,9 +27,21 @@ export const SearchableCombobox = ({
   placeholder = 'Search or create...',
   onCreateNew,
   displayFormat = (item) => item.name || '',
+  searchFields,
   filterFn = (item, search) => {
+    const searchLower = search.toLowerCase();
+
+    // If searchFields provided, search across those fields
+    if (searchFields && searchFields.length > 0) {
+      return searchFields.some(field => {
+        const value = item[field];
+        return value && String(value).toLowerCase().includes(searchLower);
+      });
+    }
+
+    // Default: search in display format
     const display = displayFormat(item).toLowerCase();
-    return display.includes(search.toLowerCase());
+    return display.includes(searchLower);
   },
   disabled = false,
   className = ''

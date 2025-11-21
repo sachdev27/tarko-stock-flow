@@ -1,6 +1,12 @@
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Button } from '@/components/ui/button';
+import { CalendarIcon } from 'lucide-react';
+import { format } from 'date-fns';
 import { SearchableCombobox } from './SearchableCombobox';
+import { cn } from '@/lib/utils';
 
 interface CustomerDetailsProps {
   customerId: string;
@@ -11,6 +17,8 @@ interface CustomerDetailsProps {
   onTransportChange: (id: string) => void;
   vehicleId: string;
   onVehicleChange: (id: string) => void;
+  dispatchDate?: Date;
+  onDispatchDateChange: (date: Date | undefined) => void;
   notes: string;
   onNotesChange: (notes: string) => void;
   customers: any[];
@@ -33,6 +41,8 @@ export const CustomerDetailsSection = ({
   onTransportChange,
   vehicleId,
   onVehicleChange,
+  dispatchDate,
+  onDispatchDateChange,
   notes,
   onNotesChange,
   customers,
@@ -49,7 +59,7 @@ export const CustomerDetailsSection = ({
     <div className="space-y-4 p-4 border rounded-lg bg-gray-50">
       <h3 className="font-semibold text-lg">Customer Details</h3>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         <div ref={customerRef}>
           <Label>
             Customer <span className="text-red-500">*</span>
@@ -97,8 +107,35 @@ export const CustomerDetailsSection = ({
             options={vehicles}
             placeholder="Search or create vehicle"
             onCreateNew={onCreateVehicle}
-            displayFormat={(v) => v.vehicle_number}
+            displayFormat={(v) => v.driver_name || v.vehicle_number}
+            searchFields={['driver_name', 'vehicle_number']}
           />
+        </div>
+
+        <div>
+          <Label>Dispatch Date</Label>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                className={cn(
+                  "w-full justify-start text-left font-normal",
+                  !dispatchDate && "text-muted-foreground"
+                )}
+              >
+                <CalendarIcon className="mr-2 h-4 w-4" />
+                {dispatchDate ? format(dispatchDate, "PPP") : <span>Pick a date</span>}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0">
+              <Calendar
+                mode="single"
+                selected={dispatchDate}
+                onSelect={onDispatchDateChange}
+                initialFocus
+              />
+            </PopoverContent>
+          </Popover>
         </div>
       </div>
 

@@ -584,9 +584,11 @@ def combine_spares():
 
 @dispatch_bp.route('/create', methods=['POST'])
 @jwt_required()
-def create_dispatch():
+def create_dispatch_legacy():
     """
-    Create a dispatch/sale transaction.
+    LEGACY: Create a dispatch/sale transaction (old system).
+    Use /create-dispatch endpoint instead for new modular system.
+
     Request body: {
         customer_id: UUID,
         invoice_number: string (optional),
@@ -1144,4 +1146,533 @@ def dispatch_sale():
             }), 201
 
     except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@dispatch_bp.route('/create-dispatch', methods=['POST'])
+@jwt_required()
+def create_dispatch():
+    """
+    Create a new dispatch using inventory_stock (new modular system).
+    Supports HDPE rolls, cut pieces, Sprinkler bundles, and spare pieces.
+
+    Request body:
+    {
+        "customer_id": "uuid",
+        "bill_to_id": "uuid" (optional),
+        "transport_id": "uuid" (optional),
+        "vehicle_id": "uuid" (optional),
+        "invoice_number": "string" (optional),
+        "notes": "string" (optional),
+        "items": [
+            {
+                "stock_id": "uuid",
+                "product_variant_id": "uuid",
+                "item_type": "FULL_ROLL|CUT_PIECE|BUNDLE|SPARE_PIECES",
+                "quantity": number,
+                "cut_piece_id": "uuid" (for CUT_PIECE),
+                "length_meters": number (for CUT_PIECE),
+                "spare_piece_ids": ["uuid"] (for SPARE_PIECES),
+                "piece_count": number (for SPARE_PIECES),
+                "bundle_size": number (for BUNDLE),
+                "pieces_per_bundle": number (for BUNDLE),
+                "piece_length_meters": number (for BUNDLE)
+            }
+        ]
+    }
+    """
+    try:
+        data = request.json
+        user_id = get_jwt_identity()
+
+        # Validate required fields
+        customer_id = data.get('customer_id')
+        items = data.get('items', [])
+
+        if not customer_id:
+            return jsonify({'error': 'customer_id is required'}), 400
+
+        if not items or len(items) == 0:
+            return jsonify({'error': 'At least one item is required'}), 400
+
+        # Optional fields
+        bill_to_id = data.get('bill_to_id')
+        transport_id = data.get('transport_id')
+        vehicle_id = data.get('vehicle_id')
+        invoice_number = data.get('invoice_number')
+        notes = data.get('notes')
+        dispatch_date = data.get('dispatch_date')  # Optional: for backdating
+
+        with get_db_cursor() as cursor:
+            # Start explicit transaction
+            cursor.execute("BEGIN")
+
+            try:
+                # Generate dispatch number
+                current_year = 2025
+                cursor.execute("""
+                    SELECT dispatch_number
+                    FROM dispatches
+                    WHERE dispatch_number LIKE %s
+                    ORDER BY dispatch_number DESC
+                    LIMIT 1
+                """, (f'DISP-{current_year}-%',))
+
+                last_dispatch = cursor.fetchone()
+                if last_dispatch:
+                    last_number = int(last_dispatch['dispatch_number'].split('-')[-1])
+                    new_number = last_number + 1
+                else:
+                    new_number = 1
+
+                dispatch_number = f'DISP-{current_year}-{new_number:04d}'
+
+                # Create dispatch record
+                cursor.execute("""
+                    INSERT INTO dispatches (
+                        dispatch_number, customer_id, bill_to_id, transport_id,
+                        vehicle_id, invoice_number, notes, status, created_by, dispatch_date
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, 'DISPATCHED', %s, %s)
+                    RETURNING id, dispatch_number
+                """, (
+                    dispatch_number, customer_id, bill_to_id, transport_id,
+                    vehicle_id, invoice_number, notes, user_id, dispatch_date
+                ))
+
+                dispatch_result = cursor.fetchone()
+                dispatch_id = dispatch_result['id']
+
+                # Process each item
+                total_items_dispatched = 0
+
+                for item in items:
+                    stock_id = item.get('stock_id')
+                    product_variant_id = item.get('product_variant_id')
+                    item_type = item.get('item_type')
+                    quantity = item.get('quantity', 1)
+
+                    if not all([stock_id, product_variant_id, item_type]):
+                        return jsonify({'error': 'Each item must have stock_id, product_variant_id, and item_type'}), 400
+
+                    # Validate stock availability
+                    cursor.execute("""
+                        SELECT quantity, status, stock_type
+                        FROM inventory_stock
+                        WHERE id = %s AND deleted_at IS NULL
+                    """, (stock_id,))
+
+                    stock = cursor.fetchone()
+                    if not stock:
+                        return jsonify({'error': f'Stock {stock_id} not found'}), 404
+
+                    if stock['status'] != 'IN_STOCK':
+                        return jsonify({'error': f'Stock {stock_id} is not available (status: {stock["status"]})'}), 400
+
+                    if stock['quantity'] < quantity:
+                        return jsonify({'error': f'Insufficient quantity for stock {stock_id}. Available: {stock["quantity"]}, Requested: {quantity}'}), 400
+
+                    # Handle different item types
+                    if item_type == 'CUT_PIECE':
+                        # Cut piece dispatch
+                        cut_piece_id = item.get('cut_piece_id')
+                        length_meters = item.get('length_meters')
+
+                        if not cut_piece_id or not length_meters:
+                            return jsonify({'error': 'cut_piece_id and length_meters required for CUT_PIECE'}), 400
+
+                        # Mark cut piece as dispatched
+                        cursor.execute("""
+                            UPDATE hdpe_cut_pieces
+                            SET status = 'DISPATCHED', dispatch_id = %s, updated_at = NOW()
+                            WHERE id = %s AND status = 'IN_STOCK'
+                            RETURNING id
+                        """, (dispatch_id, cut_piece_id))
+
+                        if not cursor.fetchone():
+                            return jsonify({'error': f'Cut piece {cut_piece_id} not available'}), 400
+
+                        # Create dispatch item
+                        cursor.execute("""
+                            INSERT INTO dispatch_items (
+                                dispatch_id, stock_id, product_variant_id, item_type,
+                                quantity, cut_piece_id, length_meters
+                            )
+                            VALUES (%s, %s, %s, %s, %s, %s, %s)
+                            RETURNING id
+                        """, (
+                            dispatch_id, stock_id, product_variant_id, item_type,
+                            quantity, cut_piece_id, length_meters
+                        ))
+
+                        dispatch_item_id = cursor.fetchone()['id']
+
+                        # Reduce inventory_stock quantity
+                        cursor.execute("""
+                            UPDATE inventory_stock
+                            SET quantity = quantity - %s,
+                                status = CASE
+                                    WHEN quantity - %s <= 0 THEN 'SOLD_OUT'
+                                    ELSE 'IN_STOCK'
+                                END,
+                                updated_at = NOW()
+                            WHERE id = %s
+                        """, (quantity, quantity, stock_id))
+
+                        # Record in inventory_transactions
+                        cursor.execute("""
+                            INSERT INTO inventory_transactions (
+                                transaction_type, from_stock_id, from_quantity,
+                                dispatch_id, dispatch_item_id, notes, created_by
+                            )
+                            VALUES ('DISPATCH', %s, %s, %s, %s, %s, %s)
+                        """, (stock_id, quantity, dispatch_id, dispatch_item_id, f'Cut piece dispatched: {length_meters}m', user_id))
+
+                    elif item_type == 'SPARE_PIECES':
+                        # Spare pieces dispatch
+                        spare_piece_ids = item.get('spare_piece_ids', [])
+                        piece_count = item.get('piece_count', 0)
+
+                        if not spare_piece_ids or piece_count <= 0:
+                            return jsonify({'error': 'spare_piece_ids and piece_count required for SPARE_PIECES'}), 400
+
+                        print(f"DEBUG: Dispatching spares - spare_piece_ids: {spare_piece_ids}, piece_count: {piece_count}")
+
+                        # Get unique spare piece IDs and count how many times each appears
+                        from collections import Counter
+                        spare_id_counts = Counter(spare_piece_ids)
+                        print(f"DEBUG: spare_id_counts: {spare_id_counts}")
+
+                        # For each unique spare_id, check if we're taking all pieces or partial
+                        for spare_id, count_needed in spare_id_counts.items():
+                            cursor.execute("""
+                                SELECT piece_count, status
+                                FROM sprinkler_spare_pieces
+                                WHERE id = %s
+                            """, (spare_id,))
+
+                            spare_record = cursor.fetchone()
+                            if not spare_record:
+                                return jsonify({'error': f'Spare piece {spare_id} not found'}), 400
+
+                            if spare_record['status'] != 'IN_STOCK':
+                                return jsonify({'error': f'Spare piece {spare_id} not available'}), 400
+
+                            available_pieces = spare_record['piece_count']
+                            print(f"DEBUG: spare_id {spare_id}: available={available_pieces}, needed={count_needed}")
+
+                            if count_needed > available_pieces:
+                                return jsonify({'error': f'Not enough pieces in group {spare_id}'}), 400
+
+                            if count_needed == available_pieces:
+                                # Dispatching all pieces - mark as DISPATCHED
+                                cursor.execute("""
+                                    UPDATE sprinkler_spare_pieces
+                                    SET status = 'DISPATCHED', dispatch_id = %s, updated_at = NOW()
+                                    WHERE id = %s
+                                """, (dispatch_id, spare_id))
+                            else:
+                                # Partial dispatch - reduce piece_count and create new record for dispatched portion
+                                cursor.execute("""
+                                    UPDATE sprinkler_spare_pieces
+                                    SET piece_count = piece_count - %s, updated_at = NOW()
+                                    WHERE id = %s
+                                """, (count_needed, spare_id))
+
+                                # Create new record for dispatched pieces
+                                cursor.execute("""
+                                    INSERT INTO sprinkler_spare_pieces (
+                                        stock_id, piece_count, status, dispatch_id, created_at, updated_at
+                                    )
+                                    SELECT stock_id, %s, 'DISPATCHED', %s, NOW(), NOW()
+                                    FROM sprinkler_spare_pieces
+                                    WHERE id = %s
+                                """, (count_needed, dispatch_id, spare_id))
+
+                        # Create dispatch item
+                        cursor.execute("""
+                            INSERT INTO dispatch_items (
+                                dispatch_id, stock_id, product_variant_id, item_type,
+                                quantity, spare_piece_ids, piece_count
+                            )
+                            VALUES (%s, %s, %s, %s, %s, %s::uuid[], %s)
+                            RETURNING id
+                        """, (
+                            dispatch_id, stock_id, product_variant_id, item_type,
+                            quantity, spare_piece_ids, piece_count
+                        ))
+
+                        dispatch_item_id = cursor.fetchone()['id']
+
+                        # Reduce inventory_stock quantity
+                        cursor.execute("""
+                            UPDATE inventory_stock
+                            SET quantity = quantity - %s,
+                                status = CASE
+                                    WHEN quantity - %s <= 0 THEN 'SOLD_OUT'
+                                    ELSE 'IN_STOCK'
+                                END,
+                                updated_at = NOW()
+                            WHERE id = %s
+                        """, (quantity, quantity, stock_id))
+
+                        # Record in inventory_transactions
+                        cursor.execute("""
+                            INSERT INTO inventory_transactions (
+                                transaction_type, from_stock_id, from_quantity, from_pieces,
+                                dispatch_id, dispatch_item_id, notes, created_by
+                            )
+                            VALUES ('DISPATCH', %s, %s, %s, %s, %s, %s, %s)
+                        """, (stock_id, quantity, piece_count, dispatch_id, dispatch_item_id, f'Spare pieces dispatched: {piece_count} pcs', user_id))
+
+                    elif item_type == 'BUNDLE':
+                        # Bundle dispatch
+                        bundle_size = item.get('bundle_size')
+                        pieces_per_bundle = item.get('pieces_per_bundle')
+                        piece_length_meters = item.get('piece_length_meters')
+
+                        # Create dispatch item
+                        cursor.execute("""
+                            INSERT INTO dispatch_items (
+                                dispatch_id, stock_id, product_variant_id, item_type,
+                                quantity, bundle_size, pieces_per_bundle, piece_length_meters
+                            )
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                            RETURNING id
+                        """, (
+                            dispatch_id, stock_id, product_variant_id, item_type,
+                            quantity, bundle_size, pieces_per_bundle, piece_length_meters
+                        ))
+
+                        dispatch_item_id = cursor.fetchone()['id']
+
+                        # Reduce inventory_stock quantity
+                        cursor.execute("""
+                            UPDATE inventory_stock
+                            SET quantity = quantity - %s,
+                                status = CASE
+                                    WHEN quantity - %s <= 0 THEN 'SOLD_OUT'
+                                    ELSE 'IN_STOCK'
+                                END,
+                                updated_at = NOW()
+                            WHERE id = %s
+                        """, (quantity, quantity, stock_id))
+
+                        # Record in inventory_transactions
+                        cursor.execute("""
+                            INSERT INTO inventory_transactions (
+                                transaction_type, from_stock_id, from_quantity,
+                                dispatch_id, dispatch_item_id, notes, created_by
+                            )
+                            VALUES ('DISPATCH', %s, %s, %s, %s, %s, %s)
+                        """, (stock_id, quantity, dispatch_id, dispatch_item_id, f'Bundle dispatched: {bundle_size}x{piece_length_meters}m', user_id))
+
+                    elif item_type == 'FULL_ROLL':
+                        # Full roll dispatch
+                        length_meters = item.get('length_meters')
+
+                        # Create dispatch item
+                        cursor.execute("""
+                            INSERT INTO dispatch_items (
+                                dispatch_id, stock_id, product_variant_id, item_type,
+                                quantity, length_meters
+                            )
+                            VALUES (%s, %s, %s, %s, %s, %s)
+                            RETURNING id
+                        """, (
+                            dispatch_id, stock_id, product_variant_id, item_type,
+                            quantity, length_meters
+                        ))
+
+                        dispatch_item_id = cursor.fetchone()['id']
+
+                        # Reduce inventory_stock quantity
+                        cursor.execute("""
+                            UPDATE inventory_stock
+                            SET quantity = quantity - %s,
+                                status = CASE
+                                    WHEN quantity - %s <= 0 THEN 'SOLD_OUT'
+                                    ELSE 'IN_STOCK'
+                                END,
+                                updated_at = NOW()
+                            WHERE id = %s
+                        """, (quantity, quantity, stock_id))
+
+                        # Record in inventory_transactions
+                        cursor.execute("""
+                            INSERT INTO inventory_transactions (
+                                transaction_type, from_stock_id, from_quantity,
+                                dispatch_id, dispatch_item_id, notes, created_by
+                            )
+                            VALUES ('DISPATCH', %s, %s, %s, %s, %s, %s)
+                        """, (stock_id, quantity, dispatch_id, dispatch_item_id, f'Full roll dispatched: {length_meters}m', user_id))
+
+                    total_items_dispatched += quantity
+
+                # Record in audit log
+                cursor.execute("""
+                    INSERT INTO audit_logs (
+                        user_id, action_type, entity_type, entity_id, description
+                    )
+                    VALUES (%s, 'CREATE', 'dispatch', %s, %s)
+                """, (
+                    user_id, dispatch_id,
+                    json.dumps({
+                        'dispatch_number': dispatch_number,
+                        'customer_id': customer_id,
+                        'total_items': total_items_dispatched,
+                        'item_count': len(items)
+                    })
+                ))
+
+                # Commit transaction - all or nothing
+                cursor.execute("COMMIT")
+
+                return jsonify({
+                'success': True,
+                'dispatch_id': str(dispatch_id),
+                'dispatch_number': dispatch_number,
+                'total_items': total_items_dispatched,
+                'items_count': len(items)
+            }), 201
+
+            except Exception as inner_error:
+                # Rollback transaction on any error
+                cursor.execute("ROLLBACK")
+                raise inner_error
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@dispatch_bp.route('/dispatches', methods=['GET', 'OPTIONS'])
+@jwt_required()
+def get_dispatches():
+    """Get all dispatches with summary information"""
+    if request.method == 'OPTIONS':
+        return jsonify({}), 200
+
+    try:
+        with get_db_cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    d.id,
+                    d.dispatch_number,
+                    d.dispatch_date,
+                    d.status,
+                    d.invoice_number,
+                    d.notes,
+                    c.name as customer_name,
+                    c.city as customer_city,
+                    bt.name as bill_to_name,
+                    t.name as transport_name,
+                    v.driver_name as vehicle_driver,
+                    v.vehicle_number,
+                    COUNT(DISTINCT di.id) as total_items,
+                    SUM(di.quantity) as total_quantity,
+                    u.email as created_by_email,
+                    d.created_at
+                FROM dispatches d
+                LEFT JOIN customers c ON d.customer_id = c.id
+                LEFT JOIN bill_to bt ON d.bill_to_id = bt.id
+                LEFT JOIN transports t ON d.transport_id = t.id
+                LEFT JOIN vehicles v ON d.vehicle_id = v.id
+                LEFT JOIN dispatch_items di ON d.id = di.dispatch_id
+                LEFT JOIN users u ON d.created_by = u.id
+                WHERE d.deleted_at IS NULL
+                GROUP BY d.id, c.name, c.city, bt.name, t.name, v.driver_name, v.vehicle_number, u.email
+                ORDER BY d.dispatch_date DESC, d.created_at DESC
+            """)
+
+            dispatches = cursor.fetchall()
+            return jsonify([dict(row) for row in dispatches]), 200
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@dispatch_bp.route('/dispatches/<dispatch_id>', methods=['GET', 'OPTIONS'])
+@jwt_required()
+def get_dispatch_details(dispatch_id):
+    """Get detailed information for a specific dispatch including all items"""
+    if request.method == 'OPTIONS':
+        return jsonify({}), 200
+
+    try:
+        with get_db_cursor() as cursor:
+            # Get dispatch header
+            cursor.execute("""
+                SELECT
+                    d.id,
+                    d.dispatch_number,
+                    d.dispatch_date,
+                    d.status,
+                    d.invoice_number,
+                    d.notes,
+                    d.customer_id,
+                    c.name as customer_name,
+                    c.city as customer_city,
+                    d.bill_to_id,
+                    bt.name as bill_to_name,
+                    d.transport_id,
+                    t.name as transport_name,
+                    d.vehicle_id,
+                    v.driver_name as vehicle_driver,
+                    v.vehicle_number,
+                    u.email as created_by_email,
+                    d.created_at
+                FROM dispatches d
+                LEFT JOIN customers c ON d.customer_id = c.id
+                LEFT JOIN bill_to bt ON d.bill_to_id = bt.id
+                LEFT JOIN transports t ON d.transport_id = t.id
+                LEFT JOIN vehicles v ON d.vehicle_id = v.id
+                LEFT JOIN users u ON d.created_by = u.id
+                WHERE d.id = %s AND d.deleted_at IS NULL
+            """, (dispatch_id,))
+
+            dispatch = cursor.fetchone()
+            if not dispatch:
+                return jsonify({'error': 'Dispatch not found'}), 404
+
+            # Get dispatch items
+            cursor.execute("""
+                SELECT
+                    di.id,
+                    di.item_type,
+                    di.quantity,
+                    di.length_meters,
+                    di.piece_count,
+                    di.bundle_size,
+                    di.pieces_per_bundle,
+                    di.piece_length_meters,
+                    di.notes,
+                    b.batch_code,
+                    pt.name as product_type_name,
+                    br.name as brand_name,
+                    pv.parameters,
+                    di.created_at
+                FROM dispatch_items di
+                JOIN inventory_stock s ON di.stock_id = s.id
+                JOIN batches b ON s.batch_id = b.id
+                JOIN product_variants pv ON di.product_variant_id = pv.id
+                JOIN product_types pt ON pv.product_type_id = pt.id
+                JOIN brands br ON pv.brand_id = br.id
+                WHERE di.dispatch_id = %s
+                ORDER BY di.created_at
+            """, (dispatch_id,))
+
+            items = cursor.fetchall()
+
+            result = dict(dispatch)
+            result['items'] = [dict(item) for item in items]
+
+            return jsonify(result), 200
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500

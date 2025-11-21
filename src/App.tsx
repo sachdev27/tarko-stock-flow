@@ -10,7 +10,7 @@ import Dashboard from "./pages/DashboardNew";
 import Production from "./pages/ProductionNew";
 import Inventory from "./pages/InventoryNew";
 import Transactions from "./pages/TransactionsNew";
-import Dispatch from "./pages/DispatchNewModular";
+import Dispatch from "./pages/Dispatch";
 import Reports from "./pages/ReportsNew";
 import Admin from "./pages/Admin";
 import Details from "./pages/Details";

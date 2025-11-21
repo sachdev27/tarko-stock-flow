@@ -12,40 +12,29 @@ export function TransactionSummaryCards({ transactions }: TransactionSummaryCard
   const productionTransactions = transactions.filter(
     (t) => t.transaction_type === 'PRODUCTION'
   );
-  const saleTransactions = transactions.filter((t) => t.transaction_type === 'SALE');
 
   const totalProductionWeight = getTotalProductionWeight(productionTransactions);
-  const totalSaleWeight = saleTransactions.reduce((sum, t) => sum + (t.total_weight || 0), 0);
+  const tons = Math.floor(totalProductionWeight / 1000);
+  const kg = Math.round(totalProductionWeight % 1000);
+
+  const weightDisplay = tons > 0
+    ? `${tons}t ${kg}kg`
+    : `${kg}kg`;
 
   const cards = [
     {
       title: 'Total Production',
-      value: formatWeight(totalProductionWeight),
+      value: weightDisplay,
+      subtitle: `${formatWeight(totalProductionWeight)} • ${productionTransactions.length} activities`,
       count: productionTransactions.length,
       icon: Package,
       iconColor: 'text-blue-500',
       bgColor: 'bg-blue-50 dark:bg-blue-950',
     },
-    {
-      title: 'Total Sales',
-      value: formatWeight(totalSaleWeight),
-      count: saleTransactions.length,
-      icon: TrendingDown,
-      iconColor: 'text-green-500',
-      bgColor: 'bg-green-50 dark:bg-green-950',
-    },
-    {
-      title: 'All Activities',
-      value: transactions.length.toString(),
-      count: transactions.length,
-      icon: Activity,
-      iconColor: 'text-orange-500',
-      bgColor: 'bg-orange-50 dark:bg-orange-950',
-    },
   ];
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+    <div className="w-full">
       {cards.map((card, idx) => {
         const Icon = card.icon;
         return (
@@ -57,12 +46,10 @@ export function TransactionSummaryCards({ transactions }: TransactionSummaryCard
               </div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{card.value}</div>
-              {idx < 2 && (
-                <p className="text-xs text-muted-foreground mt-1">
-                  {card.count} activit{card.count !== 1 ? 'ies' : 'y'}
-                </p>
-              )}
+              <div className="text-3xl font-bold">{card.value}</div>
+              <p className="text-sm text-muted-foreground mt-2">
+                {card.subtitle}
+              </p>
             </CardContent>
           </Card>
         );

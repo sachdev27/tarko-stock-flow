@@ -129,6 +129,51 @@ export class DispatchAPI {
       token: this.token
     });
   }
+
+  // New modular dispatch using inventory_stock
+  async createDispatch(data: {
+    customer_id: string;
+    bill_to_id?: string;
+    transport_id?: string;
+    vehicle_id?: string;
+    invoice_number?: string;
+    notes?: string;
+    items: Array<{
+      stock_id: string;
+      product_variant_id: string;
+      item_type: 'FULL_ROLL' | 'CUT_PIECE' | 'BUNDLE' | 'SPARE_PIECES';
+      quantity: number;
+      cut_piece_id?: string;
+      length_meters?: number;
+      spare_piece_ids?: string[];
+      piece_count?: number;
+      bundle_size?: number;
+      pieces_per_bundle?: number;
+      piece_length_meters?: number;
+    }>;
+  }) {
+    return apiCall('/dispatch/create-dispatch', {
+      method: 'POST',
+      body: data,
+      token: this.token
+    });
+  }
+
+  // Get all dispatches
+  async getDispatches() {
+    return apiCall('/dispatch/dispatches', {
+      method: 'GET',
+      token: this.token
+    });
+  }
+
+  // Get dispatch details
+  async getDispatchDetails(dispatchId: string) {
+    return apiCall(`/dispatch/dispatches/${dispatchId}`, {
+      method: 'GET',
+      token: this.token
+    });
+  }
 }
 
 // Hook for using the API
