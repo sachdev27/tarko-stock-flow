@@ -14,24 +14,21 @@ def get_batches():
     """Get all batches with aggregate inventory stock"""
     try:
         with get_db_cursor() as cursor:
-            # Get all batches with production details
+            # Get all batches
             cursor.execute("""
                 SELECT DISTINCT
-                    b.id, b.batch_code, b.batch_no, b.current_quantity, b.initial_quantity,
+                    b.id, b.batch_code, b.batch_no, b.current_quantity,
                     b.production_date, b.attachment_url, b.created_at,
-                    b.product_variant_id, b.notes,
-                    b.weight_per_meter, b.total_weight, b.piece_length,
+                    b.product_variant_id,
                     pv.parameters,
                     pt.id as product_type_id,
                     pt.name as product_type_name,
                     br.id as brand_id,
-                    br.name as brand_name,
-                    t.roll_snapshot as production_snapshot
+                    br.name as brand_name
                 FROM batches b
                 JOIN product_variants pv ON b.product_variant_id = pv.id
                 JOIN product_types pt ON pv.product_type_id = pt.id
                 JOIN brands br ON pv.brand_id = br.id
-                LEFT JOIN transactions t ON b.id = t.batch_id AND t.transaction_type = 'PRODUCTION'
                 WHERE b.deleted_at IS NULL
                 AND b.current_quantity > 0
                 ORDER BY b.created_at DESC

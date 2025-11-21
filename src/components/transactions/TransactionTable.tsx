@@ -187,7 +187,10 @@ export function TransactionTable({
               </TableCell>
             </TableRow>
           ) : (
-            sortedTransactions.map((transaction) => (
+            sortedTransactions.map((transaction) => {
+              const isInventoryOperation = ['CUT_ROLL', 'SPLIT_BUNDLE', 'COMBINE_SPARES'].includes(transaction.transaction_type);
+
+              return (
               <TableRow
                 key={transaction.id}
                 className="cursor-pointer hover:bg-muted/50"
@@ -198,7 +201,9 @@ export function TransactionTable({
                     <Checkbox
                       checked={selectedIds.has(transaction.id)}
                       onCheckedChange={() => onSelectTransaction(transaction.id)}
+                      disabled={isInventoryOperation}
                       aria-label={`Select transaction ${transaction.id}`}
+                      title={isInventoryOperation ? 'Inventory operations cannot be reverted' : undefined}
                     />
                   </TableCell>
                 )}
@@ -243,7 +248,8 @@ export function TransactionTable({
                   {transaction.notes || '-'}
                 </TableCell>
               </TableRow>
-            ))
+            );
+            })
           )}
         </TableBody>
       </Table>

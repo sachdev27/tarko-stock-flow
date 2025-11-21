@@ -1,20 +1,15 @@
 import { useState, useEffect } from 'react';
 import { Layout } from '@/components/Layout';
-import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
-import { Factory, Plus, History, RefreshCw } from 'lucide-react';
+import { Factory, Plus } from 'lucide-react';
 import { inventory, production, parameters } from '@/lib/api';
 import { toISTDateTimeLocal } from '@/lib/utils';
 import { ProductSelectionForm } from '@/components/production/ProductSelectionForm';
 import { QuantityConfigForm } from '@/components/production/QuantityConfigForm';
 import { BatchDetailsForm } from '@/components/production/BatchDetailsForm';
-import { ProductionHistoryTable } from '@/components/production/ProductionHistoryTable';
-import { EditBatchDialog } from '@/components/production/EditBatchDialog';
 
 interface ProductType {
   id: string;
@@ -32,19 +27,10 @@ interface Brand {
 }
 
 const ProductionNew = () => {
-  const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [productTypes, setProductTypes] = useState<ProductType[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [parameterOptions, setParameterOptions] = useState<Record<string, Array<{ value: string }>>>({});
-  const [activeTab, setActiveTab] = useState('new');
-
-  // Production History state
-  const [batches, setBatches] = useState<any[]>([]);
-  const [loadingBatches, setLoadingBatches] = useState(false);
-  const [editingBatch, setEditingBatch] = useState<any>(null);
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
 
   const [formData, setFormData] = useState({
     productTypeId: '',
@@ -75,13 +61,6 @@ const ProductionNew = () => {
   useEffect(() => {
     fetchMasterData();
   }, []);
-
-  // Fetch batches when switching to history tab
-  useEffect(() => {
-    if (activeTab === 'history') {
-      fetchBatches();
-    }
-  }, [activeTab]);
 
   // Auto-calculate total quantity
   useEffect(() => {
@@ -186,27 +165,6 @@ const ProductionNew = () => {
     } catch (error) {
       toast.error('Failed to load master data');
     }
-  };
-
-  const fetchBatches = async () => {
-    setLoadingBatches(true);
-    try {
-      const { data } = await inventory.getBatches();
-      setBatches(data);
-    } catch (error) {
-      toast.error('Failed to load production batches');
-    } finally {
-      setLoadingBatches(false);
-    }
-  };
-
-  const handleEditBatch = (batch: any) => {
-    setEditingBatch(batch);
-    setEditDialogOpen(true);
-  };
-
-  const handleEditSuccess = () => {
-    fetchBatches();
   };
 
   const handleFieldChange = (field: string, value: string | boolean) => {
@@ -327,9 +285,9 @@ const ProductionNew = () => {
 
   return (
     <Layout>
-      <div className="space-y-6 p-8">
+      <div className="max-w-4xl mx-auto space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between max-w-7xl mx-auto">
+        <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
               <Factory className="h-8 w-8" />
@@ -341,22 +299,7 @@ const ProductionNew = () => {
           </div>
         </div>
 
-        {/* Tabs */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full max-w-7xl mx-auto">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="new" className="flex items-center gap-2">
-              <Plus className="h-4 w-4" />
-              New Entry
-            </TabsTrigger>
-            <TabsTrigger value="history" className="flex items-center gap-2">
-              <History className="h-4 w-4" />
-              Production History
-            </TabsTrigger>
-          </TabsList>
-
-          {/* New Entry Tab */}
-          <TabsContent value="new" className="mt-6">
-            <div className="max-w-4xl mx-auto">
+        {/* Form */}
         <Card>
           <CardHeader>
             <CardTitle>New Production Batch</CardTitle>
@@ -494,66 +437,6 @@ const ProductionNew = () => {
             </form>
           </CardContent>
         </Card>
-            </div>
-          </TabsContent>
-
-          {/* Production History Tab */}
-          <TabsContent value="history" className="mt-6">
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle>Production History</CardTitle>
-                    <CardDescription>
-                      View and {user?.role === 'admin' ? 'edit' : 'manage'} existing production batches
-                    </CardDescription>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={fetchBatches}
-                    disabled={loadingBatches}
-                  >
-                    <RefreshCw className={`h-4 w-4 mr-2 ${loadingBatches ? 'animate-spin' : ''}`} />
-                    Refresh
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {/* Search Filter */}
-                <div className="mb-4">
-                  <Input
-                    placeholder="Search by batch code, product, or brand..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="max-w-md"
-                  />
-                </div>
-
-                {/* Table */}
-                <ProductionHistoryTable
-                  batches={batches.filter(batch =>
-                    searchQuery === '' ||
-                    batch.batch_code?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                    batch.product_type_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                    batch.brand_name?.toLowerCase().includes(searchQuery.toLowerCase())
-                  )}
-                  onEdit={handleEditBatch}
-                  canEdit={user?.role === 'admin'}
-                  loading={loadingBatches}
-                />
-              </CardContent>
-            </Card>
-
-            {/* Edit Dialog */}
-            <EditBatchDialog
-              batch={editingBatch}
-              open={editDialogOpen}
-              onOpenChange={setEditDialogOpen}
-              onSuccess={handleEditSuccess}
-            />
-          </TabsContent>
-        </Tabs>
       </div>
     </Layout>
   );

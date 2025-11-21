@@ -45,8 +45,12 @@ export const useTransactionSelection = (onRevertComplete?: () => void) => {
       }
 
       if (failed_transactions && failed_transactions.length > 0) {
-        toast.error(`Failed to revert ${failed_transactions.length} transaction(s)`, {
-          description: failed_transactions.map((f: { id: string; error: string }) => `${f.id}: ${f.error}`).join(', ')
+        // Show each failed transaction with its error
+        failed_transactions.forEach((f: { id: string; error: string }) => {
+          toast.error(`Failed to revert transaction`, {
+            description: f.error,
+            duration: 5000,
+          });
         });
       }
 
@@ -56,12 +60,41 @@ export const useTransactionSelection = (onRevertComplete?: () => void) => {
       if (onRevertComplete) {
         onRevertComplete();
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error reverting transactions:', error);
-      const errorMessage = error instanceof Error && 'response' in error
-        ? ((error as { response?: { data?: { error?: string } } }).response?.data?.error || 'Failed to revert transactions')
-        : 'Failed to revert transactions';
-      toast.error(errorMessage);
+
+      // Extract error message from response
+      let errorMessage = 'Failed to revert transactions';
+      let hasShownSpecificErrors = false;
+
+      if (error.response?.data) {
+        if (error.response.data.failed_transactions) {
+          // Show failed transactions from error response
+          error.response.data.failed_transactions.forEach((f: { id: string; error: string }) => {
+            toast.error(`Cannot revert transaction`, {
+              description: f.error,
+              duration: 5000,
+            });
+          });
+          hasShownSpecificErrors = true;
+        } else if (error.response.data.error) {
+          errorMessage = error.response.data.error;
+        }
+      }
+
+      // Only show generic error if we haven't shown specific ones
+      if (!hasShownSpecificErrors) {
+        toast.error(errorMessage);
+      }
+
+      // Close dialog and clear selection even on error
+      clearSelection();
+      setRevertDialogOpen(false);
+
+      // Still call the reload callback
+      if (onRevertComplete) {
+        onRevertComplete();
+      }
     } finally {
       setReverting(false);
     }
