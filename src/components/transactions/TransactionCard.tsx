@@ -28,7 +28,8 @@ const formatDispatchQuantityShort = (transaction: TransactionRecord): string => 
 
   transaction.roll_snapshot.item_breakdown.forEach((item: any) => {
     const type = item.item_type;
-    const qty = item.quantity || 0;
+    // For spare pieces, use piece_count instead of quantity
+    const qty = type === 'SPARE_PIECES' ? (item.piece_count || 0) : (item.quantity || 0);
     counts[type] = (counts[type] || 0) + qty;
   });
 
