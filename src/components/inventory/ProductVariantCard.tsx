@@ -28,23 +28,49 @@ interface StockEntry {
   piece_count?: number;
   total_available: number;
   product_type_name: string;
+  batch_id?: string;
+  batch_code?: string;
 }
 
-interface BatchStockCardProps {
-  batch: Batch;
+interface ProductVariantCardProps {
+  productTypeName: string;
+  brandName: string;
+  parameters: Record<string, unknown>;
+  batches: Batch[];
   onUpdate: () => void;
 }
 
-export const BatchStockCard = ({ batch, onUpdate }: BatchStockCardProps) => {
+export const ProductVariantCard = ({
+  productTypeName,
+  brandName,
+  parameters,
+  batches,
+  onUpdate
+}: ProductVariantCardProps) => {
   const [expanded, setExpanded] = useState(false);
+
+  // Aggregate all stock entries from all batches
+  const allStockEntries: StockEntry[] = batches.flatMap(batch =>
+    batch.stock_entries.map(entry => ({
+      ...entry,
+      batch_id: batch.id,
+      batch_code: batch.batch_code
+    }))
+  );
 
   // Group stock entries by type
   const stockByType = {
-    FULL_ROLL: batch.stock_entries.filter(e => e.stock_type === 'FULL_ROLL'),
-    CUT_ROLL: batch.stock_entries.filter(e => e.stock_type === 'CUT_ROLL'),
-    BUNDLE: batch.stock_entries.filter(e => e.stock_type === 'BUNDLE'),
-    SPARE: batch.stock_entries.filter(e => e.stock_type === 'SPARE')
+    FULL_ROLL: allStockEntries.filter(e => e.stock_type === 'FULL_ROLL'),
+    CUT_ROLL: allStockEntries.filter(e => e.stock_type === 'CUT_ROLL'),
+    BUNDLE: allStockEntries.filter(e => e.stock_type === 'BUNDLE'),
+    SPARE: allStockEntries.filter(e => e.stock_type === 'SPARE')
   };
+
+  // Calculate totals
+  const totalFullRolls = stockByType.FULL_ROLL.reduce((sum, e) => sum + e.quantity, 0);
+  const totalCutPieces = stockByType.CUT_ROLL.reduce((sum, e) => sum + e.quantity, 0);
+  const totalBundles = stockByType.BUNDLE.reduce((sum, e) => sum + e.quantity, 0);
+  const totalSparePieces = stockByType.SPARE.reduce((sum, e) => sum + (e.piece_count || e.total_available), 0);
 
   return (
     <Card>
@@ -53,12 +79,12 @@ export const BatchStockCard = ({ batch, onUpdate }: BatchStockCardProps) => {
           <div className="flex-1">
             {/* Single line with all info */}
             <div className="flex items-center gap-3 flex-wrap">
-              <Badge variant={batch.product_type_name === 'HDPE Pipe' ? 'default' : 'secondary'} className="text-base px-4 py-1.5">
-                {batch.product_type_name}
+              <Badge variant={productTypeName === 'HDPE Pipe' ? 'default' : 'secondary'} className="text-base px-4 py-1.5">
+                {productTypeName}
               </Badge>
-              <span className="text-lg font-bold">{batch.brand_name}</span>
+              <span className="text-lg font-bold">{brandName}</span>
               {/* Sort parameters: OD first, then PN, then PE, rest alphabetically */}
-              {Object.entries(batch.parameters)
+              {Object.entries(parameters)
                 .sort(([keyA], [keyB]) => {
                   const order = ['OD', 'PN', 'PE'];
                   const indexA = order.indexOf(keyA);
@@ -77,29 +103,26 @@ export const BatchStockCard = ({ batch, onUpdate }: BatchStockCardProps) => {
 
             {/* Stock Summary on second line */}
             <div className="flex items-center gap-2 flex-wrap mt-3">
-              {stockByType.FULL_ROLL.length > 0 && (
+              {totalFullRolls > 0 && (
                 <Badge variant="outline" className="bg-green-50 text-green-700 border-green-300">
-                  {stockByType.FULL_ROLL.reduce((sum, e) => sum + e.quantity, 0)} Full Rolls
+                  {totalFullRolls} Full Rolls
                 </Badge>
               )}
-              {stockByType.CUT_ROLL.length > 0 && (
+              {totalCutPieces > 0 && (
                 <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-300">
-                  {stockByType.CUT_ROLL.reduce((sum, e) => sum + e.quantity, 0)} Cut Pieces
+                  {totalCutPieces} Cut Pieces
                 </Badge>
               )}
-              {stockByType.BUNDLE.length > 0 && (
+              {totalBundles > 0 && (
                 <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-300">
-                  {stockByType.BUNDLE.reduce((sum, e) => sum + e.quantity, 0)} Bundles
+                  {totalBundles} Bundles
                 </Badge>
               )}
-              {stockByType.SPARE.length > 0 && (() => {
-                const totalSparePieces = stockByType.SPARE.reduce((sum, e) => sum + (e.piece_count || e.total_available), 0);
-                return (
-                  <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300">
-                    {totalSparePieces} Spare Pieces
-                  </Badge>
-                );
-              })()}
+              {totalSparePieces > 0 && (
+                <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300">
+                  {totalSparePieces} Spare Pieces
+                </Badge>
+              )}
             </div>
           </div>
 
@@ -127,9 +150,9 @@ export const BatchStockCard = ({ batch, onUpdate }: BatchStockCardProps) => {
       {expanded && (
         <CardContent className="pt-0">
           <StockEntryList
-            batchId={batch.id}
-            stockEntries={batch.stock_entries}
-            parameters={batch.parameters}
+            batchId=""
+            stockEntries={allStockEntries}
+            parameters={parameters}
             onUpdate={onUpdate}
           />
         </CardContent>

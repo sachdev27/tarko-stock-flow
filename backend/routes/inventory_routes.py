@@ -74,6 +74,7 @@ def get_batches():
                     WHERE s.batch_id = %s::uuid
                     AND s.deleted_at IS NULL
                     AND s.status = 'IN_STOCK'
+                    AND s.quantity > 0
                     AND s.stock_type NOT IN ('CUT_ROLL', 'SPARE')
                     ORDER BY s.stock_type, s.pieces_per_bundle, s.created_at
                 """, (batch_id,))
@@ -87,6 +88,7 @@ def get_batches():
                     WHERE s.batch_id = %s::uuid
                     AND s.deleted_at IS NULL
                     AND s.status = 'IN_STOCK'
+                    AND s.quantity > 0
                     AND s.stock_type = 'CUT_ROLL'
                 """, (batch_id,))
 

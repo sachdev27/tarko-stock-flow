@@ -1,9 +1,13 @@
+import { useState, useRef, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { X } from 'lucide-react';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { X, Check } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface AdvancedFiltersProps {
   productTypes: Array<{ id: string; name: string }>;
@@ -11,14 +15,15 @@ interface AdvancedFiltersProps {
   selectedProductType: string;
   selectedBrand: string;
   parameterFilters: Record<string, string>;
+  availableParameterValues: Record<string, string[]>;
   onProductTypeChange: (value: string) => void;
   onBrandChange: (value: string) => void;
   onParameterFilterChange: (key: string, value: string) => void;
   onClearFilters: () => void;
-  availableParameters: string[];
   selectedStockType: string;
   onStockTypeChange: (value: string) => void;
   stockTypes: Array<{ value: string; label: string }>;
+  currentProductTypeName: string;
 }
 
 export const AdvancedFilters = ({
@@ -27,20 +32,30 @@ export const AdvancedFilters = ({
   selectedProductType,
   selectedBrand,
   parameterFilters,
+  availableParameterValues,
   onProductTypeChange,
   onBrandChange,
   onParameterFilterChange,
   onClearFilters,
-  availableParameters,
   selectedStockType,
   onStockTypeChange,
-  stockTypes
+  stockTypes,
+  currentProductTypeName
 }: AdvancedFiltersProps) => {
+  const [openPopovers, setOpenPopovers] = useState<Record<string, boolean>>({});
+
   const activeFiltersCount =
     (selectedProductType !== 'all' ? 1 : 0) +
     (selectedBrand !== 'all' ? 1 : 0) +
     (selectedStockType !== 'all' ? 1 : 0) +
     Object.values(parameterFilters).filter(v => v).length;
+
+  // Determine which parameters to show based on product type
+  const isHDPE = currentProductTypeName.toLowerCase().includes('hdpe');
+  const isSprinkler = currentProductTypeName.toLowerCase().includes('sprinkler');
+
+  // Parameter order: OD, PN, then PE (HDPE) or Type (Sprinkler)
+  const parameterOrder = ['OD', 'PN', isHDPE ? 'PE' : isSprinkler ? 'Type' : 'PE'];
 
   return (
     <div className="space-y-3">
@@ -82,18 +97,59 @@ export const AdvancedFilters = ({
           </Select>
         </div>
 
-        {/* Parameter Filters - Compact */}
-        {availableParameters.map(param => (
-          <div key={param} className="space-y-1 min-w-[100px]">
-            <Label className="text-xs">{param}</Label>
-            <Input
-              placeholder={param}
-              className="h-9 text-sm"
-              value={parameterFilters[param] || ''}
-              onChange={(e) => onParameterFilterChange(param, e.target.value)}
-            />
-          </div>
-        ))}
+        {/* Parameter Filters with Autocomplete */}
+        {parameterOrder.map(param => {
+          const values = availableParameterValues[param] || [];
+          const selectedValue = parameterFilters[param] || '';
+
+          return (
+            <div key={param} className="space-y-1 min-w-[100px]">
+              <Label className="text-xs">{param}</Label>
+              <Popover
+                open={openPopovers[param]}
+                onOpenChange={(open) => setOpenPopovers(prev => ({ ...prev, [param]: open }))}
+              >
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    className="h-9 text-sm w-full justify-between font-normal"
+                  >
+                    {selectedValue || `Select ${param}...`}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[200px] p-0" align="start">
+                  <Command>
+                    <CommandInput placeholder={`Search ${param}...`} />
+                    <CommandList>
+                      <CommandEmpty>No values found.</CommandEmpty>
+                      <CommandGroup>
+                        {values.map((value) => (
+                          <CommandItem
+                            key={value}
+                            value={value}
+                            onSelect={() => {
+                              onParameterFilterChange(param, value === selectedValue ? '' : value);
+                              setOpenPopovers(prev => ({ ...prev, [param]: false }));
+                            }}
+                          >
+                            <Check
+                              className={cn(
+                                "mr-2 h-4 w-4",
+                                selectedValue === value ? "opacity-100" : "opacity-0"
+                              )}
+                            />
+                            {value}
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+            </div>
+          );
+        })}
 
         {/* Stock Type */}
         <div className="space-y-1 min-w-[120px]">

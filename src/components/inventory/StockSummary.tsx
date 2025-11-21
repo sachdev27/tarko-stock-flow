@@ -3,9 +3,8 @@ import { Box, Scissors, Layers, Package } from 'lucide-react';
 
 interface StockSummaryProps {
   stats: {
-    totalBatches: number;
-    hdpeBatches: number;
-    sprinklerBatches: number;
+    hdpeProducts: number;
+    sprinklerProducts: number;
     totalFullRolls: number;
     totalCutRolls: number;
     totalBundles: number;
@@ -16,10 +15,16 @@ interface StockSummaryProps {
 export const StockSummary = ({ stats }: StockSummaryProps) => {
   const statCards = [
     {
-      label: 'Total Batches',
-      value: stats.totalBatches,
+      label: 'HDPE Products',
+      value: stats.hdpeProducts,
       icon: Package,
       color: 'text-blue-600'
+    },
+    {
+      label: 'Sprinkler Products',
+      value: stats.sprinklerProducts,
+      icon: Package,
+      color: 'text-indigo-600'
     },
     {
       label: 'Full Rolls',
@@ -48,7 +53,7 @@ export const StockSummary = ({ stats }: StockSummaryProps) => {
   ];
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+    <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
       {statCards.map((stat) => (
         <Card key={stat.label}>
           <CardContent className="pt-6">

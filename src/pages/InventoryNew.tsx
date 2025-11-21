@@ -7,14 +7,15 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
-import { Package, Search, Box, Scissors, Layers, MessageCircle, Upload, Download, FileText, History } from 'lucide-react';
+import { Package, Search, Box, Scissors, Layers, MessageCircle, Upload, Download, FileText, History, Keyboard } from 'lucide-react';
 import { inventory as inventoryAPI } from '@/lib/api';
-import { BatchStockCard } from '@/components/inventory/BatchStockCard';
+import { ProductVariantCard } from '@/components/inventory/ProductVariantCard';
 import { StockSummary } from '@/components/inventory/StockSummary';
 import { ProductHistoryDialog } from '@/components/inventory/ProductHistoryDialog';
 import { WhatsAppShareDialog } from '@/components/inventory/WhatsAppShareDialog';
 import { ImportExportDialog } from '@/components/inventory/ImportExportDialog';
 import { AdvancedFilters } from '@/components/inventory/AdvancedFilters';
+import { KeyboardShortcutsDialog } from '@/components/inventory/KeyboardShortcutsDialog';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface Batch {
@@ -64,6 +65,7 @@ const InventoryNew = () => {
 
   const [whatsappDialogOpen, setWhatsappDialogOpen] = useState(false);
   const [importExportDialogOpen, setImportExportDialogOpen] = useState(false);
+  const [keyboardShortcutsOpen, setKeyboardShortcutsOpen] = useState(false);
 
   const filterBatches = () => {
     let filtered = [...batches];
@@ -124,6 +126,81 @@ const InventoryNew = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchTerm, selectedProduct, selectedBrand, selectedStockType, parameterFilters, batches]);
 
+  // Keyboard shortcuts handler
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      // Don't trigger shortcuts when typing in inputs or textareas
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+        return;
+      }
+
+      // Open shortcuts dialog with '?'
+      if (e.key === '?') {
+        e.preventDefault();
+        setKeyboardShortcutsOpen(true);
+        return;
+      }
+
+      // Load shortcuts from localStorage
+      const savedShortcuts = localStorage.getItem('inventory_keyboard_shortcuts');
+      if (!savedShortcuts) return;
+
+      interface KeyboardShortcut {
+        key: string;
+        action: string;
+        label: string;
+      }
+
+      const shortcuts: KeyboardShortcut[] = JSON.parse(savedShortcuts);
+      const key = e.key.toLowerCase();
+      const shortcut = shortcuts.find((s) => s.key === key);
+
+      if (shortcut) {
+        e.preventDefault();
+        const [type, value] = shortcut.action.split('_');
+
+        if (type === 'product' && value === 'type') {
+          // Handle product_type_0, product_type_1, etc.
+          const index = parseInt(shortcut.action.split('_')[2]);
+          if (productTypes[index]) {
+            setSelectedProduct(productTypes[index].id);
+            toast.success(`Filtered by ${productTypes[index].name}`);
+          }
+        } else if (type === 'brand') {
+          // Handle brand_0, brand_1, etc.
+          const index = parseInt(value);
+          if (brands[index]) {
+            setSelectedBrand(brands[index].id);
+            toast.success(`Filtered by ${brands[index].name}`);
+          }
+        } else if (type === 'stock') {
+          // Handle stock_type_FULL_ROLL, stock_type_all, etc.
+          const stockType = shortcut.action.replace('stock_type_', '');
+          setSelectedStockType(stockType);
+          const stockTypeLabel = stockTypes.find(st => st.value === stockType)?.label || stockType;
+          toast.success(`Filtered by ${stockTypeLabel}`);
+        } else if (type === 'parameter') {
+          // Handle parameter_OD_32, parameter_PN_10, etc.
+          const parts = shortcut.action.split('_');
+          if (parts.length >= 3) {
+            const paramKey = parts[1];
+            const paramValue = parts.slice(2).join('_'); // Handle values with underscores
+            setParameterFilters(prev => ({
+              ...prev,
+              [paramKey]: paramValue
+            }));
+            toast.success(`Filtered by ${paramKey}=${paramValue}`);
+          }
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [productTypes, brands]);
+
   const fetchProductTypes = async () => {
     try {
       const { data } = await inventoryAPI.getProductTypes();
@@ -163,21 +240,32 @@ const InventoryNew = () => {
   };
 
   // Calculate summary stats
+  const groupedProducts = batches.reduce((acc, batch) => {
+    const key = `${batch.product_type_name}_${batch.brand_name}_${JSON.stringify(batch.parameters)}`;
+    if (!acc[key]) {
+      acc[key] = {
+        productTypeName: batch.product_type_name,
+        batches: []
+      };
+    }
+    acc[key].batches.push(batch);
+    return acc;
+  }, {} as Record<string, { productTypeName: string; batches: Batch[] }>);
+
   const stats = {
-    totalBatches: batches.length,
-    hdpeBatches: batches.filter(b => b.product_type_name === 'HDPE Pipe').length,
-    sprinklerBatches: batches.filter(b => b.product_type_name === 'Sprinkler Pipe').length,
+    hdpeProducts: Object.values(groupedProducts).filter(p => p.productTypeName === 'HDPE Pipe').length,
+    sprinklerProducts: Object.values(groupedProducts).filter(p => p.productTypeName === 'Sprinkler Pipe').length,
     totalFullRolls: batches.reduce((sum, b) =>
-      sum + b.stock_entries.filter(e => e.stock_type === 'FULL_ROLL').reduce((s, e) => s + e.quantity, 0), 0
+      sum + b.stock_entries.filter(e => e.stock_type === 'FULL_ROLL' && e.quantity > 0).reduce((s, e) => s + e.quantity, 0), 0
     ),
     totalCutRolls: batches.reduce((sum, b) =>
-      sum + b.stock_entries.filter(e => e.stock_type === 'CUT_ROLL').reduce((s, e) => s + e.quantity, 0), 0
+      sum + b.stock_entries.filter(e => e.stock_type === 'CUT_ROLL' && e.quantity > 0).reduce((s, e) => s + e.quantity, 0), 0
     ),
     totalBundles: batches.reduce((sum, b) =>
-      sum + b.stock_entries.filter(e => e.stock_type === 'BUNDLE').reduce((s, e) => s + e.quantity, 0), 0
+      sum + b.stock_entries.filter(e => e.stock_type === 'BUNDLE' && e.quantity > 0).reduce((s, e) => s + e.quantity, 0), 0
     ),
     totalSpares: batches.reduce((sum, b) =>
-      sum + b.stock_entries.filter(e => e.stock_type === 'SPARE').reduce((s, e) => s + (e.piece_count || e.total_available || 0), 0), 0
+      sum + b.stock_entries.filter(e => e.stock_type === 'SPARE' && (e.piece_count || e.total_available || 0) > 0).reduce((s, e) => s + (e.piece_count || e.total_available || 0), 0), 0
     )
   };
 
@@ -187,6 +275,43 @@ const InventoryNew = () => {
       batches.flatMap(b => Object.keys(b.parameters as Record<string, unknown>))
     )
   ).sort();
+
+  // Get available values for each parameter from current filtered batches (before parameter filter)
+  const availableParameterValues: Record<string, string[]> = {};
+  const batchesForParamValues = batches.filter(batch => {
+    // Apply product type and brand filters only
+    if (selectedProduct !== 'all' && batch.product_type_name !== productTypes.find(pt => pt.id === selectedProduct)?.name) {
+      return false;
+    }
+    if (selectedBrand !== 'all' && batch.brand_name !== brands.find(b => b.id === selectedBrand)?.name) {
+      return false;
+    }
+    return true;
+  });
+
+  availableParameters.forEach(param => {
+    const values = new Set<string>();
+    batchesForParamValues.forEach(batch => {
+      const value = (batch.parameters as Record<string, unknown>)[param];
+      if (value !== null && value !== undefined) {
+        values.add(String(value));
+      }
+    });
+    availableParameterValues[param] = Array.from(values).sort((a, b) => {
+      // Try to sort numerically if possible
+      const numA = parseFloat(a);
+      const numB = parseFloat(b);
+      if (!isNaN(numA) && !isNaN(numB)) {
+        return numA - numB;
+      }
+      return a.localeCompare(b);
+    });
+  });
+
+  // Get current product type name
+  const currentProductTypeName = selectedProduct && selectedProduct !== 'all'
+    ? productTypes.find(pt => pt.id === selectedProduct)?.name || ''
+    : '';
 
   const stockTypes = [
     { value: 'all', label: 'All Types' },
@@ -231,6 +356,15 @@ const InventoryNew = () => {
             </p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setKeyboardShortcutsOpen(true)}
+              title="Configure Keyboard Shortcuts (?)"
+            >
+              <Keyboard className="h-4 w-4 mr-2" />
+              Shortcuts
+            </Button>
             {isAdmin && (
               <Button
                 variant="outline"
@@ -281,24 +415,25 @@ const InventoryNew = () => {
               selectedProductType={selectedProduct}
               selectedBrand={selectedBrand}
               parameterFilters={parameterFilters}
+              availableParameterValues={availableParameterValues}
               onProductTypeChange={setSelectedProduct}
               onBrandChange={setSelectedBrand}
               onParameterFilterChange={handleParameterFilterChange}
               onClearFilters={clearAllFilters}
-              availableParameters={availableParameters}
               selectedStockType={selectedStockType}
               onStockTypeChange={setSelectedStockType}
               stockTypes={stockTypes}
+              currentProductTypeName={currentProductTypeName}
             />
 
             {/* Results Count */}
             <div className="text-xs text-muted-foreground">
-              Showing {filteredBatches.length} of {batches.length} batches
+              Showing {filteredBatches.length} batches
             </div>
           </CardContent>
         </Card>
 
-        {/* Batch List */}
+        {/* Product Variant List */}
         {loading ? (
           <Card>
             <CardContent className="py-12">
@@ -321,17 +456,37 @@ const InventoryNew = () => {
               </div>
             </CardContent>
           </Card>
-        ) : (
-          <div className="space-y-4">
-            {filteredBatches.map(batch => (
-              <BatchStockCard
-                key={batch.id}
-                batch={batch}
-                onUpdate={fetchBatches}
-              />
-            ))}
-          </div>
-        )}
+        ) : (() => {
+          // Group batches by product variant (product type + brand + parameters)
+          const groupedByProductVariant = filteredBatches.reduce((acc, batch) => {
+            const key = `${batch.product_type_name}_${batch.brand_name}_${JSON.stringify(batch.parameters)}`;
+            if (!acc[key]) {
+              acc[key] = {
+                productTypeName: batch.product_type_name,
+                brandName: batch.brand_name,
+                parameters: batch.parameters,
+                batches: []
+              };
+            }
+            acc[key].batches.push(batch);
+            return acc;
+          }, {} as Record<string, { productTypeName: string; brandName: string; parameters: Record<string, unknown>; batches: Batch[] }>);
+
+          return (
+            <div className="space-y-4">
+              {Object.entries(groupedByProductVariant).map(([key, variant]) => (
+                <ProductVariantCard
+                  key={key}
+                  productTypeName={variant.productTypeName}
+                  brandName={variant.brandName}
+                  parameters={variant.parameters}
+                  batches={variant.batches}
+                  onUpdate={fetchBatches}
+                />
+              ))}
+            </div>
+          );
+        })()}
       </div>
 
       {/* Dialogs */}
@@ -355,6 +510,19 @@ const InventoryNew = () => {
         productTypes={productTypes}
         brands={brands}
         onImportComplete={fetchBatches}
+      />
+
+      <KeyboardShortcutsDialog
+        open={keyboardShortcutsOpen}
+        onOpenChange={setKeyboardShortcutsOpen}
+        productTypes={productTypes}
+        brands={brands}
+        stockTypes={stockTypes}
+        availableParameterValues={availableParameterValues}
+        onProductTypeChange={setSelectedProduct}
+        onBrandChange={setSelectedBrand}
+        onStockTypeChange={setSelectedStockType}
+        onParameterFilterChange={handleParameterFilterChange}
       />
     </Layout>
   );

@@ -281,7 +281,18 @@ export const WhatsAppShareDialog = ({ open, onOpenChange, batches }: WhatsAppSha
                       />
                       <div className="flex items-center gap-2 flex-wrap flex-1">
                         <Badge variant="secondary" className="text-sm">{product.brand}</Badge>
-                        {Object.entries(product.parameters as Record<string, string>).map(([key, value]) => (
+                        {/* Sort parameters: OD first, then PN, then PE, rest alphabetically */}
+                        {Object.entries(product.parameters as Record<string, string>)
+                          .sort(([keyA], [keyB]) => {
+                            const order = ['OD', 'PN', 'PE'];
+                            const indexA = order.indexOf(keyA);
+                            const indexB = order.indexOf(keyB);
+                            if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+                            if (indexA !== -1) return -1;
+                            if (indexB !== -1) return 1;
+                            return keyA.localeCompare(keyB);
+                          })
+                          .map(([key, value]) => (
                           <Badge key={key} variant="outline" className="text-xs">
                             {key}: {value}
                           </Badge>
@@ -309,7 +320,7 @@ export const WhatsAppShareDialog = ({ open, onOpenChange, batches }: WhatsAppSha
                                 onCheckedChange={() => toggleStockEntry(entry.stock_id)}
                               />
                               <span className="text-sm">
-                                {entry.quantity} rolls × {entry.length_per_unit?.toFixed(0) || 0}m = {entry.total_available?.toFixed(2) || 0}m
+                                {entry.quantity} rolls × {Number(entry.length_per_unit || 0).toFixed(0)}m = {Number(entry.total_available || 0).toFixed(2)}m
                               </span>
                             </div>
                           ))}
@@ -326,7 +337,7 @@ export const WhatsAppShareDialog = ({ open, onOpenChange, batches }: WhatsAppSha
                                 onCheckedChange={() => toggleStockEntry(entry.stock_id)}
                               />
                               <span className="text-sm">
-                                {entry.total_available?.toFixed(2) || 0}m (cut pieces)
+                                {Number(entry.total_available || 0).toFixed(2)}m (cut pieces)
                               </span>
                             </div>
                           ))}
