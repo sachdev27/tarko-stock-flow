@@ -4,7 +4,7 @@ export interface TransactionRecord {
   // Core Transaction Fields
   id: string;
   dispatch_id?: string;
-  transaction_type: 'PRODUCTION' | 'SALE' | 'ADJUSTMENT' | 'CUT';
+  transaction_type: 'PRODUCTION' | 'SALE' | 'CUT_ROLL' | 'ADJUSTMENT' | 'RETURN' | 'TRANSFER_OUT' | 'TRANSFER_IN' | 'INTERNAL_USE' | 'CUT' | 'SPLIT_BUNDLE' | 'COMBINE_SPARES';
   quantity_change: number;
   transaction_date: string;
   invoice_no?: string;
@@ -86,6 +86,10 @@ export interface TransactionRecord {
       spare_piece_count?: number; // Actual piece count for SPARE stock type
       cut_piece_lengths?: number[]; // Individual lengths for CUT_ROLL stock type
       total_cut_length?: number; // Total length of all cut pieces
+      // SPLIT_BUNDLE specific fields
+      from_bundle_size?: number; // Original bundle size that was split
+      piece_length?: number; // Length of each piece
+      spare_groups?: number; // Number of spare groups created
     }>;
     total_items?: number;
     total_stock_entries?: number;

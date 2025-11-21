@@ -39,6 +39,9 @@ export function TransactionDetailModal({
 }: TransactionDetailModalProps) {
   if (!transaction) return null;
 
+  // Check if this is an inventory operation (CUT_ROLL, SPLIT_BUNDLE, COMBINE_SPARES)
+  const isInventoryOperation = ['CUT_ROLL', 'SPLIT_BUNDLE', 'COMBINE_SPARES'].includes(transaction.transaction_type);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh]">
@@ -53,16 +56,101 @@ export function TransactionDetailModal({
         </DialogHeader>
 
         <ScrollArea className="max-h-[calc(90vh-120px)]">
-          <Tabs defaultValue="overview" className="w-full">
-            <TabsList className="grid w-full grid-cols-4">
-              <TabsTrigger value="overview">Overview</TabsTrigger>
-              <TabsTrigger value="product">Product</TabsTrigger>
-              <TabsTrigger value="rolls">Stock</TabsTrigger>
-              <TabsTrigger value="metadata">Metadata</TabsTrigger>
-            </TabsList>
+          {isInventoryOperation ? (
+            // Simplified view for inventory operations
+            <div className="space-y-4 mt-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <FileText className="h-5 w-5" />
+                    Operation Details
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div>
+                    <div className="text-sm text-muted-foreground mb-1 flex items-center gap-2">
+                      <Calendar className="h-4 w-4" />
+                      Date
+                    </div>
+                    <div className="font-medium">
+                      {formatDateTime(transaction.transaction_date)}
+                    </div>
+                  </div>
 
-            {/* Overview Tab */}
-            <TabsContent value="overview" className="space-y-4 mt-4">
+                  {transaction.notes && (
+                    <div>
+                      <div className="text-sm text-muted-foreground mb-1">What Happened</div>
+                      <div className="text-sm bg-muted p-3 rounded-md">
+                        {transaction.notes}
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Stock Details for cut pieces */}
+              {transaction.roll_snapshot?.stock_entries && transaction.roll_snapshot.stock_entries.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <Box className="h-5 w-5" />
+                      Result
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {transaction.roll_snapshot.stock_entries.map((entry, idx) => (
+                      <div key={idx} className="border rounded-lg p-4">
+                        {entry.stock_type === 'SPLIT_BUNDLE' ? (
+                          // SPLIT_BUNDLE specific display
+                          <div className="space-y-3">
+                            <div className="font-medium text-lg">
+                              Split from bundle of {entry.from_bundle_size} pieces
+                            </div>
+                            <div className="text-sm text-muted-foreground">
+                              Piece length: {entry.piece_length?.toFixed(2)}m each
+                            </div>
+                            <div className="text-sm text-muted-foreground">
+                              Result: {entry.spare_groups} spare group{entry.spare_groups !== 1 ? 's' : ''}
+                            </div>
+                          </div>
+                        ) : (
+                          // CUT_ROLL display
+                          <>
+                            <div className="font-medium text-lg mb-3">
+                              {entry.quantity} × {entry.stock_type.replace('_', ' ')}
+                            </div>
+                            {entry.cut_piece_lengths && entry.cut_piece_lengths.length > 0 && (
+                              <div>
+                                <span className="text-sm text-muted-foreground">Pieces:</span>
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                  {entry.cut_piece_lengths.map((length, idx) => (
+                                    <span key={idx} className="text-sm bg-amber-100 dark:bg-amber-900 px-3 py-1.5 rounded font-medium">
+                                      {length.toFixed(2)}m
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          ) : (
+            // Full tabbed view for other transaction types
+            <Tabs defaultValue="overview" className="w-full">
+              <TabsList className="grid w-full grid-cols-4">
+                <TabsTrigger value="overview">Overview</TabsTrigger>
+                <TabsTrigger value="product">Product</TabsTrigger>
+                <TabsTrigger value="rolls">Stock</TabsTrigger>
+                <TabsTrigger value="metadata">Metadata</TabsTrigger>
+              </TabsList>
+
+              {/* Overview Tab */}
+              <TabsContent value="overview" className="space-y-4 mt-4">
               {/* Transaction Info Card */}
               <Card>
                 <CardHeader>
@@ -430,40 +518,36 @@ export function TransactionDetailModal({
                             )}
                           </div>
                           {/* Calculate total meters and weight for this entry */}
-                          <div className="mt-3 pt-3 border-t space-y-2">
-                            <div className="text-sm font-medium">
-                              {entry.stock_type === 'FULL_ROLL' ? (
-                                <>Total: {(entry.quantity * (entry.length_per_unit || 0)).toFixed(2)}m</>
-                              ) : entry.stock_type === 'CUT_ROLL' ? (
-                                <>Total: {(entry.total_cut_length || 0).toFixed(2)}m ({entry.quantity} piece{entry.quantity !== 1 ? 's' : ''})</>
-                              ) : entry.stock_type === 'BUNDLE' ? (
-                                <>Total: {(entry.quantity * (entry.pieces_per_bundle || 0) * (entry.piece_length_meters || 0)).toFixed(2)}m ({entry.quantity * (entry.pieces_per_bundle || 0)} pieces)</>
-                              ) : (entry.stock_type === 'SPARE_PIECES' || entry.stock_type === 'SPARE') ? (
-                                <>Total: {((entry.spare_piece_count || entry.quantity) * (entry.piece_length_meters || 0)).toFixed(2)}m ({entry.spare_piece_count || entry.quantity} piece{(entry.spare_piece_count || entry.quantity) !== 1 ? 's' : ''})</>
-                              ) : null}
-                            </div>
-                            {transaction.weight_per_meter && typeof transaction.weight_per_meter === 'number' && (
-                              <div className="text-sm text-muted-foreground">
+                          {entry.stock_type !== 'CUT_ROLL' && (
+                            <div className="mt-3 pt-3 border-t space-y-2">
+                              <div className="text-sm font-medium">
                                 {entry.stock_type === 'FULL_ROLL' ? (
-                                  <>Weight: {(entry.quantity * (entry.length_per_unit || 0) * transaction.weight_per_meter).toFixed(2)} kg
-                                    <span className="text-xs ml-1">({entry.quantity} rolls × {(entry.length_per_unit || 0).toFixed(2)}m × {transaction.weight_per_meter.toFixed(3)} kg/m)</span>
-                                  </>
-                                ) : entry.stock_type === 'CUT_ROLL' ? (
-                                  <>Weight: {((entry.total_cut_length || 0) * transaction.weight_per_meter).toFixed(2)} kg
-                                    <span className="text-xs ml-1">({(entry.total_cut_length || 0).toFixed(2)}m × {transaction.weight_per_meter.toFixed(3)} kg/m)</span>
-                                  </>
+                                  <>Total: {(entry.quantity * (entry.length_per_unit || 0)).toFixed(2)}m</>
                                 ) : entry.stock_type === 'BUNDLE' ? (
-                                  <>Weight: {(entry.quantity * (entry.pieces_per_bundle || 0) * (entry.piece_length_meters || 0) * transaction.weight_per_meter).toFixed(2)} kg
-                                    <span className="text-xs ml-1">({entry.quantity * (entry.pieces_per_bundle || 0)} pieces × {(entry.piece_length_meters || 0).toFixed(2)}m × {transaction.weight_per_meter.toFixed(3)} kg/m)</span>
-                                  </>
+                                  <>Total: {(entry.quantity * (entry.pieces_per_bundle || 0) * (entry.piece_length_meters || 0)).toFixed(2)}m ({entry.quantity * (entry.pieces_per_bundle || 0)} pieces)</>
                                 ) : (entry.stock_type === 'SPARE_PIECES' || entry.stock_type === 'SPARE') ? (
-                                  <>Weight: {((entry.spare_piece_count || entry.quantity) * (entry.piece_length_meters || 0) * transaction.weight_per_meter).toFixed(2)} kg
-                                    <span className="text-xs ml-1">({entry.spare_piece_count || entry.quantity} pieces × {(entry.piece_length_meters || 0).toFixed(2)}m × {transaction.weight_per_meter.toFixed(3)} kg/m)</span>
-                                  </>
+                                  <>Total: {((entry.spare_piece_count || entry.quantity) * (entry.piece_length_meters || 0)).toFixed(2)}m ({entry.spare_piece_count || entry.quantity} piece{(entry.spare_piece_count || entry.quantity) !== 1 ? 's' : ''})</>
                                 ) : null}
                               </div>
-                            )}
-                          </div>
+                              {transaction.weight_per_meter && typeof transaction.weight_per_meter === 'number' && (
+                                <div className="text-sm text-muted-foreground">
+                                  {entry.stock_type === 'FULL_ROLL' ? (
+                                    <>Weight: {(entry.quantity * (entry.length_per_unit || 0) * transaction.weight_per_meter).toFixed(2)} kg
+                                      <span className="text-xs ml-1">({entry.quantity} rolls × {(entry.length_per_unit || 0).toFixed(2)}m × {transaction.weight_per_meter.toFixed(3)} kg/m)</span>
+                                    </>
+                                  ) : entry.stock_type === 'BUNDLE' ? (
+                                    <>Weight: {(entry.quantity * (entry.pieces_per_bundle || 0) * (entry.piece_length_meters || 0) * transaction.weight_per_meter).toFixed(2)} kg
+                                      <span className="text-xs ml-1">({entry.quantity * (entry.pieces_per_bundle || 0)} pieces × {(entry.piece_length_meters || 0).toFixed(2)}m × {transaction.weight_per_meter.toFixed(3)} kg/m)</span>
+                                    </>
+                                  ) : (entry.stock_type === 'SPARE_PIECES' || entry.stock_type === 'SPARE') ? (
+                                    <>Weight: {((entry.spare_piece_count || entry.quantity) * (entry.piece_length_meters || 0) * transaction.weight_per_meter).toFixed(2)} kg
+                                      <span className="text-xs ml-1">({entry.spare_piece_count || entry.quantity} pieces × {(entry.piece_length_meters || 0).toFixed(2)}m × {transaction.weight_per_meter.toFixed(3)} kg/m)</span>
+                                    </>
+                                  ) : null}
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -594,6 +678,7 @@ export function TransactionDetailModal({
               </Card>
             </TabsContent>
           </Tabs>
+          )}
         </ScrollArea>
       </DialogContent>
     </Dialog>

@@ -220,10 +220,14 @@ export function TransactionTable({
                     : transaction.total_rolls_count || transaction.roll_snapshot?.total_rolls || '0'}
                 </TableCell>
                 <TableCell className="font-medium">
-                  {formatWeight(transaction.total_weight)}
+                  {['CUT_ROLL', 'SPLIT_BUNDLE', 'COMBINE_SPARES'].includes(transaction.transaction_type)
+                    ? '-'
+                    : formatWeight(transaction.total_weight)}
                 </TableCell>
                 <TableCell className="text-sm">
-                  {transaction.weight_per_meter && typeof transaction.weight_per_meter === 'number'
+                  {['CUT_ROLL', 'SPLIT_BUNDLE', 'COMBINE_SPARES'].includes(transaction.transaction_type)
+                    ? '-'
+                    : transaction.weight_per_meter && typeof transaction.weight_per_meter === 'number'
                     ? `${transaction.weight_per_meter.toFixed(3)} kg/m`
                     : '-'}
                 </TableCell>

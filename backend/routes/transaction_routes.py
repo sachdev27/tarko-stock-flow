@@ -136,11 +136,13 @@ def get_transactions():
         date_filter = " AND t.created_at >= %s AND t.created_at <= %s"
         params = [start_ist, end_ist]
 
+    # Query both transactions and inventory_transactions tables
     query = f"""
+        -- Main batch-level transactions
         SELECT
             CONCAT('txn_', t.id) as id,
             t.dispatch_id,
-            t.transaction_type,
+            t.transaction_type::text,
             t.quantity_change,
             t.transaction_date,
             t.invoice_no,
@@ -207,7 +209,124 @@ def get_transactions():
         LEFT JOIN customers c ON t.customer_id = c.id
         LEFT JOIN users u ON t.created_by = u.id
         WHERE t.deleted_at IS NULL{date_filter}
-        ORDER BY t.transaction_date DESC
+
+        UNION ALL
+
+        -- Stock-level inventory transactions (cut rolls, cut bundles, combine bundles)
+        SELECT
+            CONCAT('inv_', it.id) as id,
+            NULL as dispatch_id,
+            it.transaction_type::text,
+            COALESCE(it.to_quantity, 0) - COALESCE(it.from_quantity, 0) as quantity_change,
+            it.created_at as transaction_date,
+            NULL as invoice_no,
+            it.notes,
+            it.created_at,
+            -- Build roll_snapshot with cut piece information for CUT_ROLL transactions
+            -- and bundle info for SPLIT_BUNDLE transactions
+            CASE
+                WHEN it.transaction_type = 'CUT_ROLL' THEN
+                    jsonb_build_object(
+                        'stock_entries',
+                        jsonb_build_array(
+                            jsonb_build_object(
+                                'stock_type', 'CUT_ROLL',
+                                'quantity', COALESCE(it.to_quantity, 0),
+                                'cut_piece_lengths', COALESCE(
+                                    (SELECT jsonb_agg(hcp.length_meters ORDER BY hcp.created_at)
+                                     FROM hdpe_cut_pieces hcp
+                                     WHERE hcp.stock_id = it.to_stock_id
+                                     AND hcp.created_at >= it.created_at
+                                     AND hcp.created_at < it.created_at + interval '1 second'),
+                                    '[]'::jsonb
+                                ),
+                                'total_cut_length', COALESCE(
+                                    (SELECT SUM(hcp.length_meters)
+                                     FROM hdpe_cut_pieces hcp
+                                     WHERE hcp.stock_id = it.to_stock_id
+                                     AND hcp.created_at >= it.created_at
+                                     AND hcp.created_at < it.created_at + interval '1 second'),
+                                    0
+                                )
+                            )
+                        )
+                    )
+                WHEN it.transaction_type = 'SPLIT_BUNDLE' THEN
+                    jsonb_build_object(
+                        'stock_entries',
+                        jsonb_build_array(
+                            jsonb_build_object(
+                                'stock_type', 'SPLIT_BUNDLE',
+                                'from_bundle_size', ist_from.pieces_per_bundle,
+                                'piece_length', COALESCE(ist_from.piece_length_meters, b.piece_length),
+                                'spare_groups', it.to_quantity
+                            )
+                        )
+                    )
+                ELSE NULL
+            END as roll_snapshot,
+            b.batch_code,
+            b.batch_no,
+            b.initial_quantity,
+            b.weight_per_meter,
+            -- For CUT_ROLL, calculate weight based on cut pieces only, not batch total
+            CASE
+                WHEN it.transaction_type = 'CUT_ROLL' THEN
+                    (SELECT SUM(hcp.length_meters) * b.weight_per_meter
+                     FROM hdpe_cut_pieces hcp
+                     WHERE hcp.stock_id = it.to_stock_id
+                     AND hcp.created_at >= it.created_at
+                     AND hcp.created_at < it.created_at + interval '1 second')
+                ELSE b.total_weight
+            END as total_weight,
+            b.piece_length,
+            b.attachment_url,
+            b.created_at as production_date,
+            pt.name as product_type,
+            pv.id as product_variant_id,
+            pv.product_type_id,
+            pv.brand_id,
+            br.name as brand,
+            pv.parameters,
+            -- For CUT_ROLL, show total cut length in meters
+            CASE
+                WHEN it.transaction_type = 'CUT_ROLL' THEN
+                    (SELECT SUM(hcp.length_meters)
+                     FROM hdpe_cut_pieces hcp
+                     WHERE hcp.stock_id = it.to_stock_id
+                     AND hcp.created_at >= it.created_at
+                     AND hcp.created_at < it.created_at + interval '1 second')
+                ELSE NULL
+            END as roll_length_meters,
+            NULL as roll_initial_length_meters,
+            FALSE as roll_is_cut,
+            NULL as roll_type,
+            NULL as roll_bundle_size,
+            NULL as roll_weight,
+            u_unit.abbreviation as unit_abbreviation,
+            NULL as customer_name,
+            NULL as created_by_email,
+            NULL as created_by_username,
+            NULL as created_by_name,
+            NULL::bigint as standard_rolls_count,
+            NULL::bigint as cut_rolls_count,
+            NULL::bigint as bundles_count,
+            NULL::bigint as spare_pieces_count,
+            NULL::numeric as avg_standard_roll_length,
+            NULL::integer as bundle_size,
+            NULL::numeric[] as cut_rolls_details,
+            NULL::numeric[] as spare_pieces_details
+        FROM inventory_transactions it
+        LEFT JOIN inventory_stock ist_to ON it.to_stock_id = ist_to.id
+        LEFT JOIN inventory_stock ist_from ON it.from_stock_id = ist_from.id
+        LEFT JOIN batches b ON COALESCE(ist_to.batch_id, ist_from.batch_id) = b.id
+        LEFT JOIN product_variants pv ON b.product_variant_id = pv.id
+        LEFT JOIN product_types pt ON pv.product_type_id = pt.id
+        LEFT JOIN brands br ON pv.brand_id = br.id
+        LEFT JOIN units u_unit ON pt.unit_id = u_unit.id
+        WHERE it.transaction_type IN ('CUT_ROLL', 'SPLIT_BUNDLE', 'COMBINE_SPARES')
+
+        ORDER BY transaction_date DESC
         LIMIT 1000
     """
 
