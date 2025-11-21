@@ -141,24 +141,49 @@ const DispatchNewModular = () => {
     // Map roll_id to id if needed
     const normalizedRoll = {
       id: roll.roll_id || roll.id,
+      piece_id: roll.piece_id,
       batch_code: roll.batch_code,
       length_meters: roll.length_meters,
       status: roll.status,
       bundle_size: roll.bundle_size,
       roll_type: roll.roll_type,
+      stock_type: roll.stock_type,
+      product_category: roll.product_category,
       parameters: roll.parameters,
       brand_name: roll.brand_name,
       product_type_name: roll.product_type_name,
-      quantity: 1, // Default quantity
-      dispatchLength: roll.length_meters
+      quantity: roll.quantity || 1,
+      dispatchLength: roll.length_meters,
+      piece_length_meters: roll.piece_length_meters,
+      piece_count: roll.piece_count
     };
 
-    if (selectedRolls.find(r => r.id === normalizedRoll.id)) {
-      toast.info('Roll already selected');
-      return;
+    // Check for duplicates - for cut pieces, each piece is unique; for others, increase quantity
+    const existingIndex = selectedRolls.findIndex(r => {
+      if (normalizedRoll.piece_id && r.piece_id) {
+        return r.piece_id === normalizedRoll.piece_id;
+      }
+      return r.id === normalizedRoll.id && !normalizedRoll.piece_id;
+    });
+
+    if (existingIndex !== -1) {
+      // For cut pieces (with piece_id), don't allow duplicates
+      if (normalizedRoll.piece_id) {
+        toast.info('This cut piece is already in cart');
+        return;
+      }
+      // For regular items, increase quantity
+      const updated = [...selectedRolls];
+      updated[existingIndex] = {
+        ...updated[existingIndex],
+        quantity: updated[existingIndex].quantity + normalizedRoll.quantity
+      };
+      setSelectedRolls(updated);
+      toast.success(`Increased quantity to ${updated[existingIndex].quantity}`);
+    } else {
+      setSelectedRolls([...selectedRolls, normalizedRoll]);
+      toast.success(normalizedRoll.stock_type === 'CUT_ROLL' ? 'Added cut piece' : `Added ${normalizedRoll.batch_code || 'item'}`);
     }
-    setSelectedRolls([...selectedRolls, normalizedRoll]);
-    toast.success(`Added ${normalizedRoll.batch_code}`);
   };
 
   const handleRemoveRoll = (index: number) => {
@@ -292,50 +317,18 @@ const DispatchNewModular = () => {
               onSearchProducts={handleSearchProducts}
               productTypeRef={productTypeRef}
               productSearchRef={productSearchRef}
+              customerId={customerId}
+              transportId={transportId}
+              customers={customers}
+              transports={transports}
+              vehicleId={vehicleId}
+              billToId={billToId}
+              vehicles={vehicles}
+              billToList={billToList}
+              onDispatch={handleDispatch}
+              loading={loading}
             />
 
-            {/* Action Buttons */}
-            <div className="flex gap-2 justify-end pt-4 border-t">
-              <Button
-                onClick={handleDispatch}
-                disabled={loading || !customerId || selectedRolls.length === 0}
-                size="lg"
-                className="gap-2"
-              >
-                <TruckIcon className="h-4 w-4" />
-                {loading ? 'Dispatching...' : 'Dispatch Sale'}
-              </Button>
-            </div>
-
-            {/* Summary */}
-            {selectedRolls.length > 0 && (
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                  <div>
-                    <div className="text-gray-600">Total Rolls</div>
-                    <div className="font-bold text-lg">{selectedRolls.length}</div>
-                  </div>
-                  <div>
-                    <div className="text-gray-600">Total Length</div>
-                    <div className="font-bold text-lg">
-                      {selectedRolls.reduce((sum, r) => sum + r.length_meters, 0).toFixed(2)}m
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-gray-600">Customer</div>
-                    <div className="font-medium truncate">
-                      {customers.find(c => c.id === customerId)?.name || '-'}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-gray-600">Transport</div>
-                    <div className="font-medium truncate">
-                      {transports.find(t => t.id === transportId)?.name || '-'}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
           </CardContent>
         </Card>
       </div>

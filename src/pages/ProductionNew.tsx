@@ -194,6 +194,12 @@ const ProductionNew = () => {
       return;
     }
 
+    // Validate weight per meter
+    if (!formData.weightPerMeter || parseFloat(formData.weightPerMeter) <= 0) {
+      toast.error('Weight per Meter is required and must be greater than 0');
+      return;
+    }
+
     // Validate parameters
     const productType = productTypes.find(pt => pt.id === formData.productTypeId);
     const paramSchema = productType?.parameter_schema || [];
@@ -385,7 +391,7 @@ const ProductionNew = () => {
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="weightPerMeter">
-                        Weight per Meter (kg/m)
+                        Weight per Meter (kg/m) *
                       </Label>
                       <input
                         id="weightPerMeter"
@@ -396,6 +402,7 @@ const ProductionNew = () => {
                         value={formData.weightPerMeter}
                         onChange={(e) => handleFieldChange('weightPerMeter', e.target.value)}
                         className="flex h-12 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                        required
                       />
                       <p className="text-xs text-muted-foreground">
                         Weight in kilograms per meter

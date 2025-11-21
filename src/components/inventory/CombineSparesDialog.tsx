@@ -86,6 +86,16 @@ export const CombineSparesDialog = ({
         piecesRemaining -= group.piece_count;
       }
 
+      console.log('=== Combine Spares Request ===');
+      console.log('API_URL:', API_URL);
+      console.log('Full URL:', `${API_URL}/inventory/combine-spares`);
+      console.log('Request data:', {
+        stock_id: stockId,
+        spare_piece_ids: selectedSpareIds,
+        bundle_size: targetBundleSize,
+        number_of_bundles: targetNumberOfBundles,
+      });
+
       await axios.post(`${API_URL}/inventory/combine-spares`, {
         stock_id: stockId,
         spare_piece_ids: selectedSpareIds,

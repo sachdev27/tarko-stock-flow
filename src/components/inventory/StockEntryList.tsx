@@ -40,15 +40,17 @@ export const StockEntryList = ({ stockEntries, onUpdate }: StockEntryListProps) 
   const bundles = stockEntries.filter(e => e.stock_type === 'BUNDLE');
   const spares = stockEntries.filter(e => e.stock_type === 'SPARE');
 
-  // Group bundles by size
+  // Group bundles by size AND piece length
   const bundlesBySize = bundles.reduce((acc, entry) => {
     const size = entry.pieces_per_bundle || 0;
-    if (!acc[size]) {
-      acc[size] = [];
+    const length = entry.piece_length_meters || 0;
+    const key = `${size}-${length}`;
+    if (!acc[key]) {
+      acc[key] = [];
     }
-    acc[size].push(entry);
+    acc[key].push(entry);
     return acc;
-  }, {} as Record<number, StockEntry[]>);
+  }, {} as Record<string, StockEntry[]>);
 
   const handleCutRoll = (entry: StockEntry) => {
     setSelectedStock(entry);
@@ -60,9 +62,14 @@ export const StockEntryList = ({ stockEntries, onUpdate }: StockEntryListProps) 
     setSplitDialogOpen(true);
   };
 
-  const handleCombineSpares = () => {
-    if (spares.length > 0) {
-      setSelectedStock(spares[0]); // Use first spare for stock_id
+  const handleCombineSpares = (spareGroup: StockEntry[]) => {
+    if (spareGroup.length > 0) {
+      // Store first spare for basic info, but keep all spares from this length group
+      const stockWithAllSpares = {
+        ...spareGroup[0],
+        allSpares: spareGroup
+      };
+      setSelectedStock(stockWithAllSpares);
       setCombineDialogOpen(true);
     }
   };
@@ -122,21 +129,26 @@ export const StockEntryList = ({ stockEntries, onUpdate }: StockEntryListProps) 
         </div>
       ))}
 
-      {/* Bundles - Grouped by size */}
+      {/* Bundles - Grouped by size and piece length */}
       {Object.entries(bundlesBySize)
-        .sort(([a], [b]) => Number(b) - Number(a))
-        .map(([size, bundleGroup]) => {
+        .sort(([a], [b]) => {
+          const [sizeA] = a.split('-').map(Number);
+          const [sizeB] = b.split('-').map(Number);
+          return sizeB - sizeA;
+        })
+        .map(([key, bundleGroup]) => {
+          const [size, length] = key.split('-');
           const firstBundle = bundleGroup[0];
           const totalBundles = bundleGroup.reduce((sum, b) => sum + b.quantity, 0);
 
           return (
-            <div key={`bundle-${size}`} className="flex items-center justify-between p-3 bg-purple-50 rounded-lg border border-purple-200">
+            <div key={`bundle-${key}`} className="flex items-center justify-between p-3 bg-purple-50 rounded-lg border border-purple-200">
               <div className="flex items-center gap-3">
                 <Package className="h-5 w-5 text-purple-600" />
                 <div>
                   <div className="font-medium">{totalBundles} Bundles</div>
                   <div className="text-sm text-muted-foreground">
-                    {size} pieces each • {firstBundle.piece_length_meters}m per piece
+                    {size} pieces each • {length}m per piece
                   </div>
                 </div>
               </div>
@@ -153,33 +165,46 @@ export const StockEntryList = ({ stockEntries, onUpdate }: StockEntryListProps) 
           );
         })}
 
-      {/* Spare Pieces - Show as one aggregated entity */}
-      {spares.length > 0 && (() => {
-        const totalSpares = spares.reduce((sum, s) => sum + (s.piece_count || 0), 0);
-        const pieceLength = spares[0]?.piece_length_meters || 0;
+      {/* Spare Pieces - Grouped by piece length */}
+      {(() => {
+        // Group spares by piece length
+        const sparesByLength = spares.reduce((acc, entry) => {
+          const length = entry.piece_length_meters || 0;
+          if (!acc[length]) {
+            acc[length] = [];
+          }
+          acc[length].push(entry);
+          return acc;
+        }, {} as Record<number, StockEntry[]>);
 
-        return (
-          <div className="flex items-center justify-between p-3 bg-amber-50 rounded-lg border border-amber-200">
-            <div className="flex items-center gap-3">
-              <Box className="h-5 w-5 text-amber-600" />
-              <div>
-                <div className="font-medium">{totalSpares} Spare Pieces</div>
-                <div className="text-sm text-muted-foreground">
-                  {pieceLength}m per piece
+        return Object.entries(sparesByLength)
+          .sort(([a], [b]) => Number(b) - Number(a))
+          .map(([length, spareGroup]) => {
+            const totalSpares = spareGroup.reduce((sum, s) => sum + (s.piece_count || 0), 0);
+
+            return (
+              <div key={`spare-${length}`} className="flex items-center justify-between p-3 bg-amber-50 rounded-lg border border-amber-200">
+                <div className="flex items-center gap-3">
+                  <Box className="h-5 w-5 text-amber-600" />
+                  <div>
+                    <div className="font-medium">{totalSpares} Spare Pieces</div>
+                    <div className="text-sm text-muted-foreground">
+                      {length}m per piece
+                    </div>
+                  </div>
                 </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleCombineSpares(spareGroup)}
+                  className="gap-1"
+                >
+                  <Package2 className="h-4 w-4" />
+                  Bundle Spares
+                </Button>
               </div>
-            </div>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleCombineSpares}
-              className="gap-1"
-            >
-              <Package2 className="h-4 w-4" />
-              Bundle Spares
-            </Button>
-          </div>
-        );
+            );
+          });
       })()}
 
       {/* Cut Roll Dialog */}
@@ -215,10 +240,17 @@ export const StockEntryList = ({ stockEntries, onUpdate }: StockEntryListProps) 
           open={combineDialogOpen}
           onOpenChange={setCombineDialogOpen}
           stockId={selectedStock.stock_id}
-          spareGroups={spares.map(s => ({
-            spare_id: s.spare_id || s.stock_id,
-            piece_count: s.piece_count || 0,
-          }))}
+          spareGroups={
+            (selectedStock as any).allSpares
+              ? (selectedStock as any).allSpares.map((s: StockEntry) => ({
+                  spare_id: s.spare_id || s.stock_id,
+                  piece_count: s.piece_count || 0,
+                }))
+              : [{
+                  spare_id: selectedStock.spare_id || selectedStock.stock_id,
+                  piece_count: selectedStock.piece_count || 0,
+                }]
+          }
           pieceLength={selectedStock.piece_length_meters || 0}
           onSuccess={handleSuccess}
         />

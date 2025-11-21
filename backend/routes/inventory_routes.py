@@ -803,7 +803,29 @@ def search_inventory():
             cursor.execute(query, tuple(params))
             results = cursor.fetchall()
 
-        return jsonify(results), 200
+            # Expand CUT_ROLL entries to show individual cut pieces
+            expanded_results = []
+            for row in results:
+                if row['stock_type'] == 'CUT_ROLL':
+                    # Fetch individual cut pieces for this stock
+                    cursor.execute("""
+                        SELECT id::text as piece_id, length_meters
+                        FROM hdpe_cut_pieces
+                        WHERE stock_id = %s AND status = 'IN_STOCK'
+                        ORDER BY length_meters DESC
+                    """, (row['id'],))
+                    cut_pieces = cursor.fetchall()
+
+                    # Add each cut piece as a separate entry
+                    for piece in cut_pieces:
+                        piece_entry = dict(row)
+                        piece_entry['piece_id'] = piece['piece_id']
+                        piece_entry['length_meters'] = piece['length_meters']
+                        expanded_results.append(piece_entry)
+                else:
+                    expanded_results.append(dict(row))
+
+        return jsonify(expanded_results), 200
 
     except Exception as e:
         import traceback
@@ -1023,9 +1045,17 @@ def split_bundle():
         print(f"Error splitting bundle: {error_trace}")
         return jsonify({'error': 'Failed to split bundle', 'details': str(e)}), 500
 
+print("DEBUG: Registering /combine-spares route...")
 @inventory_bp.route('/combine-spares', methods=['POST', 'OPTIONS'])
 def combine_spares():
     """Combine spare pieces into a bundle"""
+    print("=" * 80)
+    print("DEBUG: combine_spares endpoint HIT!")
+    print(f"Request method: {request.method}")
+    print(f"Request path: {request.path}")
+    print(f"Request headers: {dict(request.headers)}")
+    print("=" * 80)
+
     if request.method == 'OPTIONS':
         return jsonify({}), 200
 
@@ -1034,25 +1064,34 @@ def combine_spares():
     try:
         from flask_jwt_extended import verify_jwt_in_request
         verify_jwt_in_request()
+        print("DEBUG: JWT verification successful")
     except Exception as e:
+        print(f"DEBUG: JWT verification failed: {e}")
         return jsonify({'error': 'Unauthorized', 'details': str(e)}), 401
 
     user_id = get_jwt_identity()
+    print(f"DEBUG: user_id: {user_id}")
 
     # Check role
     actor = get_user_identity_details(user_id)
+    print(f"DEBUG: actor: {actor}")
     if not actor or actor.get('role') not in ['admin', 'user']:
+        print(f"DEBUG: Insufficient permissions for role: {actor.get('role') if actor else None}")
         return jsonify({'error': 'Insufficient permissions'}), 403
 
     try:
         data = request.get_json()
+        print(f"DEBUG: Request data: {data}")
 
         stock_id = data.get('stock_id')
         spare_piece_ids = data.get('spare_piece_ids', [])  # Array of specific spare piece IDs to combine
         bundle_size = data.get('bundle_size')  # Custom bundle size
         number_of_bundles = data.get('number_of_bundles', 1)  # Number of bundles to create
 
+        print(f"DEBUG: stock_id={stock_id}, spare_piece_ids={spare_piece_ids}, bundle_size={bundle_size}, number_of_bundles={number_of_bundles}")
+
         if not stock_id or not spare_piece_ids or not bundle_size:
+            print("DEBUG: Missing required fields")
             return jsonify({'error': 'stock_id, spare_piece_ids, and bundle_size are required'}), 400
 
         bundle_size = int(bundle_size)
@@ -1084,16 +1123,19 @@ def combine_spares():
             if stock_type != 'SPARE':
                 return jsonify({'error': 'Only SPARE stock can be combined'}), 400
 
-            # Get the specific spare pieces
+            # Get the specific spare pieces - spare_piece_ids are actually stock_ids
+            print(f"DEBUG: Querying for spare pieces with stock_ids: {spare_piece_ids}")
             cursor.execute("""
-                SELECT id, piece_count
-                FROM sprinkler_spare_pieces
-                WHERE id = ANY(%s::uuid[]) AND stock_id = %s AND status = 'IN_STOCK'
-            """, (spare_piece_ids, stock_id))
+                SELECT ssp.id as spare_piece_id, ssp.piece_count, ssp.stock_id
+                FROM sprinkler_spare_pieces ssp
+                WHERE ssp.stock_id = ANY(%s::uuid[]) AND ssp.status = 'IN_STOCK'
+            """, (spare_piece_ids,))
 
             spare_pieces = cursor.fetchall()
+            print(f"DEBUG: Found {len(spare_pieces)} spare pieces: {spare_pieces}")
 
-            if len(spare_pieces) != len(spare_piece_ids):
+            if not spare_pieces:
+                print(f"DEBUG: No spare pieces found for stock_ids: {spare_piece_ids}")
                 return jsonify({'error': 'Some spare pieces not found or not available'}), 404
 
             total_pieces = sum(int(p['piece_count']) for p in spare_pieces)
@@ -1101,12 +1143,16 @@ def combine_spares():
             if total_pieces < total_pieces_needed:
                 return jsonify({'error': f'Total pieces ({total_pieces}) is less than required ({total_pieces_needed})'}), 400
 
+            # Extract the actual spare_piece IDs from the query results
+            actual_spare_piece_ids = [p['spare_piece_id'] for p in spare_pieces]
+            print(f"DEBUG: Actual spare_piece_ids to mark as dispatched: {actual_spare_piece_ids}")
+
             # Mark spare pieces as dispatched
             cursor.execute("""
                 UPDATE sprinkler_spare_pieces
                 SET status = 'DISPATCHED', updated_at = NOW()
                 WHERE id = ANY(%s::uuid[])
-            """, (spare_piece_ids,))
+            """, (actual_spare_piece_ids,))
 
             # Create or update BUNDLE stock entry with this bundle size
             cursor.execute("""
@@ -1201,5 +1247,6 @@ def combine_spares():
     except Exception as e:
         import traceback
         error_trace = traceback.format_exc()
+        print(f"DEBUG: Exception caught in combine_spares!")
         print(f"Error combining spares: {error_trace}")
         return jsonify({'error': 'Failed to combine spares', 'details': str(e)}), 500
