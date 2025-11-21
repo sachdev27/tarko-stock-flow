@@ -163,10 +163,10 @@ const InventoryNew = () => {
       ];
 
       const savedShortcuts = localStorage.getItem('inventory_keyboard_shortcuts');
-      let shortcuts: KeyboardShortcut[] = savedShortcuts 
-        ? JSON.parse(savedShortcuts) 
+      let shortcuts: KeyboardShortcut[] = savedShortcuts
+        ? JSON.parse(savedShortcuts)
         : defaultShortcuts;
-      
+
       // Merge default shortcuts that aren't in saved shortcuts
       if (savedShortcuts) {
         const savedActions = shortcuts.map(s => s.action);
@@ -177,14 +177,14 @@ const InventoryNew = () => {
         });
       }
       const key = e.key.toLowerCase();
-      
+
       // Match shortcut with modifier keys
       const ctrlKey = e.ctrlKey || e.metaKey;
       const shiftKey = e.shiftKey;
       const altKey = e.altKey;
-      
-      const shortcut = shortcuts.find((s) => 
-        s.key === key && 
+
+      const shortcut = shortcuts.find((s) =>
+        s.key === key &&
         (s.ctrlKey || false) === ctrlKey &&
         (s.shiftKey || false) === shiftKey &&
         (s.altKey || false) === altKey
@@ -232,7 +232,7 @@ const InventoryNew = () => {
           // Find the parameter filter by looking for a button with the parameter name
           const allParamSections = document.querySelectorAll('[data-param-filters]');
           let found = false;
-          
+
           allParamSections.forEach((section) => {
             const label = section.querySelector('label');
             if (label && label.textContent?.trim() === paramName) {
@@ -244,7 +244,7 @@ const InventoryNew = () => {
               }
             }
           });
-          
+
           if (found) {
             toast.success(`Focused on ${paramName} filter`);
           } else {

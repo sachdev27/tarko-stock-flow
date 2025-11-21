@@ -110,11 +110,11 @@ export const KeyboardShortcutsDialog = ({
     keyCombo += key.toUpperCase();
 
     // Check if key combination is already in use
-    const existingShortcut = shortcuts.find(s => 
-      s.key === key && 
-      s.ctrlKey === ctrlKey && 
-      s.shiftKey === shiftKey && 
-      s.altKey === altKey && 
+    const existingShortcut = shortcuts.find(s =>
+      s.key === key &&
+      s.ctrlKey === ctrlKey &&
+      s.shiftKey === shiftKey &&
+      s.altKey === altKey &&
       s.action !== action
     );
     if (existingShortcut) {
@@ -156,9 +156,9 @@ export const KeyboardShortcutsDialog = ({
   const getShortcutDisplay = (action: string): string | undefined => {
     const shortcut = shortcuts.find(s => s.action === action);
     if (!shortcut) return undefined;
-    
+
     const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
-    
+
     let combo = '';
     if (shortcut.ctrlKey) combo += isMac ? '⌘+' : 'Ctrl+';
     if (shortcut.shiftKey) combo += isMac ? '⇧+' : 'Shift+';
