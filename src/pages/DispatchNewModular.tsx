@@ -265,7 +265,7 @@ const DispatchNewModular = () => {
     setLoading(true);
     try {
       // Format items for new dispatch endpoint
-      const items = selectedRolls.map(roll => {
+      const items = selectedRolls.flatMap(roll => {
         if (!roll.product_variant_id) {
           console.error('Missing product_variant_id for roll:', roll);
           throw new Error(`Missing product variant information for ${roll.batch_code || 'item'}`);
@@ -278,38 +278,49 @@ const DispatchNewModular = () => {
         };
 
         // Determine item type and add specific fields
-        if (roll.piece_id) {
-          // Cut piece
-          return {
+        // Check for piece_ids array (multiple cut pieces) OR single piece_id
+        if (roll.piece_ids && Array.isArray(roll.piece_ids) && roll.piece_ids.length > 0) {
+          // Multiple cut pieces - create one dispatch item per piece
+          return roll.piece_ids.map(pieceId => ({
+            stock_id: roll.id,
+            product_variant_id: roll.product_variant_id,
+            quantity: 1,
+            item_type: 'CUT_PIECE' as const,
+            cut_piece_id: pieceId,
+            length_meters: roll.length_meters
+          }));
+        } else if (roll.piece_id) {
+          // Single cut piece
+          return [{
             ...baseItem,
             item_type: 'CUT_PIECE' as const,
             cut_piece_id: roll.piece_id,
             length_meters: roll.length_meters
-          };
+          }];
         } else if (roll.stock_type === 'SPARE' || roll.spare_id) {
           // Spare pieces
-          return {
+          return [{
             ...baseItem,
             item_type: 'SPARE_PIECES' as const,
             spare_piece_ids: roll.spare_ids || (roll.spare_id ? [roll.spare_id] : []),
             piece_count: roll.piece_count || 1
-          };
+          }];
         } else if (roll.stock_type === 'BUNDLE' || roll.bundle_size) {
           // Bundle
-          return {
+          return [{
             ...baseItem,
             item_type: 'BUNDLE' as const,
             bundle_size: roll.bundle_size,
             pieces_per_bundle: roll.pieces_per_bundle,
             piece_length_meters: roll.piece_length_meters
-          };
+          }];
         } else {
           // Full roll
-          return {
+          return [{
             ...baseItem,
             item_type: 'FULL_ROLL' as const,
             length_meters: roll.length_meters || roll.length_per_unit
-          };
+          }];
         }
       });
 

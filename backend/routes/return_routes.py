@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from database import execute_query, execute_insert, get_db_cursor
 from auth import get_user_identity_details
+from inventory_operations import InventoryOperations
 from decimal import Decimal
 import json
 from datetime import datetime
@@ -89,8 +90,10 @@ def create_return():
             return_id = return_record['id']
             return_number = return_record['return_number']
 
-            # Track batches created for this return (one per product variant)
-            variant_batches = {}  # {product_variant_id: (batch_id, transaction_id)}
+            # Track batches and pieces to be created
+            variant_batches = {}  # {product_variant_id: batch_id}
+            cut_pieces_to_create = []  # List of pieces to create after transactions
+            spare_pieces_to_create = []  # List of spare pieces to create after transactions
 
             # Process each item
             for item in items:
@@ -174,9 +177,6 @@ def create_return():
                     if existing_batch:
                         # Reuse existing batch
                         batch_id = existing_batch['id']
-
-                        # No need to create legacy transaction - we use the returns table now
-                        transaction_id = None
                     else:
                         # No existing batch found, create a new one
                         # Calculate quantity for this variant (count actual items being returned)
@@ -203,14 +203,11 @@ def create_return():
                         batch_record = cursor.fetchone()
                         batch_id = batch_record['id']
 
-                        # No need to create legacy transaction - we use the returns table now
-                        transaction_id = None
-
                     # Store for reuse if same variant appears again in this return
-                    variant_batches[product_variant_id] = (batch_id, transaction_id)
+                    variant_batches[product_variant_id] = batch_id
                 else:
-                    # Reuse existing batch and transaction for this variant
-                    batch_id, transaction_id = variant_batches[product_variant_id]
+                    # Reuse existing batch for this variant
+                    batch_id = variant_batches[product_variant_id]
 
                 # Get product type info for stock type determination
                 cursor.execute("""
@@ -253,64 +250,31 @@ def create_return():
                     # Create aggregate inventory stock entries (one per unique length)
                     roll_idx = 1
                     for length, roll_group in rolls_by_length.items():
-                        # Try to find existing stock entry with same specs to merge with
                         stock_type = 'FULL_ROLL' if item_type == 'FULL_ROLL' else 'CUT_ROLL'
+
+                        # Create stock entry (pieces will be created after transaction exists)
                         cursor.execute("""
-                            SELECT id FROM inventory_stock
-                            WHERE batch_id = %s
-                              AND product_variant_id = %s
-                              AND stock_type = %s
-                              AND status = 'IN_STOCK'
-                              AND ABS(COALESCE(length_per_unit, 0) - %s) < 0.01
-                            LIMIT 1
-                        """, (batch_id, product_variant_id, stock_type, length))
+                            INSERT INTO inventory_stock (
+                                batch_id, product_variant_id, status, stock_type,
+                                quantity, length_per_unit, notes
+                            )
+                            VALUES (%s, %s, 'IN_STOCK', %s, %s, %s, %s)
+                            RETURNING id
+                        """, (batch_id, product_variant_id, stock_type, len(roll_group), length,
+                              f'{len(roll_group)} rolls of {length}m each from return {return_number}'))
 
-                        existing_stock = cursor.fetchone()
+                        stock = cursor.fetchone()
+                        stock_id = stock['id']
 
-                        if existing_stock:
-                            # Update existing stock by adding quantity
-                            stock_id = existing_stock['id']
-                            cursor.execute("""
-                                UPDATE inventory_stock
-                                SET quantity = quantity + %s,
-                                    notes = COALESCE(notes || ' | ', '') || %s
-                                WHERE id = %s
-                            """, (len(roll_group), f'Added {len(roll_group)} from return', stock_id))
-                        else:
-                            # Create new stock entry if none exists
-                            cursor.execute("""
-                                INSERT INTO inventory_stock (
-                                    batch_id, product_variant_id, status, stock_type,
-                                    quantity, length_per_unit, notes
-                                )
-                                VALUES (%s, %s, 'IN_STOCK', %s, %s, %s, %s)
-                                RETURNING id
-                            """, (batch_id, product_variant_id, stock_type, len(roll_group), length,
-                                  f'{len(roll_group)} rolls of {length}m each from return'))
-
-                            stock = cursor.fetchone()
-                            stock_id = stock['id']
-
-                        # For CUT_ROLL, also insert into hdpe_cut_pieces table (for inventory display)
+                        # Store cut roll pieces info for later creation (after transaction exists)
                         if item_type == 'CUT_ROLL' and product_type_name == 'HDPE Pipe':
-                            # Get the return transaction_id
-                            cursor.execute("""
-                                SELECT id FROM transactions
-                                WHERE batch_id = %s
-                                AND transaction_type = 'RETURN'
-                                ORDER BY created_at DESC LIMIT 1
-                            """, (stock['batch_id'],))
-                            return_txn = cursor.fetchone()
-                            return_txn_id = return_txn['id'] if return_txn else None
-
                             for roll in roll_group:
-                                cursor.execute("""
-                                    INSERT INTO hdpe_cut_pieces (
-                                        stock_id, length_meters, status, notes, created_by_transaction_id, original_stock_id
-                                    )
-                                    VALUES (%s, %s, 'IN_STOCK', %s, %s, %s)
-                                """, (stock_id, roll['length_meters'],
-                                      f'From return {return_number}', return_txn_id, stock_id))                        # Insert individual return roll records
+                                cut_pieces_to_create.append({
+                                    'stock_id': stock_id,
+                                    'length': roll['length_meters'],
+                                    'batch_id': batch_id,
+                                    'product_variant_id': product_variant_id
+                                })                        # Insert individual return roll records
                         for roll in roll_group:
                             cursor.execute("""
                                 INSERT INTO return_rolls (
@@ -354,43 +318,19 @@ def create_return():
                     # Create aggregate inventory stock entries (one per unique spec)
                     bundle_idx = 1
                     for (b_size, p_length), bundle_group in bundles_by_spec.items():
-                        # Try to find existing stock entry with same specs to merge with
+                        # Create stock entry
                         cursor.execute("""
-                            SELECT id FROM inventory_stock
-                            WHERE batch_id = %s
-                              AND product_variant_id = %s
-                              AND stock_type = 'BUNDLE'
-                              AND status = 'IN_STOCK'
-                              AND pieces_per_bundle = %s
-                              AND ABS(COALESCE(piece_length_meters, 0) - %s) < 0.01
-                            LIMIT 1
-                        """, (batch_id, product_variant_id, b_size, p_length))
+                            INSERT INTO inventory_stock (
+                                batch_id, product_variant_id, status, stock_type,
+                                quantity, pieces_per_bundle, piece_length_meters, notes
+                            )
+                            VALUES (%s, %s, 'IN_STOCK', 'BUNDLE', %s, %s, %s, %s)
+                            RETURNING id
+                        """, (batch_id, product_variant_id, len(bundle_group), b_size, p_length,
+                              f'{len(bundle_group)} bundles of {b_size} pieces × {p_length}m from return {return_number}'))
 
-                        existing_stock = cursor.fetchone()
-
-                        if existing_stock:
-                            # Update existing stock by adding quantity
-                            stock_id = existing_stock['id']
-                            cursor.execute("""
-                                UPDATE inventory_stock
-                                SET quantity = quantity + %s,
-                                    notes = COALESCE(notes || ' | ', '') || %s
-                                WHERE id = %s
-                            """, (len(bundle_group), f'Added {len(bundle_group)} from return', stock_id))
-                        else:
-                            # Create new stock entry if none exists
-                            cursor.execute("""
-                                INSERT INTO inventory_stock (
-                                    batch_id, product_variant_id, status, stock_type,
-                                    quantity, pieces_per_bundle, piece_length_meters, notes
-                                )
-                                VALUES (%s, %s, 'IN_STOCK', 'BUNDLE', %s, %s, %s, %s)
-                                RETURNING id
-                            """, (batch_id, product_variant_id, len(bundle_group), b_size, p_length,
-                                  f'{len(bundle_group)} bundles of {b_size} pieces × {p_length}m from return'))
-
-                            stock = cursor.fetchone()
-                            stock_id = stock['id']
+                        stock = cursor.fetchone()
+                        stock_id = stock['id']
 
                         # Insert individual return bundle records
                         for bundle in bundle_group:
@@ -423,79 +363,33 @@ def create_return():
                     return_item = cursor.fetchone()
                     return_item_id = return_item['id']
 
-                    # Try to find existing spare stock entry with same specs to merge with
+                    # Create stock entry with actual piece count as quantity
                     cursor.execute("""
-                        SELECT id FROM inventory_stock
-                        WHERE batch_id = %s
-                          AND product_variant_id = %s
-                          AND stock_type = 'SPARE'
-                          AND status = 'IN_STOCK'
-                          AND ABS(COALESCE(piece_length_meters, 0) - %s) < 0.01
-                        LIMIT 1
-                    """, (batch_id, product_variant_id, piece_length))
+                        INSERT INTO inventory_stock (
+                            batch_id, product_variant_id, status, stock_type,
+                            quantity, piece_length_meters, notes
+                        )
+                        VALUES (%s, %s, 'IN_STOCK', 'SPARE', %s, %s, %s)
+                        RETURNING id
+                    """, (batch_id, product_variant_id, piece_count, piece_length,
+                          f'{piece_count} spare pieces from return {return_number}'))
 
-                    existing_stock = cursor.fetchone()
+                    stock = cursor.fetchone()
+                    stock_id = stock['id']
 
-                    if existing_stock:
-                        # Update existing spare stock - increment quantity stays at 1,
-                        # but we update the piece_count in the spare_pieces table below
-                        stock_id = existing_stock['id']
-                    else:
-                        # Create new stock entry if none exists
-                        cursor.execute("""
-                            INSERT INTO inventory_stock (
-                                batch_id, product_variant_id, status, stock_type,
-                                quantity, piece_length_meters
-                            )
-                            VALUES (%s, %s, 'IN_STOCK', 'SPARE', 1, %s)
-                            RETURNING id
-                        """, (batch_id, product_variant_id, piece_length))
+                    # Store spare pieces info for later creation (after transaction exists)
+                    spare_pieces_to_create.append({
+                        'stock_id': stock_id,
+                        'piece_count': piece_count,
+                        'piece_length': piece_length,
+                        'product_type_name': product_type_name,
+                        'batch_id': batch_id,
+                        'product_variant_id': product_variant_id
+                    })
 
-                        stock = cursor.fetchone()
-                        stock_id = stock['id']
-
-                    # Insert into product-specific spare pieces table (for inventory display)
-                    if product_type_name == 'Sprinkler Pipe':
-                        # Get the return transaction_id
-                        cursor.execute("""
-                            SELECT id FROM transactions
-                            WHERE batch_id = (SELECT batch_id FROM inventory_stock WHERE id = %s)
-                            AND transaction_type = 'RETURN'
-                            ORDER BY created_at DESC LIMIT 1
-                        """, (stock_id,))
-                        return_txn = cursor.fetchone()
-                        return_txn_id = return_txn['id'] if return_txn else None
-
-                        cursor.execute("""
-                            INSERT INTO sprinkler_spare_pieces (
-                                stock_id, piece_count, status, notes, created_by_transaction_id, original_stock_id
-                            )
-                            VALUES (%s, %s, 'IN_STOCK', %s, %s, %s)
-                        """, (stock_id, piece_count,
-                              f'From return {return_number}', return_txn_id, stock_id))
-                    elif product_type_name == 'HDPE Pipe':
-                        # Get the return transaction_id
-                        cursor.execute("""
-                            SELECT id FROM transactions
-                            WHERE batch_id = (SELECT batch_id FROM inventory_stock WHERE id = %s)
-                            AND transaction_type = 'RETURN'
-                            ORDER BY created_at DESC LIMIT 1
-                        """, (stock_id,))
-                        return_txn = cursor.fetchone()
-                        return_txn_id = return_txn['id'] if return_txn else None
-
-                        # For HDPE, spare pieces go into hdpe_cut_pieces as individual pieces
-                        for _ in range(piece_count):
-                            cursor.execute("""
-                                INSERT INTO hdpe_cut_pieces (
-                                    stock_id, length_meters, status, notes, created_by_transaction_id, original_stock_id
-                                )
-                                VALUES (%s, %s, 'IN_STOCK', %s, %s, %s)
-                            """, (stock_id, piece_length,
-                                  f'Spare piece from return {return_number}', return_txn_id, stock_id))
-
-            # Update transactions with correct quantity_change and roll_snapshot
-            for product_variant_id, (batch_id, transaction_id) in variant_batches.items():
+            # Create transactions with correct quantity_change for each variant
+            variant_transactions = {}  # {product_variant_id: transaction_id}
+            for product_variant_id, batch_id in variant_batches.items():
                 # Get all return items for this variant
                 cursor.execute("""
                     SELECT item_type, quantity, piece_count
@@ -534,21 +428,67 @@ def create_return():
                     'spare_pieces': spares
                 }
 
-                # Update transaction
+                # Create transaction with quantity_change
                 cursor.execute("""
-                    UPDATE transactions
-                    SET quantity_change = %s,
-                        roll_snapshot = %s::jsonb,
-                        notes = %s
-                    WHERE id = %s
-                """, (total_quantity, json.dumps(roll_snapshot),
-                      f"Return {return_number}: {breakdown_str}", transaction_id))
+                    INSERT INTO inventory_transactions (
+                        transaction_type, notes, created_by
+                    )
+                    VALUES ('RETURN', %s, %s)
+                    RETURNING id
+                """, (f"Return {return_number}: {breakdown_str}", user_id))
+
+                txn = cursor.fetchone()
+                transaction_id = txn['id']
+
+                # Store transaction_id for piece creation
+                variant_transactions[product_variant_id] = transaction_id
+
+            # Now create all pieces with proper transaction_id
+            # Create cut pieces
+            for piece_info in cut_pieces_to_create:
+                # Get transaction_id for this variant
+                txn_id = variant_transactions.get(piece_info['product_variant_id'])
+                if txn_id:
+                    cursor.execute("""
+                        INSERT INTO hdpe_cut_pieces (
+                            stock_id, length_meters, status, notes, created_by_transaction_id, original_stock_id
+                        )
+                        VALUES (%s, %s, 'IN_STOCK', %s, %s, %s)
+                    """, (piece_info['stock_id'], piece_info['length'],
+                          f'From return {return_number}', txn_id, piece_info['stock_id']))
+
+            # Create spare pieces - ONE RECORD PER PHYSICAL PIECE
+            for piece_info in spare_pieces_to_create:
+                # Get transaction_id for this variant
+                txn_id = variant_transactions.get(piece_info['product_variant_id'])
+                if txn_id:
+                    if piece_info['product_type_name'] == 'Sprinkler Pipe':
+                        # Create one record per physical piece (foundational event sourcing)
+                        for piece_num in range(1, piece_info['piece_count'] + 1):
+                            cursor.execute("""
+                                INSERT INTO sprinkler_spare_pieces (
+                                    stock_id, piece_count, status, notes, created_by_transaction_id, original_stock_id
+                                )
+                                VALUES (%s, 1, 'IN_STOCK', %s, %s, %s)
+                            """, (piece_info['stock_id'],
+                                  f'Piece {piece_num} from return {return_number}',
+                                  txn_id, piece_info['stock_id']))
+                    elif piece_info['product_type_name'] == 'HDPE Pipe':
+                        # For HDPE, spare pieces go into hdpe_cut_pieces as individual pieces
+                        for piece_num in range(1, piece_info['piece_count'] + 1):
+                            cursor.execute("""
+                                INSERT INTO hdpe_cut_pieces (
+                                    stock_id, length_meters, status, notes, created_by_transaction_id, original_stock_id
+                                )
+                                VALUES (%s, %s, 'IN_STOCK', %s, %s, %s)
+                            """, (piece_info['stock_id'], piece_info['piece_length'],
+                                  f'Piece {piece_num} from return {return_number}', txn_id, piece_info['stock_id']))
 
             # Commit transaction
             cursor.connection.commit()
 
             # Get the first transaction_id for the response (there may be multiple if multiple variants)
-            first_transaction_id = list(variant_batches.values())[0][1] if variant_batches else None
+            first_transaction_id = list(variant_transactions.values())[0] if variant_transactions else None
 
             return jsonify({
                 'success': True,

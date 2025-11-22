@@ -1097,20 +1097,12 @@ def revert_transactions():
 
                     elif inv_transaction['transaction_type'] == 'COMBINE_SPARES':
                         try:
-                            print(f"\n=== COMBINE_SPARES REVERT DEBUG ===")
-                            print(f"Transaction ID: {transaction_id}")
-                            print(f"Clean ID: {clean_id}")
-                            print(f"to_stock_id: {inv_transaction.get('to_stock_id')}")
-                            print(f"from_stock_id: {inv_transaction.get('from_stock_id')}")
-
                             # Validate: Check if combined bundle was already dispatched
                             if inv_transaction['to_stock_id']:
-                                print(f"Querying bundle stock...")
                                 cursor.execute("""
                                     SELECT status, quantity, created_at, deleted_at FROM inventory_stock WHERE id = %s
                                 """, (inv_transaction['to_stock_id'],))
                                 bundle_status = cursor.fetchone()
-                                print(f"Bundle status result: {bundle_status}")
 
                                 if bundle_status and bundle_status['status'] == 'DISPATCHED':
                                     failed_transactions.append({
@@ -1123,11 +1115,8 @@ def revert_transactions():
                                 # If created_at matches transaction created_at, it was newly created
                                 # If created_at is earlier, it was an existing stock that was updated
                                 if bundle_status:
-                                    print(f"Processing bundle status...")
                                     bundle_created_at = bundle_status.get('created_at')
                                     transaction_created_at = inv_transaction.get('created_at')
-                                    print(f"Bundle created_at: {bundle_created_at}")
-                                    print(f"Transaction created_at: {transaction_created_at}")
 
                                     # Compare timestamps (within 1 second tolerance)
                                     import datetime
@@ -1135,43 +1124,31 @@ def revert_transactions():
                                     if bundle_created_at and transaction_created_at:
                                         time_diff = abs((bundle_created_at - transaction_created_at).total_seconds())
                                         is_new_stock = time_diff < 1
-                                        print(f"Time diff: {time_diff}s, is_new_stock: {is_new_stock}")
 
                                     if is_new_stock:
                                         # This bundle stock was created by this transaction - delete it
-                                        print(f"Soft deleting bundle stock...")
                                         cursor.execute("""
                                             UPDATE inventory_stock
                                             SET deleted_at = NOW(), status = 'SOLD_OUT'
                                             WHERE id = %s
                                         """, (inv_transaction['to_stock_id'],))
-                                        print(f"Deleted {cursor.rowcount} rows")
                                     else:
                                         # This bundle stock existed before - decrement quantity by what was added
                                         # Get the transaction details to know how many bundles were added
                                         bundles_added = inv_transaction.get('to_quantity')
-                                        print(f"Bundles added: {bundles_added}")
                                         if bundles_added is not None and bundles_added > 0:
                                             current_quantity = bundle_status.get('quantity', 0)
                                             new_quantity = max(0, current_quantity - bundles_added)
-                                            print(f"Decrementing: {current_quantity} - {bundles_added} = {new_quantity}")
                                             cursor.execute("""
                                                 UPDATE inventory_stock
                                                 SET quantity = %s, updated_at = NOW()
                                                 WHERE id = %s
                                             """, (new_quantity, inv_transaction['to_stock_id']))
-                                            print(f"Updated {cursor.rowcount} rows")
 
                             # Restore the spare pieces that were combined using from_stock_id
                             if inv_transaction.get('from_stock_id'):
-                                print(f"\nRestoring spare stock...")
-                                print(f"from_stock_id: {inv_transaction['from_stock_id']}")
-                                print(f"from_batch_id: {inv_transaction.get('from_batch_id')}")
-                                print(f"created_at: {inv_transaction.get('created_at')}")
-
                                 # Restore spare stock record if it was deleted (only if we have batch_id and created_at)
                                 if inv_transaction.get('from_batch_id') and inv_transaction.get('created_at'):
-                                    print(f"Restoring spare stock record...")
                                     cursor.execute("""
                                         UPDATE inventory_stock
                                         SET deleted_at = NULL,
@@ -1182,11 +1159,9 @@ def revert_transactions():
                                         AND deleted_at >= %s - INTERVAL '1 minute'
                                         AND deleted_at <= %s + INTERVAL '1 minute'
                                     """, (inv_transaction['from_batch_id'], inv_transaction['created_at'], inv_transaction['created_at']))
-                                    print(f"Restored {cursor.rowcount} stock records")
 
                                 # Restore individual spare pieces that were marked as SOLD_OUT by THIS transaction
                                 # These are the pieces that were combined (their deleted_by should match transaction)
-                                print(f"Restoring spare pieces...")
                                 cursor.execute("""
                                     UPDATE sprinkler_spare_pieces
                                     SET status = 'IN_STOCK',
@@ -1195,31 +1170,20 @@ def revert_transactions():
                                         updated_at = NOW()
                                     WHERE deleted_by_transaction_id = %s
                                 """, (clean_id,))
-                                print(f"Restored {cursor.rowcount} spare pieces")
 
                                 # Soft delete remainder pieces created by THIS transaction (if any)
-                                print(f"Deleting remainder pieces...")
-                                print(f"clean_id type: {type(clean_id)}, value: {clean_id}")
-                                print(f"Parameters: ({clean_id}, {clean_id})")
-                                try:
-                                    cursor.execute("""
-                                        UPDATE sprinkler_spare_pieces
-                                        SET deleted_at = NOW(),
-                                            deleted_by_transaction_id = %s,
-                                            status = 'SOLD_OUT'
-                                        WHERE created_by_transaction_id = %s
-                                        AND notes LIKE 'Remainder from combining%%'
-                                        AND deleted_at IS NULL
-                                    """, (clean_id, clean_id))
-                                    print(f"Deleted {cursor.rowcount} remainder pieces")
-                                except Exception as remainder_error:
-                                    print(f"ERROR in remainder delete: {remainder_error}")
-                                    print(f"SQL has 2 placeholders, passing tuple with {len((clean_id, clean_id))} values")
-                                    raise
+                                cursor.execute("""
+                                    UPDATE sprinkler_spare_pieces
+                                    SET deleted_at = NOW(),
+                                        deleted_by_transaction_id = %s,
+                                        status = 'SOLD_OUT'
+                                    WHERE created_by_transaction_id = %s
+                                    AND notes LIKE 'Remainder from combining%%'
+                                    AND deleted_at IS NULL
+                                """, (clean_id, clean_id))
 
                                 # Update SPARE stock quantity to match actual piece count using COUNT
                                 # (triggers use COUNT(*) for SPARE stock, not SUM(piece_count))
-                                print(f"Updating spare stock quantity...")
                                 cursor.execute("""
                                     UPDATE inventory_stock
                                     SET quantity = (
@@ -1230,10 +1194,6 @@ def revert_transactions():
                                     )
                                     WHERE id = %s
                                 """, (inv_transaction['from_stock_id'], inv_transaction['from_stock_id']))
-                                print(f"Updated {cursor.rowcount} stock quantities")
-
-                            print(f"COMBINE_SPARES revert completed successfully")
-                            print(f"=== END DEBUG ===\n")
 
                         except Exception as e:
                             import traceback

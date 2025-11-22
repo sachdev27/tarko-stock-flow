@@ -1307,17 +1307,23 @@ def create_dispatch():
 
                         dispatch_item_id = cursor.fetchone()['id']
 
-                        # Reduce inventory_stock quantity
+                        # NOTE: inventory_stock quantity is automatically updated by auto_update_stock_quantity trigger
+                        # when hdpe_cut_pieces status changes. No manual update needed.
+
+                        # Update status based on remaining pieces
+                        cursor.execute("""
+                            SELECT COUNT(*) as remaining
+                            FROM hdpe_cut_pieces
+                            WHERE stock_id = %s AND status = 'IN_STOCK' AND deleted_at IS NULL
+                        """, (stock_id,))
+                        remaining = cursor.fetchone()['remaining']
+
                         cursor.execute("""
                             UPDATE inventory_stock
-                            SET quantity = quantity - %s,
-                                status = CASE
-                                    WHEN quantity - %s <= 0 THEN 'SOLD_OUT'
-                                    ELSE 'IN_STOCK'
-                                END,
+                            SET status = CASE WHEN %s <= 0 THEN 'SOLD_OUT' ELSE 'IN_STOCK' END,
                                 updated_at = NOW()
                             WHERE id = %s
-                        """, (quantity, quantity, stock_id))
+                        """, (remaining, stock_id))
 
                         # Record in inventory_transactions
                         cursor.execute("""
@@ -1433,7 +1439,8 @@ def create_dispatch():
 
                         remaining = cursor.fetchone()['remaining_pieces']
 
-                        # Update inventory_stock status based on remaining pieces
+                        # NOTE: inventory_stock quantity is automatically updated by auto_update_stock_quantity trigger
+                        # when sprinkler_spare_pieces status/piece_count changes. Only update status here.
                         cursor.execute("""
                             UPDATE inventory_stock
                             SET status = CASE
@@ -1539,17 +1546,35 @@ def create_dispatch():
 
                         dispatch_item_id = cursor.fetchone()['id']
 
-                        # Reduce inventory_stock quantity
-                        cursor.execute("""
-                            UPDATE inventory_stock
-                            SET quantity = quantity - %s,
-                                status = CASE
-                                    WHEN quantity - %s <= 0 THEN 'SOLD_OUT'
-                                    ELSE 'IN_STOCK'
-                                END,
-                                updated_at = NOW()
-                            WHERE id = %s
-                        """, (quantity, quantity, stock_id))
+                        # Update inventory_stock quantity and status
+                        if stock_type == 'CUT_ROLL':
+                            # NOTE: For CUT_ROLL, quantity is automatically updated by auto_update_stock_quantity trigger
+                            # when hdpe_cut_pieces status changes. Only update status here.
+                            cursor.execute("""
+                                SELECT COUNT(*) as remaining
+                                FROM hdpe_cut_pieces
+                                WHERE stock_id = %s AND status = 'IN_STOCK' AND deleted_at IS NULL
+                            """, (stock_id,))
+                            remaining = cursor.fetchone()['remaining']
+
+                            cursor.execute("""
+                                UPDATE inventory_stock
+                                SET status = CASE WHEN %s <= 0 THEN 'SOLD_OUT' ELSE 'IN_STOCK' END,
+                                    updated_at = NOW()
+                                WHERE id = %s
+                            """, (remaining, stock_id))
+                        else:
+                            # For true FULL_ROLL (not from cut pieces), manually update quantity
+                            cursor.execute("""
+                                UPDATE inventory_stock
+                                SET quantity = quantity - %s,
+                                    status = CASE
+                                        WHEN quantity - %s <= 0 THEN 'SOLD_OUT'
+                                        ELSE 'IN_STOCK'
+                                    END,
+                                    updated_at = NOW()
+                                WHERE id = %s
+                            """, (quantity, quantity, stock_id))
 
                         # Create appropriate notes based on stock type
                         if stock_type == 'CUT_ROLL':

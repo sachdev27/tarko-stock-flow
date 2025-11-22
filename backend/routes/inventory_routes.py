@@ -843,8 +843,9 @@ def search_inventory():
                 cursor.execute(f"""
                     SELECT
                         cp.length_meters,
+                        s.product_variant_id::text as product_variant_id,
                         COUNT(*)::integer as piece_count,
-                        array_agg(cp.id::text) as piece_ids,
+                        array_agg(cp.id::text ORDER BY cp.created_at) as piece_ids,
                         (array_agg(s.id))[1]::text as stock_id,
                         (array_agg(s.batch_id))[1]::text as batch_id,
                         (array_agg(b.batch_code))[1] as batch_code,
@@ -852,8 +853,7 @@ def search_inventory():
                         (array_agg(pt.name))[1] as product_type_name,
                         (array_agg(br.name))[1] as brand_name,
                         (array_agg(pt.name))[1] as product_category,
-                        (array_agg(pv.parameters))[1] as parameters,
-                        (array_agg(s.product_variant_id))[1]::text as product_variant_id
+                        (array_agg(pv.parameters))[1] as parameters
                     FROM hdpe_cut_pieces cp
                     JOIN inventory_stock s ON cp.stock_id = s.id
                     JOIN batches b ON s.batch_id = b.id
@@ -862,8 +862,8 @@ def search_inventory():
                     JOIN brands br ON pv.brand_id = br.id
                     WHERE cp.stock_id IN ({placeholders})
                     AND cp.status = 'IN_STOCK'
-                    GROUP BY cp.length_meters
-                    ORDER BY cp.length_meters DESC
+                    GROUP BY cp.length_meters, s.product_variant_id
+                    ORDER BY s.product_variant_id, cp.length_meters DESC
                 """, tuple(stock_ids))
 
                 cut_groups = cursor.fetchall()
