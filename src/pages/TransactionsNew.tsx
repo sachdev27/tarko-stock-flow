@@ -79,7 +79,9 @@ export default function TransactionsNew() {
     clearSelection,
     handleRevertTransactions,
   } = useTransactionSelection(async () => {
+    console.log('[TransactionsNew] onRevertComplete callback called - reloading transactions');
     await reloadTransactions();
+    console.log('[TransactionsNew] Transactions reloaded after revert');
     clearSelection();
   });
 

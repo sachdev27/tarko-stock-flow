@@ -20,8 +20,18 @@ export const useTransactionData = () => {
 
   const loadTransactions = async () => {
     try {
+      console.log('[TransactionData] loadTransactions() called - Fetching all transactions');
       setIsLoading(true);
       const response = await transactionsAPI.getAll();
+
+      console.log('[TransactionData] API response received:', {
+        count: response.data?.length,
+        transactions: response.data?.slice(0, 3).map((t: any) => ({
+          id: t.id,
+          type: t.transaction_type,
+          batch_code: t.batch_code
+        }))
+      });
 
       const parsedTransactions = response.data.map((t: TransactionRecord) => {
         let params = t.parameters;
@@ -79,14 +89,25 @@ export const useTransactionData = () => {
         };
       });
 
+      console.log('[TransactionData] Transactions parsed and set:', {
+        count: parsedTransactions.length,
+        firstFew: parsedTransactions.slice(0, 3).map((t: any) => ({
+          id: t.id,
+          type: t.transaction_type,
+          batch_code: t.batch_code
+        }))
+      });
+
       setTransactions(parsedTransactions);
 
       // Extract parameter options
       const options = extractParameterOptions(parsedTransactions);
       setParameterOptions(options);
 
+      console.log('[TransactionData] Transaction data loaded successfully');
+
     } catch (error) {
-      console.error('Error loading transactions:', error);
+      console.error('[TransactionData] Error loading transactions:', error);
       toast.error('Failed to load transactions');
     } finally {
       setIsLoading(false);

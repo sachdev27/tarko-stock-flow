@@ -676,6 +676,19 @@ def revert_transactions():
                             WHERE id = %s
                         """, (quantity, stock_id))
 
+                        # Get the batch_id from this stock and restore it if deleted
+                        cursor.execute("""
+                            SELECT batch_id FROM inventory_stock WHERE id = %s
+                        """, (stock_id,))
+                        stock_row = cursor.fetchone()
+                        if stock_row:
+                            # Restore the batch (set deleted_at to NULL if it was deleted)
+                            cursor.execute("""
+                                UPDATE batches
+                                SET deleted_at = NULL, updated_at = NOW()
+                                WHERE id = %s AND deleted_at IS NOT NULL
+                            """, (stock_row['batch_id'],))
+
                         # Handle item-type specific reversals
                         if item_type == 'CUT_PIECE' and item.get('cut_piece_id'):
                             # Restore cut piece status

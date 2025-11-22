@@ -111,13 +111,49 @@ const InventoryNew = () => {
   };
 
   useEffect(() => {
+    console.log('[InventoryNew] Component mounted - Initial data fetch');
     fetchProductTypes();
     fetchBrands();
     fetchBatches();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Auto-refresh when page becomes visible (e.g., after navigating back from transactions)
   useEffect(() => {
+    console.log('[InventoryNew] Setting up visibility/focus listeners for auto-refresh');
+
+    const handleVisibilityChange = () => {
+      console.log('[InventoryNew] Visibility changed - hidden:', document.hidden);
+      if (!document.hidden) {
+        console.log('[InventoryNew] Page became visible - refreshing inventory');
+        fetchBatches();
+      }
+    };
+
+    const handleFocus = () => {
+      console.log('[InventoryNew] Window focused - refreshing inventory');
+      fetchBatches();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      console.log('[InventoryNew] Cleaning up visibility/focus listeners');
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    console.log('[InventoryNew] Filters/batches changed - Running filterBatches()', {
+      totalBatches: batches.length,
+      searchTerm,
+      selectedProduct,
+      selectedBrand,
+      selectedStockType
+    });
     filterBatches();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchTerm, selectedProduct, selectedBrand, selectedStockType, parameterFilters, batches]);
@@ -299,11 +335,24 @@ const InventoryNew = () => {
 
   const fetchBatches = async () => {
     try {
+      console.log('[InventoryNew] fetchBatches() called - Starting API request');
       setLoading(true);
       const response = await inventoryAPI.getBatches();
+      console.log('[InventoryNew] API response received:', {
+        batchCount: response.data?.length,
+        batches: response.data?.map((b: any) => ({
+          batch_code: b.batch_code,
+          full_rolls: b.full_roll_count,
+          bundles: b.bundle_count,
+          cut_pieces: b.cut_roll_count,
+          spare_pieces: b.spare_piece_count
+        }))
+      });
       setBatches(response.data);
+      console.log('[InventoryNew] State updated with', response.data?.length, 'batches');
     } catch (error) {
       const err = error as { response?: { data?: { details?: string } }; message: string };
+      console.error('[InventoryNew] Error fetching batches:', err);
       toast.error('Failed to fetch inventory', {
         description: err.response?.data?.details || err.message
       });
