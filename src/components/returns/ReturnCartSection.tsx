@@ -214,10 +214,10 @@ export const ReturnCartSection = ({ items, onRemoveItem, onClearCart }: ReturnCa
                 <span className="font-semibold">{getTotalMeters().toFixed(2)}m</span>
               </div>
             </div>
-            
+
             {onClearCart && items.length > 0 && (
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 className="w-full text-destructive hover:bg-destructive hover:text-destructive-foreground"
                 onClick={onClearCart}
               >

@@ -206,6 +206,12 @@ export const ProductSelectionSection = ({
       return;
     }
 
+    // Validate parameters are required for HDPE and Sprinkler
+    if ((isHDPE || isSprinkler) && !advancedSearch.trim()) {
+      toast.error('Please enter parameters');
+      return;
+    }
+
     // Validate and parse parameters
     const { params: parameters, error: paramError } = parseAdvancedSearch(advancedSearch);
     if (paramError) {
@@ -231,6 +237,11 @@ export const ProductSelectionSection = ({
       const qty = parseInt(quantity) || 1;
       const length = parseFloat(rollLength);
 
+      if (isNaN(qty) || qty < 1 || qty > 100) {
+        toast.error('Quantity must be between 1 and 100');
+        return;
+      }
+
       if (isNaN(length) || length <= 0) {
         toast.error('Please enter valid roll length');
         return;
@@ -243,6 +254,11 @@ export const ProductSelectionSection = ({
       const qty = parseInt(quantity) || 1;
       const size = parseInt(bundleSize);
       const length = parseFloat(bundlePieceLength);
+
+      if (isNaN(qty) || qty < 1 || qty > 100) {
+        toast.error('Quantity must be between 1 and 100');
+        return;
+      }
 
       if (isNaN(size) || size < 1) {
         toast.error('Please enter valid bundle size');
@@ -289,9 +305,14 @@ export const ProductSelectionSection = ({
 
     toast.success('Item added to cart');
 
-    // Focus back to product type for next entry
+    // Focus management: if product/brand/params are still set, focus on item type for quick next entry
+    // Otherwise focus on product type
     setTimeout(() => {
-      productTypeRefInput.current?.focus();
+      if (selectedProductType && selectedBrand && advancedSearch) {
+        itemTypeRefInput.current?.focus();
+      } else {
+        productTypeRefInput.current?.focus();
+      }
     }, 100);
   };
 

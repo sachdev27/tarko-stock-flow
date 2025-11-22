@@ -130,10 +130,14 @@ const ReturnNewModular = () => {
 
         if (!sameProductAndBrand) return false;
 
-        // Compare parameters
-        const existingParams = JSON.stringify(existingItem.parameters || {});
-        const newParams = JSON.stringify(item.parameters || {});
-        if (existingParams !== newParams) return false;
+        // Compare parameters (handle key order differences)
+        const existingParams = existingItem.parameters || {};
+        const newParams = item.parameters || {};
+        const existingKeys = Object.keys(existingParams).sort();
+        const newKeys = Object.keys(newParams).sort();
+        if (existingKeys.length !== newKeys.length) return false;
+        if (!existingKeys.every((key, idx) => key === newKeys[idx])) return false;
+        if (!existingKeys.every(key => existingParams[key] === newParams[key])) return false;
 
         // For rolls, check if length matches
         if ((item.item_type === 'FULL_ROLL' || item.item_type === 'CUT_ROLL') && item.rolls && existingItem.rolls) {
