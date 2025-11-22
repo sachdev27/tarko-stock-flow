@@ -87,52 +87,43 @@ def get_batches():
 
                 stock_entries = list(cursor.fetchall())
 
-                # For CUT_ROLL, fetch individual pieces as separate entries
+                # For CUT_ROLL, group pieces by length only (across all stock entries)
                 cursor.execute("""
-                    SELECT s.id::text as stock_id
-                    FROM inventory_stock s
+                    SELECT
+                        MIN(s.id::text) as stock_id,
+                        cp.length_meters,
+                        COUNT(*)::integer as piece_count,
+                        MIN(pt.name) as product_type_name,
+                        array_agg(cp.id::text) as piece_ids
+                    FROM hdpe_cut_pieces cp
+                    JOIN inventory_stock s ON cp.stock_id = s.id
+                    JOIN product_variants pv ON s.product_variant_id = pv.id
+                    JOIN product_types pt ON pv.product_type_id = pt.id
                     WHERE s.batch_id = %s::uuid
+                    AND cp.status = 'IN_STOCK'
                     AND s.deleted_at IS NULL
                     AND s.status = 'IN_STOCK'
-                    AND s.quantity > 0
                     AND s.stock_type = 'CUT_ROLL'
+                    GROUP BY cp.length_meters
+                    ORDER BY cp.length_meters DESC
                 """, (batch_id,))
 
-                cut_roll_stocks = cursor.fetchall()
+                cut_groups = cursor.fetchall()
 
-                for cut_stock in cut_roll_stocks:
-                    cursor.execute("""
-                        SELECT
-                            cp.id::text as piece_id,
-                            cp.length_meters,
-                            s.id::text as stock_id,
-                            pt.name as product_type_name
-                        FROM hdpe_cut_pieces cp
-                        JOIN inventory_stock s ON cp.stock_id = s.id
-                        JOIN product_variants pv ON s.product_variant_id = pv.id
-                        JOIN product_types pt ON pv.product_type_id = pt.id
-                        WHERE s.id = %s::uuid AND cp.status = 'IN_STOCK'
-                        ORDER BY cp.length_meters DESC
-                    """, (cut_stock['stock_id'],))
-
-                    cut_pieces = cursor.fetchall()
-
-                    # Add each cut piece as a separate entry
-                    for piece in cut_pieces:
-                        stock_entries.append({
-                            'stock_id': cut_stock['stock_id'],
-                            'piece_id': piece['piece_id'],
-                            'stock_type': 'CUT_ROLL',
-                            'quantity': 1,
-                            'status': 'IN_STOCK',
-                            'length_per_unit': piece['length_meters'],
-                            'pieces_per_bundle': None,
-                            'piece_length_meters': None,
-                            'total_available': piece['length_meters'],
-                            'product_type_name': piece['product_type_name']
-                        })
-
-                # For SPARE, fetch individual spare groups as separate entries
+                # Add grouped cut pieces
+                for group in cut_groups:
+                    stock_entries.append({
+                        'stock_id': group['stock_id'],
+                        'piece_ids': group['piece_ids'],
+                        'stock_type': 'CUT_ROLL',
+                        'quantity': group['piece_count'],
+                        'status': 'IN_STOCK',
+                        'length_per_unit': group['length_meters'],
+                        'pieces_per_bundle': None,
+                        'piece_length_meters': None,
+                        'total_available': group['length_meters'] * group['piece_count'],
+                        'product_type_name': group['product_type_name']
+                    })                # For SPARE, fetch individual spare groups as separate entries
                 cursor.execute("""
                     SELECT s.id::text as stock_id
                     FROM inventory_stock s
@@ -809,26 +800,79 @@ def search_inventory():
             cursor.execute(query, tuple(params))
             results = cursor.fetchall()
 
-            # Expand CUT_ROLL and SPARE entries to show individual pieces
+            # Expand CUT_ROLL and SPARE entries
+            # For CUT_ROLL: Group by length and show counts
+            # For SPARE: Show individual spare groups
             expanded_results = []
-            for row in results:
-                if row['stock_type'] == 'CUT_ROLL':
-                    # Fetch individual cut pieces for this stock
-                    cursor.execute("""
-                        SELECT id::text as piece_id, length_meters
-                        FROM hdpe_cut_pieces
-                        WHERE stock_id = %s AND status = 'IN_STOCK'
-                        ORDER BY length_meters DESC
-                    """, (row['id'],))
-                    cut_pieces = cursor.fetchall()
 
-                    # Add each cut piece as a separate entry
-                    for piece in cut_pieces:
-                        piece_entry = dict(row)
-                        piece_entry['piece_id'] = piece['piece_id']
-                        piece_entry['length_meters'] = piece['length_meters']
-                        expanded_results.append(piece_entry)
-                elif row['stock_type'] == 'SPARE':
+            # Group cut roll stock_ids to process together
+            cut_roll_stocks = [row for row in results if row['stock_type'] == 'CUT_ROLL']
+            non_cut_results = [row for row in results if row['stock_type'] != 'CUT_ROLL']
+
+            # Process CUT_ROLL pieces grouped by length
+            if cut_roll_stocks:
+                # Get all cut pieces for these stocks and group by length
+                stock_ids = [row['id'] for row in cut_roll_stocks]
+                placeholders = ','.join(['%s'] * len(stock_ids))
+
+                cursor.execute(f"""
+                    SELECT
+                        cp.length_meters,
+                        COUNT(*)::integer as piece_count,
+                        array_agg(cp.id::text) as piece_ids,
+                        (array_agg(s.id))[1]::text as stock_id,
+                        (array_agg(s.batch_id))[1]::text as batch_id,
+                        (array_agg(b.batch_code))[1] as batch_code,
+                        (array_agg(b.batch_no))[1] as batch_no,
+                        (array_agg(pt.name))[1] as product_type_name,
+                        (array_agg(br.name))[1] as brand_name,
+                        (array_agg(pt.name))[1] as product_category,
+                        (array_agg(pv.parameters))[1] as parameters,
+                        (array_agg(s.product_variant_id))[1]::text as product_variant_id
+                    FROM hdpe_cut_pieces cp
+                    JOIN inventory_stock s ON cp.stock_id = s.id
+                    JOIN batches b ON s.batch_id = b.id
+                    JOIN product_variants pv ON s.product_variant_id = pv.id
+                    JOIN product_types pt ON pv.product_type_id = pt.id
+                    JOIN brands br ON pv.brand_id = br.id
+                    WHERE cp.stock_id IN ({placeholders})
+                    AND cp.status = 'IN_STOCK'
+                    GROUP BY cp.length_meters
+                    ORDER BY cp.length_meters DESC
+                """, tuple(stock_ids))
+
+                cut_groups = cursor.fetchall()
+                print(f"DEBUG: Found {len(cut_groups)} cut groups")
+                for i, group in enumerate(cut_groups):
+                    print(f"DEBUG: Cut group {i}: length={group['length_meters']}m, count={group['piece_count']}, piece_ids={len(group['piece_ids']) if group['piece_ids'] else 0} pieces")
+
+                for group in cut_groups:
+                    expanded_results.append({
+                        'id': group['stock_id'],
+                        'batch_id': group['batch_id'],
+                        'status': 'IN_STOCK',
+                        'stock_type': 'CUT_ROLL',
+                        'quantity': group['piece_count'],
+                        'length_meters': group['length_meters'],
+                        'bundle_size': None,
+                        'piece_length_meters': None,
+                        'product_variant_id': group['product_variant_id'],
+                        'created_at': None,
+                        'batch_code': group['batch_code'],
+                        'batch_no': group['batch_no'],
+                        'product_type_name': group['product_type_name'],
+                        'brand_name': group['brand_name'],
+                        'product_category': group['product_category'],
+                        'parameters': group['parameters'],
+                        'is_cut_roll': True,
+                        'bundle_type': None,
+                        'piece_count': None,
+                        'piece_ids': group['piece_ids']
+                    })
+
+            # Process non-CUT_ROLL items
+            for row in non_cut_results:
+                if row['stock_type'] == 'SPARE':
                     # Fetch individual spare pieces for this stock
                     cursor.execute("""
                         SELECT id::text as spare_id, piece_count

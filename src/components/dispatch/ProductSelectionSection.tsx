@@ -20,6 +20,7 @@ interface StockEntry {
   piece_length_meters?: number;
   piece_count?: number;
   piece_id?: string;
+  piece_ids?: string[];
   spare_id?: string;
   total_available?: number;
   product_type_name?: string;
@@ -121,6 +122,8 @@ export const ProductSelectionSection = ({
 
   // For HDPE: Track number of full rolls to add
   const [fullRollsQuantity, setFullRollsQuantity] = useState<Record<string, number>>({});
+  // For HDPE: Track number of cut pieces to add
+  const [cutPiecesQuantity, setCutPiecesQuantity] = useState<Record<string, number>>({});
 
   // For Sprinkler: Track bundle quantities
   const [bundleQuantities, setBundleQuantities] = useState<Record<string, number>>({});
@@ -164,6 +167,7 @@ export const ProductSelectionSection = ({
         piece_length_meters: roll.piece_length_meters,
         piece_count: roll.piece_count,
         piece_id: roll.piece_id,
+        piece_ids: roll.piece_ids,
         spare_id: roll.spare_id,
         total_available: roll.total_available || roll.length_meters,
         product_type_name: roll.product_type_name,
@@ -352,12 +356,32 @@ export const ProductSelectionSection = ({
     }
   };
 
-  // HDPE: Add individual cut roll
-  const handleAddCutRoll = (variant: ProductVariant, entry: StockEntry) => {
+  // HDPE: Add cut pieces (can add multiple from a group)
+  const handleAddCutPieces = (variant: ProductVariant, entry: StockEntry, available: number) => {
+    const stateKey = `${entry.stock_id}-${entry.length_per_unit}`;
+    const quantity = parseInt(String(cutPiecesQuantity[stateKey] || '0')) || 0;
+
+    if (quantity <= 0 || quantity > available) {
+      toast.error('Invalid quantity');
+      return;
+    }
+
+    // Get piece IDs that aren't already in cart
+    const pieceIds = entry.piece_ids || [];
+    const availablePieceIds = pieceIds.filter(pieceId =>
+      !selectedRolls.some(r => r.piece_id === pieceId)
+    );
+
+    if (availablePieceIds.length < quantity) {
+      toast.error(`Only ${availablePieceIds.length} pieces available`);
+      return;
+    }
+
+    // Add as a single cart item with the quantity, storing all piece_ids
     const roll = {
       id: entry.stock_id,
       product_variant_id: variant.id,
-      piece_id: entry.piece_id,
+      piece_ids: availablePieceIds.slice(0, quantity), // Store array of piece_ids being added
       batch_code: entry.batch_code || '',
       length_meters: entry.length_per_unit || 0,
       status: 'AVAILABLE',
@@ -366,10 +390,12 @@ export const ProductSelectionSection = ({
       brand_name: variant.brand_name,
       product_type_name: variant.product_type_name,
       product_category: variant.product_category,
-      quantity: 1
+      quantity: quantity
     };
     onAddRoll(roll);
-    toast.success(`Added cut piece: ${(entry.length_per_unit || 0).toFixed(1)}m`);
+
+    setCutPiecesQuantity(prev => ({ ...prev, [stateKey]: 0 }));
+    toast.success(`Added ${quantity} cut piece${quantity > 1 ? 's' : ''} (${(entry.length_per_unit || 0).toFixed(1)}m each)`);
   };
 
   // Sprinkler: Add bundles
@@ -722,54 +748,124 @@ export const ProductSelectionSection = ({
                         </div>
                       )}
 
-                      {/* Cut Pieces Section */}
+                      {/* Cut Pieces Section - Grouped by length with quantity input */}
                       {stockByType.CUT_ROLL.length > 0 && (
                         <div className="space-y-2">
                           <h4 className="font-semibold flex items-center gap-2">
                             <Scissors className="h-4 w-4 text-orange-600" />
-                            Cut Pieces ({stockByType.CUT_ROLL.length})
+                            Cut Pieces
                           </h4>
                           <div className="space-y-1">
                             {stockByType.CUT_ROLL.map(entry => {
                               const length = parseFloat(entry.length_per_unit) || 0;
-                              const uniqueKey = entry.piece_id || entry.stock_id;
-                              const alreadyInCart = selectedRolls.some(r =>
-                                (r.piece_id && r.piece_id === entry.piece_id) ||
-                                (!r.piece_id && r.id === entry.stock_id)
-                              );
+                              const quantity = entry.quantity || 1;
+                              const stateKey = `${entry.stock_id}-${entry.length_per_unit}`;
+                              const uniqueKey = entry.piece_ids ? entry.piece_ids.join(',') : entry.stock_id;
+
+                              console.log('DEBUG Cut Entry:', {
+                                length,
+                                quantity,
+                                stock_id: entry.stock_id,
+                                piece_ids: entry.piece_ids,
+                                piece_ids_length: entry.piece_ids?.length,
+                                entry
+                              });
+
+                              // Count how many pieces from this group are already in cart
+                              const pieceIds = entry.piece_ids || [];
+                              const cutRollsInCart = selectedRolls.filter(r => r.stock_type === 'CUT_ROLL');
+                              console.log('DEBUG Cut Rolls in Cart:', cutRollsInCart);
+
+                              const inCartPieceIds = cutRollsInCart.flatMap(r => {
+                                // Handle both single piece_id and array of piece_ids
+                                if (r.piece_ids && Array.isArray(r.piece_ids)) {
+                                  console.log('Found piece_ids array in cart item:', r.piece_ids.length);
+                                  return r.piece_ids;
+                                } else if (r.piece_id) {
+                                  console.log('Found single piece_id in cart item:', r.piece_id);
+                                  return [r.piece_id];
+                                }
+                                console.log('No piece_ids found in cart item:', r);
+                                return [];
+                              });
+                              const inCartCount = pieceIds.filter(pieceId =>
+                                inCartPieceIds.includes(pieceId)
+                              ).length;
+                              const available = quantity - inCartCount;
+
+                              console.log('DEBUG Availability:', {
+                                pieceIds_count: pieceIds.length,
+                                inCartCount,
+                                available,
+                                inCartPieceIds_count: inCartPieceIds.length,
+                                selectedRolls_cut: selectedRolls.filter(r => r.stock_type === 'CUT_ROLL'),
+                                selectedRolls_count: selectedRolls.length
+                              });
+
+                              const inputValue = cutPiecesQuantity[stateKey] || '';
+
                               return (
                                 <div
                                   key={uniqueKey}
-                                  className={`flex items-center justify-between p-3 rounded-lg border transition-colors ${
-                                    alreadyInCart
-                                      ? 'bg-green-50 border-green-300'
-                                      : 'bg-orange-50 border-orange-200 hover:bg-orange-100'
-                                  }`}
+                                  className="flex items-center justify-between p-3 rounded-lg border bg-orange-50 border-orange-200"
                                 >
                                   <div className="flex items-center gap-3 flex-1">
-                                    <Badge variant="secondary" className="text-xs px-2">CUT</Badge>
-                                    <span className="font-mono text-lg font-bold text-orange-700">{length.toFixed(1)}m</span>
+                                    <Scissors className="h-5 w-5 text-orange-600" />
+                                    <div>
+                                      <div className="font-mono text-base font-bold text-orange-700">{length.toFixed(1)}m</div>
+                                      <div className="text-sm text-muted-foreground">
+                                        {available} of {quantity} available
+                                      </div>
+                                    </div>
                                   </div>
                                   <div className="flex items-center gap-2">
                                     <Button
                                       size="sm"
                                       variant="outline"
                                       onClick={() => handleCutRoll(entry)}
-                                      className="gap-1 h-7"
-                                      disabled={alreadyInCart}
+                                      className="gap-1 h-8"
                                     >
                                       <Scissors className="h-3 w-3" />
                                       Cut
                                     </Button>
+                                    <Input
+                                      type="number"
+                                      value={inputValue}
+                                      onChange={(e) => {
+                                        const val = e.target.value;
+                                        if (val === '') {
+                                          setCutPiecesQuantity(prev => ({ ...prev, [stateKey]: '' }));
+                                        } else {
+                                          const num = parseInt(val);
+                                          if (!isNaN(num) && num >= 0) {
+                                            setCutPiecesQuantity(prev => ({
+                                              ...prev,
+                                              [stateKey]: Math.min(available, num)
+                                            }));
+                                          }
+                                        }
+                                      }}
+                                      onFocus={(e) => e.target.select()}
+                                      placeholder="0"
+                                      className="w-20 h-8"
+                                      min="0"
+                                      max={available}
+                                      disabled={available <= 0}
+                                    />
+                                    <span className="text-xs text-gray-500">/ {available}</span>
                                     <Button
+                                      onClick={() => {
+                                        const qty = parseInt(inputValue as string) || 0;
+                                        if (qty > 0 && qty <= available) {
+                                          handleAddCutPieces(variant, entry, available);
+                                        }
+                                      }}
+                                      disabled={!inputValue || parseInt(String(inputValue)) <= 0 || available <= 0}
                                       size="sm"
-                                      variant="ghost"
-                                      onClick={() => handleAddCutRoll(variant, entry)}
-                                      disabled={alreadyInCart}
-                                      className="h-7 px-2"
+                                      className="h-8"
                                     >
-                                      <Plus className="h-3 w-3 mr-1" />
-                                      {alreadyInCart ? 'Added' : 'Add'}
+                                      <Plus className="h-4 w-4 mr-1" />
+                                      Add
                                     </Button>
                                   </div>
                                 </div>
@@ -1097,8 +1193,12 @@ export const ProductSelectionSection = ({
                       // Normalize piece_length_meters to avoid floating point issues
                       const normalizedLength = Number(roll.piece_length_meters || 0);
                       key = `${roll.product_variant_id}-SPARE-${normalizedLength}`;
+                    } else if (roll.stock_type === 'CUT_ROLL') {
+                      // Group cut rolls by product variant and length
+                      const normalizedLength = Number(roll.length_meters || 0);
+                      key = `${roll.product_variant_id}-CUT_ROLL-${normalizedLength}`;
                     } else {
-                      // CUT_ROLL or other - show individually
+                      // Other types - show individually
                       key = `${idx}-INDIVIDUAL`;
                     }
 
@@ -1153,7 +1253,7 @@ export const ProductSelectionSection = ({
                       <div className="flex items-center gap-2">
                         <span className="font-medium">
                           {roll.stock_type === 'CUT_ROLL' ? (
-                            <span>{(parseFloat(roll.length_meters) || 0).toFixed(1)}m</span>
+                            <span>{totalQty}x({(parseFloat(roll.length_meters) || 0).toFixed(1)}m)</span>
                           ) : roll.stock_type === 'SPARE' ? (
                             // For spare pieces, show total piece count directly without multiplier
                             <span>
@@ -1212,7 +1312,7 @@ export const ProductSelectionSection = ({
                   <div className="flex flex-col items-center">
                     <div className="text-gray-600">Cut Rolls</div>
                     <div className="font-bold text-lg mt-auto">
-                      {selectedRolls.filter(r => r.stock_type === 'CUT_ROLL').length}
+                      {selectedRolls.filter(r => r.stock_type === 'CUT_ROLL').reduce((sum, r) => sum + (r.quantity || 1), 0)}
                     </div>
                   </div>
                   <div className="flex flex-col items-center">

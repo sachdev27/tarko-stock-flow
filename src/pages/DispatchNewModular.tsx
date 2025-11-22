@@ -153,6 +153,7 @@ const DispatchNewModular = () => {
       id: roll.roll_id || roll.id,
       product_variant_id: roll.product_variant_id,
       piece_id: roll.piece_id,
+      piece_ids: roll.piece_ids,
       batch_code: roll.batch_code,
       length_meters: roll.length_meters,
       status: roll.status,

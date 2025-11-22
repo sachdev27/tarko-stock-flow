@@ -125,15 +125,15 @@ export const StockEntryList = ({ stockEntries, onUpdate }: StockEntryListProps) 
         })
       }
 
-      {/* Cut Rolls - Each piece shown separately */}
+      {/* Cut Rolls - Grouped by length with count */}
       {cutRolls.map(entry => (
-        <div key={entry.piece_id || entry.stock_id} className="flex items-center justify-between p-3 bg-orange-50 rounded-lg border border-orange-200">
+        <div key={entry.piece_ids ? entry.piece_ids.join(',') : entry.stock_id} className="flex items-center justify-between p-3 bg-orange-50 rounded-lg border border-orange-200">
           <div className="flex items-center gap-3">
             <Scissors className="h-5 w-5 text-orange-600" />
             <div>
-              <div className="font-medium">Cut Piece</div>
+              <div className="font-medium">{entry.quantity} Cut {entry.quantity === 1 ? 'Piece' : 'Pieces'}</div>
               <div className="text-sm font-mono font-semibold">
-                {entry.length_per_unit}m
+                {entry.length_per_unit}m each
               </div>
             </div>
           </div>
