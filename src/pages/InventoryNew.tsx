@@ -7,11 +7,10 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
-import { Package, Search, Box, Scissors, Layers, MessageCircle, Upload, Download, FileText, History, Keyboard } from 'lucide-react';
+import { Package, Search, Box, Scissors, Layers, MessageCircle, Upload, Download, FileText, Keyboard } from 'lucide-react';
 import { inventory as inventoryAPI } from '@/lib/api';
 import { ProductVariantCard } from '@/components/inventory/ProductVariantCard';
 import { StockSummary } from '@/components/inventory/StockSummary';
-import { ProductHistoryDialog } from '@/components/inventory/ProductHistoryDialog';
 import { WhatsAppShareDialog } from '@/components/inventory/WhatsAppShareDialog';
 import { ImportExportDialog } from '@/components/inventory/ImportExportDialog';
 import { AdvancedFilters } from '@/components/inventory/AdvancedFilters';
@@ -60,10 +59,6 @@ const InventoryNew = () => {
   const [brands, setBrands] = useState<Array<{ id: string; name: string }>>([]);
 
   // Dialogs
-  const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
-  const [selectedProductVariantId, setSelectedProductVariantId] = useState<string | null>(null);
-  const [selectedProductName, setSelectedProductName] = useState('');
-
   const [whatsappDialogOpen, setWhatsappDialogOpen] = useState(false);
   const [importExportDialogOpen, setImportExportDialogOpen] = useState(false);
   const [keyboardShortcutsOpen, setKeyboardShortcutsOpen] = useState(false);
@@ -399,12 +394,6 @@ const InventoryNew = () => {
     { value: 'SPARE', label: 'Spares', icon: Package }
   ];
 
-  const openProductHistory = (productVariantId: string, productName: string) => {
-    setSelectedProductVariantId(productVariantId);
-    setSelectedProductName(productName);
-    setHistoryDialogOpen(true);
-  };
-
   // Helper to get product variant ID from batches
   const getProductVariantId = (batches: Batch[]): string => {
     // All batches in a variant group should have the same product_variant_id
@@ -566,7 +555,6 @@ const InventoryNew = () => {
                 batches={variant.batches}
                 productVariantId={getProductVariantId(variant.batches)}
                 onUpdate={fetchBatches}
-                onViewHistory={openProductHistory}
               />
             ))}
           </div>
@@ -574,13 +562,6 @@ const InventoryNew = () => {
       </div>
 
       {/* Dialogs */}
-      <ProductHistoryDialog
-        open={historyDialogOpen}
-        onOpenChange={setHistoryDialogOpen}
-        productVariantId={selectedProductVariantId}
-        productName={selectedProductName}
-      />
-
       <WhatsAppShareDialog
         open={whatsappDialogOpen}
         onOpenChange={setWhatsappDialogOpen}

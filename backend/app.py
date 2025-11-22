@@ -18,7 +18,6 @@ from routes.parameter_routes import parameter_bp
 from routes.dispatch_routes import dispatch_bp
 from routes.dispatch_entities_routes import dispatch_entities_bp
 from routes.version_control_routes import version_control_bp
-from routes.ledger_routes import ledger_bp
 from routes.return_routes import return_bp
 
 logging.basicConfig(level=logging.INFO)
@@ -52,7 +51,6 @@ app.register_blueprint(parameter_bp)
 app.register_blueprint(dispatch_bp)
 app.register_blueprint(dispatch_entities_bp)
 app.register_blueprint(version_control_bp)
-app.register_blueprint(ledger_bp)
 app.register_blueprint(return_bp)
 
 @app.route('/api/health', methods=['GET'])
