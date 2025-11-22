@@ -763,6 +763,14 @@ def revert_transactions():
                             # Create inventory_transaction for cut roll return
                             length_meters = item.get('length_meters', 0)
                             notes = f"Reverted dispatch {dispatch['dispatch_number']}: Cut roll returned to stock ({length_meters}m)"
+
+                            # Restore individual cut pieces status
+                            cursor.execute("""
+                                UPDATE hdpe_cut_pieces
+                                SET status = 'IN_STOCK', dispatch_id = NULL, updated_at = NOW()
+                                WHERE stock_id = %s AND dispatch_id = %s
+                            """, (stock_id, clean_id))
+
                             cursor.execute("""
                                 INSERT INTO inventory_transactions (
                                     transaction_type, to_stock_id, to_quantity,

@@ -1502,6 +1502,23 @@ def create_dispatch():
                         if stock_type == 'CUT_ROLL':
                             actual_item_type = 'CUT_ROLL'  # Store as CUT_ROLL for better display
 
+                            # For CUT_ROLL, mark individual pieces as DISPATCHED
+                            cursor.execute("""
+                                UPDATE hdpe_cut_pieces
+                                SET status = 'DISPATCHED', dispatch_id = %s, updated_at = NOW()
+                                WHERE id IN (
+                                    SELECT id FROM hdpe_cut_pieces
+                                    WHERE stock_id = %s AND status = 'IN_STOCK'
+                                    ORDER BY created_at
+                                    LIMIT %s
+                                )
+                                RETURNING id
+                            """, (dispatch_id, stock_id, quantity))
+
+                            updated_pieces = cursor.fetchall()
+                            if len(updated_pieces) < quantity:
+                                return jsonify({'error': f'Not enough IN_STOCK pieces available. Requested: {quantity}, Available: {len(updated_pieces)}'}), 400
+
                         # Create dispatch item
                         cursor.execute("""
                             INSERT INTO dispatch_items (
