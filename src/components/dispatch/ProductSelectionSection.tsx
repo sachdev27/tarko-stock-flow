@@ -285,30 +285,71 @@ export const ProductSelectionSection = ({
   };
 
   // HDPE: Add full rolls
-  const handleAddFullRolls = (variant: ProductVariant, fullRollEntry: StockEntry, available: number) => {
+  const handleAddFullRolls = (variant: ProductVariant, fullRollEntry: StockEntry, available: number, rollGroup?: StockEntry[]) => {
     const quantity = parseInt(fullRollsQuantity[fullRollEntry.stock_id]) || 0;
     if (quantity <= 0 || quantity > available) {
       toast.error(`Please enter a valid quantity (1-${available})`);
       return;
     }
 
-    const roll = {
-      id: fullRollEntry.stock_id,
-      product_variant_id: variant.id,
-      batch_code: fullRollEntry.batch_code || '',
-      length_meters: fullRollEntry.length_per_unit || 0,
-      status: 'AVAILABLE',
-      stock_type: 'FULL_ROLL',
-      parameters: variant.parameters,
-      brand_name: variant.brand_name,
-      product_type_name: variant.product_type_name,
-      product_category: variant.product_category,
-      quantity
-    };
+    // If we have a roll group (aggregated rolls), we need to distribute the quantity across all entries
+    if (rollGroup && rollGroup.length > 0) {
+      let remainingQty = quantity;
 
-    onAddRoll(roll);
-    setFullRollsQuantity(prev => ({ ...prev, [fullRollEntry.stock_id]: 0 }));
-    toast.success(`Added ${quantity} full roll${quantity > 1 ? 's' : ''}`);
+      for (const entry of rollGroup) {
+        if (remainingQty <= 0) break;
+
+        // Calculate how many are already in cart from this specific entry
+        const inCart = selectedRolls
+          .filter(r => r.id === entry.stock_id && !r.piece_id)
+          .reduce((sum, r) => sum + (r.quantity || 0), 0);
+        const entryAvailable = entry.quantity - inCart;
+
+        // Take as many as we can from this entry
+        const qtyFromThisEntry = Math.min(remainingQty, entryAvailable);
+
+        if (qtyFromThisEntry > 0) {
+          const roll = {
+            id: entry.stock_id,
+            product_variant_id: variant.id,
+            batch_code: entry.batch_code || '',
+            length_meters: entry.length_per_unit || 0,
+            status: 'AVAILABLE',
+            stock_type: 'FULL_ROLL',
+            parameters: variant.parameters,
+            brand_name: variant.brand_name,
+            product_type_name: variant.product_type_name,
+            product_category: variant.product_category,
+            quantity: qtyFromThisEntry
+          };
+
+          onAddRoll(roll);
+          remainingQty -= qtyFromThisEntry;
+        }
+      }
+
+      setFullRollsQuantity(prev => ({ ...prev, [fullRollEntry.stock_id]: 0 }));
+      toast.success(`Added ${quantity} full roll${quantity > 1 ? 's' : ''}`);
+    } else {
+      // Single entry (original behavior)
+      const roll = {
+        id: fullRollEntry.stock_id,
+        product_variant_id: variant.id,
+        batch_code: fullRollEntry.batch_code || '',
+        length_meters: fullRollEntry.length_per_unit || 0,
+        status: 'AVAILABLE',
+        stock_type: 'FULL_ROLL',
+        parameters: variant.parameters,
+        brand_name: variant.brand_name,
+        product_type_name: variant.product_type_name,
+        product_category: variant.product_category,
+        quantity
+      };
+
+      onAddRoll(roll);
+      setFullRollsQuantity(prev => ({ ...prev, [fullRollEntry.stock_id]: 0 }));
+      toast.success(`Added ${quantity} full roll${quantity > 1 ? 's' : ''}`);
+    }
   };
 
   // HDPE: Add individual cut roll
@@ -493,15 +534,23 @@ export const ProductSelectionSection = ({
               SPARE: variant.stock_entries.filter(e => e.stock_type === 'SPARE')
             };
 
-            // Group bundles by size AND piece length
+            // Group bundles by size AND piece length (normalize length to number)
             const bundlesBySize = stockByType.BUNDLE.reduce((acc, entry) => {
               const size = entry.pieces_per_bundle || 0;
-              const length = entry.piece_length_meters || 0;
+              const length = Number(entry.piece_length_meters || 0);
               const key = `${size}-${length}`;
               if (!acc[key]) acc[key] = [];
               acc[key].push(entry);
               return acc;
             }, {} as Record<string, StockEntry[]>);
+
+            // Group full rolls by length (normalize to handle 500 vs 500.0)
+            const fullRollsByLength = stockByType.FULL_ROLL.reduce((acc, entry) => {
+              const length = Number(entry.length_per_unit || 0);
+              if (!acc[length]) acc[length] = [];
+              acc[length].push(entry);
+              return acc;
+            }, {} as Record<number, StockEntry[]>);
 
             const isHDPE = variant.product_category?.includes('HDPE') || variant.product_type_name?.includes('HDPE');
             const isSprinkler = variant.product_category?.includes('Sprinkler') || variant.product_type_name?.includes('Sprinkler');
@@ -543,7 +592,7 @@ export const ProductSelectionSection = ({
                   {isHDPE && (
                     <>
                       {/* Full Rolls Section */}
-                      {stockByType.FULL_ROLL.length > 0 && (
+                      {Object.keys(fullRollsByLength).length > 0 && (
                         <div className="space-y-2">
                           <div className="flex items-center justify-between">
                             <h4 className="font-semibold flex items-center gap-2">
@@ -551,78 +600,88 @@ export const ProductSelectionSection = ({
                               Full Rolls
                             </h4>
                           </div>
-                          {stockByType.FULL_ROLL.map(entry => {
-                            const totalMeters = (entry.length_per_unit || 0) * (entry.quantity || 0);
-                            const inputValue = fullRollsQuantity[entry.stock_id] || '';
-                            // Calculate how many are already in cart
-                            const inCart = selectedRolls
-                              .filter(r => r.id === entry.stock_id && !r.piece_id)
-                              .reduce((sum, r) => sum + (r.quantity || 0), 0);
-                            const available = entry.quantity - inCart;
-                            return (
-                              <div key={entry.stock_id} className="p-3 bg-green-50 rounded-lg border border-green-200">
-                                <div className="flex items-center justify-between">
-                                  <div className="flex-1">
-                                    <div className="font-medium text-base">
-                                      {available} × ({entry.length_per_unit}m)
+                          {Object.entries(fullRollsByLength)
+                            .sort(([a], [b]) => Number(b) - Number(a))
+                            .map(([lengthKey, rollGroup]) => {
+                              const length = Number(lengthKey);
+                              const totalQuantity = rollGroup.reduce((sum, r) => sum + r.quantity, 0);
+                              const totalMeters = totalQuantity * length;
+
+                              // Use first entry's stock_id for the input key
+                              const firstEntry = rollGroup[0];
+                              const inputValue = fullRollsQuantity[firstEntry.stock_id] || '';
+
+                              // Calculate how many are already in cart from ALL entries in this group
+                              const inCart = selectedRolls
+                                .filter(r => rollGroup.some(entry => entry.stock_id === r.id) && !r.piece_id)
+                                .reduce((sum, r) => sum + (r.quantity || 0), 0);
+                              const available = totalQuantity - inCart;
+
+                              return (
+                                <div key={`roll-${length}`} className="p-3 bg-green-50 rounded-lg border border-green-200">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex-1">
+                                      <div className="font-medium text-base">
+                                        {available} × ({length}m)
+                                      </div>
+                                      <div className="text-xs text-gray-600">Total: {(available * length).toFixed(0)}m</div>
                                     </div>
-                                    <div className="text-xs text-gray-600">Total: {totalMeters.toFixed(0)}m</div>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => handleCutRoll(entry)}
-                                      className="gap-1 h-8"
-                                      disabled={available <= 0}
-                                    >
-                                      <Scissors className="h-3 w-3" />
-                                      Cut
-                                    </Button>
-                                    <Input
-                                      type="number"
-                                      value={inputValue}
-                                      onChange={(e) => {
-                                        const val = e.target.value;
-                                        if (val === '') {
-                                          setFullRollsQuantity(prev => ({ ...prev, [entry.stock_id]: '' }));
-                                        } else {
-                                          const num = parseInt(val);
-                                          if (!isNaN(num) && num >= 0) {
-                                            setFullRollsQuantity(prev => ({
-                                              ...prev,
-                                              [entry.stock_id]: Math.min(available, num)
-                                            }));
+                                    <div className="flex items-center gap-2">
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => handleCutRoll(firstEntry)}
+                                        className="gap-1 h-8"
+                                        disabled={available <= 0}
+                                      >
+                                        <Scissors className="h-3 w-3" />
+                                        Cut
+                                      </Button>
+                                      <Input
+                                        type="number"
+                                        value={inputValue}
+                                        onChange={(e) => {
+                                          const val = e.target.value;
+                                          if (val === '') {
+                                            setFullRollsQuantity(prev => ({ ...prev, [firstEntry.stock_id]: '' }));
+                                          } else {
+                                            const num = parseInt(val);
+                                            if (!isNaN(num) && num >= 0) {
+                                              setFullRollsQuantity(prev => ({
+                                                ...prev,
+                                                [firstEntry.stock_id]: Math.min(available, num)
+                                              }));
+                                            }
                                           }
-                                        }
-                                      }}
-                                      onFocus={(e) => e.target.select()}
-                                      placeholder="0"
-                                      className="w-20 h-8"
-                                      min="0"
-                                      max={available}
-                                    />
-                                    <span className="text-xs text-gray-500">/ {available}</span>
-                                    <Button
-                                      onClick={() => {
-                                        const qty = parseInt(inputValue as string) || 0;
-                                        if (qty > 0 && qty <= available) {
-                                          handleAddFullRolls(variant, entry, available);
-                                          setFullRollsQuantity(prev => ({ ...prev, [entry.stock_id]: '' }));
-                                        }
-                                      }}
-                                      disabled={!inputValue || parseInt(String(inputValue)) <= 0 || available <= 0}
-                                      size="sm"
-                                      className="h-8"
-                                    >
-                                      <Plus className="h-4 w-4 mr-1" />
-                                      Add
-                                    </Button>
+                                        }}
+                                        onFocus={(e) => e.target.select()}
+                                        placeholder="0"
+                                        className="w-20 h-8"
+                                        min="0"
+                                        max={available}
+                                      />
+                                      <span className="text-xs text-gray-500">/ {available}</span>
+                                      <Button
+                                        onClick={() => {
+                                          const qty = parseInt(inputValue as string) || 0;
+                                          if (qty > 0 && qty <= available) {
+                                            handleAddFullRolls(variant, firstEntry, available, rollGroup);
+                                            setFullRollsQuantity(prev => ({ ...prev, [firstEntry.stock_id]: '' }));
+                                          }
+                                        }}
+                                        disabled={!inputValue || parseInt(String(inputValue)) <= 0 || available <= 0}
+                                        size="sm"
+                                        className="h-8"
+                                      >
+                                        <Plus className="h-4 w-4 mr-1" />
+                                        Add
+                                      </Button>
+                                    </div>
                                   </div>
                                 </div>
-                              </div>
-                            );
-                          })}
+                              );
+                            })
+                          }
                         </div>
                       )}
 
@@ -827,9 +886,9 @@ export const ProductSelectionSection = ({
                             Spare Pieces
                           </h4>
                           {(() => {
-                            // Group spares by piece length
+                            // Group spares by piece length (normalize to number)
                             const sparesByLength = stockByType.SPARE.reduce((acc, entry) => {
-                              const length = entry.piece_length_meters || 0;
+                              const length = Number(entry.piece_length_meters || 0);
                               if (!acc[length]) acc[length] = [];
                               acc[length].push(entry);
                               return acc;

@@ -50,10 +50,10 @@ export const StockEntryList = ({ stockEntries, onUpdate }: StockEntryListProps) 
     return acc;
   }, {} as Record<number, StockEntry[]>);
 
-  // Group bundles by size AND piece length
+  // Group bundles by size AND piece length (normalize length to number)
   const bundlesBySize = bundles.reduce((acc, entry) => {
     const size = entry.pieces_per_bundle || 0;
-    const length = entry.piece_length_meters || 0;
+    const length = Number(entry.piece_length_meters || 0);
     const key = `${size}-${length}`;
     if (!acc[key]) {
       acc[key] = [];
@@ -187,9 +187,9 @@ export const StockEntryList = ({ stockEntries, onUpdate }: StockEntryListProps) 
 
       {/* Spare Pieces - Grouped by piece length */}
       {(() => {
-        // Group spares by piece length
+        // Group spares by piece length (normalize to number)
         const sparesByLength = spares.reduce((acc, entry) => {
-          const length = entry.piece_length_meters || 0;
+          const length = Number(entry.piece_length_meters || 0);
           if (!acc[length]) {
             acc[length] = [];
           }

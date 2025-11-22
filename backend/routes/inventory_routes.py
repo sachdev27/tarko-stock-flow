@@ -1140,19 +1140,19 @@ def combine_spares():
             if stock_type != 'SPARE':
                 return jsonify({'error': 'Only SPARE stock can be combined'}), 400
 
-            # Get the specific spare pieces - spare_piece_ids are actually stock_ids
-            print(f"DEBUG: Querying for spare pieces with stock_ids: {spare_piece_ids}")
+            # Get the specific spare pieces by their spare_id (primary key of sprinkler_spare_pieces)
+            print(f"DEBUG: Querying for spare pieces with spare_ids: {spare_piece_ids}")
             cursor.execute("""
                 SELECT ssp.id as spare_piece_id, ssp.piece_count, ssp.stock_id
                 FROM sprinkler_spare_pieces ssp
-                WHERE ssp.stock_id = ANY(%s::uuid[]) AND ssp.status = 'IN_STOCK'
+                WHERE ssp.id = ANY(%s::uuid[]) AND ssp.status = 'IN_STOCK'
             """, (spare_piece_ids,))
 
             spare_pieces = cursor.fetchall()
             print(f"DEBUG: Found {len(spare_pieces)} spare pieces: {spare_pieces}")
 
             if not spare_pieces:
-                print(f"DEBUG: No spare pieces found for stock_ids: {spare_piece_ids}")
+                print(f"DEBUG: No spare pieces found for spare_ids: {spare_piece_ids}")
                 return jsonify({'error': 'Some spare pieces not found or not available'}), 404
 
             total_pieces = sum(int(p['piece_count']) for p in spare_pieces)
