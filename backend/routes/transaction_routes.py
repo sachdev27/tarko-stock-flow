@@ -268,6 +268,19 @@ def get_transactions():
                             )
                         )
                     )
+                WHEN it.transaction_type = 'COMBINE_SPARES' THEN
+                    jsonb_build_object(
+                        'stock_entries',
+                        jsonb_build_array(
+                            jsonb_build_object(
+                                'stock_type', 'BUNDLE',
+                                'bundles_created', COALESCE(it.to_quantity, 0),
+                                'bundle_size', ist_to.pieces_per_bundle,
+                                'piece_length', ist_to.piece_length_meters,
+                                'spares_used', COALESCE(it.from_quantity, 0)
+                            )
+                        )
+                    )
                 ELSE NULL
             END as roll_snapshot,
             b.batch_code,
@@ -360,7 +373,7 @@ def get_transactions():
                 'driver_name', v.driver_name,
                 'transport_name', t.name,
                 'bill_to_name', bt.name,
-                'item_breakdown', jsonb_agg(DISTINCT jsonb_build_object(
+                'item_breakdown', jsonb_agg(jsonb_build_object(
                     'item_type', di.item_type,
                     'quantity', di.quantity,
                     'product_type', pt.name,

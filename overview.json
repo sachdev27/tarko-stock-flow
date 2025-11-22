@@ -1,6 +1,6 @@
 {
   "rootFolder": "/Users/sachdevs/Projects/Tarko-Inv/tarko-stock-flow",
-  "analyzedAt": "2025-11-22T09:36:17.581Z",
+  "analyzedAt": "2025-11-22T11:14:28.911Z",
   "rootStructure": [
     {
       "name": ".gitignore",
@@ -127,8 +127,8 @@
     {
       "name": "overview.json",
       "type": "file",
-      "size": 33188,
-      "lines": 1114
+      "size": 33557,
+      "lines": 1126
     },
     {
       "name": "package-lock.json",
@@ -393,7 +393,7 @@
     "overview.json": [
       "{",
       "\"rootFolder\": \"/Users/sachdevs/Projects/Tarko-Inv/tarko-stock-flow\",",
-      "\"analyzedAt\": \"2025-11-22T08:01:11.024Z\",",
+      "\"analyzedAt\": \"2025-11-22T09:36:17.581Z\",",
       "\"rootStructure\": [",
       "{",
       "\"name\": \".gitignore\",",
@@ -512,7 +512,7 @@
     {
       "path": "backend",
       "category": "backend",
-      "fileCount": 85,
+      "fileCount": 87,
       "primaryLanguage": "Python"
     },
     {
@@ -524,7 +524,7 @@
     {
       "path": "backend/scripts",
       "category": "scripts",
-      "fileCount": 17,
+      "fileCount": 19,
       "primaryLanguage": "Python"
     },
     {
@@ -558,25 +558,25 @@
     "root": "# Tarko Inventory Management System"
   },
   "totals": {
-    "numFiles": 887,
+    "numFiles": 889,
     "numDirs": 95,
-    "totalSizeBytes": 5875405,
-    "totalLinesOfCode": 35943
+    "totalSizeBytes": 5910579,
+    "totalLinesOfCode": 36729
   },
   "fileCategories": {
     "other": 115,
     "documentation": 16,
-    "source": 171,
+    "source": 173,
     "config": 585
   },
   "linesOfCodePerLanguage": {
-    "Python": 11707,
+    "Python": 12244,
     "Shell": 311,
     "JavaScript": 34,
-    "TypeScript": 23891
+    "TypeScript": 24140
   },
   "filesPerLanguage": {
-    "Python": 40,
+    "Python": 42,
     "Shell": 5,
     "JavaScript": 2,
     "TypeScript": 124
@@ -603,7 +603,9 @@
     "backend/scripts/check_product_types.py",
     "backend/scripts/check_quantity_issues.py",
     "backend/scripts/check_return_setup.py",
+    "backend/scripts/check_specific_inventory.py",
     "backend/scripts/compare_activity_inventory.py",
+    "backend/scripts/merge_duplicate_variants.py",
     "backend/scripts/setup_return_tables.py",
     "backend/scripts/verify_quantity_fix.py",
     "backend/setup_db.sh",
@@ -620,13 +622,13 @@
     {
       "name": "src",
       "numFiles": 126,
-      "totalLoc": 23776,
+      "totalLoc": 24025,
       "dominantLanguage": "TypeScript"
     },
     {
       "name": "backend",
-      "numFiles": 85,
-      "totalLoc": 11848,
+      "numFiles": 87,
+      "totalLoc": 12385,
       "dominantLanguage": "Python"
     },
     {
@@ -651,7 +653,7 @@
       "name": "src",
       "level": 1,
       "numFiles": 126,
-      "totalLoc": 23776,
+      "totalLoc": 24025,
       "dominantLanguage": "TypeScript",
       "category": "General",
       "description": "General module with 126 files (TypeScript)",
@@ -661,7 +663,7 @@
           "name": "components",
           "level": 2,
           "numFiles": 91,
-          "totalLoc": 14118,
+          "totalLoc": 14323,
           "dominantLanguage": "TypeScript",
           "category": "General",
           "description": "General module with 91 files (TypeScript)",
@@ -671,7 +673,7 @@
               "name": "inventory",
               "level": 3,
               "numFiles": 13,
-              "totalLoc": 3446,
+              "totalLoc": 3466,
               "dominantLanguage": "TypeScript",
               "category": "General",
               "description": "General module with 13 files (TypeScript)",
@@ -682,7 +684,7 @@
               "name": "transactions",
               "level": 3,
               "numFiles": 11,
-              "totalLoc": 2126,
+              "totalLoc": 2176,
               "dominantLanguage": "TypeScript",
               "category": "General",
               "description": "# Transactions Page - Modularization Guide",
@@ -693,7 +695,7 @@
               "name": "dispatch",
               "level": 3,
               "numFiles": 7,
-              "totalLoc": 1949,
+              "totalLoc": 2084,
               "dominantLanguage": "TypeScript",
               "category": "General",
               "description": "# Dispatch Module - Modular Architecture",
@@ -728,7 +730,7 @@
           "name": "pages",
           "level": 2,
           "numFiles": 16,
-          "totalLoc": 7966,
+          "totalLoc": 8010,
           "dominantLanguage": "TypeScript",
           "category": "General",
           "description": "General module with 16 files (TypeScript)",
@@ -785,8 +787,8 @@
       "path": "backend",
       "name": "backend",
       "level": 1,
-      "numFiles": 85,
-      "totalLoc": 11848,
+      "numFiles": 87,
+      "totalLoc": 12385,
       "dominantLanguage": "Python",
       "category": "General",
       "description": "# Tarko Inventory - Backend API",
@@ -796,7 +798,7 @@
           "name": "routes",
           "level": 2,
           "numFiles": 13,
-          "totalLoc": 8349,
+          "totalLoc": 8582,
           "dominantLanguage": "Python",
           "category": "General",
           "description": "General module with 13 files (Python)",
@@ -806,11 +808,11 @@
           "path": "backend/scripts",
           "name": "scripts",
           "level": 2,
-          "numFiles": 17,
-          "totalLoc": 1619,
+          "numFiles": 19,
+          "totalLoc": 1923,
           "dominantLanguage": "Python",
           "category": "Tools/Scripts",
-          "description": "Tools/Scripts module with 17 files (Python)",
+          "description": "Tools/Scripts module with 19 files (Python)",
           "subdirectories": []
         },
         {
@@ -992,7 +994,17 @@
         "description": ""
       },
       {
+        "path": "../../../../../backend/scripts/check_specific_inventory.py",
+        "type": "Unknown",
+        "description": ""
+      },
+      {
         "path": "../../../../../backend/scripts/compare_activity_inventory.py",
+        "type": "Unknown",
+        "description": ""
+      },
+      {
+        "path": "../../../../../backend/scripts/merge_duplicate_variants.py",
         "type": "Unknown",
         "description": ""
       },
@@ -1109,14 +1121,14 @@
     "total": 66
   },
   "complexity": {
-    "averageFileSize": 40.52198421645998,
+    "averageFileSize": 41.31496062992126,
     "maxFileSize": 0,
     "nestedDepth": 0,
     "estimatedComplexity": "high"
   },
   "gitRepo": {
     "firstCommitDate": "2025-11-22",
-    "totalCommits": 51,
+    "totalCommits": 53,
     "numContributors": 0,
     "currentBranch": "sachdevs/modularize",
     "remoteUrls": [

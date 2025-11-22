@@ -119,6 +119,25 @@ export function TransactionDetailModal({
                               Result: {entry.spare_groups} spare group{entry.spare_groups !== 1 ? 's' : ''}
                             </div>
                           </div>
+                        ) : entry.stock_type === 'BUNDLE' ? (
+                          // COMBINE_SPARES specific display
+                          <div className="space-y-3">
+                            <div className="font-medium text-lg">
+                              {entry.bundles_created} × BUNDLE
+                            </div>
+                            <div>
+                              <span className="text-sm text-muted-foreground">Bundles Created:</span>
+                              <div className="mt-2 space-y-2">
+                                <div className="text-sm bg-purple-100 dark:bg-purple-900 px-3 py-2 rounded">
+                                  <span className="font-medium">{entry.bundles_created} bundle{entry.bundles_created !== 1 ? 's' : ''}</span>
+                                  <span className="text-muted-foreground"> • </span>
+                                  <span>{entry.bundle_size} pieces per bundle</span>
+                                  <span className="text-muted-foreground"> • </span>
+                                  <span>{entry.piece_length?.toFixed(2)}m per piece</span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
                         ) : (
                           // CUT_ROLL display
                           <>
@@ -246,10 +265,26 @@ export function TransactionDetailModal({
                           </div>
                         )}
 
-                        {transaction.roll_snapshot.total_items && (
+                        {(transaction.roll_snapshot.total_items || transaction.roll_snapshot.item_breakdown) && (
                           <div>
                             <div className="text-sm text-muted-foreground mb-1">Total Items</div>
-                            <div className="font-bold text-lg">{transaction.roll_snapshot.total_items}</div>
+                            <div className="font-bold text-lg">
+                              {(() => {
+                                // Calculate aggregated count from item_breakdown
+                                if (transaction.roll_snapshot.item_breakdown && Array.isArray(transaction.roll_snapshot.item_breakdown)) {
+                                  const grouped = transaction.roll_snapshot.item_breakdown.reduce((acc: any, item: any) => {
+                                    const paramStr = JSON.stringify(item.parameters || {});
+                                    const key = `${item.item_type}-${item.length_meters || ''}-${item.piece_length || ''}-${item.bundle_size || ''}-${paramStr}`;
+                                    if (!acc[key]) {
+                                      acc[key] = true;
+                                    }
+                                    return acc;
+                                  }, {});
+                                  return Object.keys(grouped).length;
+                                }
+                                return transaction.roll_snapshot.total_items;
+                              })()}
+                            </div>
                           </div>
                         )}
                       </div>
@@ -347,7 +382,21 @@ export function TransactionDetailModal({
                     <div>
                       <div className="text-sm font-medium mb-3">Items in This Dispatch</div>
                       <div className="space-y-3">
-                        {transaction.roll_snapshot.item_breakdown.map((item: any, idx: number) => (
+                        {(() => {
+                          // Group items by type, length, and parameters to avoid showing duplicates
+                          const grouped = transaction.roll_snapshot.item_breakdown.reduce((acc: any, item: any) => {
+                            // Create a unique key based on item characteristics
+                            const paramStr = JSON.stringify(item.parameters || {});
+                            const key = `${item.item_type}-${item.length_meters || ''}-${item.piece_length || ''}-${item.bundle_size || ''}-${paramStr}`;
+
+                            if (!acc[key]) {
+                              acc[key] = { ...item, quantity: 0 };
+                            }
+                            acc[key].quantity += item.quantity || 0;
+                            return acc;
+                          }, {});
+
+                          return Object.values(grouped).map((item: any, idx: number) => (
                           <div key={idx} className="border rounded-lg p-4">
                             <div className="flex items-center justify-between mb-3">
                               <Badge variant="outline" className="text-base">{item.item_type?.replace('_', ' ')}</Badge>
@@ -400,7 +449,8 @@ export function TransactionDetailModal({
                               </div>
                             )}
                           </div>
-                        ))}
+                          ));
+                        })()}
                       </div>
                     </div>
                   ) : !isDispatch ? (

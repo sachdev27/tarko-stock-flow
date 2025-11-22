@@ -145,6 +145,10 @@ const DispatchNewModular = () => {
   };
 
   const handleAddRoll = (roll: any) => {
+    console.log('=== handleAddRoll called ===');
+    console.log('Incoming roll:', roll);
+    console.log('Current selectedRolls:', selectedRolls);
+
     // Map roll_id to id if needed
     const normalizedRoll = {
       id: roll.roll_id || roll.id,
@@ -169,13 +173,23 @@ const DispatchNewModular = () => {
       length_per_unit: roll.length_per_unit
     };
 
-    // Check for duplicates - for cut pieces, each piece is unique; for others, increase quantity
+    console.log('Normalized roll:', normalizedRoll);
+
+    // Check for duplicates - for cut pieces, each piece is unique
+    // For BUNDLE, FULL_ROLL, SPARE that come from distributed stock entries, keep separate
     const existingIndex = selectedRolls.findIndex(r => {
       if (normalizedRoll.piece_id && r.piece_id) {
         return r.piece_id === normalizedRoll.piece_id;
       }
+      // Don't merge if this is a BUNDLE, FULL_ROLL, or SPARE - keep separate for inventory tracking
+      if (['BUNDLE', 'FULL_ROLL', 'SPARE'].includes(normalizedRoll.stock_type)) {
+        console.log('Skipping merge for stock_type:', normalizedRoll.stock_type);
+        return false;
+      }
       return r.id === normalizedRoll.id && !normalizedRoll.piece_id;
     });
+
+    console.log('existingIndex:', existingIndex);
 
     if (existingIndex !== -1) {
       // For cut pieces (with piece_id), don't allow duplicates
@@ -184,15 +198,22 @@ const DispatchNewModular = () => {
         return;
       }
       // For regular items, increase quantity
-      const updated = [...selectedRolls];
-      updated[existingIndex] = {
-        ...updated[existingIndex],
-        quantity: updated[existingIndex].quantity + normalizedRoll.quantity
-      };
-      setSelectedRolls(updated);
-      toast.success(`Increased quantity to ${updated[existingIndex].quantity}`);
+      setSelectedRolls(prev => {
+        const updated = [...prev];
+        updated[existingIndex] = {
+          ...updated[existingIndex],
+          quantity: updated[existingIndex].quantity + normalizedRoll.quantity
+        };
+        console.log('Merged with existing. Updated selectedRolls:', updated);
+        return updated;
+      });
+      toast.success(`Increased quantity to ${selectedRolls[existingIndex].quantity + normalizedRoll.quantity}`);
     } else {
-      setSelectedRolls([...selectedRolls, normalizedRoll]);
+      setSelectedRolls(prev => {
+        const newRolls = [...prev, normalizedRoll];
+        console.log('Added as new item. Updated selectedRolls:', newRolls);
+        return newRolls;
+      });
       toast.success(normalizedRoll.stock_type === 'CUT_ROLL' ? 'Added cut piece' : `Added ${normalizedRoll.batch_code || 'item'}`);
     }
   };

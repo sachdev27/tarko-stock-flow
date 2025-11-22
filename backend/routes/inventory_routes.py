@@ -1242,7 +1242,7 @@ def combine_spares():
                     transaction_type, from_stock_id, from_quantity,
                     to_stock_id, to_quantity, notes, created_at
                 ) VALUES ('COMBINE_SPARES', %s, %s, %s, %s, %s, NOW())
-            """, (stock_id, len(spare_piece_ids), bundle_stock_id, number_of_bundles,
+            """, (stock_id, total_pieces, bundle_stock_id, number_of_bundles,
                   f'Combined {total_pieces} spare pieces into {number_of_bundles} bundle(s) of {bundle_size} pieces each'))
 
             # Audit log

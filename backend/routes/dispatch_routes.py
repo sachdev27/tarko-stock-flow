@@ -1551,6 +1551,30 @@ def create_dispatch():
                 # Commit transaction - all or nothing
                 cursor.execute("COMMIT")
 
+                # After successful commit, check for and clean up empty batches
+                with get_db_cursor() as cleanup_cursor:
+                    # Find batches with no remaining stock
+                    cleanup_cursor.execute("""
+                        SELECT DISTINCT b.id, b.batch_code
+                        FROM batches b
+                        LEFT JOIN inventory_stock s ON s.batch_id = b.id
+                            AND s.deleted_at IS NULL
+                            AND s.quantity > 0
+                        WHERE b.deleted_at IS NULL
+                          AND s.id IS NULL
+                    """)
+
+                    empty_batches = cleanup_cursor.fetchall()
+
+                    if empty_batches:
+                        batch_ids = [b['id'] for b in empty_batches]
+                        # Soft delete empty batches
+                        cleanup_cursor.execute("""
+                            UPDATE batches
+                            SET deleted_at = NOW(), updated_at = NOW()
+                            WHERE id = ANY(%s::uuid[])
+                        """, (batch_ids,))
+
                 return jsonify({
                 'success': True,
                 'dispatch_id': str(dispatch_id),

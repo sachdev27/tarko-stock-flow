@@ -392,7 +392,6 @@ const DispatchHistory = () => {
                       </TableCell>
                       <TableCell>
                         <div className="text-sm">
-                          <div>{dispatch.total_items} item(s)</div>
                           <div className="text-xs text-gray-500">Qty: {dispatch.total_quantity}</div>
                         </div>
                       </TableCell>
@@ -490,20 +489,41 @@ const DispatchHistory = () => {
 
               {/* Items */}
               <div>
-                <h3 className="font-semibold mb-3 flex items-center gap-2">
-                  <Package className="h-4 w-4" />
-                  Dispatched Items ({selectedDispatch.items.length})
-                </h3>
-                <div className="space-y-2">
-                  {selectedDispatch.items.map((item) => (
-                    <div key={item.id} className="p-3 border rounded-lg">
+                {(() => {
+                  // Group items by product variant, type, and specs (ignoring batch)
+                  const grouped = selectedDispatch.items.reduce((acc: any, item: any) => {
+                    const paramStr = JSON.stringify(item.parameters || {});
+                    const key = `${item.product_variant_id}-${item.item_type}-${Number(item.length_meters || 0)}-${item.bundle_size || ''}-${item.piece_length_meters || ''}-${paramStr}`;
+
+                    if (!acc[key]) {
+                      acc[key] = {
+                        ...item,
+                        quantity: 0,
+                        batches: []
+                      };
+                    }
+                    acc[key].quantity += item.quantity || 0;
+                    if (!acc[key].batches.includes(item.batch_code)) {
+                      acc[key].batches.push(item.batch_code);
+                    }
+                    return acc;
+                  }, {});
+
+                  const groupedItems = Object.values(grouped);
+
+                  return (
+                    <>
+                      <h3 className="font-semibold mb-3 flex items-center gap-2">
+                        <Package className="h-4 w-4" />
+                        Dispatched Items ({groupedItems.length})
+                      </h3>
+                      <div className="space-y-2">
+                        {groupedItems.map((item: any, idx: number) => (
+                    <div key={idx} className="p-3 border rounded-lg">
                       <div className="flex justify-between items-start">
                         <div className="flex-1">
                           <div className="font-medium">
                             {item.product_type_name} - {item.brand_name}
-                          </div>
-                          <div className="text-sm text-gray-600">
-                            Batch: {item.batch_code}
                           </div>
                           <div className="text-xs text-gray-500 mt-1">
                             {Object.entries(item.parameters).map(([key, value]) => (
@@ -530,8 +550,11 @@ const DispatchHistory = () => {
                         </div>
                       </div>
                     </div>
-                  ))}
-                </div>
+                        ))}
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
 
               {/* Footer */}

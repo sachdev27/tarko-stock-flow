@@ -387,32 +387,69 @@ export const ProductSelectionSection = ({
     console.log('bundleQuantities:', bundleQuantities);
     console.log('rawValue:', rawValue, 'type:', typeof rawValue);
     console.log('quantity:', quantity);
-    console.log('available:', available);
+    console.log('available (passed from UI):', available);
+    console.log('bundleEntries:', bundleEntries);
+    console.log('bundleEntries.length:', bundleEntries.length);
+    console.log('selectedRolls:', selectedRolls);
 
     if (quantity <= 0 || quantity > available) {
       toast.error(`Please enter a valid quantity (1-${available})`);
       return;
     }
 
-    // Use first bundle entry as template
-    const firstBundle = bundleEntries[0];
-    const roll = {
-      id: firstBundle.stock_id,
-      product_variant_id: variant.id,
-      batch_code: firstBundle.batch_code || '',
-      status: 'AVAILABLE',
-      stock_type: 'BUNDLE',
-      bundle_size: size,
-      piece_count: size,
-      piece_length_meters: length,
-      parameters: variant.parameters,
-      brand_name: variant.brand_name,
-      product_type_name: variant.product_type_name,
-      product_category: variant.product_category,
-      quantity
-    };
+    // Distribute bundles across multiple stock entries if needed
+    let remainingQty = quantity;
+    const rollsToAdd = [];
 
-    onAddRoll(roll);
+    for (const entry of bundleEntries) {
+      if (remainingQty <= 0) break;
+
+      // Calculate how many are already in cart from this specific entry
+      // Must match: stock_id, stock_type, bundle_size, and piece_length
+      const inCart = selectedRolls
+        .filter(r => {
+          if (r.id !== entry.stock_id) return false;
+          if (r.stock_type !== 'BUNDLE') return false;
+          if (r.bundle_size !== size) return false;
+          // Compare piece length with small tolerance for floating point
+          const cartLength = Number(r.piece_length_meters || 0);
+          const entryLength = Number(length);
+          return Math.abs(cartLength - entryLength) < 0.01;
+        })
+        .reduce((sum, r) => sum + (r.quantity || 0), 0);
+      const entryAvailable = entry.quantity - inCart;
+
+      console.log(`Entry ${entry.stock_id}: quantity=${entry.quantity}, inCart=${inCart}, available=${entryAvailable}, remainingQty=${remainingQty}`);
+
+      // Take as many as we can from this entry
+      const qtyFromThisEntry = Math.min(remainingQty, entryAvailable);
+
+      if (qtyFromThisEntry > 0) {
+        const roll = {
+          id: entry.stock_id,
+          product_variant_id: variant.id,
+          batch_code: entry.batch_code || '',
+          status: 'AVAILABLE',
+          stock_type: 'BUNDLE',
+          bundle_size: size,
+          piece_count: size,
+          piece_length_meters: length,
+          parameters: variant.parameters,
+          brand_name: variant.brand_name,
+          product_type_name: variant.product_type_name,
+          product_category: variant.product_category,
+          quantity: qtyFromThisEntry
+        };
+
+        rollsToAdd.push(roll);
+        remainingQty -= qtyFromThisEntry;
+      }
+    }
+
+    // Add all rolls at once to avoid state batching issues
+    rollsToAdd.forEach(roll => onAddRoll(roll));
+
+    setBundleQuantities(prev => ({ ...prev, [stateKey]: '' }));
     toast.success(`Added ${quantity} bundle${quantity > 1 ? 's' : ''} of ${size} pieces`);
   };
 
@@ -524,7 +561,7 @@ export const ProductSelectionSection = ({
       </div>
 
       {/* Product Variants List */}
-      {filteredVariants.length > 0 && (
+      {productTypeId && filteredVariants.length > 0 && (
         <div className="space-y-4">
           {filteredVariants.map((variant) => {
             const stockByType = {
@@ -904,11 +941,12 @@ export const ProductSelectionSection = ({
                                 const inCart = selectedRolls
                                   .filter(r => {
                                     if (r.stock_type !== 'SPARE') return false;
-                                    if (r.piece_length_meters !== Number(length)) return false;
-                                    // Check if brand matches
-                                    if (r.brand_name !== variant.brand_name) return false;
-                                    // Check if parameters match
-                                    if (JSON.stringify(r.parameters) !== JSON.stringify(variant.parameters)) return false;
+                                    // Normalize both lengths for comparison
+                                    const cartLength = Number(r.piece_length_meters || 0);
+                                    const targetLength = Number(length);
+                                    if (Math.abs(cartLength - targetLength) >= 0.01) return false;
+                                    // Check if product variant matches
+                                    if (r.product_variant_id !== variant.id) return false;
                                     return true;
                                   })
                                   .reduce((sum, r) => sum + (r.piece_count || 0), 0);
@@ -1043,8 +1081,42 @@ export const ProductSelectionSection = ({
               </div>
             ) : (
               <div className="space-y-3">
-                {selectedRolls.map((roll, idx) => (
-                  <div key={idx} className="p-3 border rounded-lg space-y-2">
+                {(() => {
+                  // Group rolls for display by product variant + stock type + specs
+                  const grouped = selectedRolls.reduce((acc, roll, idx) => {
+                    let key: string;
+                    if (roll.stock_type === 'BUNDLE') {
+                      // Normalize piece_length_meters to avoid 6.0 vs 6 issues
+                      const normalizedLength = Number(roll.piece_length_meters || 0);
+                      key = `${roll.product_variant_id}-BUNDLE-${roll.bundle_size}-${normalizedLength}`;
+                    } else if (roll.stock_type === 'FULL_ROLL') {
+                      // Normalize length_meters to avoid 500.0 vs 500 issues
+                      const normalizedLength = Number(roll.length_meters || 0);
+                      key = `${roll.product_variant_id}-FULL_ROLL-${normalizedLength}`;
+                    } else if (roll.stock_type === 'SPARE') {
+                      // Normalize piece_length_meters to avoid floating point issues
+                      const normalizedLength = Number(roll.piece_length_meters || 0);
+                      key = `${roll.product_variant_id}-SPARE-${normalizedLength}`;
+                    } else {
+                      // CUT_ROLL or other - show individually
+                      key = `${idx}-INDIVIDUAL`;
+                    }
+
+                    if (!acc[key]) {
+                      acc[key] = { roll, indices: [], totalQty: 0 };
+                    }
+                    acc[key].indices.push(idx);
+                    // For SPARE, aggregate piece_count instead of quantity
+                    if (roll.stock_type === 'SPARE') {
+                      acc[key].totalQty += roll.piece_count || 0;
+                    } else {
+                      acc[key].totalQty += roll.quantity || 1;
+                    }
+                    return acc;
+                  }, {} as Record<string, { roll: any, indices: number[], totalQty: number }>);
+
+                  return Object.values(grouped).map(({ roll, indices, totalQty }) => (
+                  <div key={indices[0]} className="p-3 border rounded-lg space-y-2">
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         <div className="font-semibold text-sm">
@@ -1062,7 +1134,11 @@ export const ProductSelectionSection = ({
                       <Button
                         size="sm"
                         variant="ghost"
-                        onClick={() => onRemoveRoll(idx)}
+                        onClick={() => {
+                          // Remove all items in this group by removing highest indices first
+                          // This prevents index shifting issues
+                          [...indices].sort((a, b) => b - a).forEach(idx => onRemoveRoll(idx));
+                        }}
                       >
                         <X className="h-4 w-4 text-destructive" />
                       </Button>
@@ -1078,9 +1154,19 @@ export const ProductSelectionSection = ({
                         <span className="font-medium">
                           {roll.stock_type === 'CUT_ROLL' ? (
                             <span>{(parseFloat(roll.length_meters) || 0).toFixed(1)}m</span>
+                          ) : roll.stock_type === 'SPARE' ? (
+                            // For spare pieces, show total piece count directly without multiplier
+                            <span>
+                              {totalQty} pcs
+                              {roll.piece_length_meters && (
+                                <span className="text-xs text-muted-foreground ml-1">
+                                  @ {Number(roll.piece_length_meters).toFixed(1)}m
+                                </span>
+                              )}
+                            </span>
                           ) : (
                             <>
-                              {roll.quantity}x
+                              {totalQty}x
                               {roll.product_category?.includes('HDPE') && roll.stock_type === 'FULL_ROLL' && (
                                 <span className="ml-1">({(parseFloat(roll.length_meters) || 0).toFixed(1)}m)</span>
                               )}
@@ -1094,23 +1180,14 @@ export const ProductSelectionSection = ({
                                   )}
                                 </span>
                               )}
-                              {roll.stock_type === 'SPARE' && (
-                                <span className="ml-1">
-                                  {roll.piece_count} pcs
-                                  {roll.piece_length_meters && (
-                                    <span className="text-xs text-muted-foreground ml-1">
-                                      @ {Number(roll.piece_length_meters).toFixed(1)}m
-                                    </span>
-                                  )}
-                                </span>
-                              )}
                             </>
                           )}
                         </span>
                       </div>
                     </div>
                   </div>
-                ))}
+                  ));
+                })()}
               </div>
             )}
           </CardContent>
