@@ -2,6 +2,7 @@ from flask import Flask, jsonify
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 from config import Config
+from database import init_connection_pool, close_connection_pool
 import atexit
 import logging
 
@@ -86,6 +87,13 @@ def init_default_admin():
         logger.warning(f"Could not initialize default admin: {e}")
 
 if __name__ == '__main__':
+    # Initialize database connection pool
+    logger.info("Initializing database connection pool...")
+    init_connection_pool()
+
+    # Register cleanup
+    atexit.register(close_connection_pool)
+
     # Initialize default admin user
     init_default_admin()
 
