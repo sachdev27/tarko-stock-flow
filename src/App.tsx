@@ -11,6 +11,7 @@ import Production from "./pages/ProductionNew";
 import Inventory from "./pages/InventoryNew";
 import Transactions from "./pages/TransactionsNew";
 import Dispatch from "./pages/Dispatch";
+import Return from "./pages/Return";
 import Reports from "./pages/ReportsNew";
 import Admin from "./pages/Admin";
 import Details from "./pages/Details";
@@ -71,6 +72,14 @@ const App = () => (
               }
             />
             <Route
+              path="/returns"
+              element={
+                <ProtectedRoute requireUser>
+                  <Return />
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/reports"
               element={
                 <ProtectedRoute>
@@ -110,6 +119,9 @@ const App = () => (
                 </ProtectedRoute>
               }
             />
+            {/* Redirect old return routes to new unified route */}
+            <Route path="/returns/new" element={<Navigate to="/returns" replace />} />
+            <Route path="/returns/history" element={<Navigate to="/returns" replace />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

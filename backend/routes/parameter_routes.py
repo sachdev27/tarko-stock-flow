@@ -175,3 +175,47 @@ def delete_parameter_option(option_id):
                 'message': f"Deleted {deleted['parameter_name']}: {deleted['option_value']}"
             }), 200
     except Exception as e:return jsonify({'error': str(e)}), 500
+
+@parameter_bp.route('/brands', methods=['GET'])
+@jwt_required()
+def get_brands():
+    """Get all brands"""
+    try:
+        query = """
+            SELECT id, name
+            FROM brands
+            WHERE deleted_at IS NULL
+            ORDER BY name
+        """
+        brands = execute_query(query)
+        return jsonify(brands), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@parameter_bp.route('/product-variants', methods=['GET'])
+@jwt_required()
+def get_product_variants():
+    """Get product variants by product_type_id and brand_id"""
+    try:
+        product_type_id = request.args.get('product_type_id')
+        brand_id = request.args.get('brand_id')
+
+        if not product_type_id or not brand_id:
+            return jsonify({'error': 'product_type_id and brand_id are required'}), 400
+
+        query = """
+            SELECT pv.id, pv.product_type_id, pv.brand_id, pv.parameters,
+                   pt.name as product_type_name,
+                   b.name as brand_name
+            FROM product_variants pv
+            JOIN product_types pt ON pv.product_type_id = pt.id
+            JOIN brands b ON pv.brand_id = b.id
+            WHERE pv.product_type_id = %s
+            AND pv.brand_id = %s
+            AND pv.deleted_at IS NULL
+            ORDER BY pv.created_at DESC
+        """
+        variants = execute_query(query, (product_type_id, brand_id))
+        return jsonify(variants), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500

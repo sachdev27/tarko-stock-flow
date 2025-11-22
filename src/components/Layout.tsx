@@ -14,7 +14,8 @@ import {
   X,
   Clock,
   TruckIcon,
-  Database
+  Database,
+  PackageX
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -35,6 +36,7 @@ export const Layout = ({ children }: LayoutProps) => {
     { icon: Package, label: 'Inventory', path: '/inventory' },
     { icon: ArrowRightLeft, label: 'Activity', path: '/transactions' },
     { icon: TruckIcon, label: 'Dispatch', path: '/dispatch' },
+    { icon: PackageX, label: 'Returns', path: '/returns' },
     { icon: FileText, label: 'Reports', path: '/reports' },
     { icon: Database, label: 'Details', path: '/details' },
   ];

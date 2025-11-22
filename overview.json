@@ -1,6 +1,6 @@
 {
   "rootFolder": "/Users/sachdevs/Projects/Tarko-Inv/tarko-stock-flow",
-  "analyzedAt": "2025-11-21T19:31:34.527Z",
+  "analyzedAt": "2025-11-22T08:01:11.024Z",
   "rootStructure": [
     {
       "name": ".gitignore",
@@ -33,36 +33,6 @@
       "lines": 35
     },
     {
-      "name": "EXPORT_GUIDE.md",
-      "type": "file",
-      "size": 7055,
-      "lines": 273
-    },
-    {
-      "name": "IMPLEMENTATION_SUMMARY.md",
-      "type": "file",
-      "size": 8497,
-      "lines": 348
-    },
-    {
-      "name": "INVENTORY_FUNDAMENTALS.md",
-      "type": "file",
-      "size": 8273,
-      "lines": 299
-    },
-    {
-      "name": "MIGRATION_STATUS.md",
-      "type": "file",
-      "size": 7260,
-      "lines": 161
-    },
-    {
-      "name": "MODULARIZATION_COMPLETE.md",
-      "type": "file",
-      "size": 5330,
-      "lines": 140
-    },
-    {
       "name": "README.md",
       "type": "file",
       "size": 5907,
@@ -73,6 +43,12 @@
       "type": "file",
       "size": 7353,
       "lines": 225
+    },
+    {
+      "name": "RETURN_UX_IMPROVEMENTS.md",
+      "type": "file",
+      "size": 6290,
+      "lines": 190
     },
     {
       "name": "TRANSACTIONS_PAGE_FEATURES.md",
@@ -151,7 +127,7 @@
     {
       "name": "overview.json",
       "type": "file",
-      "size": 35461,
+      "size": 35464,
       "lines": 1185
     },
     {
@@ -270,66 +246,6 @@
       "# Install dependencies",
       "RUN npm ci"
     ],
-    "EXPORT_GUIDE.md": [
-      "# Export & Database Management Guide",
-      "",
-      "## Overview",
-      "This guide covers the new database management and export features added to the Tarko Inventory System.",
-      "",
-      "## Features",
-      "",
-      "### 1. Database Clearing Script",
-      "Location: `backend/clear_inventory.py`",
-      ""
-    ],
-    "IMPLEMENTATION_SUMMARY.md": [
-      "# Docker Production Setup - Implementation Summary",
-      "",
-      "## ✅ What Has Been Implemented",
-      "",
-      "### 1. Docker Compose Configuration (`docker-compose.yml`)",
-      "",
-      "**Services:**",
-      "- **PostgreSQL Database**: Persistent data with volume, health checks, automatic schema initialization",
-      "- **Flask Backend**: REST API with JWT authentication, health endpoints",
-      "- **React Frontend**: Nginx-served production build with API proxy"
-    ],
-    "INVENTORY_FUNDAMENTALS.md": [
-      "# Inventory System Fundamentals",
-      "",
-      "## Database Schema - Core Principles",
-      "",
-      "### 1. Aggregate Inventory (`inventory_stock` table)",
-      "",
-      "This is the **master table** that tracks aggregate stock levels:",
-      "",
-      "```sql",
-      "CREATE TABLE inventory_stock ("
-    ],
-    "MIGRATION_STATUS.md": [
-      "# Aggregate Inventory System Migration Status",
-      "",
-      "## ✅ Completed",
-      "",
-      "### Database Schema",
-      "- ✅ Created `inventory_stock` table (aggregate quantity-based tracking)",
-      "- ✅ Created `hdpe_cut_pieces` table (individual cut piece tracking)",
-      "- ✅ Created `sprinkler_spare_pieces` table (individual spare tracking)",
-      "- ✅ Created `inventory_transactions` table (complete audit trail)",
-      "- ✅ Created helper views: `hdpe_stock_details`, `sprinkler_stock_details`, `inventory_unified`"
-    ],
-    "MODULARIZATION_COMPLETE.md": [
-      "# Transactions Page Modularization - Complete",
-      "",
-      "## ✅ All Components Created Successfully",
-      "",
-      "### Infrastructure Layer (100% Complete)",
-      "1. **Type Definitions** (`/src/types/transaction.ts`)",
-      "- TransactionRecord interface (90+ fields)",
-      "- TransactionFilters interface",
-      "- ProductType, Brand, Customer interfaces",
-      ""
-    ],
     "README.md": [
       "# Tarko Inventory Management System",
       "",
@@ -353,6 +269,18 @@
       "|--------|--------|-------|-------------|",
       "| **Lines of Code** | 2,538 lines | 279 lines | **89% reduction** |",
       "| **File Size** | Single monolithic file | 17 modular files | Highly maintainable |"
+    ],
+    "RETURN_UX_IMPROVEMENTS.md": [
+      "# Return Form UX Improvements",
+      "",
+      "## Overview",
+      "Complete restructuring of the return creation form to match the dispatch interface's intuitive UX patterns.",
+      "",
+      "## Changes Implemented",
+      "",
+      "### 1. **New Modular Component Architecture**",
+      "",
+      "Created three new reusable components:"
     ],
     "TRANSACTIONS_PAGE_FEATURES.md": [
       "# Transactions Page - Complete Feature Documentation",
@@ -465,7 +393,7 @@
     "overview.json": [
       "{",
       "\"rootFolder\": \"/Users/sachdevs/Projects/Tarko-Inv/tarko-stock-flow\",",
-      "\"analyzedAt\": \"2025-11-21T17:33:18.830Z\",",
+      "\"analyzedAt\": \"2025-11-21T19:31:34.527Z\",",
       "\"rootStructure\": [",
       "{",
       "\"name\": \".gitignore\",",
@@ -584,19 +512,19 @@
     {
       "path": "backend",
       "category": "backend",
-      "fileCount": 79,
+      "fileCount": 83,
       "primaryLanguage": "Python"
     },
     {
       "path": "backend/routes",
       "category": "build",
-      "fileCount": 12,
+      "fileCount": 13,
       "primaryLanguage": "Python"
     },
     {
       "path": "backend/scripts",
       "category": "scripts",
-      "fileCount": 13,
+      "fileCount": 15,
       "primaryLanguage": "Python"
     },
     {
@@ -607,7 +535,7 @@
     {
       "path": "src/components",
       "category": "frontend",
-      "fileCount": 88,
+      "fileCount": 91,
       "primaryLanguage": "TypeScript"
     },
     {
@@ -630,28 +558,28 @@
     "root": "# Tarko Inventory Management System"
   },
   "totals": {
-    "numFiles": 882,
+    "numFiles": 884,
     "numDirs": 95,
-    "totalSizeBytes": 6007765,
-    "totalLinesOfCode": 31640
+    "totalSizeBytes": 5820991,
+    "totalLinesOfCode": 34440
   },
   "fileCategories": {
-    "other": 118,
-    "documentation": 20,
-    "source": 159,
+    "other": 115,
+    "documentation": 16,
+    "source": 168,
     "config": 585
   },
   "linesOfCodePerLanguage": {
-    "Python": 10269,
+    "Python": 11216,
     "Shell": 311,
     "JavaScript": 34,
-    "TypeScript": 21026
+    "TypeScript": 22879
   },
   "filesPerLanguage": {
-    "Python": 35,
+    "Python": 38,
     "Shell": 5,
     "JavaScript": 2,
-    "TypeScript": 117
+    "TypeScript": 123
   },
   "projectTypes": [
     "Python (requirements)",
@@ -672,7 +600,9 @@
     "backend/scripts/check_batch_3_4.py",
     "backend/scripts/check_batch_7_details.py",
     "backend/scripts/check_quantity_issues.py",
+    "backend/scripts/check_return_setup.py",
     "backend/scripts/compare_activity_inventory.py",
+    "backend/scripts/setup_return_tables.py",
     "backend/scripts/verify_quantity_fix.py",
     "backend/setup_db.sh",
     "deploy.sh",
@@ -687,14 +617,14 @@
   "topLevelDirectories": [
     {
       "name": "src",
-      "numFiles": 123,
-      "totalLoc": 20911,
+      "numFiles": 125,
+      "totalLoc": 22764,
       "dominantLanguage": "TypeScript"
     },
     {
       "name": "backend",
-      "numFiles": 79,
-      "totalLoc": 10410,
+      "numFiles": 83,
+      "totalLoc": 11357,
       "dominantLanguage": "Python"
     },
     {
@@ -718,33 +648,22 @@
       "path": "src",
       "name": "src",
       "level": 1,
-      "numFiles": 123,
-      "totalLoc": 20911,
+      "numFiles": 125,
+      "totalLoc": 22764,
       "dominantLanguage": "TypeScript",
       "category": "General",
-      "description": "General module with 123 files (TypeScript)",
+      "description": "General module with 125 files (TypeScript)",
       "subdirectories": [
         {
           "path": "src/components",
           "name": "components",
           "level": 2,
-          "numFiles": 88,
-          "totalLoc": 12075,
+          "numFiles": 91,
+          "totalLoc": 13681,
           "dominantLanguage": "TypeScript",
           "category": "General",
-          "description": "General module with 88 files (TypeScript)",
+          "description": "General module with 91 files (TypeScript)",
           "subdirectories": [
-            {
-              "path": "src/components/ui",
-              "name": "ui",
-              "level": 3,
-              "numFiles": 49,
-              "totalLoc": 4003,
-              "dominantLanguage": "TypeScript",
-              "category": "Web/UI",
-              "description": "Web/UI module with 49 files (TypeScript)",
-              "subdirectories": []
-            },
             {
               "path": "src/components/inventory",
               "name": "inventory",
@@ -761,7 +680,7 @@
               "name": "transactions",
               "level": 3,
               "numFiles": 11,
-              "totalLoc": 1955,
+              "totalLoc": 2126,
               "dominantLanguage": "TypeScript",
               "category": "General",
               "description": "# Transactions Page - Modularization Guide",
@@ -771,11 +690,22 @@
               "path": "src/components/dispatch",
               "name": "dispatch",
               "level": 3,
-              "numFiles": 9,
-              "totalLoc": 1836,
+              "numFiles": 7,
+              "totalLoc": 1949,
               "dominantLanguage": "TypeScript",
               "category": "General",
               "description": "# Dispatch Module - Modular Architecture",
+              "subdirectories": []
+            },
+            {
+              "path": "src/components/returns",
+              "name": "returns",
+              "level": 3,
+              "numFiles": 5,
+              "totalLoc": 1320,
+              "dominantLanguage": "TypeScript",
+              "category": "General",
+              "description": "General module with 5 files (TypeScript)",
               "subdirectories": []
             },
             {
@@ -795,30 +725,19 @@
           "path": "src/pages",
           "name": "pages",
           "level": 2,
-          "numFiles": 16,
-          "totalLoc": 7164,
+          "numFiles": 15,
+          "totalLoc": 7391,
           "dominantLanguage": "TypeScript",
           "category": "General",
-          "description": "General module with 16 files (TypeScript)",
-          "subdirectories": [
-            {
-              "path": "src/pages/old",
-              "name": "old",
-              "level": 3,
-              "numFiles": 1,
-              "totalLoc": 0,
-              "category": "General",
-              "description": "General module with 1 files",
-              "subdirectories": []
-            }
-          ]
+          "description": "General module with 15 files (TypeScript)",
+          "subdirectories": []
         },
         {
           "path": "src/hooks",
           "name": "hooks",
           "level": 2,
           "numFiles": 6,
-          "totalLoc": 609,
+          "totalLoc": 616,
           "dominantLanguage": "TypeScript",
           "category": "General",
           "description": "General module with 6 files (TypeScript)",
@@ -828,7 +747,7 @@
               "name": "transactions",
               "level": 3,
               "numFiles": 4,
-              "totalLoc": 402,
+              "totalLoc": 409,
               "dominantLanguage": "TypeScript",
               "category": "General",
               "description": "General module with 4 files (TypeScript)",
@@ -864,8 +783,8 @@
       "path": "backend",
       "name": "backend",
       "level": 1,
-      "numFiles": 79,
-      "totalLoc": 10410,
+      "numFiles": 83,
+      "totalLoc": 11357,
       "dominantLanguage": "Python",
       "category": "General",
       "description": "# Tarko Inventory - Backend API",
@@ -874,32 +793,32 @@
           "path": "backend/routes",
           "name": "routes",
           "level": 2,
-          "numFiles": 12,
-          "totalLoc": 7459,
+          "numFiles": 13,
+          "totalLoc": 8132,
           "dominantLanguage": "Python",
           "category": "General",
-          "description": "General module with 12 files (Python)",
+          "description": "General module with 13 files (Python)",
           "subdirectories": []
         },
         {
           "path": "backend/scripts",
           "name": "scripts",
           "level": 2,
-          "numFiles": 13,
-          "totalLoc": 1115,
+          "numFiles": 15,
+          "totalLoc": 1345,
           "dominantLanguage": "Python",
           "category": "Tools/Scripts",
-          "description": "Tools/Scripts module with 13 files (Python)",
+          "description": "Tools/Scripts module with 15 files (Python)",
           "subdirectories": []
         },
         {
           "path": "backend/migrations",
           "name": "migrations",
           "level": 2,
-          "numFiles": 23,
+          "numFiles": 24,
           "totalLoc": 0,
           "category": "General",
-          "description": "General module with 23 files",
+          "description": "General module with 24 files",
           "subdirectories": []
         },
         {
@@ -1056,7 +975,17 @@
         "description": ""
       },
       {
+        "path": "../../../../../backend/scripts/check_return_setup.py",
+        "type": "Unknown",
+        "description": ""
+      },
+      {
         "path": "../../../../../backend/scripts/compare_activity_inventory.py",
+        "type": "Unknown",
+        "description": ""
+      },
+      {
+        "path": "../../../../../backend/scripts/setup_return_tables.py",
         "type": "Unknown",
         "description": ""
       },
@@ -1168,14 +1097,14 @@
     "total": 66
   },
   "complexity": {
-    "averageFileSize": 35.87301587301587,
+    "averageFileSize": 38.959276018099544,
     "maxFileSize": 0,
     "nestedDepth": 0,
     "estimatedComplexity": "high"
   },
   "gitRepo": {
-    "firstCommitDate": "2025-11-21",
-    "totalCommits": 44,
+    "firstCommitDate": "2025-11-22",
+    "totalCommits": 49,
     "numContributors": 0,
     "currentBranch": "sachdevs/modularize",
     "remoteUrls": [
