@@ -217,25 +217,28 @@ def create_batch():
                     """, (cut_stock_id, batch_id, variant_id, len(cut_rolls),
                           f'{len(cut_rolls)} cut rolls from production'))
 
-                    # Add individual cut pieces with their specific lengths
-                    for cut_roll in cut_rolls:
-                        roll_length = float(cut_roll.get('length', 0))
-                        if roll_length > 0:
-                            cursor.execute("""
-                                INSERT INTO hdpe_cut_pieces (
-                                    stock_id, length_meters, status, notes
-                                ) VALUES (%s, %s, 'IN_STOCK', %s)
-                            """, (cut_stock_id, roll_length, f'Cut roll {roll_length}m from production'))
-                            total_items += 1
-
-                    # Create production transaction for cut rolls
+                    # Create production transaction first to get transaction_id
                     total_cut_length = sum(float(r.get('length', 0)) for r in cut_rolls)
                     cursor.execute("""
                         INSERT INTO inventory_transactions (
                             transaction_type, to_stock_id, to_quantity, batch_id, notes
                         ) VALUES ('PRODUCTION', %s, %s, %s, %s)
+                        RETURNING id
                     """, (cut_stock_id, len(cut_rolls), batch_id,
                           f'Produced {len(cut_rolls)} cut rolls ({total_cut_length}m total)'))
+
+                    production_txn_id = cursor.fetchone()['id']
+
+                    # Add individual cut pieces with IMMUTABLE created_by_transaction_id
+                    for cut_roll in cut_rolls:
+                        roll_length = float(cut_roll.get('length', 0))
+                        if roll_length > 0:
+                            cursor.execute("""
+                                INSERT INTO hdpe_cut_pieces (
+                                    stock_id, length_meters, status, notes, created_by_transaction_id, original_stock_id
+                                ) VALUES (%s, %s, 'IN_STOCK', %s, %s, %s)
+                            """, (cut_stock_id, roll_length, f'Cut roll {roll_length}m from production', production_txn_id, cut_stock_id))
+                            total_items += 1
 
             # ==================================================
             # SPRINKLER Product: Create bundles and spares

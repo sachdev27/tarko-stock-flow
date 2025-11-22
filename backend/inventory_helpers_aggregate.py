@@ -150,22 +150,25 @@ class AggregateInventoryHelper:
         """, (stock_id, batch_id, product_variant_id, status,
               total_spare_count, piece_length_meters, notes))
 
-        # Create individual spare piece entries
-        for piece_count in spare_pieces:
-            cursor.execute("""
-                INSERT INTO sprinkler_spare_pieces (
-                    stock_id, piece_count, status
-                ) VALUES (%s, %s, %s)
-            """, (stock_id, piece_count, status))
-
-        # Create production transaction
+        # Create production transaction first to get transaction_id
         total_pieces = sum(spare_pieces)
         cursor.execute("""
             INSERT INTO inventory_transactions (
                 transaction_type, to_stock_id, to_quantity, to_pieces, batch_id, notes
             ) VALUES ('PRODUCTION', %s, %s, %s, %s, %s)
+            RETURNING id
         """, (stock_id, total_spare_count, total_pieces, batch_id,
               f'Produced {total_spare_count} spare groups ({total_pieces} pieces total)'))
+
+        production_txn_id = cursor.fetchone()['id']
+
+        # Create individual spare piece entries with IMMUTABLE created_by_transaction_id
+        for piece_count in spare_pieces:
+            cursor.execute("""
+                INSERT INTO sprinkler_spare_pieces (
+                    stock_id, piece_count, status, created_by_transaction_id, original_stock_id
+                ) VALUES (%s, %s, %s, %s, %s)
+            """, (stock_id, piece_count, status, production_txn_id, stock_id))
 
         return stock_id
 
@@ -247,7 +250,18 @@ class AggregateInventoryHelper:
             """, (cut_stock_id, batch_id, product_variant_id,
                   len(cut_lengths), from_stock_id, notes))
 
-        # Create individual cut piece entries
+        # Create transaction record first to get transaction_id
+        cursor.execute("""
+            INSERT INTO inventory_transactions (
+                transaction_type, from_stock_id, from_quantity,
+                to_stock_id, to_quantity, notes, created_by
+            ) VALUES ('CUT_ROLL', %s, 1, %s, %s, %s, %s)
+            RETURNING id
+        """, (from_stock_id, cut_stock_id, len(cut_lengths), notes, created_by))
+
+        transaction_id = cursor.fetchone()['id']
+
+        # Create individual cut piece entries with IMMUTABLE created_by_transaction_id
         cut_piece_ids = []
         cut_piece_details = []
 
@@ -255,9 +269,9 @@ class AggregateInventoryHelper:
             piece_id = str(uuid.uuid4())
             cursor.execute("""
                 INSERT INTO hdpe_cut_pieces (
-                    id, stock_id, length_meters, status
-                ) VALUES (%s, %s, %s, 'IN_STOCK')
-            """, (piece_id, cut_stock_id, length))
+                    id, stock_id, length_meters, status, created_by_transaction_id, original_stock_id
+                ) VALUES (%s, %s, %s, 'IN_STOCK', %s, %s)
+            """, (piece_id, cut_stock_id, length, transaction_id, cut_stock_id))
 
             cut_piece_ids.append(piece_id)
             cut_piece_details.append({"length": length, "piece_id": piece_id})
@@ -353,13 +367,24 @@ class AggregateInventoryHelper:
             """, (spare_stock_id, batch_id, product_variant_id,
                   piece_length_meters, from_stock_id, notes))
 
-        # Create spare piece entry
+        # Create transaction first to get transaction_id
+        cursor.execute("""
+            INSERT INTO inventory_transactions (
+                transaction_type, from_stock_id, from_quantity,
+                to_stock_id, to_quantity, notes, created_by
+            ) VALUES ('SPLIT_BUNDLE', %s, 1, %s, 1, %s, %s)
+            RETURNING id
+        """, (from_stock_id, spare_stock_id, notes, created_by))
+
+        transaction_id = cursor.fetchone()['id']
+
+        # Create spare piece entry with transaction_id
         spare_piece_id = str(uuid.uuid4())
         cursor.execute("""
             INSERT INTO sprinkler_spare_pieces (
-                id, stock_id, piece_count, status
-            ) VALUES (%s, %s, %s, 'IN_STOCK')
-        """, (spare_piece_id, spare_stock_id, pieces_to_split))
+                id, stock_id, piece_count, status, transaction_id
+            ) VALUES (%s, %s, %s, 'IN_STOCK', %s)
+        """, (spare_piece_id, spare_stock_id, pieces_to_split, transaction_id))
 
         # Create remaining pieces as new bundle if needed
         remaining_pieces = pieces_per_bundle - pieces_to_split

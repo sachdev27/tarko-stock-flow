@@ -104,6 +104,7 @@ export function TransactionCard({
                   checked={selected}
                   onCheckedChange={() => onSelect?.(transaction.id)}
                   onClick={(e) => e.stopPropagation()}
+                  disabled={transaction.transaction_type === 'REVERTED'}
                   aria-label={`Select transaction ${transaction.id}`}
                 />
               )}

@@ -1394,12 +1394,17 @@ def create_dispatch():
                                     WHERE id = %s
                                 """, (count_needed, spare_id))
 
-                                # Create new record for dispatched pieces
+                                # Create new record for dispatched pieces - preserve immutable creator
+                                # dispatch_id is stored separately, created_by_transaction_id stays unchanged
                                 cursor.execute("""
                                     INSERT INTO sprinkler_spare_pieces (
-                                        stock_id, piece_count, status, dispatch_id, created_at, updated_at
+                                        stock_id, piece_count, status, dispatch_id,
+                                        created_by_transaction_id, original_stock_id,
+                                        version, created_at, updated_at
                                     )
-                                    SELECT stock_id, %s, 'DISPATCHED', %s, NOW(), NOW()
+                                    SELECT stock_id, %s, 'DISPATCHED', %s,
+                                        created_by_transaction_id, original_stock_id,
+                                        1, NOW(), NOW()
                                     FROM sprinkler_spare_pieces
                                     WHERE id = %s
                                 """, (count_needed, dispatch_id, spare_id))

@@ -42,8 +42,8 @@ export function TransactionDetailModal({
   // Check if this is an inventory operation (CUT_ROLL, SPLIT_BUNDLE, COMBINE_SPARES)
   const isInventoryOperation = ['CUT_ROLL', 'SPLIT_BUNDLE', 'COMBINE_SPARES'].includes(transaction.transaction_type);
 
-  // Check if this is a dispatch transaction
-  const isDispatch = transaction.transaction_type === 'DISPATCH';
+  // Check if this is a dispatch transaction (including reverted dispatches)
+  const isDispatch = transaction.transaction_type === 'DISPATCH' || transaction.transaction_type === 'REVERTED';
 
   // Check if this is a return transaction
   const isReturn = transaction.transaction_type === 'RETURN';

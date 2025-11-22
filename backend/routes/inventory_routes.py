@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from database import execute_query, execute_insert, get_db_cursor
 from inventory_helpers_aggregate import AggregateInventoryHelper as InventoryHelper
+from inventory_operations import InventoryOperations, ValidationError, ConcurrencyError, ReservationError
 from auth import jwt_required_with_role, get_user_identity_details
 
 inventory_bp = Blueprint('inventory', __name__, url_prefix='/api/inventory')
@@ -462,16 +463,31 @@ def cut_roll():
                     """, (cut_stock_id, stock['batch_id'], stock['product_variant_id'],
                           len(cut_lengths), f'Cut from full roll'))
 
-                # Add individual cut pieces
+                # Create transaction first to get transaction_id
+                import json
+                all_pieces_str = ", ".join([f"{l}m" for l in cut_lengths])
+                notes = f'Cut {length_per_unit}m roll into {len(cut_lengths)} pieces: {all_pieces_str}'
+
+                cursor.execute("""
+                    INSERT INTO inventory_transactions (
+                        transaction_type, from_stock_id, from_quantity, from_length,
+                        to_stock_id, to_quantity, notes, created_at
+                    ) VALUES ('CUT_ROLL', %s, 1, %s, %s, %s, %s, NOW())
+                    RETURNING id
+                """, (stock_id, length_per_unit, cut_stock_id, len(cut_lengths) + (1 if (length_per_unit - total_cut_length) > 0 else 0), notes))
+
+                transaction_id = cursor.fetchone()['id']
+
+                # Add individual cut pieces with IMMUTABLE created_by_transaction_id
                 pieces_created = []
                 cut_piece_details = []
                 for length in cut_lengths:
                     cursor.execute("""
                         INSERT INTO hdpe_cut_pieces (
-                            stock_id, length_meters, status, notes, created_at
-                        ) VALUES (%s, %s, 'IN_STOCK', %s, NOW())
+                            stock_id, length_meters, status, notes, created_by_transaction_id, original_stock_id, created_at
+                        ) VALUES (%s, %s, 'IN_STOCK', %s, %s, %s, NOW())
                         RETURNING id
-                    """, (cut_stock_id, length, f'Cut {length}m from {length_per_unit}m roll'))
+                    """, (cut_stock_id, length, f'Cut {length}m from {length_per_unit}m roll', transaction_id, cut_stock_id))
                     piece_id = cursor.fetchone()['id']
                     pieces_created.append(length)
                     cut_piece_details.append({"length": float(length), "piece_id": str(piece_id)})
@@ -481,13 +497,14 @@ def cut_roll():
                 if remainder > 0:
                     cursor.execute("""
                         INSERT INTO hdpe_cut_pieces (
-                            stock_id, length_meters, status, notes, created_at
-                        ) VALUES (%s, %s, 'IN_STOCK', %s, NOW())
+                            stock_id, length_meters, status, notes, created_by_transaction_id, original_stock_id, created_at
+                        ) VALUES (%s, %s, 'IN_STOCK', %s, %s, %s, NOW())
                         RETURNING id
-                    """, (cut_stock_id, remainder, f'Remainder {remainder}m from {length_per_unit}m roll'))
+                    """, (cut_stock_id, remainder, f'Remainder {remainder}m from {length_per_unit}m roll', transaction_id, cut_stock_id))
                     piece_id = cursor.fetchone()['id']
                     pieces_created.append(remainder)
                     cut_piece_details.append({"length": float(remainder), "piece_id": str(piece_id), "is_remainder": True})
+                    notes += f'. Remainder: {remainder}m'
 
                 # Update the quantity to reflect all pieces (cut + remainder)
                 cursor.execute("""
@@ -496,20 +513,12 @@ def cut_roll():
                     WHERE id = %s
                 """, (len(pieces_created), cut_stock_id))
 
-                # Create transaction with complete information
-                import json
-                all_pieces_str = ", ".join([f"{l}m" for l in cut_lengths])
-                notes = f'Cut {length_per_unit}m roll into {len(cut_lengths)} pieces: {all_pieces_str}'
-                if remainder > 0:
-                    notes += f'. Remainder: {remainder}m'
-
+                # Update transaction with cut_piece_details
                 cursor.execute("""
-                    INSERT INTO inventory_transactions (
-                        transaction_type, from_stock_id, from_quantity, from_length,
-                        to_stock_id, to_quantity, cut_piece_details, notes, created_at
-                    ) VALUES ('CUT_ROLL', %s, 1, %s, %s, %s, %s, %s, NOW())
-                """, (stock_id, length_per_unit, cut_stock_id, len(pieces_created),
-                      json.dumps(cut_piece_details), notes))
+                    UPDATE inventory_transactions
+                    SET cut_piece_details = %s, notes = %s
+                    WHERE id = %s
+                """, (json.dumps(cut_piece_details), notes, transaction_id))
 
                 # Audit log
                 cursor.execute("""
@@ -552,16 +561,31 @@ def cut_roll():
                         WHERE id = %s
                     """, (piece_id,))
 
-                    # Create the cut piece(s)
+                    # Create transaction first to get transaction_id
+                    import json
+                    all_pieces_str = ", ".join([f"{l}m" for l in cut_lengths])
+                    notes = f'Cut {piece_length}m piece into {len(cut_lengths)} pieces: {all_pieces_str}'
+
+                    cursor.execute("""
+                        INSERT INTO inventory_transactions (
+                            transaction_type, from_stock_id, from_quantity, from_length,
+                            to_stock_id, to_quantity, notes, created_at
+                        ) VALUES ('CUT_ROLL', %s, 1, %s, %s, %s, %s, NOW())
+                        RETURNING id
+                    """, (stock_id, piece_length, stock_id, len(cut_lengths) + (1 if (piece_length - total_cut_length) > 0 else 0), notes))
+
+                    transaction_id = cursor.fetchone()['id']
+
+                    # Create the cut piece(s) with IMMUTABLE created_by_transaction_id
                     pieces_created = []
                     cut_piece_details = []
                     for length in cut_lengths:
                         cursor.execute("""
                             INSERT INTO hdpe_cut_pieces (
-                                stock_id, length_meters, status, notes, created_at
-                            ) VALUES (%s, %s, 'IN_STOCK', %s, NOW())
+                                stock_id, length_meters, status, notes, created_by_transaction_id, original_stock_id, created_at
+                            ) VALUES (%s, %s, 'IN_STOCK', %s, %s, %s, NOW())
                             RETURNING id
-                        """, (stock_id, length, f'Cut {length}m from {piece_length}m piece'))
+                        """, (stock_id, length, f'Cut {length}m from {piece_length}m piece', transaction_id, stock_id))
                         new_piece_id = cursor.fetchone()['id']
                         pieces_created.append(length)
                         cut_piece_details.append({"length": float(length), "piece_id": str(new_piece_id)})
@@ -571,13 +595,14 @@ def cut_roll():
                     if remainder > 0:
                         cursor.execute("""
                             INSERT INTO hdpe_cut_pieces (
-                                stock_id, length_meters, status, notes, created_at
-                            ) VALUES (%s, %s, 'IN_STOCK', %s, NOW())
+                                stock_id, length_meters, status, notes, created_by_transaction_id, original_stock_id, created_at
+                            ) VALUES (%s, %s, 'IN_STOCK', %s, %s, %s, NOW())
                             RETURNING id
-                        """, (stock_id, remainder, f'Remainder {remainder}m from {piece_length}m piece'))
+                        """, (stock_id, remainder, f'Remainder {remainder}m from {piece_length}m piece', transaction_id, stock_id))
                         new_piece_id = cursor.fetchone()['id']
                         pieces_created.append(remainder)
                         cut_piece_details.append({"length": float(remainder), "piece_id": str(new_piece_id), "is_remainder": True})
+                        notes += f'. Remainder: {remainder}m'
 
                     # Update quantity
                     cursor.execute("""
@@ -589,20 +614,12 @@ def cut_roll():
                         WHERE id = %s
                     """, (stock_id, stock_id))
 
-                    # Create transaction with complete information
-                    import json
-                    all_pieces_str = ", ".join([f"{l}m" for l in cut_lengths])
-                    notes = f'Cut {piece_length}m piece into {len(cut_lengths)} pieces: {all_pieces_str}'
-                    if remainder > 0:
-                        notes += f'. Remainder: {remainder}m'
-
+                    # Update transaction with cut_piece_details
                     cursor.execute("""
-                        INSERT INTO inventory_transactions (
-                            transaction_type, from_stock_id, from_quantity, from_length,
-                            to_stock_id, to_quantity, cut_piece_details, notes, created_at
-                        ) VALUES ('CUT_ROLL', %s, 1, %s, %s, %s, %s, %s, NOW())
-                    """, (stock_id, piece_length, stock_id, len(pieces_created),
-                          json.dumps(cut_piece_details), notes))
+                        UPDATE inventory_transactions
+                        SET cut_piece_details = %s, notes = %s
+                        WHERE id = %s
+                    """, (json.dumps(cut_piece_details), notes, transaction_id))
 
                     # Audit log
                     cursor.execute("""
@@ -656,13 +673,21 @@ def cut_roll():
                             WHERE id = ANY(%s::uuid[])
                         """, (pieces_to_remove,))
 
-                    # Add new cut pieces
+                    # Add new cut pieces (legacy path - create a transaction for tracking)
+                    cursor.execute("""
+                        INSERT INTO inventory_transactions (
+                            transaction_type, from_stock_id, notes, created_at
+                        ) VALUES ('CUT_ROLL', %s, %s, NOW())
+                        RETURNING id
+                    """, (stock_id, f'Cut to {len(cut_lengths)} pieces'))
+                    txn_id = cursor.fetchone()['id']
+
                     for length in cut_lengths:
                         cursor.execute("""
                             INSERT INTO hdpe_cut_pieces (
-                                stock_id, length_meters, status, notes, created_at
-                            ) VALUES (%s, %s, 'IN_STOCK', %s, NOW())
-                        """, (stock_id, length, f'Further cut to {length}m'))
+                                stock_id, length_meters, status, notes, created_by_transaction_id, original_stock_id, created_at
+                            ) VALUES (%s, %s, 'IN_STOCK', %s, %s, %s, NOW())
+                        """, (stock_id, length, f'Further cut to {length}m', txn_id, stock_id))
 
                     # Update quantity
                     cursor.execute("""
@@ -1053,14 +1078,26 @@ def split_bundle():
                 """, (stock['batch_id'], stock['product_variant_id'], stock['piece_length_meters']))
                 spare_stock_id = cursor.fetchone()['id']
 
-            # Create individual spare piece entries
+            # Create transaction record first to get transaction_id
+            cursor.execute("""
+                INSERT INTO inventory_transactions (
+                    transaction_type, from_stock_id, from_quantity,
+                    to_stock_id, to_quantity, notes, created_at
+                ) VALUES ('SPLIT_BUNDLE', %s, 1, %s, %s, %s, NOW())
+                RETURNING id
+            """, (stock_id, spare_stock_id, len(pieces_to_split) + (1 if (pieces_per_bundle - total_pieces_needed) > 0 else 0),
+                  f'Split 1 bundle into spare pieces'))
+
+            transaction_id = cursor.fetchone()['id']
+
+            # Create individual spare piece entries with IMMUTABLE created_by_transaction_id
             pieces_created = []
             for piece_count in pieces_to_split:
                 cursor.execute("""
                     INSERT INTO sprinkler_spare_pieces (
-                        stock_id, piece_count, status, notes, created_at
-                    ) VALUES (%s, %s, 'IN_STOCK', %s, NOW())
-                """, (spare_stock_id, piece_count, f'Split from bundle: {piece_count} pieces'))
+                        stock_id, piece_count, status, notes, created_by_transaction_id, original_stock_id, created_at
+                    ) VALUES (%s, %s, 'IN_STOCK', %s, %s, %s, NOW())
+                """, (spare_stock_id, piece_count, f'Split from bundle: {piece_count} pieces', transaction_id, spare_stock_id))
                 pieces_created.append(piece_count)
 
             # Add remainder if any
@@ -1068,29 +1105,27 @@ def split_bundle():
             if remainder > 0:
                 cursor.execute("""
                     INSERT INTO sprinkler_spare_pieces (
-                        stock_id, piece_count, status, notes, created_at
-                    ) VALUES (%s, %s, 'IN_STOCK', %s, NOW())
-                """, (spare_stock_id, remainder, f'Remainder from bundle split: {remainder} pieces'))
+                        stock_id, piece_count, status, notes, created_by_transaction_id, original_stock_id, created_at
+                    ) VALUES (%s, %s, 'IN_STOCK', %s, %s, %s, NOW())
+                """, (spare_stock_id, remainder, f'Remainder from bundle split: {remainder} pieces', transaction_id, spare_stock_id))
                 pieces_created.append(remainder)
 
-            # Update SPARE stock quantity
+            # Quantity will be auto-updated by trigger, but let's verify it
+            cursor.execute("""
+                SELECT
+                    COALESCE(SUM(piece_count), 0) as total_pieces,
+                    COUNT(*) as piece_groups
+                FROM sprinkler_spare_pieces
+                WHERE stock_id = %s AND status = 'IN_STOCK' AND deleted_at IS NULL
+            """, (spare_stock_id,))
+            spare_info = cursor.fetchone()
+
+            # The trigger should handle this, but update manually for safety
             cursor.execute("""
                 UPDATE inventory_stock
-                SET quantity = (
-                    SELECT COUNT(*) FROM sprinkler_spare_pieces
-                    WHERE stock_id = %s AND status = 'IN_STOCK'
-                ), updated_at = NOW()
+                SET quantity = %s, updated_at = NOW()
                 WHERE id = %s
-            """, (spare_stock_id, spare_stock_id))
-
-            # Create transaction record
-            cursor.execute("""
-                INSERT INTO inventory_transactions (
-                    transaction_type, from_stock_id, from_quantity,
-                    to_stock_id, to_quantity, notes, created_at
-                ) VALUES ('SPLIT_BUNDLE', %s, 1, %s, %s, %s, NOW())
-            """, (stock_id, spare_stock_id, len(pieces_created),
-                  f'Split 1 bundle into {len(pieces_created)} spare groups: {", ".join([f"{p} pcs" for p in pieces_created])}'))
+            """, (spare_info['piece_groups'], spare_stock_id))
 
             # Audit log
             cursor.execute("""
@@ -1190,12 +1225,12 @@ def combine_spares():
             if stock_type != 'SPARE':
                 return jsonify({'error': 'Only SPARE stock can be combined'}), 400
 
-            # Get the specific spare pieces by their spare_id (primary key of sprinkler_spare_pieces)
+            # Get the specific spare pieces by their spare_id
             print(f"DEBUG: Querying for spare pieces with spare_ids: {spare_piece_ids}")
             cursor.execute("""
                 SELECT ssp.id as spare_piece_id, ssp.piece_count, ssp.stock_id
                 FROM sprinkler_spare_pieces ssp
-                WHERE ssp.id = ANY(%s::uuid[]) AND ssp.status = 'IN_STOCK'
+                WHERE ssp.id = ANY(%s::uuid[]) AND ssp.status = 'IN_STOCK' AND ssp.deleted_at IS NULL
             """, (spare_piece_ids,))
 
             spare_pieces = cursor.fetchall()
@@ -1210,90 +1245,48 @@ def combine_spares():
             if total_pieces < total_pieces_needed:
                 return jsonify({'error': f'Total pieces ({total_pieces}) is less than required ({total_pieces_needed})'}), 400
 
-            # Extract the actual spare_piece IDs from the query results
+            # Extract the actual spare_piece IDs
             actual_spare_piece_ids = [p['spare_piece_id'] for p in spare_pieces]
-            print(f"DEBUG: Actual spare_piece_ids to mark as dispatched: {actual_spare_piece_ids}")
+            print(f"DEBUG: Actual spare_piece_ids to combine: {actual_spare_piece_ids}")
 
-            # Mark spare pieces as dispatched
-            cursor.execute("""
-                UPDATE sprinkler_spare_pieces
-                SET status = 'DISPATCHED', updated_at = NOW()
-                WHERE id = ANY(%s::uuid[])
-            """, (actual_spare_piece_ids,))
-
-            # Create or update BUNDLE stock entry with this bundle size
-            cursor.execute("""
-                SELECT id FROM inventory_stock
-                WHERE batch_id = %s
-                AND product_variant_id = %s
-                AND stock_type = 'BUNDLE'
-                AND pieces_per_bundle = %s
-                AND piece_length_meters = %s
-                AND status = 'IN_STOCK'
-                AND deleted_at IS NULL
-            """, (stock['batch_id'], stock['product_variant_id'], bundle_size, stock['piece_length_meters']))
-
-            bundle_stock = cursor.fetchone()
-
-            if bundle_stock:
-                # Increment existing bundle stock by number of bundles
-                cursor.execute("""
-                    UPDATE inventory_stock
-                    SET quantity = quantity + %s, updated_at = NOW()
-                    WHERE id = %s
-                """, (number_of_bundles, bundle_stock['id']))
-                bundle_stock_id = bundle_stock['id']
-            else:
-                # Create new BUNDLE stock entry with custom size
-                cursor.execute("""
-                    INSERT INTO inventory_stock (
-                        batch_id, product_variant_id, stock_type, quantity,
-                        pieces_per_bundle, piece_length_meters, status, created_at, updated_at
-                    ) VALUES (%s, %s, 'BUNDLE', %s, %s, %s, 'IN_STOCK', NOW(), NOW())
-                    RETURNING id
-                """, (stock['batch_id'], stock['product_variant_id'], number_of_bundles, bundle_size, stock['piece_length_meters']))
-                result = cursor.fetchone()
-                bundle_stock_id = result['id'] if result else None
-
-            # Handle remainder pieces
-            remainder = total_pieces - total_pieces_needed
-            if remainder > 0:
-                cursor.execute("""
-                    INSERT INTO sprinkler_spare_pieces (
-                        stock_id, piece_count, status, notes, created_at
-                    ) VALUES (%s, %s, 'IN_STOCK', %s, NOW())
-                """, (stock_id, remainder, f'Remainder from combining: {remainder} pieces'))
-
-            # Update SPARE stock quantity
-            cursor.execute("""
-                UPDATE inventory_stock
-                SET quantity = (
-                    SELECT COUNT(*) FROM sprinkler_spare_pieces
-                    WHERE stock_id = %s AND status = 'IN_STOCK'
-                ), updated_at = NOW()
-                WHERE id = %s
-            """, (stock_id, stock_id))
-
-            # Check if SPARE quantity is now 0 and soft delete it
-            cursor.execute("""
-                SELECT quantity FROM inventory_stock WHERE id = %s
-            """, (stock_id,))
-            updated_spare = cursor.fetchone()
-            if updated_spare and updated_spare['quantity'] <= 0:
-                cursor.execute("""
-                    UPDATE inventory_stock
-                    SET deleted_at = NOW()
-                    WHERE id = %s
-                """, (stock_id,))
-
-            # Create transaction record
+            # Create transaction record first to get transaction_id
             cursor.execute("""
                 INSERT INTO inventory_transactions (
                     transaction_type, from_stock_id, from_quantity,
-                    to_stock_id, to_quantity, notes, created_at
-                ) VALUES ('COMBINE_SPARES', %s, %s, %s, %s, %s, NOW())
-            """, (stock_id, total_pieces, bundle_stock_id, number_of_bundles,
-                  f'Combined {total_pieces} spare pieces into {number_of_bundles} bundle(s) of {bundle_size} pieces each'))
+                    to_stock_id, to_quantity, notes, created_at, created_by
+                ) VALUES ('COMBINE_SPARES', %s, %s, NULL, %s, %s, NOW(), %s)
+                RETURNING id
+            """, (stock_id, total_pieces, number_of_bundles,
+                  f'Combined {total_pieces} spare pieces into {number_of_bundles} bundle(s) of {bundle_size} pieces each',
+                  user_id))
+
+            transaction_id = cursor.fetchone()['id']
+
+            # Use InventoryOperations for proper immutable tracking
+            ops = InventoryOperations(cursor, user_id)
+
+            try:
+                bundle_stock_id, remainder_piece_id = ops.combine_spares(
+                    spare_piece_ids=actual_spare_piece_ids,
+                    bundle_size=bundle_size,
+                    number_of_bundles=number_of_bundles,
+                    transaction_id=transaction_id
+                )
+
+                remainder = total_pieces - total_pieces_needed
+
+                # Update transaction with to_stock_id now that we have it
+                cursor.execute("""
+                    UPDATE inventory_transactions
+                    SET to_stock_id = %s
+                    WHERE id = %s
+                """, (bundle_stock_id, transaction_id))
+
+                print(f"DEBUG: Successfully combined spares. Bundle stock: {bundle_stock_id}, Remainder piece: {remainder_piece_id}")
+
+            except (ValidationError, ReservationError, ConcurrencyError) as op_error:
+                print(f"DEBUG: InventoryOperations error: {op_error}")
+                return jsonify({'error': str(op_error)}), 400
 
             # Audit log
             cursor.execute("""

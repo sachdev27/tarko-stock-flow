@@ -84,6 +84,12 @@ const Dashboard = () => {
         return <ShoppingCart className="h-4 w-4 text-red-600" />;
       case 'PRODUCTION':
         return <Factory className="h-4 w-4 text-green-600" />;
+      case 'DISPATCH':
+        return <ShoppingCart className="h-4 w-4 text-red-600" />;
+      case 'REVERTED':
+        return <Activity className="h-4 w-4 text-gray-500" />;
+      case 'RETURN':
+        return <Activity className="h-4 w-4 text-emerald-600" />;
       case 'CUT':
         return <Activity className="h-4 w-4 text-blue-600" />;
       default:
@@ -95,6 +101,9 @@ const Dashboard = () => {
     const variants: any = {
       'SALE': 'destructive',
       'PRODUCTION': 'default',
+      'DISPATCH': 'destructive',
+      'REVERTED': 'outline',
+      'RETURN': 'default',
       'CUT': 'secondary',
       'BUNDLED': 'outline'
     };

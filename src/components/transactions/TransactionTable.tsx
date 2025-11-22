@@ -261,6 +261,7 @@ export function TransactionTable({
                     <Checkbox
                       checked={selectedIds.has(transaction.id)}
                       onCheckedChange={() => onSelectTransaction(transaction.id)}
+                      disabled={transaction.transaction_type === 'REVERTED'}
                       aria-label={`Select transaction ${transaction.id}`}
                     />
                   </TableCell>

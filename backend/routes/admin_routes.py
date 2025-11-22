@@ -660,6 +660,9 @@ def reset_database():
         with get_db_cursor() as cursor:
             tables_cleared = []
 
+            # Disable triggers during reset to avoid validation conflicts
+            cursor.execute("SET session_replication_role = 'replica'")
+
             if reset_level == 'transactions_only':
                 # Clear only transaction history, keep inventory
                 cursor.execute("DELETE FROM transactions")
@@ -738,6 +741,9 @@ def reset_database():
 
             else:
                 return jsonify({'error': 'Invalid reset level'}), 400
+
+            # Re-enable triggers
+            cursor.execute("SET session_replication_role = 'origin'")
 
             # Create audit log for this action
             cursor.execute("""

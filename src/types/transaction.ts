@@ -4,7 +4,7 @@ export interface TransactionRecord {
   // Core Transaction Fields
   id: string;
   dispatch_id?: string;
-  transaction_type: 'PRODUCTION' | 'SALE' | 'CUT_ROLL' | 'ADJUSTMENT' | 'RETURN' | 'TRANSFER_OUT' | 'TRANSFER_IN' | 'INTERNAL_USE' | 'CUT' | 'SPLIT_BUNDLE' | 'COMBINE_SPARES';
+  transaction_type: 'PRODUCTION' | 'SALE' | 'CUT_ROLL' | 'ADJUSTMENT' | 'RETURN' | 'DISPATCH' | 'REVERTED' | 'TRANSFER_OUT' | 'TRANSFER_IN' | 'INTERNAL_USE' | 'CUT' | 'SPLIT_BUNDLE' | 'COMBINE_SPARES';
   quantity_change: number;
   transaction_date: string;
   invoice_no?: string;

@@ -293,14 +293,24 @@ def create_return():
 
                         # For CUT_ROLL, also insert into hdpe_cut_pieces table (for inventory display)
                         if item_type == 'CUT_ROLL' and product_type_name == 'HDPE Pipe':
+                            # Get the return transaction_id
+                            cursor.execute("""
+                                SELECT id FROM transactions
+                                WHERE batch_id = %s
+                                AND transaction_type = 'RETURN'
+                                ORDER BY created_at DESC LIMIT 1
+                            """, (stock['batch_id'],))
+                            return_txn = cursor.fetchone()
+                            return_txn_id = return_txn['id'] if return_txn else None
+
                             for roll in roll_group:
                                 cursor.execute("""
                                     INSERT INTO hdpe_cut_pieces (
-                                        stock_id, length_meters, status, notes
+                                        stock_id, length_meters, status, notes, created_by_transaction_id, original_stock_id
                                     )
-                                    VALUES (%s, %s, 'IN_STOCK', %s)
+                                    VALUES (%s, %s, 'IN_STOCK', %s, %s, %s)
                                 """, (stock_id, roll['length_meters'],
-                                      f'From return {return_number}'))                        # Insert individual return roll records
+                                      f'From return {return_number}', return_txn_id, stock_id))                        # Insert individual return roll records
                         for roll in roll_group:
                             cursor.execute("""
                                 INSERT INTO return_rolls (
@@ -446,23 +456,43 @@ def create_return():
 
                     # Insert into product-specific spare pieces table (for inventory display)
                     if product_type_name == 'Sprinkler Pipe':
+                        # Get the return transaction_id
+                        cursor.execute("""
+                            SELECT id FROM transactions
+                            WHERE batch_id = (SELECT batch_id FROM inventory_stock WHERE id = %s)
+                            AND transaction_type = 'RETURN'
+                            ORDER BY created_at DESC LIMIT 1
+                        """, (stock_id,))
+                        return_txn = cursor.fetchone()
+                        return_txn_id = return_txn['id'] if return_txn else None
+
                         cursor.execute("""
                             INSERT INTO sprinkler_spare_pieces (
-                                stock_id, piece_count, status, notes
+                                stock_id, piece_count, status, notes, created_by_transaction_id, original_stock_id
                             )
-                            VALUES (%s, %s, 'IN_STOCK', %s)
+                            VALUES (%s, %s, 'IN_STOCK', %s, %s, %s)
                         """, (stock_id, piece_count,
-                              f'From return {return_number}'))
+                              f'From return {return_number}', return_txn_id, stock_id))
                     elif product_type_name == 'HDPE Pipe':
+                        # Get the return transaction_id
+                        cursor.execute("""
+                            SELECT id FROM transactions
+                            WHERE batch_id = (SELECT batch_id FROM inventory_stock WHERE id = %s)
+                            AND transaction_type = 'RETURN'
+                            ORDER BY created_at DESC LIMIT 1
+                        """, (stock_id,))
+                        return_txn = cursor.fetchone()
+                        return_txn_id = return_txn['id'] if return_txn else None
+
                         # For HDPE, spare pieces go into hdpe_cut_pieces as individual pieces
                         for _ in range(piece_count):
                             cursor.execute("""
                                 INSERT INTO hdpe_cut_pieces (
-                                    stock_id, length_meters, status, notes
+                                    stock_id, length_meters, status, notes, created_by_transaction_id, original_stock_id
                                 )
-                                VALUES (%s, %s, 'IN_STOCK', %s)
+                                VALUES (%s, %s, 'IN_STOCK', %s, %s, %s)
                             """, (stock_id, piece_length,
-                                  f'Spare piece from return {return_number}'))
+                                  f'Spare piece from return {return_number}', return_txn_id, stock_id))
 
             # Update transactions with correct quantity_change and roll_snapshot
             for product_variant_id, (batch_id, transaction_id) in variant_batches.items():
