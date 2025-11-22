@@ -104,6 +104,7 @@ export function TransactionFilters({
                   <SelectItem value="all">All Types</SelectItem>
                   <SelectItem value="PRODUCTION">Production</SelectItem>
                   <SelectItem value="DISPATCH">Dispatch</SelectItem>
+                  <SelectItem value="RETURN">Return</SelectItem>
                   <SelectItem value="CUT_ROLL">Cut Roll</SelectItem>
                   <SelectItem value="SPLIT_BUNDLE">Split Bundle</SelectItem>
                   <SelectItem value="COMBINE_SPARES">Combine Spares</SelectItem>

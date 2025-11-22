@@ -175,18 +175,8 @@ def create_return():
                         # Reuse existing batch
                         batch_id = existing_batch['id']
 
-                        # Create a RETURN transaction for this batch
-                        cursor.execute("""
-                            INSERT INTO transactions (
-                                batch_id, transaction_type, quantity_change, customer_id, transaction_date,
-                                notes, created_by
-                            )
-                            VALUES (%s, 'RETURN', 0, %s, %s, %s, %s)
-                            RETURNING id
-                        """, (batch_id, customer_id, return_date, f"Return {return_number}: {notes}", user_id))
-
-                        transaction_record = cursor.fetchone()
-                        transaction_id = transaction_record['id']
+                        # No need to create legacy transaction - we use the returns table now
+                        transaction_id = None
                     else:
                         # No existing batch found, create a new one
                         # Calculate quantity for this variant (count actual items being returned)
@@ -213,18 +203,8 @@ def create_return():
                         batch_record = cursor.fetchone()
                         batch_id = batch_record['id']
 
-                        # Create a RETURN transaction for this batch
-                        cursor.execute("""
-                            INSERT INTO transactions (
-                                batch_id, transaction_type, quantity_change, customer_id, transaction_date,
-                                notes, created_by
-                            )
-                            VALUES (%s, 'RETURN', 0, %s, %s, %s, %s)
-                            RETURNING id
-                        """, (batch_id, customer_id, return_date, f"Return {return_number}: {notes}", user_id))
-
-                        transaction_record = cursor.fetchone()
-                        transaction_id = transaction_record['id']
+                        # No need to create legacy transaction - we use the returns table now
+                        transaction_id = None
 
                     # Store for reuse if same variant appears again in this return
                     variant_batches[product_variant_id] = (batch_id, transaction_id)

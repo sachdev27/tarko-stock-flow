@@ -99,8 +99,7 @@ const DispatchNewModular = () => {
       description: 'Product Search'
     },
     {
-      key: 'D',
-      ctrl: true,
+      key: 'Enter',
       shift: true,
       action: () => handleDispatch(),
       description: 'Submit Dispatch'

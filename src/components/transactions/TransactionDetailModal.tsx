@@ -45,6 +45,9 @@ export function TransactionDetailModal({
   // Check if this is a dispatch transaction
   const isDispatch = transaction.transaction_type === 'DISPATCH';
 
+  // Check if this is a return transaction
+  const isReturn = transaction.transaction_type === 'RETURN';
+
   // Check if dispatch has mixed products
   const hasMixedProducts = isDispatch && transaction.roll_snapshot?.mixed_products === true;
 
@@ -54,7 +57,11 @@ export function TransactionDetailModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-3">
             <TransactionTypeBadge transaction={transaction} />
-            <span>{getProductName(transaction)}</span>
+            <span>
+              {transaction.product_type === 'Mixed' && transaction.brand === 'Mixed'
+                ? 'Mixed Products'
+                : getProductName(transaction)}
+            </span>
           </DialogTitle>
           <DialogDescription>
             Transaction ID: {transaction.id}
@@ -175,9 +182,13 @@ export function TransactionDetailModal({
                     <TabsTrigger value="logistics">Logistics</TabsTrigger>
                     <TabsTrigger value="metadata">Metadata</TabsTrigger>
                   </>
-                ) : (
+                ) : !isReturn ? (
                   <>
                     <TabsTrigger value="rolls">Stock</TabsTrigger>
+                    <TabsTrigger value="metadata">Metadata</TabsTrigger>
+                  </>
+                ) : (
+                  <>
                     <TabsTrigger value="metadata">Metadata</TabsTrigger>
                   </>
                 )}
@@ -302,8 +313,8 @@ export function TransactionDetailModal({
                 </CardContent>
               </Card>
 
-              {/* Weight & Quantity Card - hide for dispatches */}
-              {!isDispatch && (
+              {/* Weight & Quantity Card - hide for dispatches and returns */}
+              {!isDispatch && !isReturn && (
               <Card>
                 <CardHeader>
                   <CardTitle className="text-lg flex items-center gap-2">
@@ -378,7 +389,121 @@ export function TransactionDetailModal({
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {isDispatch && transaction.roll_snapshot?.item_breakdown && transaction.roll_snapshot.item_breakdown.length > 0 ? (
+                  {isReturn && transaction.roll_snapshot?.item_breakdown && Array.isArray(transaction.roll_snapshot.item_breakdown) && transaction.roll_snapshot.item_breakdown.length > 0 ? (
+                    <div>
+                      <div className="text-sm font-medium mb-3">Items in This Return</div>
+                      <div className="space-y-3">
+                        {(() => {
+                          // Group items by type, length, and parameters to avoid showing duplicates
+                          const grouped = transaction.roll_snapshot.item_breakdown.reduce((acc: any, item: any) => {
+                            // Create a unique key based on item characteristics
+                            const paramStr = JSON.stringify(item.parameters || {});
+                            const key = `${item.item_type}-${item.length_meters || ''}-${item.piece_length || ''}-${item.bundle_size || ''}-${paramStr}`;
+
+                            if (!acc[key]) {
+                              acc[key] = { ...item, quantity: 0 };
+                            }
+                            acc[key].quantity += item.quantity || 0;
+                            return acc;
+                          }, {});
+
+                          return Object.values(grouped).map((item: any, idx: number) => (
+                          <div key={idx} className="border rounded-lg p-4 bg-green-50/50">
+                            <div className="flex items-center justify-between mb-3">
+                              <Badge variant="outline" className="text-base">{item.item_type?.replace('_', ' ')}</Badge>
+                              <span className="font-bold text-lg">Qty: {item.quantity}</span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3 text-sm">
+                              <div>
+                                <span className="text-muted-foreground">Product:</span>
+                                <span className="ml-2 font-medium">{item.product_type}</span>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground">Brand:</span>
+                                <span className="ml-2 font-medium">{item.brand}</span>
+                              </div>
+                              {item.bundle_size && (
+                                <div>
+                                  <span className="text-muted-foreground">Bundle Size:</span>
+                                  <span className="ml-2 font-medium">{item.bundle_size} pieces</span>
+                                </div>
+                              )}
+                              {item.piece_count && (
+                                <div>
+                                  <span className="text-muted-foreground">Pieces:</span>
+                                  <span className="ml-2 font-medium">{item.piece_count}</span>
+                                </div>
+                              )}
+                              {item.piece_length && (
+                                <div>
+                                  <span className="text-muted-foreground">Length per piece:</span>
+                                  <span className="ml-2 font-medium">{Number(item.piece_length).toFixed(2)}m</span>
+                                </div>
+                              )}
+                              {item.length_meters && item.item_type !== 'SPARE_PIECES' && item.item_type !== 'BUNDLE' && (
+                                <div>
+                                  <span className="text-muted-foreground">Length:</span>
+                                  <span className="ml-2 font-medium">{Number(item.length_meters).toFixed(2)}m</span>
+                                </div>
+                              )}
+                            </div>
+                            {item.parameters && Object.keys(item.parameters).length > 0 && (
+                              <div className="mt-3">
+                                <div className="text-xs text-muted-foreground mb-2">Parameters:</div>
+                                <div className="flex flex-wrap gap-2">
+                                  {Object.entries(item.parameters).map(([key, value]) => (
+                                    <Badge key={key} variant="secondary">
+                                      {key}: {String(value)}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                          ));
+                        })()}
+                      </div>
+                    </div>
+                  ) : isReturn && transaction.roll_snapshot ? (
+                    <div>
+                      <div className="text-sm font-medium mb-3">Return Summary</div>
+                      <div className="p-4 bg-green-50/50 rounded-lg border">
+                        <div className="text-muted-foreground text-sm">
+                          This return was created before detailed item tracking was implemented.
+                        </div>
+                        {typeof transaction.roll_snapshot.item_breakdown === 'string' && (
+                          <div className="mt-3">
+                            <span className="font-medium">Items: </span>
+                            <span className="text-lg">{transaction.roll_snapshot.item_breakdown}</span>
+                          </div>
+                        )}
+                        {transaction.roll_snapshot.full_rolls > 0 && (
+                          <div className="mt-2">
+                            <span className="font-medium">Full Rolls: </span>
+                            <span>{transaction.roll_snapshot.full_rolls}</span>
+                          </div>
+                        )}
+                        {transaction.roll_snapshot.cut_rolls > 0 && (
+                          <div className="mt-2">
+                            <span className="font-medium">Cut Rolls: </span>
+                            <span>{transaction.roll_snapshot.cut_rolls}</span>
+                          </div>
+                        )}
+                        {transaction.roll_snapshot.bundles > 0 && (
+                          <div className="mt-2">
+                            <span className="font-medium">Bundles: </span>
+                            <span>{transaction.roll_snapshot.bundles}</span>
+                          </div>
+                        )}
+                        {transaction.roll_snapshot.spare_pieces > 0 && (
+                          <div className="mt-2">
+                            <span className="font-medium">Spare Pieces: </span>
+                            <span>{transaction.roll_snapshot.spare_pieces}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ) : isDispatch && transaction.roll_snapshot?.item_breakdown && transaction.roll_snapshot.item_breakdown.length > 0 ? (
                     <div>
                       <div className="text-sm font-medium mb-3">Items in This Dispatch</div>
                       <div className="space-y-3">
@@ -453,7 +578,7 @@ export function TransactionDetailModal({
                         })()}
                       </div>
                     </div>
-                  ) : !isDispatch ? (
+                  ) : !isDispatch && !isReturn ? (
                     <>
                       <div className="grid grid-cols-2 gap-4">
                         <div>

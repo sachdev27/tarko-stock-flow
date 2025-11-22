@@ -141,7 +141,7 @@ def get_transactions():
         params = [start_ist, end_ist, start_ist, end_ist, start_ist, end_ist]  # For transactions, inventory_transactions, and dispatches
 
     # Query both transactions and inventory_transactions tables
-    query = f"""
+    query = """
         -- Main batch-level transactions
         SELECT
             CONCAT('txn_', t.id) as id,
@@ -213,7 +213,7 @@ def get_transactions():
         LEFT JOIN units u_unit ON pt.unit_id = u_unit.id
         LEFT JOIN customers c ON t.customer_id = c.id
         LEFT JOIN users u ON t.created_by = u.id
-        WHERE t.deleted_at IS NULL{date_filter}
+        WHERE t.deleted_at IS NULL""" + date_filter + """
 
         UNION ALL
 
@@ -344,7 +344,7 @@ def get_transactions():
         LEFT JOIN brands br ON pv.brand_id = br.id
         LEFT JOIN units u_unit ON pt.unit_id = u_unit.id
         WHERE it.transaction_type IN ('CUT_ROLL', 'SPLIT_BUNDLE', 'COMBINE_SPARES')
-        AND (it.notes IS NULL OR it.notes NOT LIKE '%%[REVERTED]%%'){date_filter_inv}
+        AND (it.notes IS NULL OR it.notes NOT LIKE '%%[REVERTED]%%')""" + date_filter_inv + """
 
         UNION ALL
 
@@ -414,7 +414,7 @@ def get_transactions():
                 ELSE MAX(br.name)
             END as brand,
             CASE
-                WHEN COUNT(DISTINCT di.product_variant_id) > 1 THEN '{{}}'::jsonb
+                WHEN COUNT(DISTINCT di.product_variant_id) > 1 THEN '{}'::jsonb
                 ELSE (array_agg(pv.parameters))[1]
             END as parameters,
             NULL as roll_length_meters,
@@ -450,17 +450,163 @@ def get_transactions():
         LEFT JOIN transports t ON d.transport_id = t.id
         LEFT JOIN vehicles v ON d.vehicle_id = v.id
         LEFT JOIN users u ON d.created_by = u.id
-        WHERE d.deleted_at IS NULL{date_filter_dispatch}
+        WHERE d.deleted_at IS NULL""" + date_filter_dispatch + """
         GROUP BY d.id, d.dispatch_number, d.dispatch_date, d.invoice_number, d.created_at, v.vehicle_number, v.driver_name, t.name, bt.name
+
+        UNION ALL
+
+        -- Return transactions from new return system (one row per return)
+        SELECT DISTINCT ON (r.id)
+            CONCAT('return_', r.id) as id,
+            NULL as dispatch_id,
+            'RETURN' as transaction_type,
+            (SELECT COALESCE(SUM(ri_sum.quantity), 0) FROM return_items ri_sum WHERE ri_sum.return_id = r.id) as quantity_change,
+            r.return_date as transaction_date,
+            NULL as invoice_no,
+            CASE
+                WHEN (SELECT COUNT(DISTINCT ri_count.product_variant_id) FROM return_items ri_count WHERE ri_count.return_id = r.id) > 1
+                THEN CONCAT('Return: ', r.return_number, ' (Mixed Products)')
+                ELSE CONCAT('Return: ', r.return_number, COALESCE(': ' || (
+                    SELECT string_agg(
+                        CASE ri_agg.item_type
+                            WHEN 'FULL_ROLL' THEN ri_agg.quantity::text || 'R'
+                            WHEN 'CUT_ROLL' THEN ri_agg.quantity::text || 'C'
+                            WHEN 'BUNDLE' THEN ri_agg.quantity::text || 'B'
+                            WHEN 'SPARE_PIECES' THEN ri_agg.piece_count::text || 'S'
+                        END, ' + ')
+                    FROM return_items ri_agg WHERE ri_agg.return_id = r.id
+                ), ''))
+            END as notes,
+            r.created_at,
+            (SELECT jsonb_build_object(
+                'return_number', r.return_number,
+                'return_id', r.id,
+                'total_items', COUNT(ri2.id),
+                'item_types', jsonb_agg(DISTINCT ri2.item_type),
+                'mixed_products', COUNT(DISTINCT ri2.product_variant_id) > 1,
+                'full_rolls', COALESCE(SUM(CASE WHEN ri2.item_type = 'FULL_ROLL' THEN ri2.quantity ELSE 0 END), 0),
+                'cut_rolls', COALESCE(SUM(CASE WHEN ri2.item_type = 'CUT_ROLL' THEN ri2.quantity ELSE 0 END), 0),
+                'bundles', COALESCE(SUM(CASE WHEN ri2.item_type = 'BUNDLE' THEN ri2.quantity ELSE 0 END), 0),
+                'spare_pieces', COALESCE(SUM(CASE WHEN ri2.item_type = 'SPARE_PIECES' THEN ri2.piece_count ELSE 0 END), 0),
+                'total_rolls', COALESCE(SUM(CASE WHEN ri2.item_type IN ('FULL_ROLL', 'CUT_ROLL') THEN ri2.quantity ELSE 0 END), 0),
+                'item_breakdown', jsonb_agg(jsonb_build_object(
+                    'item_type', ri2.item_type,
+                    'quantity', ri2.quantity,
+                    'product_type', pt2.name,
+                    'brand', br2.name,
+                    'parameters', pv2.parameters,
+                    'piece_count', ri2.piece_count,
+                    'piece_length', ri2.piece_length_meters,
+                    'length_meters', ri2.length_meters,
+                    'bundle_size', ri2.bundle_size
+                ))
+            )
+            FROM return_items ri2
+            JOIN product_variants pv2 ON ri2.product_variant_id = pv2.id
+            JOIN product_types pt2 ON pv2.product_type_id = pt2.id
+            JOIN brands br2 ON pv2.brand_id = br2.id
+            WHERE ri2.return_id = r.id
+            GROUP BY r.return_number, r.id
+            ) as roll_snapshot,
+            r.return_number as batch_code,
+            r.return_number as batch_no,
+            NULL as initial_quantity,
+            NULL as weight_per_meter,
+            NULL as total_weight,
+            NULL as piece_length,
+            NULL as attachment_url,
+            NULL as production_date,
+            CASE
+                WHEN (SELECT COUNT(DISTINCT ri_pv.product_variant_id) FROM return_items ri_pv WHERE ri_pv.return_id = r.id) > 1 THEN 'Mixed'
+                ELSE (SELECT pt3.name FROM return_items ri4
+                      JOIN product_variants pv3 ON ri4.product_variant_id = pv3.id
+                      JOIN product_types pt3 ON pv3.product_type_id = pt3.id
+                      WHERE ri4.return_id = r.id LIMIT 1)
+            END as product_type,
+            CASE
+                WHEN (SELECT COUNT(DISTINCT ri_pv.product_variant_id) FROM return_items ri_pv WHERE ri_pv.return_id = r.id) > 1 THEN NULL
+                ELSE (SELECT pv3.id FROM return_items ri4
+                      JOIN product_variants pv3 ON ri4.product_variant_id = pv3.id
+                      WHERE ri4.return_id = r.id LIMIT 1)
+            END as product_variant_id,
+            NULL as product_type_id,
+            NULL as brand_id,
+            CASE
+                WHEN (SELECT COUNT(DISTINCT ri_pv.product_variant_id) FROM return_items ri_pv WHERE ri_pv.return_id = r.id) > 1 THEN 'Mixed'
+                ELSE (SELECT br3.name FROM return_items ri4
+                      JOIN product_variants pv3 ON ri4.product_variant_id = pv3.id
+                      JOIN brands br3 ON pv3.brand_id = br3.id
+                      WHERE ri4.return_id = r.id LIMIT 1)
+            END as brand,
+            CASE
+                WHEN (SELECT COUNT(DISTINCT ri_pv.product_variant_id) FROM return_items ri_pv WHERE ri_pv.return_id = r.id) > 1 THEN '{}'::jsonb
+                ELSE (SELECT pv3.parameters FROM return_items ri4
+                      JOIN product_variants pv3 ON ri4.product_variant_id = pv3.id
+                      WHERE ri4.return_id = r.id LIMIT 1)
+            END as parameters,
+            (SELECT SUM(ri_len.length_meters)
+             FROM return_items ri_len
+             WHERE ri_len.return_id = r.id) as roll_length_meters,
+            NULL as roll_initial_length_meters,
+            FALSE as roll_is_cut,
+            NULL as roll_type,
+            NULL as roll_bundle_size,
+            NULL as roll_weight,
+            NULL as unit_abbreviation,
+            c.name as customer_name,
+            c.city as customer_city,
+            u.email as created_by_email,
+            u.username as created_by_username,
+            u.full_name as created_by_name,
+            NULL::bigint as standard_rolls_count,
+            NULL::bigint as cut_rolls_count,
+            NULL::bigint as bundles_count,
+            NULL::bigint as spare_pieces_count,
+            NULL::numeric as avg_standard_roll_length,
+            NULL as bundle_size,
+            NULL::numeric[] as cut_rolls_details,
+            NULL::numeric[] as spare_pieces_details
+        FROM returns r
+        LEFT JOIN customers c ON r.customer_id = c.id
+        LEFT JOIN users u ON r.created_by = u.id
+        WHERE r.deleted_at IS NULL""" + date_filter_dispatch + """
 
         ORDER BY transaction_date DESC
         LIMIT 1000
     """
 
+    print(f"\n=== TRANSACTION QUERY DEBUG ===")
+    print(f"Date filter params: {params if params else 'None'}")
+
     transactions = execute_query(query, tuple(params)) if params else execute_query(query)
 
     # Sort all records by transaction date
     all_records = list(transactions) if transactions else []
+
+    print(f"Total records returned: {len(all_records)}")
+
+    # Debug: Check for duplicate return entries
+    return_records = [r for r in all_records if r['id'].startswith('return_')]
+    return_ids = [r['id'] for r in return_records]
+
+    print(f"Return records found: {len(return_records)}")
+    print(f"Unique return IDs: {len(set(return_ids))}")
+
+    if len(return_ids) != len(set(return_ids)):
+        print(f"⚠️  WARNING: Duplicate return entries found!")
+        print(f"   Total: {len(return_ids)}, Unique: {len(set(return_ids))}")
+        print(f"   Return IDs: {return_ids}")
+        for ret in return_records:
+            print(f"   - {ret['id']}: {ret.get('notes', 'N/A')}")
+    else:
+        print(f"✓ No duplicate returns detected")
+        if return_records:
+            print(f"Return entries:")
+            for ret in return_records:
+                print(f"   - {ret['id']}: {ret.get('notes', 'N/A')}")
+
+    print(f"=== END DEBUG ===\n")
+
     if all_records:
         all_records.sort(key=lambda x: x['transaction_date'], reverse=True)
         sample_ids = [r['id'] for r in all_records[:3]]

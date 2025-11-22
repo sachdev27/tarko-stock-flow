@@ -14,7 +14,7 @@ def get_batches():
     """Get all batches with aggregate inventory stock"""
     try:
         with get_db_cursor() as cursor:
-            # Get all batches
+            # Get all batches that have available stock
             cursor.execute("""
                 SELECT DISTINCT
                     b.id, b.batch_code, b.batch_no, b.current_quantity,
@@ -30,7 +30,13 @@ def get_batches():
                 JOIN product_types pt ON pv.product_type_id = pt.id
                 JOIN brands br ON pv.brand_id = br.id
                 WHERE b.deleted_at IS NULL
-                AND b.current_quantity > 0
+                AND EXISTS (
+                    SELECT 1 FROM inventory_stock s
+                    WHERE s.batch_id = b.id
+                    AND s.deleted_at IS NULL
+                    AND s.status = 'IN_STOCK'
+                    AND s.quantity > 0
+                )
                 ORDER BY b.created_at DESC
             """)
 

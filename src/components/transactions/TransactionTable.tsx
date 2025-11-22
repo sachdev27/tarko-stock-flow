@@ -43,9 +43,9 @@ const formatDispatchQuantityShort = (transaction: TransactionRecord): string => 
 
   const parts: string[] = [];
   if (counts['FULL_ROLL']) parts.push(`${counts['FULL_ROLL']}R`);
-  if (counts['CUT_PIECE']) parts.push(`${counts['CUT_PIECE']}C`);
+  if (counts['CUT_ROLL']) parts.push(`${counts['CUT_ROLL']}C`);
   if (counts['BUNDLE']) parts.push(`${counts['BUNDLE']}B`);
-  if (counts['SPARE_PIECES']) parts.push(`${counts['SPARE_PIECES']}SP`);
+  if (counts['SPARE_PIECES']) parts.push(`${counts['SPARE_PIECES']}S`);
 
   return parts.length > 0 ? parts.join(' + ') : '0';
 };
@@ -286,14 +286,14 @@ export function TransactionTable({
                   {transaction.product_type === 'Mixed' || transaction.product_type === 'Mixed Products' ? '-' : <ParameterBadges parameters={transaction.parameters} />}
                 </TableCell>
                 <TableCell className="text-sm">
-                  {transaction.transaction_type === 'DISPATCH'
+                  {['DISPATCH', 'RETURN'].includes(transaction.transaction_type)
                     ? formatDispatchQuantityShort(transaction)
                     : transaction.quantity_breakdown
                     ? formatQuantityShort(transaction.quantity_breakdown)
                     : transaction.total_rolls_count || transaction.roll_snapshot?.total_rolls || '0'}
                 </TableCell>
                 <TableCell className="font-medium">
-                  {['CUT_ROLL', 'SPLIT_BUNDLE', 'COMBINE_SPARES', 'DISPATCH'].includes(transaction.transaction_type)
+                  {['CUT_ROLL', 'SPLIT_BUNDLE', 'COMBINE_SPARES', 'DISPATCH', 'RETURN'].includes(transaction.transaction_type)
                     ? '-'
                     : formatWeight(transaction.total_weight)}
                 </TableCell>
@@ -305,7 +305,7 @@ export function TransactionTable({
                     : '-'}
                 </TableCell>
                 <TableCell className="text-sm">
-                  {transaction.transaction_type === 'DISPATCH'
+                  {['DISPATCH', 'RETURN'].includes(transaction.transaction_type)
                     ? (() => {
                         const meters = calculateDispatchMeters(transaction);
                         return meters > 0 ? meters.toFixed(2) : '-';
