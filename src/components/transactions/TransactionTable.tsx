@@ -307,6 +307,14 @@ export function TransactionTable({
                 <TableCell className="text-sm">
                   {['DISPATCH', 'RETURN'].includes(transaction.transaction_type)
                     ? (() => {
+                        // For RETURN transactions, use the pre-calculated backend value
+                        if (transaction.transaction_type === 'RETURN' && transaction.roll_length_meters) {
+                          const meters = typeof transaction.roll_length_meters === 'number'
+                            ? transaction.roll_length_meters
+                            : parseFloat(transaction.roll_length_meters as string);
+                          return !isNaN(meters) && meters > 0 ? meters.toFixed(2) : '-';
+                        }
+                        // For DISPATCH, calculate from item_breakdown
                         const meters = calculateDispatchMeters(transaction);
                         return meters > 0 ? meters.toFixed(2) : '-';
                       })()

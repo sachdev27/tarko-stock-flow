@@ -544,7 +544,17 @@ def get_transactions():
                       JOIN product_variants pv3 ON ri4.product_variant_id = pv3.id
                       WHERE ri4.return_id = r.id LIMIT 1)
             END as parameters,
-            (SELECT SUM(ri_len.length_meters)
+            (SELECT SUM(
+                CASE
+                    -- For FULL_ROLL and CUT_ROLL, length_meters is already the total (sum of all roll lengths)
+                    WHEN ri_len.item_type IN ('FULL_ROLL', 'CUT_ROLL') THEN COALESCE(ri_len.length_meters, 0)
+                    -- For BUNDLE, calculate: quantity × pieces_per_bundle × length_per_piece
+                    WHEN ri_len.item_type = 'BUNDLE' THEN COALESCE(ri_len.quantity * ri_len.piece_count * ri_len.piece_length_meters, 0)
+                    -- For SPARE_PIECES, calculate: piece_count × length_per_piece
+                    WHEN ri_len.item_type = 'SPARE_PIECES' THEN COALESCE(ri_len.piece_count * ri_len.piece_length_meters, 0)
+                    ELSE 0
+                END
+             )
              FROM return_items ri_len
              WHERE ri_len.return_id = r.id) as roll_length_meters,
             NULL as roll_initial_length_meters,
@@ -591,6 +601,10 @@ def get_transactions():
 
     print(f"Return records found: {len(return_records)}")
     print(f"Unique return IDs: {len(set(return_ids))}")
+
+    # Debug: Log return calculations
+    for ret in return_records[:3]:  # First 3 returns
+        print(f"Return {ret.get('batch_code', 'N/A')}: roll_length_meters = {ret.get('roll_length_meters', 'N/A')}")
 
     if len(return_ids) != len(set(return_ids)):
         print(f"⚠️  WARNING: Duplicate return entries found!")
@@ -689,7 +703,7 @@ def revert_transactions():
                                 WHERE id = %s AND deleted_at IS NOT NULL
                             """, (stock_row['batch_id'],))
 
-                        # Handle item-type specific reversals
+                        # Handle item-type specific reversals and create inventory_transaction records
                         if item_type == 'CUT_PIECE' and item.get('cut_piece_id'):
                             # Restore cut piece status
                             cursor.execute("""
@@ -697,6 +711,16 @@ def revert_transactions():
                                 SET status = 'IN_STOCK', dispatch_id = NULL, updated_at = NOW()
                                 WHERE id = %s
                             """, (item['cut_piece_id'],))
+
+                            # Create inventory_transaction for the return
+                            notes = f"Reverted dispatch {dispatch['dispatch_number']}: Cut piece returned to stock ({item.get('length_meters', 0)}m)"
+                            cursor.execute("""
+                                INSERT INTO inventory_transactions (
+                                    transaction_type, to_stock_id, to_quantity, to_pieces,
+                                    dispatch_id, notes, created_by
+                                )
+                                VALUES ('RETURN', %s, %s, %s, %s, %s, %s)
+                            """, (stock_id, quantity, 1, clean_id, notes, user_id))
 
                         elif item_type == 'SPARE_PIECES':
                             # Restore spare pieces
@@ -710,6 +734,53 @@ def revert_transactions():
 
                                 # Also restore piece_count to original spare records if they were partially dispatched
                                 # This is complex - for now, keep the dispatched records but mark them as available
+
+                            # Create inventory_transaction for the return
+                            piece_count = item.get('piece_count', 0)
+                            notes = f"Reverted dispatch {dispatch['dispatch_number']}: {piece_count} spare pieces returned to stock"
+                            cursor.execute("""
+                                INSERT INTO inventory_transactions (
+                                    transaction_type, to_stock_id, to_quantity, to_pieces,
+                                    dispatch_id, notes, created_by
+                                )
+                                VALUES ('RETURN', %s, %s, %s, %s, %s, %s)
+                            """, (stock_id, quantity, piece_count, clean_id, notes, user_id))
+
+                        elif item_type == 'BUNDLE':
+                            # Create inventory_transaction for bundle return
+                            bundle_size = item.get('bundle_size', 0)
+                            piece_length = item.get('piece_length_meters', 0)
+                            notes = f"Reverted dispatch {dispatch['dispatch_number']}: Bundle returned to stock ({bundle_size}x{piece_length}m)"
+                            cursor.execute("""
+                                INSERT INTO inventory_transactions (
+                                    transaction_type, to_stock_id, to_quantity, to_pieces,
+                                    dispatch_id, notes, created_by
+                                )
+                                VALUES ('RETURN', %s, %s, %s, %s, %s, %s)
+                            """, (stock_id, quantity, bundle_size, clean_id, notes, user_id))
+
+                        elif item_type == 'FULL_ROLL':
+                            # Create inventory_transaction for full roll return
+                            length_meters = item.get('length_meters', 0)
+                            notes = f"Reverted dispatch {dispatch['dispatch_number']}: Full roll returned to stock ({length_meters}m)"
+                            cursor.execute("""
+                                INSERT INTO inventory_transactions (
+                                    transaction_type, to_stock_id, to_quantity,
+                                    dispatch_id, notes, created_by
+                                )
+                                VALUES ('RETURN', %s, %s, %s, %s, %s)
+                            """, (stock_id, quantity, clean_id, notes, user_id))
+
+                        else:
+                            # Generic return for unknown item types
+                            notes = f"Reverted dispatch {dispatch['dispatch_number']}: {item_type} returned to stock"
+                            cursor.execute("""
+                                INSERT INTO inventory_transactions (
+                                    transaction_type, to_stock_id, to_quantity,
+                                    dispatch_id, notes, created_by
+                                )
+                                VALUES ('RETURN', %s, %s, %s, %s, %s)
+                            """, (stock_id, quantity, clean_id, notes, user_id))
 
                     # Soft delete the dispatch
                     cursor.execute("""

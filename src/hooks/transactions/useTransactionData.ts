@@ -60,9 +60,38 @@ export const useTransactionData = () => {
         let quantityBreakdown = calculateQuantityBreakdown([]);
 
         if (rollSnapshot && rollSnapshot.stock_entries && Array.isArray(rollSnapshot.stock_entries)) {
-          // New stock_entries format
+          // New stock_entries format (for dispatches)
           quantityBreakdown = calculateQuantityBreakdown(rollSnapshot.stock_entries);
           totalMeters = calculateTotalMeters(rollSnapshot.stock_entries);
+        } else if (rollSnapshot && rollSnapshot.item_breakdown && Array.isArray(rollSnapshot.item_breakdown)) {
+          // Return format - use pre-calculated counts from roll_snapshot
+          console.log('[TransactionData] Processing return transaction:', {
+            transaction_type: t.transaction_type,
+            batch_code: t.batch_code,
+            roll_length_meters_from_backend: t.roll_length_meters,
+            roll_snapshot_keys: Object.keys(rollSnapshot),
+            full_rolls: rollSnapshot.full_rolls,
+            cut_rolls: rollSnapshot.cut_rolls,
+            bundles: rollSnapshot.bundles,
+            spare_pieces: rollSnapshot.spare_pieces,
+            total_rolls: rollSnapshot.total_rolls
+          });
+
+          quantityBreakdown = {
+            fullRolls: Number(rollSnapshot.full_rolls) || 0,
+            cutRolls: Number(rollSnapshot.cut_rolls) || 0,
+            bundles: Number(rollSnapshot.bundles) || 0,
+            sparePieces: Number(rollSnapshot.spare_pieces) || 0,
+            totalItems: Number(rollSnapshot.total_rolls) || 0,
+          };
+          // Total meters will come from roll_length_meters field (already calculated in query)
+          totalMeters = 0; // Let backend value be used
+
+          console.log('[TransactionData] Return processed:', {
+            quantityBreakdown,
+            totalMeters_override: totalMeters,
+            will_use_backend_value: t.roll_length_meters
+          });
         } else if (rollSnapshot && rollSnapshot.rolls && Array.isArray(rollSnapshot.rolls)) {
           // Old rolls format - treat as full rolls
           quantityBreakdown.fullRolls = rollSnapshot.rolls.length;
@@ -88,6 +117,16 @@ export const useTransactionData = () => {
           quantity_change: typeof t.quantity_change === 'string' ? parseFloat(t.quantity_change) : t.quantity_change,
         };
       });
+
+      // Log returns specifically
+      const returns = parsedTransactions.filter((t: any) => t.transaction_type === 'RETURN');
+      if (returns.length > 0) {
+        console.log('[TransactionData] Return transactions after parsing:', returns.map((r: any) => ({
+          batch_code: r.batch_code,
+          roll_length_meters: r.roll_length_meters,
+          quantity_breakdown: r.quantity_breakdown
+        })));
+      }
 
       console.log('[TransactionData] Transactions parsed and set:', {
         count: parsedTransactions.length,
