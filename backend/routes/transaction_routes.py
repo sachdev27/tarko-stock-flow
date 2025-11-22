@@ -759,6 +759,18 @@ def revert_transactions():
                                 VALUES ('RETURN', %s, %s, %s, %s, %s, %s)
                             """, (stock_id, quantity, bundle_size, clean_id, notes, user_id))
 
+                        elif item_type == 'CUT_ROLL':
+                            # Create inventory_transaction for cut roll return
+                            length_meters = item.get('length_meters', 0)
+                            notes = f"Reverted dispatch {dispatch['dispatch_number']}: Cut roll returned to stock ({length_meters}m)"
+                            cursor.execute("""
+                                INSERT INTO inventory_transactions (
+                                    transaction_type, to_stock_id, to_quantity,
+                                    dispatch_id, notes, created_by
+                                )
+                                VALUES ('RETURN', %s, %s, %s, %s, %s)
+                            """, (stock_id, quantity, clean_id, notes, user_id))
+
                         elif item_type == 'FULL_ROLL':
                             # Create inventory_transaction for full roll return
                             length_meters = item.get('length_meters', 0)

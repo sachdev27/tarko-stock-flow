@@ -1491,8 +1491,16 @@ def create_dispatch():
                         """, (stock_id, quantity, dispatch_id, dispatch_item_id, f'Bundle dispatched: {bundle_size}x{piece_length_meters}m', user_id))
 
                     elif item_type == 'FULL_ROLL':
-                        # Full roll dispatch
+                        # Full roll dispatch (or cut roll stock dispatched as full)
                         length_meters = item.get('length_meters')
+
+                        # Check if this is actually a CUT_ROLL stock
+                        stock_type = stock['stock_type']
+                        actual_item_type = item_type
+
+                        # If stock_type is CUT_ROLL, adjust the item_type for better tracking
+                        if stock_type == 'CUT_ROLL':
+                            actual_item_type = 'CUT_ROLL'  # Store as CUT_ROLL for better display
 
                         # Create dispatch item
                         cursor.execute("""
@@ -1503,7 +1511,7 @@ def create_dispatch():
                             VALUES (%s, %s, %s, %s, %s, %s)
                             RETURNING id
                         """, (
-                            dispatch_id, stock_id, product_variant_id, item_type,
+                            dispatch_id, stock_id, product_variant_id, actual_item_type,
                             quantity, length_meters
                         ))
 
@@ -1521,6 +1529,12 @@ def create_dispatch():
                             WHERE id = %s
                         """, (quantity, quantity, stock_id))
 
+                        # Create appropriate notes based on stock type
+                        if stock_type == 'CUT_ROLL':
+                            notes = f'Cut roll dispatched: {length_meters}m'
+                        else:
+                            notes = f'Full roll dispatched: {length_meters}m'
+
                         # Record in inventory_transactions
                         cursor.execute("""
                             INSERT INTO inventory_transactions (
@@ -1528,7 +1542,7 @@ def create_dispatch():
                                 dispatch_id, dispatch_item_id, notes, created_by
                             )
                             VALUES ('DISPATCH', %s, %s, %s, %s, %s, %s)
-                        """, (stock_id, quantity, dispatch_id, dispatch_item_id, f'Full roll dispatched: {length_meters}m', user_id))
+                        """, (stock_id, quantity, dispatch_id, dispatch_item_id, notes, user_id))
 
                     total_items_dispatched += quantity
 
