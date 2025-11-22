@@ -12,7 +12,7 @@ return_bp = Blueprint('returns', __name__, url_prefix='/api/returns')
 @jwt_required()
 def create_return():
     """
-    Create a new return from customer.
+    Create a new return from customer and add items back to inventory.
     Request body:
     {
         customer_id: UUID,
@@ -20,7 +20,9 @@ def create_return():
         notes: string (optional),
         items: [
             {
-                product_variant_id: UUID,
+                product_type_id: UUID,
+                brand_id: UUID,
+                parameters: {OD: "32", PN: "6", PE: "63"},
                 item_type: 'FULL_ROLL' | 'CUT_ROLL' | 'BUNDLE' | 'SPARE_PIECES',
                 quantity: number,
 
@@ -41,7 +43,8 @@ def create_return():
     """
     try:
         data = request.json
-        user_id, user_role = get_user_identity_details()
+        user_id = get_jwt_identity()
+        user_role = get_user_identity_details(user_id)
 
         # Validate required fields
         customer_id = data.get('customer_id')
@@ -84,30 +87,129 @@ def create_return():
 
             return_record = cursor.fetchone()
             return_id = return_record['id']
+            return_number = return_record['return_number']
+
+            # Track batches created for this return (one per product variant)
+            variant_batches = {}  # {product_variant_id: (batch_id, transaction_id)}
 
             # Process each item
             for item in items:
-                product_variant_id = item.get('product_variant_id')
+                product_type_id = item.get('product_type_id')
+                brand_id = item.get('brand_id')
+                parameters = item.get('parameters', {})
                 item_type = item.get('item_type')
                 quantity = item.get('quantity')
                 item_notes = item.get('notes', '')
 
-                if not all([product_variant_id, item_type, quantity]):
-                    raise ValueError('Each item must have product_variant_id, item_type, and quantity')
+                if not all([product_type_id, brand_id, item_type, quantity]):
+                    raise ValueError('Each item must have product_type_id, brand_id, item_type, and quantity')
 
-                # Get product variant info
+                # Normalize parameters (strip units for consistent matching)
+                normalized_params = {}
+                for key, value in parameters.items():
+                    # Remove common units: mm, m, kg, etc.
+                    str_value = str(value).strip()
+                    # Remove 'mm' suffix if present (case insensitive)
+                    if str_value.lower().endswith('mm'):
+                        str_value = str_value[:-2].strip()
+                    # Remove 'm' suffix (but not if it's part of something else)
+                    elif str_value.lower().endswith('m') and len(str_value) > 1:
+                        str_value = str_value[:-1].strip()
+                    normalized_params[key] = str_value
+
+                # Find or create product_variant using normalized parameters
                 cursor.execute("""
-                    SELECT pv.id, pt.name as product_type_name, b.name as brand_name,
-                           pt.id as product_type_id, pv.parameters
-                    FROM product_variants pv
-                    JOIN product_types pt ON pv.product_type_id = pt.id
-                    JOIN brands b ON pv.brand_id = b.id
-                    WHERE pv.id = %s AND pv.deleted_at IS NULL
-                """, (product_variant_id,))
+                    SELECT id, parameters FROM product_variants
+                    WHERE product_type_id = %s
+                      AND brand_id = %s
+                      AND deleted_at IS NULL
+                """, (product_type_id, brand_id))
 
-                variant = cursor.fetchone()
+                variants = cursor.fetchall()
+                variant = None
+
+                # Check each variant to find a match (handle units in stored params)
+                for v in variants:
+                    stored_params = v['parameters'] or {}
+                    # Normalize stored params the same way
+                    stored_normalized = {}
+                    for key, value in stored_params.items():
+                        str_value = str(value).strip()
+                        if str_value.lower().endswith('mm'):
+                            str_value = str_value[:-2].strip()
+                        elif str_value.lower().endswith('m') and len(str_value) > 1:
+                            str_value = str_value[:-1].strip()
+                        stored_normalized[key] = str_value
+
+                    # Compare normalized params
+                    if stored_normalized == normalized_params:
+                        variant = v
+                        break
+
                 if not variant:
-                    raise ValueError(f'Product variant {product_variant_id} not found')
+                    # Create new product variant with NORMALIZED parameters
+                    cursor.execute("""
+                        INSERT INTO product_variants (product_type_id, brand_id, parameters)
+                        VALUES (%s, %s, %s::jsonb)
+                        RETURNING id
+                    """, (product_type_id, brand_id, json.dumps(normalized_params)))
+                    variant = cursor.fetchone()
+
+                product_variant_id = variant['id']
+
+                # Create or get batch and transaction for this product variant
+                if product_variant_id not in variant_batches:
+                    # Calculate quantity for this variant (count actual items being returned)
+                    variant_item_count = sum(1 for i in items
+                        if i.get('product_type_id') == product_type_id
+                        and i.get('brand_id') == brand_id
+                        and json.dumps(i.get('parameters', {}), sort_keys=True) == json.dumps(parameters, sort_keys=True))
+
+                    # Create a unique batch for this variant with sequential batch_code
+                    batch_suffix = len(variant_batches) + 1
+                    batch_code = f"{return_number}-{batch_suffix:02d}"
+
+                    # Create a batch for this product variant
+                    cursor.execute("""
+                        INSERT INTO batches (
+                            product_variant_id, production_date, initial_quantity, current_quantity,
+                            batch_no, batch_code, notes, created_by
+                        )
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                        RETURNING id
+                    """, (product_variant_id, return_date, quantity, quantity,
+                          batch_code, batch_code, f"Return batch for {return_number}", user_id))
+
+                    batch_record = cursor.fetchone()
+                    batch_id = batch_record['id']
+
+                    # Create a RETURN transaction for this batch
+                    cursor.execute("""
+                        INSERT INTO transactions (
+                            batch_id, transaction_type, quantity_change, customer_id, transaction_date,
+                            notes, created_by
+                        )
+                        VALUES (%s, 'RETURN', 0, %s, %s, %s, %s)
+                        RETURNING id
+                    """, (batch_id, customer_id, return_date, f"Return {return_number}: {notes}", user_id))
+
+                    transaction_record = cursor.fetchone()
+                    transaction_id = transaction_record['id']
+
+                    # Store for reuse if same variant appears again
+                    variant_batches[product_variant_id] = (batch_id, transaction_id)
+                else:
+                    # Reuse existing batch and transaction for this variant
+                    batch_id, transaction_id = variant_batches[product_variant_id]
+
+                # Get product type info for stock type determination
+                cursor.execute("""
+                    SELECT pt.name as product_type_name
+                    FROM product_types pt
+                    WHERE pt.id = %s
+                """, (product_type_id,))
+                pt_info = cursor.fetchone()
+                product_type_name = pt_info['product_type_name']
 
                 # Insert return item
                 if item_type in ['FULL_ROLL', 'CUT_ROLL']:
@@ -130,14 +232,50 @@ def create_return():
                     return_item = cursor.fetchone()
                     return_item_id = return_item['id']
 
-                    # Insert individual rolls
-                    for idx, roll in enumerate(rolls, start=1):
+                    # Group rolls by length (for aggregate inventory)
+                    rolls_by_length = {}
+                    for roll in rolls:
+                        length = roll['length_meters']
+                        if length not in rolls_by_length:
+                            rolls_by_length[length] = []
+                        rolls_by_length[length].append(roll)
+
+                    # Create aggregate inventory stock entries (one per unique length)
+                    roll_idx = 1
+                    for length, roll_group in rolls_by_length.items():
+                        # Create aggregate stock entry for all rolls of this length
+                        stock_type = 'FULL_ROLL' if item_type == 'FULL_ROLL' else 'CUT_ROLL'
                         cursor.execute("""
-                            INSERT INTO return_rolls (
-                                return_item_id, roll_number, length_meters
+                            INSERT INTO inventory_stock (
+                                batch_id, product_variant_id, status, stock_type,
+                                quantity, length_per_unit, notes
                             )
-                            VALUES (%s, %s, %s)
-                        """, (return_item_id, idx, roll['length_meters']))
+                            VALUES (%s, %s, 'IN_STOCK', %s, %s, %s, %s)
+                            RETURNING id
+                        """, (batch_id, product_variant_id, stock_type, len(roll_group), length,
+                              f'{len(roll_group)} rolls of {length}m each from return'))
+
+                        stock = cursor.fetchone()
+                        stock_id = stock['id']
+
+                        # For CUT_ROLL, also insert into hdpe_cut_pieces table (for inventory display)
+                        if item_type == 'CUT_ROLL' and product_type_name == 'HDPE Pipe':
+                            for roll in roll_group:
+                                cursor.execute("""
+                                    INSERT INTO hdpe_cut_pieces (
+                                        stock_id, length_meters, status, notes
+                                    )
+                                    VALUES (%s, %s, 'IN_STOCK', %s)
+                                """, (stock_id, roll['length_meters'],
+                                      f'From return {return_number}'))                        # Insert individual return roll records
+                        for roll in roll_group:
+                            cursor.execute("""
+                                INSERT INTO return_rolls (
+                                    return_item_id, roll_number, length_meters, stock_id
+                                )
+                                VALUES (%s, %s, %s, %s)
+                            """, (return_item_id, roll_idx, roll['length_meters'], stock_id))
+                            roll_idx += 1
 
                 elif item_type == 'BUNDLE':
                     bundles = item.get('bundles', [])
@@ -162,14 +300,41 @@ def create_return():
                     return_item = cursor.fetchone()
                     return_item_id = return_item['id']
 
-                    # Insert individual bundles
-                    for idx, bundle in enumerate(bundles, start=1):
+                    # Group bundles by size and length (for aggregate inventory)
+                    bundles_by_spec = {}
+                    for bundle in bundles:
+                        key = (bundle['bundle_size'], bundle['piece_length_meters'])
+                        if key not in bundles_by_spec:
+                            bundles_by_spec[key] = []
+                        bundles_by_spec[key].append(bundle)
+
+                    # Create aggregate inventory stock entries (one per unique spec)
+                    bundle_idx = 1
+                    for (b_size, p_length), bundle_group in bundles_by_spec.items():
+                        # Create aggregate stock entry for all bundles of this spec
                         cursor.execute("""
-                            INSERT INTO return_bundles (
-                                return_item_id, bundle_number, bundle_size, piece_length_meters
+                            INSERT INTO inventory_stock (
+                                batch_id, product_variant_id, status, stock_type,
+                                quantity, pieces_per_bundle, piece_length_meters, notes
                             )
-                            VALUES (%s, %s, %s, %s)
-                        """, (return_item_id, idx, bundle['bundle_size'], bundle['piece_length_meters']))
+                            VALUES (%s, %s, 'IN_STOCK', 'BUNDLE', %s, %s, %s, %s)
+                            RETURNING id
+                        """, (batch_id, product_variant_id, len(bundle_group), b_size, p_length,
+                              f'{len(bundle_group)} bundles of {b_size} pieces × {p_length}m from return'))
+
+                        stock = cursor.fetchone()
+                        stock_id = stock['id']
+
+                        # Insert individual return bundle records
+                        for bundle in bundle_group:
+                            cursor.execute("""
+                                INSERT INTO return_bundles (
+                                    return_item_id, bundle_number, bundle_size, piece_length_meters, stock_id
+                                )
+                                VALUES (%s, %s, %s, %s, %s)
+                            """, (return_item_id, bundle_idx, bundle['bundle_size'],
+                                  bundle['piece_length_meters'], stock_id))
+                            bundle_idx += 1
 
                 elif item_type == 'SPARE_PIECES':
                     piece_count = item.get('piece_count')
@@ -188,20 +353,50 @@ def create_return():
                     """, (return_id, product_variant_id, item_type, 1,
                           piece_count, piece_length, item_notes))
 
-            # Commit transaction
+                    return_item = cursor.fetchone()
+                    return_item_id = return_item['id']
+
+                    # Create inventory stock entry for spare pieces
+                    cursor.execute("""
+                        INSERT INTO inventory_stock (
+                            batch_id, product_variant_id, status, stock_type,
+                            quantity, piece_length_meters
+                        )
+                        VALUES (%s, %s, 'IN_STOCK', 'SPARE', %s, %s)
+                        RETURNING id
+                    """, (batch_id, product_variant_id, piece_count, piece_length))
+
+                    stock = cursor.fetchone()
+                    stock_id = stock['id']
+
+                    # Also insert into product-specific spare pieces table (for inventory display)
+                    if product_type_name == 'Sprinkler Pipe':
+                        cursor.execute("""
+                            INSERT INTO sprinkler_spare_pieces (
+                                stock_id, piece_count, status, notes
+                            )
+                            VALUES (%s, %s, 'IN_STOCK', %s)
+                        """, (stock_id, piece_count,
+                              f'From return {return_number}'))            # Commit transaction
             cursor.connection.commit()
+
+            # Get the first transaction_id for the response (there may be multiple if multiple variants)
+            first_transaction_id = list(variant_batches.values())[0][1] if variant_batches else None
 
             return jsonify({
                 'success': True,
-                'message': 'Return created successfully',
+                'message': 'Return created successfully and items added to inventory',
                 'return_id': return_id,
-                'return_number': return_number
+                'return_number': return_number,
+                'transaction_id': first_transaction_id
             }), 201
 
     except ValueError as ve:
         return jsonify({'error': str(ve)}), 400
     except Exception as e:
         print(f"Error creating return: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': f'Failed to create return: {str(e)}'}), 500
 
 
@@ -434,7 +629,8 @@ def revert_return(return_id):
     This will mark the return as CANCELLED and remove any restocked inventory.
     """
     try:
-        user_id, user_role = get_user_identity_details()
+        user_id = get_jwt_identity()
+        user_role = get_user_identity_details(user_id)
 
         with get_db_cursor() as cursor:
             # Check if return exists and is not already cancelled

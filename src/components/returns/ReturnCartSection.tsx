@@ -222,7 +222,7 @@ export const ReturnCartSection = ({ items, onRemoveItem, onClearCart }: ReturnCa
                 onClick={onClearCart}
               >
                 <Trash2 className="h-4 w-4 mr-2" />
-                Clear Cart (Ctrl+Shift+R)
+                Clear Cart (Ctrl+Del)
               </Button>
             )}
           </div>

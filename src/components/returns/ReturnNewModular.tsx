@@ -272,13 +272,13 @@ const ReturnNewModular = () => {
         e.preventDefault();
         customerRef.current?.querySelector('input')?.focus();
       }
-      // Ctrl+Shift+S - Save return
-      if (e.ctrlKey && e.shiftKey && e.key === 'S') {
+      // Shift+Enter - Save return
+      if (e.shiftKey && e.key === 'Enter') {
         e.preventDefault();
         handleSubmit();
       }
-      // Ctrl+Shift+R - Clear cart
-      if (e.ctrlKey && e.shiftKey && e.key === 'R') {
+      // Ctrl+Delete - Clear cart
+      if (e.ctrlKey && e.key === 'Delete') {
         e.preventDefault();
         handleClearCart();
       }
@@ -310,10 +310,10 @@ const ReturnNewModular = () => {
               <kbd className="px-2 py-1 bg-background rounded text-xs">Ctrl+Shift+P</kbd> Parameters
             </div>
             <div>
-              <kbd className="px-2 py-1 bg-background rounded text-xs">Ctrl+Shift+R</kbd> Clear Cart
+              <kbd className="px-2 py-1 bg-background rounded text-xs">Ctrl+Del</kbd> Clear Cart
             </div>
             <div>
-              <kbd className="px-2 py-1 bg-background rounded text-xs">Ctrl+Shift+S</kbd> Save
+              <kbd className="px-2 py-1 bg-background rounded text-xs">Shift+Enter</kbd> Save
             </div>
           </div>
         </Card>

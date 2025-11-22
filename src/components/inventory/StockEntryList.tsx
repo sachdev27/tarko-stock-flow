@@ -40,6 +40,16 @@ export const StockEntryList = ({ stockEntries, onUpdate }: StockEntryListProps) 
   const bundles = stockEntries.filter(e => e.stock_type === 'BUNDLE');
   const spares = stockEntries.filter(e => e.stock_type === 'SPARE');
 
+  // Group full rolls by length (normalize to handle 500 vs 500.0)
+  const fullRollsByLength = fullRolls.reduce((acc, entry) => {
+    const length = Number(entry.length_per_unit || 0);
+    if (!acc[length]) {
+      acc[length] = [];
+    }
+    acc[length].push(entry);
+    return acc;
+  }, {} as Record<number, StockEntry[]>);
+
   // Group bundles by size AND piece length
   const bundlesBySize = bundles.reduce((acc, entry) => {
     const size = entry.pieces_per_bundle || 0;
@@ -81,29 +91,39 @@ export const StockEntryList = ({ stockEntries, onUpdate }: StockEntryListProps) 
 
   return (
     <div className="space-y-3">
-      {/* Full Rolls */}
-      {fullRolls.map(entry => (
-        <div key={entry.stock_id} className="flex items-center justify-between p-3 bg-green-50 rounded-lg border border-green-200">
-          <div className="flex items-center gap-3">
-            <Box className="h-5 w-5 text-green-600" />
-            <div>
-              <div className="font-medium">{entry.quantity} Full Rolls</div>
-              <div className="text-sm text-muted-foreground">
-                {entry.length_per_unit}m each • {entry.total_available}m total
+      {/* Full Rolls - Grouped by length */}
+      {Object.entries(fullRollsByLength)
+        .sort(([a], [b]) => Number(b) - Number(a)) // Sort by length descending
+        .map(([lengthKey, rollGroup]) => {
+          const length = Number(lengthKey);
+          const totalQuantity = rollGroup.reduce((sum, r) => sum + r.quantity, 0);
+          const totalMeters = rollGroup.reduce((sum, r) => sum + (r.quantity * (r.length_per_unit || 0)), 0);
+          const firstRoll = rollGroup[0];
+
+          return (
+            <div key={`roll-${length}`} className="flex items-center justify-between p-3 bg-green-50 rounded-lg border border-green-200">
+              <div className="flex items-center gap-3">
+                <Box className="h-5 w-5 text-green-600" />
+                <div>
+                  <div className="font-medium">{totalQuantity} Full Rolls</div>
+                  <div className="text-sm text-muted-foreground">
+                    {length}m each • {totalMeters}m total
+                  </div>
+                </div>
               </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => handleCutRoll(firstRoll)}
+                className="gap-1"
+              >
+                <Scissors className="h-4 w-4" />
+                Cut Roll
+              </Button>
             </div>
-          </div>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => handleCutRoll(entry)}
-            className="gap-1"
-          >
-            <Scissors className="h-4 w-4" />
-            Cut Roll
-          </Button>
-        </div>
-      ))}
+          );
+        })
+      }
 
       {/* Cut Rolls - Each piece shown separately */}
       {cutRolls.map(entry => (

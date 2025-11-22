@@ -679,41 +679,62 @@ def reset_database():
 
             elif reset_level == 'batches_inventory_transactions':
                 # Clear batches, inventory, and transactions - keeps product types, brands, customers
+                # Delete in correct order to respect foreign key constraints
+                cursor.execute("DELETE FROM inventory_transactions")  # References dispatch_items
+                cursor.execute("DELETE FROM dispatch_items")  # References hdpe_cut_pieces
+                cursor.execute("DELETE FROM dispatches")
+                cursor.execute("DELETE FROM return_rolls")    # References inventory_stock
+                cursor.execute("DELETE FROM return_bundles")  # References inventory_stock
+                cursor.execute("DELETE FROM return_items")
+                cursor.execute("DELETE FROM returns")
                 cursor.execute("DELETE FROM sprinkler_spare_pieces")
                 cursor.execute("DELETE FROM hdpe_cut_pieces")
                 cursor.execute("DELETE FROM inventory_stock")
-                cursor.execute("DELETE FROM inventory_transactions")
                 cursor.execute("DELETE FROM transactions")
                 cursor.execute("DELETE FROM batches")
-                cursor.execute("DELETE FROM audit_logs WHERE action_type IN ('PRODUCTION', 'DISPATCH', 'CUT_ROLL', 'SPLIT_BUNDLE', 'COMBINE_SPARES', 'CREATE_BATCH')")
-                tables_cleared = ['batches', 'inventory_stock', 'hdpe_cut_pieces', 'sprinkler_spare_pieces', 'transactions', 'inventory_transactions', 'audit_logs (filtered)']
+                cursor.execute("DELETE FROM audit_logs WHERE action_type IN ('PRODUCTION', 'DISPATCH', 'CUT_ROLL', 'SPLIT_BUNDLE', 'COMBINE_SPARES', 'CREATE_BATCH', 'RETURN')")
+                tables_cleared = ['dispatch_items', 'dispatches', 'return_rolls', 'return_bundles', 'return_items', 'returns', 'batches', 'inventory_stock', 'hdpe_cut_pieces', 'sprinkler_spare_pieces', 'transactions', 'inventory_transactions', 'audit_logs (filtered)']
 
             elif reset_level == 'full_reset':
                 # Full reset - keeps only users, product types, brands, and customers
+                # Delete in correct order to respect foreign key constraints
+                cursor.execute("DELETE FROM inventory_transactions")
+                cursor.execute("DELETE FROM dispatch_items")
+                cursor.execute("DELETE FROM dispatches")
+                cursor.execute("DELETE FROM return_rolls")
+                cursor.execute("DELETE FROM return_bundles")
+                cursor.execute("DELETE FROM return_items")
+                cursor.execute("DELETE FROM returns")
                 cursor.execute("DELETE FROM sprinkler_spare_pieces")
                 cursor.execute("DELETE FROM hdpe_cut_pieces")
                 cursor.execute("DELETE FROM inventory_stock")
-                cursor.execute("DELETE FROM inventory_transactions")
                 cursor.execute("DELETE FROM transactions")
                 cursor.execute("DELETE FROM batches")
                 cursor.execute("DELETE FROM product_variants")
                 cursor.execute("DELETE FROM audit_logs WHERE entity_type NOT IN ('USER')")
-                tables_cleared = ['product_variants', 'batches', 'inventory_stock', 'hdpe_cut_pieces', 'sprinkler_spare_pieces', 'transactions', 'inventory_transactions', 'audit_logs (filtered)']
+                tables_cleared = ['dispatch_items', 'dispatches', 'return_rolls', 'return_bundles', 'return_items', 'returns', 'product_variants', 'batches', 'inventory_stock', 'hdpe_cut_pieces', 'sprinkler_spare_pieces', 'transactions', 'inventory_transactions', 'audit_logs (filtered)']
 
             elif reset_level == 'complete_wipe':
-                # Complete wipe - removes everything except users
+                # Complete wipe - removes everything except users and product types
+                # Delete in correct order to respect foreign key constraints
+                cursor.execute("DELETE FROM inventory_transactions")
+                cursor.execute("DELETE FROM dispatch_items")
+                cursor.execute("DELETE FROM dispatches")
+                cursor.execute("DELETE FROM return_rolls")
+                cursor.execute("DELETE FROM return_bundles")
+                cursor.execute("DELETE FROM return_items")
+                cursor.execute("DELETE FROM returns")
                 cursor.execute("DELETE FROM sprinkler_spare_pieces")
                 cursor.execute("DELETE FROM hdpe_cut_pieces")
                 cursor.execute("DELETE FROM inventory_stock")
-                cursor.execute("DELETE FROM inventory_transactions")
                 cursor.execute("DELETE FROM transactions")
                 cursor.execute("DELETE FROM batches")
                 cursor.execute("DELETE FROM product_variants")
                 cursor.execute("DELETE FROM customers")
                 cursor.execute("UPDATE brands SET deleted_at = NOW() WHERE deleted_at IS NULL")
-                cursor.execute("UPDATE product_types SET deleted_at = NOW() WHERE deleted_at IS NULL")
+                # Product types are NEVER deleted - they are core system configuration
                 cursor.execute("DELETE FROM audit_logs WHERE entity_type != 'USER'")
-                tables_cleared = ['ALL DATA (except users)']
+                tables_cleared = ['ALL DATA (except users and product types)']
 
             else:
                 return jsonify({'error': 'Invalid reset level'}), 400
@@ -762,7 +783,7 @@ def get_reset_options():
         {
             'value': 'batches_inventory_transactions',
             'label': 'Clear Batches, Inventory & Transactions',
-            'description': 'Removes all batches, inventory, and transactions but keeps product setup',
+            'description': 'Removes all batches, inventory, dispatches, returns, and transactions but keeps product setup',
             'impact': 'High - All production data removed',
             'keeps': 'Product Types, Brands, Product Variants, Customers'
         },
@@ -776,9 +797,9 @@ def get_reset_options():
         {
             'value': 'complete_wipe',
             'label': 'Complete Wipe',
-            'description': 'Removes everything except user accounts - total fresh start',
+            'description': 'Removes everything except user accounts and product types - total fresh start',
             'impact': 'CRITICAL - All data removed',
-            'keeps': 'Users only'
+            'keeps': 'Users and Product Types only'
         }
     ]
 

@@ -2,12 +2,20 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { PackageX, Search } from 'lucide-react';
+import { PackageX, Search, Filter, X } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import api from '@/lib/api';
 import { format } from 'date-fns';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   Table,
   TableBody,
@@ -58,6 +66,7 @@ interface ReturnDetail {
     bundle_size?: number;
     piece_count?: number;
     piece_length_meters?: number;
+    parameters?: Record<string, string | number>;
     rolls?: Array<{ length_meters: number }>;
     bundles?: Array<{ bundle_size: number; piece_length_meters: number }>;
   }>;
@@ -70,10 +79,25 @@ const ReturnHistory = () => {
   const [filteredReturns, setFilteredReturns] = useState<Return[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
+
+  // Filter states
+  const [timePreset, setTimePreset] = useState('all');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
 
   // Detail dialog
   const [selectedReturn, setSelectedReturn] = useState<ReturnDetail | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
+
+  const timePresets = [
+    { label: 'All Time', value: 'all' },
+    { label: 'Today', value: 'today' },
+    { label: 'Last 7 Days', value: '7days' },
+    { label: 'Last 30 Days', value: '30days' },
+    { label: 'This Month', value: 'month' },
+    { label: 'Last Month', value: 'lastmonth' },
+  ];
 
   useEffect(() => {
     if (token) {
@@ -82,19 +106,77 @@ const ReturnHistory = () => {
   }, [token]);
 
   useEffect(() => {
-    if (!searchQuery.trim()) {
+    if (!searchQuery.trim() && (!startDate || !endDate)) {
       setFilteredReturns(returns);
       return;
     }
 
-    const query = searchQuery.toLowerCase();
-    const filtered = returns.filter((ret) =>
-      ret.return_number.toLowerCase().includes(query) ||
-      ret.customer_name.toLowerCase().includes(query) ||
-      ret.customer_city?.toLowerCase().includes(query)
-    );
+    let filtered = returns;
+
+    // Text search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter((ret) =>
+        ret.return_number.toLowerCase().includes(query) ||
+        ret.customer_name.toLowerCase().includes(query) ||
+        ret.customer_city?.toLowerCase().includes(query)
+      );
+    }
+
+    // Date range filter
+    if (startDate && endDate) {
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      filtered = filtered.filter(ret => {
+        const returnDate = new Date(ret.return_date);
+        return returnDate >= start && returnDate <= end;
+      });
+    }
+
     setFilteredReturns(filtered);
-  }, [searchQuery, returns]);
+  }, [searchQuery, returns, startDate, endDate]);
+
+  // Handle time preset changes
+  useEffect(() => {
+    if (timePreset === 'all' || timePreset === '') {
+      setStartDate('');
+      setEndDate('');
+      return;
+    }
+
+    const now = new Date();
+    const formatDate = (date: Date) => {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
+    if (timePreset === 'today') {
+      const today = formatDate(now);
+      setStartDate(today);
+      setEndDate(today);
+    } else if (timePreset === '7days') {
+      const sevenDaysAgo = new Date(now);
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      setStartDate(formatDate(sevenDaysAgo));
+      setEndDate(formatDate(now));
+    } else if (timePreset === '30days') {
+      const thirtyDaysAgo = new Date(now);
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      setStartDate(formatDate(thirtyDaysAgo));
+      setEndDate(formatDate(now));
+    } else if (timePreset === 'month') {
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      setStartDate(formatDate(monthStart));
+      setEndDate(formatDate(now));
+    } else if (timePreset === 'lastmonth') {
+      const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+      setStartDate(formatDate(lastMonthStart));
+      setEndDate(formatDate(lastMonthEnd));
+    }
+  }, [timePreset]);
 
   const fetchReturns = async () => {
     try {
@@ -144,17 +226,70 @@ const ReturnHistory = () => {
         <h1 className="text-3xl font-bold">Return History</h1>
       </div>
 
-      {/* Search Bar */}
+      {/* Search and Filter Bar */}
       <Card className="mb-6">
         <CardContent className="pt-6">
-          <div className="flex items-center gap-2">
-            <Search className="h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search by return number, customer name, or city..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="flex-1"
-            />
+          <div className="space-y-4">
+            {/* Search */}
+            <div className="flex items-center gap-2">
+              <Search className="h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by return number, customer name, or city..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="flex-1"
+              />
+              <Button
+                variant={showFilters ? 'default' : 'outline'}
+                size="icon"
+                onClick={() => setShowFilters(!showFilters)}
+              >
+                {showFilters ? <X className="h-4 w-4" /> : <Filter className="h-4 w-4" />}
+              </Button>
+            </div>
+
+            {/* Filters */}
+            {showFilters && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t">
+                <div className="space-y-2">
+                  <Label>Time Range</Label>
+                  <Select value={timePreset} onValueChange={setTimePreset}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select time range" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {timePresets.map((preset) => (
+                        <SelectItem key={preset.value} value={preset.value}>
+                          {preset.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Start Date</Label>
+                  <Input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => {
+                      setStartDate(e.target.value);
+                      setTimePreset('');
+                    }}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>End Date</Label>
+                  <Input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => {
+                      setEndDate(e.target.value);
+                      setTimePreset('');
+                    }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -181,22 +316,30 @@ const ReturnHistory = () => {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Return #</TableHead>
-                    <TableHead>Date</TableHead>
+                    <TableHead>Date & Time</TableHead>
                     <TableHead>Customer</TableHead>
                     <TableHead>Items</TableHead>
                     <TableHead>Quantity</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredReturns.map((ret) => (
-                    <TableRow key={ret.id}>
+                    <TableRow
+                      key={ret.id}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => fetchReturnDetails(ret.id)}
+                    >
                       <TableCell className="font-medium">
                         {ret.return_number}
                       </TableCell>
                       <TableCell>
-                        {format(new Date(ret.return_date), 'MMM dd, yyyy')}
+                        <div>
+                          <div>{format(new Date(ret.return_date), 'MMM dd, yyyy')}</div>
+                          <div className="text-sm text-muted-foreground">
+                            {format(new Date(ret.created_at), 'HH:mm')}
+                          </div>
+                        </div>
                       </TableCell>
                       <TableCell>
                         <div>
@@ -214,15 +357,6 @@ const ReturnHistory = () => {
                         <Badge className={getStatusColor(ret.status)}>
                           {ret.status}
                         </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => fetchReturnDetails(ret.id)}
-                        >
-                          View Details
-                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -300,6 +434,15 @@ const ReturnHistory = () => {
                             </Badge>
                           </div>
 
+                          {item.parameters && Object.keys(item.parameters).length > 0 && (
+                            <div className="text-sm text-muted-foreground">
+                              <span className="font-medium">Parameters:</span>{' '}
+                              {Object.entries(item.parameters)
+                                .map(([key, value]) => `${key}: ${value}`)
+                                .join(', ')}
+                            </div>
+                          )}
+
                           <div className="text-sm text-muted-foreground">
                             Quantity: {item.quantity}
                           </div>
@@ -307,24 +450,14 @@ const ReturnHistory = () => {
                           {item.rolls && item.rolls.length > 0 && (
                             <div className="text-sm">
                               <span className="font-medium">Rolls:</span>{' '}
-                              {item.rolls.map((r, i) => (
-                                <span key={i}>
-                                  {r.length_meters}m
-                                  {i < item.rolls!.length - 1 ? ', ' : ''}
-                                </span>
-                              ))}
+                              {item.quantity} × {item.rolls[0].length_meters}m
                             </div>
                           )}
 
                           {item.bundles && item.bundles.length > 0 && (
                             <div className="text-sm">
                               <span className="font-medium">Bundles:</span>{' '}
-                              {item.bundles.map((b, i) => (
-                                <span key={i}>
-                                  {b.bundle_size} pcs × {b.piece_length_meters}m
-                                  {i < item.bundles!.length - 1 ? ', ' : ''}
-                                </span>
-                              ))}
+                              {item.quantity} × ({item.bundles[0].bundle_size} pcs × {item.bundles[0].piece_length_meters}m)
                             </div>
                           )}
 
