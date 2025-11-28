@@ -467,13 +467,20 @@ def get_transactions():
         SELECT DISTINCT ON (r.id)
             CONCAT('return_', r.id) as id,
             NULL as dispatch_id,
-            'RETURN' as transaction_type,
+            CASE
+                WHEN r.reverted_at IS NOT NULL THEN 'REVERTED'
+                ELSE 'RETURN'
+            END as transaction_type,
             (SELECT COALESCE(SUM(ri_sum.quantity), 0) FROM return_items ri_sum WHERE ri_sum.return_id = r.id) as quantity_change,
             r.return_date as transaction_date,
             NULL as invoice_no,
             CASE
                 WHEN (SELECT COUNT(DISTINCT ri_count.product_variant_id) FROM return_items ri_count WHERE ri_count.return_id = r.id) > 1
-                THEN CONCAT('Return: ', r.return_number, ' (Mixed Products)')
+                THEN CONCAT('Return: ', r.return_number, ' (Mixed Products)',
+                       CASE
+                           WHEN r.reverted_at IS NOT NULL THEN ' [REVERTED]'
+                           ELSE ''
+                       END)
                 ELSE CONCAT('Return: ', r.return_number, COALESCE(': ' || (
                     SELECT string_agg(
                         CASE ri_agg.item_type
@@ -483,12 +490,19 @@ def get_transactions():
                             WHEN 'SPARE_PIECES' THEN ri_agg.piece_count::text || 'S'
                         END, ' + ')
                     FROM return_items ri_agg WHERE ri_agg.return_id = r.id
-                ), ''))
+                ), ''),
+                       CASE
+                           WHEN r.reverted_at IS NOT NULL THEN ' [REVERTED]'
+                           ELSE ''
+                       END)
             END as notes,
             r.created_at,
             (SELECT jsonb_build_object(
                 'return_number', r.return_number,
                 'return_id', r.id,
+                'status', r.status,
+                'reverted_at', r.reverted_at,
+                'reverted_by', r.reverted_by,
                 'total_items', COUNT(ri2.id),
                 'item_types', jsonb_agg(DISTINCT ri2.item_type),
                 'mixed_products', COUNT(DISTINCT ri2.product_variant_id) > 1,
@@ -902,6 +916,114 @@ def revert_transactions():
                             user_id, action_type, entity_type, entity_id,
                             description, created_at
                         ) VALUES (%s, 'REVERT_DISPATCH', 'DISPATCH', %s, %s, NOW())
+                    """, (user_id, clean_id, log_msg))
+
+                    reverted_count += 1
+                    continue
+
+                # Check if this is a return transaction
+                if transaction_id.startswith('return_'):
+                    clean_id = transaction_id.replace('return_', '')
+
+                    # Get return details
+                    cursor.execute("""
+                        SELECT r.*
+                        FROM returns r
+                        WHERE r.id = %s AND r.deleted_at IS NULL
+                    """, (clean_id,))
+
+                    return_record = cursor.fetchone()
+                    if not return_record:
+                        failed_transactions.append({'id': transaction_id, 'error': 'Return not found or already deleted'})
+                        continue
+
+                    # Check if return is already reverted
+                    if return_record.get('reverted_at') is not None:
+                        failed_transactions.append({'id': transaction_id, 'error': f"Return {return_record['return_number']} is already reverted"})
+                        continue
+
+                    # Get inventory_stock IDs linked to this return through return_items
+                    # Returns can reuse existing batches, so we find stock via linkage tables
+                    stock_ids = []
+
+                    # Get stock from return_rolls (FULL_ROLL, CUT_ROLL)
+                    cursor.execute("""
+                        SELECT DISTINCT rr.stock_id
+                        FROM return_rolls rr
+                        JOIN return_items ri ON rr.return_item_id = ri.id
+                        WHERE ri.return_id = %s AND rr.stock_id IS NOT NULL
+                    """, (clean_id,))
+                    stock_ids.extend([row['stock_id'] for row in cursor.fetchall()])
+
+                    # Get stock from return_bundles (BUNDLE)
+                    cursor.execute("""
+                        SELECT DISTINCT rb.stock_id
+                        FROM return_bundles rb
+                        JOIN return_items ri ON rb.return_item_id = ri.id
+                        WHERE ri.return_id = %s AND rb.stock_id IS NOT NULL
+                    """, (clean_id,))
+                    stock_ids.extend([row['stock_id'] for row in cursor.fetchall()])
+
+                    # For SPARE_PIECES: find stock via created pieces' stock_id
+                    # Get transaction IDs created by this return
+                    cursor.execute("""
+                        SELECT id FROM inventory_transactions
+                        WHERE transaction_type = 'RETURN'
+                        AND notes LIKE %s
+                    """, (f"Return {return_record['return_number']}:%",))
+
+                    txn_ids = [row['id'] for row in cursor.fetchall()]
+
+                    if txn_ids:
+                        # Find stock_ids from pieces created by these transactions
+                        cursor.execute("""
+                            SELECT DISTINCT stock_id
+                            FROM sprinkler_spare_pieces
+                            WHERE created_by_transaction_id = ANY(%s::uuid[])
+                            AND deleted_at IS NULL
+                        """, (txn_ids,))
+                        stock_ids.extend([row['stock_id'] for row in cursor.fetchall()])
+
+                    # Remove duplicates
+                    stock_ids = list(set(stock_ids))
+
+                    if stock_ids:
+                        # Soft delete pieces first (triggers will update stock quantities)
+                        cursor.execute("""
+                            UPDATE hdpe_cut_pieces
+                            SET status = 'SOLD_OUT', deleted_at = NOW()
+                            WHERE stock_id = ANY(%s::uuid[]) AND deleted_at IS NULL
+                        """, (stock_ids,))
+
+                        cursor.execute("""
+                            UPDATE sprinkler_spare_pieces
+                            SET status = 'SOLD_OUT', deleted_at = NOW()
+                            WHERE stock_id = ANY(%s::uuid[]) AND deleted_at IS NULL
+                        """, (stock_ids,))
+
+                        # Soft delete the inventory_stock records (use deleted_at, not status='DELETED')
+                        cursor.execute("""
+                            UPDATE inventory_stock
+                            SET status = 'SOLD_OUT', deleted_at = NOW()
+                            WHERE id = ANY(%s::uuid[]) AND deleted_at IS NULL
+                        """, (stock_ids,))
+
+                    # Mark the return as reverted
+                    cursor.execute("""
+                        UPDATE returns
+                        SET reverted_at = NOW(), reverted_by = %s, status = 'REVERTED', updated_at = NOW()
+                        WHERE id = %s
+                    """, (user_id, clean_id))
+
+                    # Create audit log
+                    actor_label = f"{actor.get('name', 'Unknown')} ({actor.get('role', 'Unknown')})" if actor else "Unknown User"
+                    log_msg = f"{actor_label} reverted return {return_record['return_number']}"
+
+                    cursor.execute("""
+                        INSERT INTO audit_logs (
+                            user_id, action_type, entity_type, entity_id,
+                            description, created_at
+                        ) VALUES (%s, 'REVERT_RETURN', 'RETURN', %s, %s, NOW())
                     """, (user_id, clean_id, log_msg))
 
                     reverted_count += 1
