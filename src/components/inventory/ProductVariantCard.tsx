@@ -76,7 +76,7 @@ export const ProductVariantCard = ({
   const totalSparePieces = stockByType.SPARE.reduce((sum, e) => sum + (e.piece_count || e.total_available), 0);
 
   return (
-    <Card>
+    <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setExpanded(!expanded)}>
       <CardHeader>
         <div className="flex items-center justify-between">
           <div className="flex-1">
@@ -130,23 +130,11 @@ export const ProductVariantCard = ({
           </div>
 
           <div className="flex items-center gap-2 ml-4 shrink-0">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setExpanded(!expanded)}
-            >
-              {expanded ? (
-                <>
-                  <ChevronUp className="h-4 w-4 mr-1" />
-                  Hide
-                </>
-              ) : (
-                <>
-                  <ChevronDown className="h-4 w-4 mr-1" />
-                  Details
-                </>
-              )}
-            </Button>
+            {expanded ? (
+              <ChevronUp className="h-5 w-5 text-muted-foreground" />
+            ) : (
+              <ChevronDown className="h-5 w-5 text-muted-foreground" />
+            )}
           </div>
         </div>
       </CardHeader>

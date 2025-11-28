@@ -29,6 +29,7 @@ import { toast } from 'sonner';
 import { Search, Eye, TruckIcon, Package, Filter, X } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { DispatchAPI } from '@/components/dispatch/dispatchAPI';
+import { format } from 'date-fns';
 
 interface Dispatch {
   id: string;
@@ -356,22 +357,31 @@ const DispatchHistory = () => {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Dispatch #</TableHead>
-                    <TableHead>Date</TableHead>
+                    <TableHead>Date & Time</TableHead>
                     <TableHead>Customer</TableHead>
                     <TableHead>Transport/Driver</TableHead>
                     <TableHead>Items</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Invoice #</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredDispatches.map((dispatch) => (
-                    <TableRow key={dispatch.id}>
+                    <TableRow
+                      key={dispatch.id}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => fetchDispatchDetails(dispatch.id)}
+                    >
                       <TableCell className="font-medium">
                         {dispatch.dispatch_number}
                       </TableCell>
-                      <TableCell>{formatDate(dispatch.dispatch_date)}</TableCell>
+                      <TableCell>
+                        <div>
+                          <div>{formatDate(dispatch.dispatch_date)}</div>
+                          <div className="text-sm text-muted-foreground">
+                            {format(new Date(dispatch.created_at), 'HH:mm')}
+                          </div>
+                        </div>
+                      </TableCell>
                       <TableCell>
                         <div>
                           <div className="font-medium">{dispatch.customer_name}</div>
@@ -399,18 +409,6 @@ const DispatchHistory = () => {
                         <Badge className={getStatusColor(dispatch.status)}>
                           {dispatch.status}
                         </Badge>
-                      </TableCell>
-                      <TableCell>
-                        {dispatch.invoice_number || '-'}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => fetchDispatchDetails(dispatch.id)}
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}
