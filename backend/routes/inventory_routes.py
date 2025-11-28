@@ -562,6 +562,8 @@ def cut_roll():
                     """, (piece_id,))
 
                     # Create transaction first to get transaction_id
+                    # Note: When cutting a CUT_ROLL piece, both from and to are the same stock
+                    # to_stock_id is set to NULL to indicate this is a re-cut operation
                     import json
                     all_pieces_str = ", ".join([f"{l}m" for l in cut_lengths])
                     notes = f'Cut {piece_length}m piece into {len(cut_lengths)} pieces: {all_pieces_str}'
@@ -570,9 +572,9 @@ def cut_roll():
                         INSERT INTO inventory_transactions (
                             transaction_type, from_stock_id, from_quantity, from_length,
                             to_stock_id, to_quantity, notes, created_at
-                        ) VALUES ('CUT_ROLL', %s, 1, %s, %s, %s, %s, NOW())
+                        ) VALUES ('CUT_ROLL', %s, 1, %s, NULL, %s, %s, NOW())
                         RETURNING id
-                    """, (stock_id, piece_length, stock_id, len(cut_lengths) + (1 if (piece_length - total_cut_length) > 0 else 0), notes))
+                    """, (stock_id, piece_length, len(cut_lengths) + (1 if (piece_length - total_cut_length) > 0 else 0), notes))
 
                     transaction_id = cursor.fetchone()['id']
 

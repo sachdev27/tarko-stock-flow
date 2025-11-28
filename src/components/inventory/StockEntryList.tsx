@@ -9,6 +9,7 @@ import { CombineSparesDialog } from './CombineSparesDialog';
 interface StockEntry {
   stock_id: string;
   piece_id?: string;
+  piece_ids?: string[];
   spare_id?: string;
   stock_type: 'FULL_ROLL' | 'CUT_ROLL' | 'BUNDLE' | 'SPARE';
   quantity: number;
@@ -63,7 +64,15 @@ export const StockEntryList = ({ stockEntries, onUpdate }: StockEntryListProps) 
   }, {} as Record<string, StockEntry[]>);
 
   const handleCutRoll = (entry: StockEntry) => {
-    setSelectedStock(entry);
+    // For CUT_ROLL entries, pick the first piece_id from the array
+    const pieceId = entry.stock_type === 'CUT_ROLL' && entry.piece_ids?.[0]
+      ? entry.piece_ids[0]
+      : entry.piece_id;
+
+    setSelectedStock({
+      ...entry,
+      piece_id: pieceId
+    });
     setCutDialogOpen(true);
   };
 

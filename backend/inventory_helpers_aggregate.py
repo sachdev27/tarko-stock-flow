@@ -253,11 +253,11 @@ class AggregateInventoryHelper:
         # Create transaction record first to get transaction_id
         cursor.execute("""
             INSERT INTO inventory_transactions (
-                transaction_type, from_stock_id, from_quantity,
+                transaction_type, from_stock_id, from_quantity, from_length,
                 to_stock_id, to_quantity, notes, created_by
-            ) VALUES ('CUT_ROLL', %s, 1, %s, %s, %s, %s)
+            ) VALUES ('CUT_ROLL', %s, 1, %s, %s, %s, %s, %s)
             RETURNING id
-        """, (from_stock_id, cut_stock_id, len(cut_lengths), notes, created_by))
+        """, (from_stock_id, length_per_unit, cut_stock_id, len(cut_lengths), notes, created_by))
 
         transaction_id = cursor.fetchone()['id']
 
@@ -276,14 +276,12 @@ class AggregateInventoryHelper:
             cut_piece_ids.append(piece_id)
             cut_piece_details.append({"length": length, "piece_id": piece_id})
 
-        # Create transaction record
+        # Update transaction with cut_piece_details
         cursor.execute("""
-            INSERT INTO inventory_transactions (
-                transaction_type, from_stock_id, from_quantity, from_length,
-                to_stock_id, to_quantity, cut_piece_details, notes, created_by
-            ) VALUES ('CUT_ROLL', %s, 1, %s, %s, %s, %s, %s, %s)
-        """, (from_stock_id, length_per_unit, cut_stock_id, len(cut_lengths),
-              json.dumps(cut_piece_details), notes, created_by))
+            UPDATE inventory_transactions
+            SET cut_piece_details = %s
+            WHERE id = %s
+        """, (json.dumps(cut_piece_details), transaction_id))
 
         return cut_stock_id, cut_piece_ids
 

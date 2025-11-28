@@ -19,6 +19,7 @@ interface Batch {
 
 interface StockEntry {
   stock_id: string;
+  piece_ids?: string[];
   stock_type: 'FULL_ROLL' | 'CUT_ROLL' | 'BUNDLE' | 'SPARE';
   quantity: number;
   status: string;

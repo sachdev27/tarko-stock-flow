@@ -137,13 +137,32 @@ export const useTransactionData = () => {
         }))
       });
 
-      setTransactions(parsedTransactions);
-
-      // Extract parameter options
-      const options = extractParameterOptions(parsedTransactions);
-      setParameterOptions(options);
-
       console.log('[TransactionData] Transaction data loaded successfully');
+
+      // Filter out REVERTED transactions that came from DISPATCH/RETURN reverts
+      // But KEEP reverted inventory operations (CUT_ROLL, SPLIT_BUNDLE, COMBINE_SPARES)
+      // These show up with notes like '[REVERTED] Cut Roll' and we want to show them
+      const filteredTransactions = parsedTransactions.filter((t: any) => {
+        // Keep everything that's not REVERTED
+        if (t.transaction_type !== 'REVERTED') {
+          return true;
+        }
+        // For REVERTED transactions, check if they're inventory operations
+        // Inventory operation reverts have notes starting with '[REVERTED] Cut Roll', '[REVERTED] Split Bundle', etc.
+        const notes = t.notes || '';
+        const isInventoryOpRevert = notes.includes('[REVERTED] Cut Roll') ||
+                                     notes.includes('[REVERTED] Split Bundle') ||
+                                     notes.includes('[REVERTED] Combine Spares');
+        return isInventoryOpRevert; // Keep inventory operation reverts, filter out dispatch/return reverts
+      });
+
+      console.log(`[TransactionData] Filtered out ${parsedTransactions.length - filteredTransactions.length} REVERTED dispatch/return transactions`);
+
+      setTransactions(filteredTransactions);
+
+      // Extract parameter options from filtered transactions
+      const options = extractParameterOptions(filteredTransactions);
+      setParameterOptions(options);
 
     } catch (error) {
       console.error('[TransactionData] Error loading transactions:', error);

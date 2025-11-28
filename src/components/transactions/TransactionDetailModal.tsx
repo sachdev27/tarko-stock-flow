@@ -42,11 +42,14 @@ export function TransactionDetailModal({
   // Check if this is an inventory operation (CUT_ROLL, SPLIT_BUNDLE, COMBINE_SPARES)
   const isInventoryOperation = ['CUT_ROLL', 'SPLIT_BUNDLE', 'COMBINE_SPARES'].includes(transaction.transaction_type);
 
-  // Check if this is a dispatch transaction (including reverted dispatches)
-  const isDispatch = transaction.transaction_type === 'DISPATCH' || transaction.transaction_type === 'REVERTED';
+  // Check if this is a dispatch transaction
+  const isDispatch = transaction.transaction_type === 'DISPATCH';
 
   // Check if this is a return transaction
   const isReturn = transaction.transaction_type === 'RETURN';
+
+  // Check if this is a reverted transaction
+  const isReverted = transaction.transaction_type === 'REVERTED';
 
   // Check if dispatch has mixed products
   const hasMixedProducts = isDispatch && transaction.roll_snapshot?.mixed_products === true;
@@ -69,7 +72,7 @@ export function TransactionDetailModal({
         </DialogHeader>
 
         <ScrollArea className="max-h-[calc(90vh-120px)]">
-          {isInventoryOperation ? (
+          {isInventoryOperation || isReverted ? (
             // Simplified view for inventory operations
             <div className="space-y-4 mt-4">
               <Card>
@@ -101,13 +104,49 @@ export function TransactionDetailModal({
                 </CardContent>
               </Card>
 
-              {/* Stock Details for cut pieces */}
+              {/* Product details for reverted operations */}
+              {isReverted && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <Package className="h-5 w-5" />
+                      Product Information
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <div className="text-sm text-muted-foreground mb-1">Product Type</div>
+                          <div className="font-medium">{transaction.product_type}</div>
+                        </div>
+                        <div>
+                          <div className="text-sm text-muted-foreground mb-1 flex items-center gap-1">
+                            <Tag className="h-4 w-4" />
+                            Brand
+                          </div>
+                          <Badge variant="outline">{transaction.brand}</Badge>
+                        </div>
+                      </div>
+
+                      {transaction.parameters && Object.keys(transaction.parameters).length > 0 && (
+                        <div>
+                          <div className="text-sm text-muted-foreground mb-2">Parameters</div>
+                          <ParameterBadges parameters={transaction.parameters} />
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Stock Details for both regular and reverted operations */}
               {transaction.roll_snapshot?.stock_entries && transaction.roll_snapshot.stock_entries.length > 0 && (
                 <Card>
                   <CardHeader>
                     <CardTitle className="text-lg flex items-center gap-2">
                       <Box className="h-5 w-5" />
-                      Result
+                      {isReverted ? 'What Was Reverted' : 'Result'}
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
@@ -149,7 +188,10 @@ export function TransactionDetailModal({
                           // CUT_ROLL display
                           <>
                             <div className="font-medium text-lg mb-3">
-                              {entry.quantity} × {entry.stock_type.replace('_', ' ')}
+                              {entry.cut_piece_lengths && entry.cut_piece_lengths.length > 0
+                                ? `${entry.cut_piece_lengths.length} × CUT PIECES`
+                                : `${entry.quantity} × ${entry.stock_type.replace('_', ' ')}`
+                              }
                             </div>
                             {entry.cut_piece_lengths && entry.cut_piece_lengths.length > 0 && (
                               <div>

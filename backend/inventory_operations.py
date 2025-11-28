@@ -595,23 +595,88 @@ class InventoryOperations:
 
         # 5. Get original transaction details
         self.cursor.execute("""
-            SELECT from_stock_id, to_stock_id
+            SELECT from_stock_id, to_stock_id, from_length
             FROM inventory_transactions
             WHERE id = %s
         """, (transaction_id,))
 
         txn_details = self.cursor.fetchone()
 
-        # 6. Restore original FULL_ROLL (+1 quantity)
-        if txn_details['from_stock_id']:
+        # Determine operation type:
+        # - Cutting FULL_ROLL: from_stock_id = FULL_ROLL, to_stock_id = CUT_ROLL (or different stocks)
+        # - Cutting CUT_ROLL piece: from_stock_id = to_stock_id (same CUT_ROLL stock) OR to_stock_id is NULL
+        is_cut_roll_recut = (
+            txn_details['from_stock_id'] == txn_details['to_stock_id'] or
+            txn_details['to_stock_id'] is None
+        )
+
+        if is_cut_roll_recut:
+            # CASE: Cutting an existing cut piece into smaller pieces
+            # Need to restore the original piece that was marked as DISPATCHED
+
+            # The original piece is the one that:
+            # 1. Is in the same stock as from_stock_id
+            # 2. Has the same length as from_length
+            # 3. Was NOT created by this transaction (it existed before)
+            # 4. Currently has status DISPATCHED
             self.cursor.execute("""
-                UPDATE inventory_stock
+                UPDATE hdpe_cut_pieces
                 SET
-                    quantity = quantity + 1,
                     status = 'IN_STOCK',
                     updated_at = NOW()
-                WHERE id = %s
-            """, (txn_details['from_stock_id'],))
+                WHERE stock_id = %s
+                  AND length_meters = %s
+                  AND status = 'DISPATCHED'
+                  AND created_by_transaction_id != %s
+                  AND deleted_at IS NULL
+            """, (txn_details['from_stock_id'], txn_details['from_length'], transaction_id))
+
+        else:
+            # CASE: Cutting a FULL_ROLL into CUT_ROLL pieces
+            # Restore FULL_ROLL (+1 quantity) and decrease CUT_ROLL quantity
+
+            # 6. Restore original FULL_ROLL (+1 quantity) and un-delete if needed
+            if txn_details['from_stock_id']:
+                self.cursor.execute("""
+                    UPDATE inventory_stock
+                    SET
+                        quantity = quantity + 1,
+                        status = 'IN_STOCK',
+                        deleted_at = NULL,
+                        updated_at = NOW()
+                    WHERE id = %s
+                """, (txn_details['from_stock_id'],))
+
+            # 6b. Decrease CUT_ROLL stock quantity
+            if txn_details['to_stock_id']:
+                self.cursor.execute("""
+                    UPDATE inventory_stock
+                    SET
+                        quantity = quantity - %s,
+                        updated_at = NOW()
+                    WHERE id = %s
+                """, (deleted_count, txn_details['to_stock_id']))
+
+        # Common: Check if CUT_ROLL stock should be soft-deleted (no pieces left)
+        check_stock_id = txn_details['to_stock_id'] or txn_details['from_stock_id']
+        if check_stock_id:
+            self.cursor.execute("""
+                SELECT COUNT(*) as remaining_count
+                FROM hdpe_cut_pieces
+                WHERE stock_id = %s
+                  AND status = 'IN_STOCK'
+                  AND deleted_at IS NULL
+            """, (check_stock_id,))
+
+            remaining = self.cursor.fetchone()
+
+            # Only soft delete if there are NO pieces left
+            if remaining and remaining['remaining_count'] == 0:
+                self.cursor.execute("""
+                    UPDATE inventory_stock
+                    SET deleted_at = NOW(), status = 'SOLD_OUT'
+                    WHERE id = %s AND deleted_at IS NULL
+                """, (check_stock_id,))
 
         # 7. Mark transaction as reverted
         self.cursor.execute("""
@@ -774,6 +839,39 @@ class InventoryOperations:
                             updated_at = NOW()
                         WHERE id = %s
                     """, (bundles_added, txn['to_stock_id']))
+
+                    # Check if bundle quantity is now 0 and soft-delete if so
+                    self.cursor.execute("""
+                        SELECT quantity FROM inventory_stock WHERE id = %s
+                    """, (txn['to_stock_id'],))
+
+                    bundle_qty = self.cursor.fetchone()
+                    if bundle_qty and bundle_qty['quantity'] == 0:
+                        self.cursor.execute("""
+                            UPDATE inventory_stock
+                            SET deleted_at = NOW(), status = 'SOLD_OUT'
+                            WHERE id = %s AND deleted_at IS NULL
+                        """, (txn['to_stock_id'],))
+
+        # Check SPARE stock quantity after restoring pieces
+        if txn['from_stock_id']:
+            self.cursor.execute("""
+                SELECT COUNT(*) as remaining_count
+                FROM sprinkler_spare_pieces
+                WHERE stock_id = %s
+                  AND status = 'IN_STOCK'
+                  AND deleted_at IS NULL
+            """, (txn['from_stock_id'],))
+
+            spare_remaining = self.cursor.fetchone()
+
+            # If no pieces remain, soft delete the SPARE stock
+            if spare_remaining and spare_remaining['remaining_count'] == 0:
+                self.cursor.execute("""
+                    UPDATE inventory_stock
+                    SET deleted_at = NOW(), status = 'SOLD_OUT'
+                    WHERE id = %s AND deleted_at IS NULL
+                """, (txn['from_stock_id'],))
 
         # 8. Mark transaction as reverted
         self.cursor.execute("""
