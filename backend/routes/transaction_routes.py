@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import get_jwt_identity
 from database import get_db_cursor, execute_query
 from auth import jwt_required_with_role, get_user_identity_details
+from inventory_operations import InventoryOperations
 
 transaction_bp = Blueprint('transactions', __name__, url_prefix='/api/transactions')
 
@@ -241,17 +242,15 @@ def get_transactions():
                                 'cut_piece_lengths', COALESCE(
                                     (SELECT jsonb_agg(hcp.length_meters ORDER BY hcp.created_at)
                                      FROM hdpe_cut_pieces hcp
-                                     WHERE hcp.stock_id = it.to_stock_id
-                                     AND hcp.created_at >= it.created_at
-                                     AND hcp.created_at < it.created_at + interval '1 second'),
+                                     WHERE hcp.created_by_transaction_id = it.id
+                                     AND hcp.deleted_at IS NULL),
                                     '[]'::jsonb
                                 ),
                                 'total_cut_length', COALESCE(
                                     (SELECT SUM(hcp.length_meters)
                                      FROM hdpe_cut_pieces hcp
-                                     WHERE hcp.stock_id = it.to_stock_id
-                                     AND hcp.created_at >= it.created_at
-                                     AND hcp.created_at < it.created_at + interval '1 second'),
+                                     WHERE hcp.created_by_transaction_id = it.id
+                                     AND hcp.deleted_at IS NULL),
                                     0
                                 )
                             )
@@ -293,9 +292,8 @@ def get_transactions():
                 WHEN it.transaction_type = 'CUT_ROLL' THEN
                     (SELECT SUM(hcp.length_meters) * b.weight_per_meter
                      FROM hdpe_cut_pieces hcp
-                     WHERE hcp.stock_id = it.to_stock_id
-                     AND hcp.created_at >= it.created_at
-                     AND hcp.created_at < it.created_at + interval '1 second')
+                     WHERE hcp.created_by_transaction_id = it.id
+                     AND hcp.deleted_at IS NULL)
                 ELSE b.total_weight
             END as total_weight,
             b.piece_length,
@@ -312,9 +310,8 @@ def get_transactions():
                 WHEN it.transaction_type = 'CUT_ROLL' THEN
                     (SELECT SUM(hcp.length_meters)
                      FROM hdpe_cut_pieces hcp
-                     WHERE hcp.stock_id = it.to_stock_id
-                     AND hcp.created_at >= it.created_at
-                     AND hcp.created_at < it.created_at + interval '1 second')
+                     WHERE hcp.created_by_transaction_id = it.id
+                     AND hcp.deleted_at IS NULL)
                 ELSE NULL
             END as roll_length_meters,
             NULL as roll_initial_length_meters,
@@ -611,7 +608,51 @@ def get_transactions():
                 END,
                 COALESCE(': ' || it.notes, '')) as notes,
             it.created_at,
-            NULL as roll_snapshot,
+            -- Fetch roll_snapshot from the original transaction data (before it was reverted)
+            CASE
+                WHEN it.transaction_type = 'CUT_ROLL' THEN
+                    jsonb_build_object(
+                        'stock_entries',
+                        jsonb_build_array(
+                            jsonb_build_object(
+                                'stock_type', 'CUT_ROLL',
+                                'quantity', COALESCE(it.to_quantity, 0),
+                                'cut_piece_lengths', COALESCE(
+                                    (SELECT jsonb_agg(hcp.length_meters ORDER BY hcp.created_at)
+                                     FROM hdpe_cut_pieces hcp
+                                     WHERE hcp.created_by_transaction_id = it.id
+                                     AND hcp.deleted_at IS NOT NULL),
+                                    '[]'::jsonb
+                                )
+                            )
+                        )
+                    )
+                WHEN it.transaction_type = 'SPLIT_BUNDLE' THEN
+                    jsonb_build_object(
+                        'stock_entries',
+                        jsonb_build_array(
+                            jsonb_build_object(
+                                'stock_type', 'SPLIT_BUNDLE',
+                                'from_bundle_size', ist_from.pieces_per_bundle,
+                                'piece_length', COALESCE(ist_from.piece_length_meters, b.piece_length),
+                                'spare_groups', it.to_quantity
+                            )
+                        )
+                    )
+                WHEN it.transaction_type = 'COMBINE_SPARES' THEN
+                    jsonb_build_object(
+                        'stock_entries',
+                        jsonb_build_array(
+                            jsonb_build_object(
+                                'stock_type', 'BUNDLE',
+                                'bundles_created', COALESCE(it.to_quantity, 0),
+                                'bundle_size', ist_to.pieces_per_bundle,
+                                'piece_length', ist_to.piece_length_meters
+                            )
+                        )
+                    )
+                ELSE NULL
+            END as roll_snapshot,
             b.batch_code,
             b.batch_no,
             NULL as initial_quantity,
@@ -941,61 +982,19 @@ def revert_transactions():
 
                     # Handle different inventory operation types
                     if inv_transaction['transaction_type'] == 'CUT_ROLL':
-                        # Validate: Check if any cut pieces were already dispatched
-                        cursor.execute("""
-                            SELECT COUNT(*) as dispatched_count
-                            FROM hdpe_cut_pieces
-                            WHERE transaction_id = %s
-                            AND status = 'DISPATCHED'
-                        """, (clean_id,))
-
-                        dispatched_check = cursor.fetchone()
-                        if dispatched_check['dispatched_count'] > 0:
+                        # Use the proper revert function from inventory_operations
+                        try:
+                            inv_ops = InventoryOperations(cursor, user_id)
+                            inv_ops.revert_cut_roll(clean_id)
+                        except Exception as e:
+                            import traceback
+                            error_trace = traceback.format_exc()
+                            print(f"Error reverting CUT_ROLL: {error_trace}")
                             failed_transactions.append({
                                 'id': transaction_id,
-                                'error': f"Cannot revert: {dispatched_check['dispatched_count']} cut pieces have already been dispatched"
+                                'error': f"Error reverting cut roll: {str(e)}"
                             })
                             continue
-
-                        # Count pieces created by THIS specific transaction
-                        cursor.execute("""
-                            SELECT COUNT(*) as piece_count
-                            FROM hdpe_cut_pieces
-                            WHERE transaction_id = %s
-                            AND status = 'IN_STOCK'
-                        """, (clean_id,))
-
-                        piece_count = cursor.fetchone()['piece_count']
-
-                        # Soft delete cut pieces created by THIS transaction
-                        cursor.execute("""
-                            UPDATE hdpe_cut_pieces
-                            SET deleted_at = NOW(),
-                                deleted_by_transaction_id = %s,
-                                status = 'SOLD_OUT',
-                                updated_at = NOW()
-                            WHERE created_by_transaction_id = %s
-                            AND deleted_at IS NULL
-                        """, (clean_id, clean_id))
-
-                        # Reduce CUT_ROLL stock quantity
-                        if inv_transaction['to_stock_id']:
-                            cursor.execute("""
-                                UPDATE inventory_stock
-                                SET quantity = quantity - %s,
-                                    updated_at = NOW()
-                                WHERE id = %s
-                            """, (piece_count, inv_transaction['to_stock_id']))
-
-                        # Restore the original FULL_ROLL quantity (+1)
-                        if inv_transaction['from_stock_id']:
-                            cursor.execute("""
-                                UPDATE inventory_stock
-                                SET quantity = quantity + 1,
-                                    status = 'IN_STOCK',
-                                    updated_at = NOW()
-                                WHERE id = %s
-                            """, (inv_transaction['from_stock_id'],))
 
                     elif inv_transaction['transaction_type'] == 'SPLIT_BUNDLE':
                         # Validate: Check if spare pieces were already dispatched
@@ -1096,112 +1095,17 @@ def revert_transactions():
 
 
                     elif inv_transaction['transaction_type'] == 'COMBINE_SPARES':
+                        # Use the proper revert function from inventory_operations
                         try:
-                            # Validate: Check if combined bundle was already dispatched
-                            if inv_transaction['to_stock_id']:
-                                cursor.execute("""
-                                    SELECT status, quantity, created_at, deleted_at FROM inventory_stock WHERE id = %s
-                                """, (inv_transaction['to_stock_id'],))
-                                bundle_status = cursor.fetchone()
-
-                                if bundle_status and bundle_status['status'] == 'DISPATCHED':
-                                    failed_transactions.append({
-                                        'id': transaction_id,
-                                        'error': 'Cannot revert: Combined bundle has already been dispatched'
-                                    })
-                                    continue
-
-                                # Check if this bundle stock was created by this transaction or already existed
-                                # If created_at matches transaction created_at, it was newly created
-                                # If created_at is earlier, it was an existing stock that was updated
-                                if bundle_status:
-                                    bundle_created_at = bundle_status.get('created_at')
-                                    transaction_created_at = inv_transaction.get('created_at')
-
-                                    # Compare timestamps (within 1 second tolerance)
-                                    import datetime
-                                    is_new_stock = False
-                                    if bundle_created_at and transaction_created_at:
-                                        time_diff = abs((bundle_created_at - transaction_created_at).total_seconds())
-                                        is_new_stock = time_diff < 1
-
-                                    if is_new_stock:
-                                        # This bundle stock was created by this transaction - delete it
-                                        cursor.execute("""
-                                            UPDATE inventory_stock
-                                            SET deleted_at = NOW(), status = 'SOLD_OUT'
-                                            WHERE id = %s
-                                        """, (inv_transaction['to_stock_id'],))
-                                    else:
-                                        # This bundle stock existed before - decrement quantity by what was added
-                                        # Get the transaction details to know how many bundles were added
-                                        bundles_added = inv_transaction.get('to_quantity')
-                                        if bundles_added is not None and bundles_added > 0:
-                                            current_quantity = bundle_status.get('quantity', 0)
-                                            new_quantity = max(0, current_quantity - bundles_added)
-                                            cursor.execute("""
-                                                UPDATE inventory_stock
-                                                SET quantity = %s, updated_at = NOW()
-                                                WHERE id = %s
-                                            """, (new_quantity, inv_transaction['to_stock_id']))
-
-                            # Restore the spare pieces that were combined using from_stock_id
-                            if inv_transaction.get('from_stock_id'):
-                                # Restore spare stock record if it was deleted (only if we have batch_id and created_at)
-                                if inv_transaction.get('from_batch_id') and inv_transaction.get('created_at'):
-                                    cursor.execute("""
-                                        UPDATE inventory_stock
-                                        SET deleted_at = NULL,
-                                            status = 'IN_STOCK',
-                                            updated_at = NOW()
-                                        WHERE batch_id = %s
-                                        AND stock_type = 'SPARE'
-                                        AND deleted_at >= %s - INTERVAL '1 minute'
-                                        AND deleted_at <= %s + INTERVAL '1 minute'
-                                    """, (inv_transaction['from_batch_id'], inv_transaction['created_at'], inv_transaction['created_at']))
-
-                                # Restore individual spare pieces that were marked as SOLD_OUT by THIS transaction
-                                # These are the pieces that were combined (their deleted_by should match transaction)
-                                cursor.execute("""
-                                    UPDATE sprinkler_spare_pieces
-                                    SET status = 'IN_STOCK',
-                                        deleted_at = NULL,
-                                        deleted_by_transaction_id = NULL,
-                                        updated_at = NOW()
-                                    WHERE deleted_by_transaction_id = %s
-                                """, (clean_id,))
-
-                                # Soft delete remainder pieces created by THIS transaction (if any)
-                                cursor.execute("""
-                                    UPDATE sprinkler_spare_pieces
-                                    SET deleted_at = NOW(),
-                                        deleted_by_transaction_id = %s,
-                                        status = 'SOLD_OUT'
-                                    WHERE created_by_transaction_id = %s
-                                    AND notes LIKE 'Remainder from combining%%'
-                                    AND deleted_at IS NULL
-                                """, (clean_id, clean_id))
-
-                                # Update SPARE stock quantity to match actual piece count using COUNT
-                                # (triggers use COUNT(*) for SPARE stock, not SUM(piece_count))
-                                cursor.execute("""
-                                    UPDATE inventory_stock
-                                    SET quantity = (
-                                        SELECT COUNT(*)
-                                        FROM sprinkler_spare_pieces
-                                        WHERE stock_id = %s
-                                        AND deleted_at IS NULL
-                                    )
-                                    WHERE id = %s
-                                """, (inv_transaction['from_stock_id'], inv_transaction['from_stock_id']))
-
+                            inv_ops = InventoryOperations(cursor, user_id)
+                            inv_ops.revert_combine_spares(clean_id)
                         except Exception as e:
                             import traceback
                             error_trace = traceback.format_exc()
-                            print(f"Error in COMBINE_SPARES revert: {error_trace}")
+                            print(f"Error reverting COMBINE_SPARES: {error_trace}")
                             failed_transactions.append({
                                 'id': transaction_id,
-                                'error': str(e)
+                                'error': f"Error reverting combine spares: {str(e)}"
                             })
                             continue
 
