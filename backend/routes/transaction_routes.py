@@ -341,7 +341,7 @@ def get_transactions():
         LEFT JOIN product_types pt ON pv.product_type_id = pt.id
         LEFT JOIN brands br ON pv.brand_id = br.id
         LEFT JOIN units u_unit ON pt.unit_id = u_unit.id
-        WHERE it.transaction_type IN ('CUT_ROLL', 'SPLIT_BUNDLE', 'COMBINE_SPARES', 'RETURN')
+        WHERE it.transaction_type IN ('CUT_ROLL', 'SPLIT_BUNDLE', 'COMBINE_SPARES')
         AND it.reverted_at IS NULL""" + date_filter_inv + """
 
         UNION ALL
@@ -803,16 +803,77 @@ def revert_transactions():
                         quantity = item['quantity']
                         item_type = item['item_type']
 
-                        # Restore inventory_stock quantity
-                        cursor.execute("""
-                            UPDATE inventory_stock
-                            SET quantity = quantity + %s,
-                                status = 'IN_STOCK',
-                                updated_at = NOW()
-                            WHERE id = %s
-                        """, (quantity, stock_id))
+                        # Handle item-type specific reversals FIRST (before updating stock quantity)
+                        # This is important for SPARE_PIECES where the validation trigger checks piece count
+                        if item_type == 'CUT_PIECE' and item.get('cut_piece_id'):
+                            # Restore cut piece status
+                            cursor.execute("""
+                                UPDATE hdpe_cut_pieces
+                                SET status = 'IN_STOCK', dispatch_id = NULL, updated_at = NOW()
+                                WHERE id = %s
+                            """, (item['cut_piece_id'],))
 
-                        # Get the batch_id from this stock and restore it if deleted
+                            # For CUT_PIECE, the auto_update_stock_from_hdpe_pieces trigger
+                            # automatically updates stock quantity, so we only update status
+                            cursor.execute("""
+                                UPDATE inventory_stock
+                                SET status = 'IN_STOCK',
+                                    updated_at = NOW()
+                                WHERE id = %s
+                            """, (stock_id,))
+                            skip_stock_update = True
+
+                        elif item_type == 'CUT_ROLL':
+                            # Restore cut roll pieces (multiple pieces may have been dispatched)
+                            cursor.execute("""
+                                UPDATE hdpe_cut_pieces
+                                SET status = 'IN_STOCK', dispatch_id = NULL, updated_at = NOW()
+                                WHERE stock_id = %s AND dispatch_id = %s
+                            """, (stock_id, clean_id))
+
+                            # For CUT_ROLL, the auto_update_stock_from_hdpe_pieces trigger
+                            # automatically updates stock quantity, so we only update status
+                            cursor.execute("""
+                                UPDATE inventory_stock
+                                SET status = 'IN_STOCK',
+                                    updated_at = NOW()
+                                WHERE id = %s
+                            """, (stock_id,))
+                            skip_stock_update = True
+
+                        elif item_type == 'SPARE_PIECES':
+                            # Restore spare pieces BEFORE updating stock quantity
+                            if item.get('spare_piece_ids'):
+                                # Mark dispatched spare pieces as IN_STOCK and clear dispatch_id
+                                cursor.execute("""
+                                    UPDATE sprinkler_spare_pieces
+                                    SET status = 'IN_STOCK', dispatch_id = NULL, updated_at = NOW()
+                                    WHERE dispatch_id = %s
+                                """, (clean_id,))
+
+                            # For SPARE_PIECES, the auto_update_stock_from_sprinkler_pieces trigger
+                            # automatically updates stock quantity, so we only update status
+                            cursor.execute("""
+                                UPDATE inventory_stock
+                                SET status = 'IN_STOCK',
+                                    updated_at = NOW()
+                                WHERE id = %s
+                            """, (stock_id,))
+                            skip_stock_update = True
+
+                        # Now restore inventory_stock quantity for non-piece-based types (BUNDLE, FULL_ROLL)
+                        # Skip for piece-based types (CUT_PIECE, CUT_ROLL, SPARE_PIECES) as triggers handle them
+                        if not locals().get('skip_stock_update', False):
+                            cursor.execute("""
+                                UPDATE inventory_stock
+                                SET quantity = quantity + %s,
+                                    status = 'IN_STOCK',
+                                    updated_at = NOW()
+                                WHERE id = %s
+                            """, (quantity, stock_id))
+
+                        # Reset the flag for next item
+                        skip_stock_update = False                        # Get the batch_id from this stock and restore it if deleted
                         cursor.execute("""
                             SELECT batch_id FROM inventory_stock WHERE id = %s
                         """, (stock_id,))
@@ -824,105 +885,6 @@ def revert_transactions():
                                 SET deleted_at = NULL, updated_at = NOW()
                                 WHERE id = %s AND deleted_at IS NOT NULL
                             """, (stock_row['batch_id'],))
-
-                        # Handle item-type specific reversals and create inventory_transaction records
-                        if item_type == 'CUT_PIECE' and item.get('cut_piece_id'):
-                            # Restore cut piece status
-                            cursor.execute("""
-                                UPDATE hdpe_cut_pieces
-                                SET status = 'IN_STOCK', dispatch_id = NULL, updated_at = NOW()
-                                WHERE id = %s
-                            """, (item['cut_piece_id'],))
-
-                            # Create inventory_transaction for the return
-                            notes = f"Reverted dispatch {dispatch['dispatch_number']}: Cut piece returned to stock ({item.get('length_meters', 0)}m)"
-                            cursor.execute("""
-                                INSERT INTO inventory_transactions (
-                                    transaction_type, to_stock_id, to_quantity, to_pieces,
-                                    dispatch_id, notes, created_by
-                                )
-                                VALUES ('RETURN', %s, %s, %s, %s, %s, %s)
-                            """, (stock_id, quantity, 1, clean_id, notes, user_id))
-
-                        elif item_type == 'SPARE_PIECES':
-                            # Restore spare pieces
-                            if item.get('spare_piece_ids'):
-                                # Mark dispatched spare pieces as IN_STOCK and clear dispatch_id
-                                cursor.execute("""
-                                    UPDATE sprinkler_spare_pieces
-                                    SET status = 'IN_STOCK', dispatch_id = NULL, updated_at = NOW()
-                                    WHERE dispatch_id = %s
-                                """, (clean_id,))
-
-                                # Also restore piece_count to original spare records if they were partially dispatched
-                                # This is complex - for now, keep the dispatched records but mark them as available
-
-                            # Create inventory_transaction for the return
-                            piece_count = item.get('piece_count', 0)
-                            notes = f"Reverted dispatch {dispatch['dispatch_number']}: {piece_count} spare pieces returned to stock"
-                            cursor.execute("""
-                                INSERT INTO inventory_transactions (
-                                    transaction_type, to_stock_id, to_quantity, to_pieces,
-                                    dispatch_id, notes, created_by
-                                )
-                                VALUES ('RETURN', %s, %s, %s, %s, %s, %s)
-                            """, (stock_id, quantity, piece_count, clean_id, notes, user_id))
-
-                        elif item_type == 'BUNDLE':
-                            # Create inventory_transaction for bundle return
-                            bundle_size = item.get('bundle_size', 0)
-                            piece_length = item.get('piece_length_meters', 0)
-                            notes = f"Reverted dispatch {dispatch['dispatch_number']}: Bundle returned to stock ({bundle_size}x{piece_length}m)"
-                            cursor.execute("""
-                                INSERT INTO inventory_transactions (
-                                    transaction_type, to_stock_id, to_quantity, to_pieces,
-                                    dispatch_id, notes, created_by
-                                )
-                                VALUES ('RETURN', %s, %s, %s, %s, %s, %s)
-                            """, (stock_id, quantity, bundle_size, clean_id, notes, user_id))
-
-                        elif item_type == 'CUT_ROLL':
-                            # Create inventory_transaction for cut roll return
-                            length_meters = item.get('length_meters', 0)
-                            notes = f"Reverted dispatch {dispatch['dispatch_number']}: Cut roll returned to stock ({length_meters}m)"
-
-                            # Restore individual cut pieces status
-                            cursor.execute("""
-                                UPDATE hdpe_cut_pieces
-                                SET status = 'IN_STOCK', dispatch_id = NULL, updated_at = NOW()
-                                WHERE stock_id = %s AND dispatch_id = %s
-                            """, (stock_id, clean_id))
-
-                            cursor.execute("""
-                                INSERT INTO inventory_transactions (
-                                    transaction_type, to_stock_id, to_quantity,
-                                    dispatch_id, notes, created_by
-                                )
-                                VALUES ('RETURN', %s, %s, %s, %s, %s)
-                            """, (stock_id, quantity, clean_id, notes, user_id))
-
-                        elif item_type == 'FULL_ROLL':
-                            # Create inventory_transaction for full roll return
-                            length_meters = item.get('length_meters', 0)
-                            notes = f"Reverted dispatch {dispatch['dispatch_number']}: Full roll returned to stock ({length_meters}m)"
-                            cursor.execute("""
-                                INSERT INTO inventory_transactions (
-                                    transaction_type, to_stock_id, to_quantity,
-                                    dispatch_id, notes, created_by
-                                )
-                                VALUES ('RETURN', %s, %s, %s, %s, %s)
-                            """, (stock_id, quantity, clean_id, notes, user_id))
-
-                        else:
-                            # Generic return for unknown item types
-                            notes = f"Reverted dispatch {dispatch['dispatch_number']}: {item_type} returned to stock"
-                            cursor.execute("""
-                                INSERT INTO inventory_transactions (
-                                    transaction_type, to_stock_id, to_quantity,
-                                    dispatch_id, notes, created_by
-                                )
-                                VALUES ('RETURN', %s, %s, %s, %s, %s)
-                            """, (stock_id, quantity, clean_id, notes, user_id))
 
                     # Mark the dispatch as reverted (NOT deleted - keep it visible in activity feed)
                     cursor.execute("""
