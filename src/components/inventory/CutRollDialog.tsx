@@ -43,8 +43,10 @@ export const CutRollDialog = ({
   const [cutLength, setCutLength] = useState<string>('');
   const [loading, setLoading] = useState(false);
 
-  // For FULL_ROLL, we cut from a single roll's length, not total
-  const availableLength = stockType === 'FULL_ROLL' ? (lengthPerUnit || 0) : totalAvailable;
+  // For FULL_ROLL, we cut from a single roll's length
+  // For CUT_ROLL, when cutting a specific piece, use lengthPerUnit (individual piece length)
+  // not totalAvailable (sum of all grouped pieces)
+  const availableLength = lengthPerUnit || 0;
 
   const totalCutLength = parseFloat(cutLength) || 0;
 
@@ -109,7 +111,7 @@ export const CutRollDialog = ({
           <DialogDescription>
             {stockType === 'FULL_ROLL'
               ? `Cutting 1 roll from ${quantity} available (${lengthPerUnit}m per roll)`
-              : `Cut the existing cut pieces further (${totalAvailable}m total available)`
+              : `Cut 1 piece from ${quantity} available (${lengthPerUnit}m per piece)`
             }
           </DialogDescription>
         </DialogHeader>
@@ -118,7 +120,7 @@ export const CutRollDialog = ({
           {/* Available Length */}
           <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
             <span className="text-sm font-medium">
-              {stockType === 'FULL_ROLL' ? 'Roll Length:' : 'Available Length:'}
+              {stockType === 'FULL_ROLL' ? 'Roll Length:' : 'Piece Length:'}
             </span>
             <Badge variant="outline" className="text-base">
               {availableLength}m
