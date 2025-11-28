@@ -758,6 +758,8 @@ class InventoryOperations:
                 UPDATE sprinkler_spare_pieces
                 SET
                     status = 'IN_STOCK',
+                    deleted_at = NULL,
+                    deleted_by_transaction_id = NULL,
                     updated_at = NOW()
                 WHERE id = ANY(%s::uuid[])
                   AND status = 'SOLD_OUT'
