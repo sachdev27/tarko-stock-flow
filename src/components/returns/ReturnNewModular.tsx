@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
-import { Card } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
-import { Save, Loader2 } from 'lucide-react';
+import { Save, Loader2, PackageX } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import api from '@/lib/api';
 import { ReturnDetailsSection } from './ReturnDetailsSection';
@@ -289,99 +289,112 @@ const ReturnNewModular = () => {
   }, [customerId, returnDate, notes, items]); // Dependencies for handleSubmit
 
   return (
-    <div className="space-y-6 p-6">
-      {/* Header */}
-      <div>
-        <h2 className="text-2xl font-bold mb-4">Create New Return</h2>
-
-        {/* Keyboard Shortcuts Help */}
-        <Card className="p-3 bg-muted/50">
-          <div className="grid grid-cols-2 md:grid-cols-6 gap-2 text-xs text-muted-foreground">
-            <div>
-              <kbd className="px-2 py-1 bg-background rounded text-xs">Ctrl+H</kbd> Customer
-            </div>
-            <div>
-              <kbd className="px-2 py-1 bg-background rounded text-xs">Ctrl+P</kbd> Product Type
-            </div>
-            <div>
-              <kbd className="px-2 py-1 bg-background rounded text-xs">Ctrl+B</kbd> Brand
-            </div>
-            <div>
-              <kbd className="px-2 py-1 bg-background rounded text-xs">Ctrl+Shift+P</kbd> Parameters
-            </div>
-            <div>
-              <kbd className="px-2 py-1 bg-background rounded text-xs">Ctrl+Del</kbd> Clear Cart
-            </div>
-            <div>
-              <kbd className="px-2 py-1 bg-background rounded text-xs">Shift+Enter</kbd> Save
-            </div>
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <PackageX className="h-6 w-6" />
+            New Return
           </div>
+        </CardTitle>
+      </CardHeader>
+
+      <CardContent className="space-y-6">
+        {/* Keyboard Shortcuts Help */}
+        <Card className="bg-muted/30">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Keyboard Shortcuts</span>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+              <div className="flex items-center gap-2">
+                <kbd className="px-2 py-1 bg-background border rounded text-xs font-mono">Ctrl+H</kbd>
+                <span className="text-xs text-muted-foreground">Customer</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <kbd className="px-2 py-1 bg-background border rounded text-xs font-mono">Ctrl+P</kbd>
+                <span className="text-xs text-muted-foreground">Product</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <kbd className="px-2 py-1 bg-background border rounded text-xs font-mono">Ctrl+B</kbd>
+                <span className="text-xs text-muted-foreground">Brand</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <kbd className="px-2 py-1 bg-background border rounded text-xs font-mono">Ctrl+⇧+P</kbd>
+                <span className="text-xs text-muted-foreground">Parameters</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <kbd className="px-2 py-1 bg-background border rounded text-xs font-mono">Ctrl+Del</kbd>
+                <span className="text-xs text-muted-foreground">Clear</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <kbd className="px-2 py-1 bg-background border rounded text-xs font-mono">⇧+Enter</kbd>
+                <span className="text-xs text-muted-foreground">Save</span>
+              </div>
+            </div>
+          </CardContent>
         </Card>
-      </div>
 
-      <Separator />
-
-      {/* Return Details Section - Horizontal */}
-      <ReturnDetailsSection
-        customerId={customerId}
-        onCustomerChange={setCustomerId}
-        returnDate={returnDate}
-        onReturnDateChange={setReturnDate}
-        notes={notes}
-        onNotesChange={setNotes}
-        customers={customers}
-        onCreateCustomer={handleCreateCustomer}
-        customerRef={customerRef}
-      />
-
-      <Separator />
-
-      {/* Product Selection and Cart - Side by Side */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Product Selection - Left (2/3) */}
-        <div className="lg:col-span-2">
-          <Card className="p-6">
-            <h3 className="text-lg font-semibold mb-4">Add Products to Return</h3>
-            <ProductSelectionSection
-              productTypes={productTypes}
-              brands={brands}
-              onAddItem={handleAddItem}
-              productTypeRef={productTypeRef}
-              productSearchRef={productSearchRef}
-            />
-          </Card>
-        </div>
-
-        {/* Cart - Right (1/3) */}
-        <div className="lg:col-span-1 space-y-4">
-          <ReturnCartSection
-            items={items}
-            onRemoveItem={handleRemoveItem}
-            onClearCart={handleClearCart}
+        {/* Return Details Section */}
+        <div>
+          <h3 className="text-sm font-medium mb-4">Return Details</h3>
+          <ReturnDetailsSection
+            customerId={customerId}
+            onCustomerChange={setCustomerId}
+            returnDate={returnDate}
+            onReturnDateChange={setReturnDate}
+            notes={notes}
+            onNotesChange={setNotes}
+            customers={customers}
+            onCreateCustomer={handleCreateCustomer}
+            customerRef={customerRef}
           />
-
-          {/* Create Return Button */}
-          <Button
-            onClick={handleSubmit}
-            disabled={submitting || items.length === 0}
-            size="lg"
-            className="w-full"
-          >
-            {submitting ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Creating...
-              </>
-            ) : (
-              <>
-                <Save className="mr-2 h-4 w-4" />
-                Create Return
-              </>
-            )}
-          </Button>
         </div>
-      </div>
-    </div>
+
+        {/* Product Selection Section */}
+        <div>
+          <h3 className="text-sm font-medium mb-4">Products</h3>
+          <ProductSelectionSection
+            productTypes={productTypes}
+            brands={brands}
+            onAddItem={handleAddItem}
+            productTypeRef={productTypeRef}
+            productSearchRef={productSearchRef}
+          />
+        </div>
+
+        {/* Cart and Actions */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2">
+            <ReturnCartSection
+              items={items}
+              onRemoveItem={handleRemoveItem}
+              onClearCart={handleClearCart}
+            />
+          </div>
+          <div className="lg:col-span-1">
+            <Button
+              onClick={handleSubmit}
+              disabled={submitting || items.length === 0}
+              size="lg"
+              className="w-full"
+            >
+              {submitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Creating Return...
+                </>
+              ) : (
+                <>
+                  <Save className="mr-2 h-4 w-4" />
+                  Create Return
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 };
 

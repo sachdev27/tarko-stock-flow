@@ -6,9 +6,10 @@ import { Package, TrendingUp, TrendingDown, Activity } from 'lucide-react';
 
 interface TransactionSummaryCardsProps {
   transactions: TransactionRecord[];
+  onProductionClick?: () => void;
 }
 
-export function TransactionSummaryCards({ transactions }: TransactionSummaryCardsProps) {
+export function TransactionSummaryCards({ transactions, onProductionClick }: TransactionSummaryCardsProps) {
   const productionTransactions = transactions.filter(
     (t) => t.transaction_type === 'PRODUCTION'
   );
@@ -38,7 +39,11 @@ export function TransactionSummaryCards({ transactions }: TransactionSummaryCard
       {cards.map((card, idx) => {
         const Icon = card.icon;
         return (
-          <Card key={idx}>
+          <Card 
+            key={idx} 
+            className={onProductionClick ? "cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors" : ""}
+            onClick={onProductionClick}
+          >
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">{card.title}</CardTitle>
               <div className={`p-2 rounded-lg ${card.bgColor}`}>

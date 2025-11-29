@@ -185,7 +185,13 @@ export default function TransactionsNew() {
         </div>
 
         {/* Summary Cards */}
-        <TransactionSummaryCards transactions={filteredTransactions} />
+        <TransactionSummaryCards 
+          transactions={filteredTransactions} 
+          onProductionClick={() => {
+            updateFilter('typeFilter', 'PRODUCTION');
+            setShowFilters(true);
+          }}
+        />
 
         {/* Main Content Card */}
         <Card>

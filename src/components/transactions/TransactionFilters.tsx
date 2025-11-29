@@ -108,6 +108,7 @@ export function TransactionFilters({
                   <SelectItem value="CUT_ROLL">Cut Roll</SelectItem>
                   <SelectItem value="SPLIT_BUNDLE">Split Bundle</SelectItem>
                   <SelectItem value="COMBINE_SPARES">Combine Spares</SelectItem>
+                  <SelectItem value="SCRAP">Scrap</SelectItem>
                 </SelectContent>
               </Select>
             </div>

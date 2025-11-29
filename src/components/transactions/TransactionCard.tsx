@@ -133,7 +133,9 @@ export function TransactionCard({
           <div>
             <span className="text-muted-foreground">Weight:</span>
             <span className="ml-2 font-medium">
-              {formatWeight(transaction.total_weight)}
+              {['CUT_ROLL', 'SPLIT_BUNDLE', 'COMBINE_SPARES', 'DISPATCH', 'RETURN'].includes(transaction.transaction_type)
+                ? '-'
+                : formatWeight(transaction.total_weight)}
             </span>
           </div>
           <div>

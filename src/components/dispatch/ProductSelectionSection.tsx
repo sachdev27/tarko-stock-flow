@@ -1153,7 +1153,7 @@ export const ProductSelectionSection = ({
             <h4 className="font-semibold flex items-center justify-between">
               <span className="flex items-center gap-2">
                 <Package className="h-4 w-4" />
-                Cart ({selectedRolls.length} {selectedRolls.length === 1 ? 'item' : 'items'})
+                Cart
               </span>
               {selectedRolls.length > 0 && (
                 <Button

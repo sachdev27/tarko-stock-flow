@@ -25,11 +25,11 @@ const Return = () => {
           <TabsList className="grid w-full max-w-md grid-cols-2">
             <TabsTrigger value="new" className="flex items-center gap-2">
               <PackageX className="h-4 w-4" />
-              New Return
+              <span>New Return</span>
             </TabsTrigger>
             <TabsTrigger value="history" className="flex items-center gap-2">
               <ListIcon className="h-4 w-4" />
-              Return History
+              <span>History</span>
             </TabsTrigger>
           </TabsList>
 

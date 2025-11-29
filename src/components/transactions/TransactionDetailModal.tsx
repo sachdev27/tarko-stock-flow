@@ -1038,36 +1038,40 @@ export function TransactionDetailModal({
                             )}
                           </div>
                           {/* Calculate total meters and weight for this entry */}
-                          {entry.stock_type !== 'CUT_ROLL' && (
-                            <div className="mt-3 pt-3 border-t space-y-2">
-                              <div className="text-sm font-medium">
+                          <div className="mt-3 pt-3 border-t space-y-2">
+                            <div className="text-sm font-medium">
+                              {entry.stock_type === 'FULL_ROLL' ? (
+                                <>Total: {(entry.quantity * (entry.length_per_unit || 0)).toFixed(2)}m</>
+                              ) : entry.stock_type === 'BUNDLE' ? (
+                                <>Total: {(entry.quantity * (entry.pieces_per_bundle || 0) * (entry.piece_length_meters || 0)).toFixed(2)}m ({entry.quantity * (entry.pieces_per_bundle || 0)} pieces)</>
+                              ) : (entry.stock_type === 'SPARE_PIECES' || entry.stock_type === 'SPARE') ? (
+                                <>Total: {((entry.spare_piece_count || entry.quantity) * (entry.piece_length_meters || 0)).toFixed(2)}m ({entry.spare_piece_count || entry.quantity} piece{(entry.spare_piece_count || entry.quantity) !== 1 ? 's' : ''})</>
+                              ) : entry.stock_type === 'CUT_ROLL' && entry.cut_piece_lengths ? (
+                                <>Total: {entry.cut_piece_lengths.reduce((sum, len) => sum + len, 0).toFixed(2)}m ({entry.cut_piece_lengths.length} cut piece{entry.cut_piece_lengths.length !== 1 ? 's' : ''})</>
+                              ) : null}
+                            </div>
+                            {transaction.weight_per_meter && typeof transaction.weight_per_meter === 'number' && (
+                              <div className="text-sm text-muted-foreground">
                                 {entry.stock_type === 'FULL_ROLL' ? (
-                                  <>Total: {(entry.quantity * (entry.length_per_unit || 0)).toFixed(2)}m</>
+                                  <>Weight: {(entry.quantity * (entry.length_per_unit || 0) * transaction.weight_per_meter).toFixed(2)} kg
+                                    <span className="text-xs ml-1">({entry.quantity} rolls × {(entry.length_per_unit || 0).toFixed(2)}m × {transaction.weight_per_meter.toFixed(3)} kg/m)</span>
+                                  </>
                                 ) : entry.stock_type === 'BUNDLE' ? (
-                                  <>Total: {(entry.quantity * (entry.pieces_per_bundle || 0) * (entry.piece_length_meters || 0)).toFixed(2)}m ({entry.quantity * (entry.pieces_per_bundle || 0)} pieces)</>
+                                  <>Weight: {(entry.quantity * (entry.pieces_per_bundle || 0) * (entry.piece_length_meters || 0) * transaction.weight_per_meter).toFixed(2)} kg
+                                    <span className="text-xs ml-1">({entry.quantity * (entry.pieces_per_bundle || 0)} pieces × {(entry.piece_length_meters || 0).toFixed(2)}m × {transaction.weight_per_meter.toFixed(3)} kg/m)</span>
+                                  </>
                                 ) : (entry.stock_type === 'SPARE_PIECES' || entry.stock_type === 'SPARE') ? (
-                                  <>Total: {((entry.spare_piece_count || entry.quantity) * (entry.piece_length_meters || 0)).toFixed(2)}m ({entry.spare_piece_count || entry.quantity} piece{(entry.spare_piece_count || entry.quantity) !== 1 ? 's' : ''})</>
+                                  <>Weight: {((entry.spare_piece_count || entry.quantity) * (entry.piece_length_meters || 0) * transaction.weight_per_meter).toFixed(2)} kg
+                                    <span className="text-xs ml-1">({entry.spare_piece_count || entry.quantity} pieces × {(entry.piece_length_meters || 0).toFixed(2)}m × {transaction.weight_per_meter.toFixed(3)} kg/m)</span>
+                                  </>
+                                ) : entry.stock_type === 'CUT_ROLL' && entry.cut_piece_lengths ? (
+                                  <>Weight: {(entry.cut_piece_lengths.reduce((sum, len) => sum + len, 0) * transaction.weight_per_meter).toFixed(2)} kg
+                                    <span className="text-xs ml-1">({entry.cut_piece_lengths.length} cut pieces × {entry.cut_piece_lengths.reduce((sum, len) => sum + len, 0).toFixed(2)}m total × {transaction.weight_per_meter.toFixed(3)} kg/m)</span>
+                                  </>
                                 ) : null}
                               </div>
-                              {transaction.weight_per_meter && typeof transaction.weight_per_meter === 'number' && (
-                                <div className="text-sm text-muted-foreground">
-                                  {entry.stock_type === 'FULL_ROLL' ? (
-                                    <>Weight: {(entry.quantity * (entry.length_per_unit || 0) * transaction.weight_per_meter).toFixed(2)} kg
-                                      <span className="text-xs ml-1">({entry.quantity} rolls × {(entry.length_per_unit || 0).toFixed(2)}m × {transaction.weight_per_meter.toFixed(3)} kg/m)</span>
-                                    </>
-                                  ) : entry.stock_type === 'BUNDLE' ? (
-                                    <>Weight: {(entry.quantity * (entry.pieces_per_bundle || 0) * (entry.piece_length_meters || 0) * transaction.weight_per_meter).toFixed(2)} kg
-                                      <span className="text-xs ml-1">({entry.quantity * (entry.pieces_per_bundle || 0)} pieces × {(entry.piece_length_meters || 0).toFixed(2)}m × {transaction.weight_per_meter.toFixed(3)} kg/m)</span>
-                                    </>
-                                  ) : (entry.stock_type === 'SPARE_PIECES' || entry.stock_type === 'SPARE') ? (
-                                    <>Weight: {((entry.spare_piece_count || entry.quantity) * (entry.piece_length_meters || 0) * transaction.weight_per_meter).toFixed(2)} kg
-                                      <span className="text-xs ml-1">({entry.spare_piece_count || entry.quantity} pieces × {(entry.piece_length_meters || 0).toFixed(2)}m × {transaction.weight_per_meter.toFixed(3)} kg/m)</span>
-                                    </>
-                                  ) : null}
-                                </div>
-                              )}
-                            </div>
-                          )}
+                            )}
+                          </div>
                         </div>
                       ))}
                     </div>
