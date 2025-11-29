@@ -482,6 +482,64 @@ const InventoryNew = () => {
 
   const isAdmin = user?.role === 'admin';
 
+  // Handle stat card clicks to apply filters
+  const handleStatCardClick = (filterType: 'hdpe' | 'sprinkler' | 'full_roll' | 'cut_roll' | 'bundle' | 'spare') => {
+    // Find product type IDs
+    const hdpeType = productTypes.find(pt => pt.name.toLowerCase().includes('hdpe'));
+    const sprinklerType = productTypes.find(pt => pt.name.toLowerCase().includes('sprinkler'));
+
+    switch (filterType) {
+      case 'hdpe':
+        // Filter by HDPE product type only
+        if (hdpeType) {
+          setSelectedProduct(hdpeType.id);
+          setSelectedStockType('all');
+          toast.success('Filtered by HDPE products');
+        }
+        break;
+      case 'sprinkler':
+        // Filter by Sprinkler product type only
+        if (sprinklerType) {
+          setSelectedProduct(sprinklerType.id);
+          setSelectedStockType('all');
+          toast.success('Filtered by Sprinkler products');
+        }
+        break;
+      case 'full_roll':
+        // Filter by HDPE + Full Rolls
+        if (hdpeType) {
+          setSelectedProduct(hdpeType.id);
+          setSelectedStockType('FULL_ROLL');
+          toast.success('Filtered by HDPE Full Rolls');
+        }
+        break;
+      case 'cut_roll':
+        // Filter by HDPE + Cut Rolls
+        if (hdpeType) {
+          setSelectedProduct(hdpeType.id);
+          setSelectedStockType('CUT_ROLL');
+          toast.success('Filtered by HDPE Cut Rolls');
+        }
+        break;
+      case 'bundle':
+        // Filter by Sprinkler + Bundles
+        if (sprinklerType) {
+          setSelectedProduct(sprinklerType.id);
+          setSelectedStockType('BUNDLE');
+          toast.success('Filtered by Sprinkler Bundles');
+        }
+        break;
+      case 'spare':
+        // Filter by Sprinkler + Spares
+        if (sprinklerType) {
+          setSelectedProduct(sprinklerType.id);
+          setSelectedStockType('SPARE');
+          toast.success('Filtered by Sprinkler Spares');
+        }
+        break;
+    }
+  };
+
   return (
     <Layout>
       <div className="space-y-6">
@@ -527,7 +585,7 @@ const InventoryNew = () => {
         </div>
 
         {/* Summary Stats */}
-        <StockSummary stats={stats} />
+        <StockSummary stats={stats} onCardClick={handleStatCardClick} />
 
         {/* Filters */}
         <Card>
