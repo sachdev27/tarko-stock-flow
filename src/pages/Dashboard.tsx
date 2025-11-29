@@ -118,7 +118,7 @@ const Dashboard = () => {
       description: 'Last 7 days',
       color: 'text-purple-600 dark:text-purple-400',
       bgColor: 'bg-purple-50 dark:bg-purple-950/30',
-      onClick: () => navigate('/activity'),
+      onClick: () => navigate('/transactions'),
     },
   ];
 

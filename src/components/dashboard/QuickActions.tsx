@@ -34,7 +34,7 @@ export const QuickActions = () => {
     {
       label: 'View Activity',
       icon: Activity,
-      path: '/activity',
+      path: '/transactions',
       gradient: 'from-indigo-600 to-indigo-500 hover:from-indigo-700 hover:to-indigo-600',
     },
   ];
