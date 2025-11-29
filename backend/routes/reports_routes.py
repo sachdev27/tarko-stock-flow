@@ -19,16 +19,15 @@ def get_top_selling_products():
                 br.name as brand,
                 pv.parameters,
                 pt.roll_configuration,
-                SUM(ABS(t.quantity_change)) as total_sold,
-                COUNT(t.id) as sales_count
-            FROM transactions t
-            JOIN batches b ON t.batch_id = b.id
-            JOIN product_variants pv ON b.product_variant_id = pv.id
+                SUM(di.quantity) as total_sold,
+                COUNT(d.id) as sales_count
+            FROM dispatches d
+            JOIN dispatch_items di ON d.id = di.dispatch_id
+            JOIN product_variants pv ON di.product_variant_id = pv.id
             JOIN product_types pt ON pv.product_type_id = pt.id
             JOIN brands br ON pv.brand_id = br.id
-            WHERE t.transaction_type = 'SALE'
-            AND t.transaction_date >= %s
-            AND t.deleted_at IS NULL
+            WHERE d.dispatch_date >= %s
+            AND d.deleted_at IS NULL
             GROUP BY pt.name, br.name, pv.parameters, pt.roll_configuration
             ORDER BY total_sold DESC
             LIMIT 10
@@ -89,17 +88,16 @@ def get_customer_sales():
         query = """
             SELECT
                 c.name as customer_name,
-                SUM(ABS(t.quantity_change)) as total_quantity,
-                COUNT(t.id) as transaction_count
-            FROM transactions t
-            JOIN customers c ON t.customer_id = c.id
-            JOIN batches b ON t.batch_id = b.id
-            JOIN product_variants pv ON b.product_variant_id = pv.id
+                SUM(di.quantity) as total_quantity,
+                COUNT(d.id) as transaction_count
+            FROM dispatches d
+            JOIN customers c ON d.customer_id = c.id
+            JOIN dispatch_items di ON d.id = di.dispatch_id
+            JOIN product_variants pv ON di.product_variant_id = pv.id
             JOIN product_types pt ON pv.product_type_id = pt.id
             JOIN brands br ON pv.brand_id = br.id
-            WHERE t.transaction_type = 'SALE'
-            AND t.transaction_date >= %s
-            AND t.deleted_at IS NULL
+            WHERE d.dispatch_date >= %s
+            AND d.deleted_at IS NULL
         """
 
         params = [start_date]
@@ -206,157 +204,157 @@ def get_analytics_overview():
         days = int(request.args.get('days', 30))
         start_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
 
-        # Top selling products with complete details
+        # Top selling products with complete details (from dispatches)
         top_products_query = """
             SELECT
                 pt.name as product_type,
                 br.name as brand,
                 pv.parameters,
-                SUM(ABS(t.quantity_change)) as total_sold,
-                COUNT(DISTINCT t.id) as sales_count,
-                COUNT(DISTINCT t.customer_id) as unique_customers,
-                SUM(ABS(t.quantity_change) * b.weight_per_meter) as total_weight
-            FROM transactions t
-            JOIN batches b ON t.batch_id = b.id
-            JOIN product_variants pv ON b.product_variant_id = pv.id
+                SUM(di.quantity) as total_sold,
+                COUNT(DISTINCT d.id) as sales_count,
+                COUNT(DISTINCT d.customer_id) as unique_customers,
+                SUM(di.quantity * COALESCE(b.weight_per_meter, 0)) as total_weight
+            FROM dispatches d
+            JOIN dispatch_items di ON d.id = di.dispatch_id
+            JOIN product_variants pv ON di.product_variant_id = pv.id
+            LEFT JOIN inventory_stock ist ON di.stock_id = ist.id
+            LEFT JOIN batches b ON ist.batch_id = b.id
             JOIN product_types pt ON pv.product_type_id = pt.id
             JOIN brands br ON pv.brand_id = br.id
-            WHERE t.transaction_type = 'SALE'
-            AND t.transaction_date >= %s
-            AND t.deleted_at IS NULL
+            WHERE d.dispatch_date >= %s
+            AND d.deleted_at IS NULL
             GROUP BY pt.name, br.name, pv.parameters
             ORDER BY total_sold DESC
             LIMIT 10
         """
         top_products = execute_query(top_products_query, (start_date,))
 
-        # Top customers with order details
+        # Top customers with order details (from dispatches)
         top_customers_query = """
             SELECT
                 c.name as customer_name,
                 c.city,
                 c.state,
                 c.pincode,
-                SUM(ABS(t.quantity_change)) as total_quantity,
-                COUNT(DISTINCT t.id) as order_count,
+                SUM(di.quantity) as total_quantity,
+                COUNT(DISTINCT d.id) as order_count,
                 COUNT(DISTINCT pt.id) as product_types_count,
                 STRING_AGG(DISTINCT pt.name, ', ') as products_ordered
-            FROM transactions t
-            JOIN customers c ON t.customer_id = c.id
-            JOIN batches b ON t.batch_id = b.id
-            JOIN product_variants pv ON b.product_variant_id = pv.id
+            FROM dispatches d
+            JOIN customers c ON d.customer_id = c.id
+            JOIN dispatch_items di ON d.id = di.dispatch_id
+            JOIN product_variants pv ON di.product_variant_id = pv.id
             JOIN product_types pt ON pv.product_type_id = pt.id
-            WHERE t.transaction_type = 'SALE'
-            AND t.transaction_date >= %s
-            AND t.deleted_at IS NULL
+            WHERE d.dispatch_date >= %s
+            AND d.deleted_at IS NULL
             GROUP BY c.id, c.name, c.city, c.state, c.pincode
             ORDER BY total_quantity DESC
             LIMIT 10
         """
         top_customers = execute_query(top_customers_query, (start_date,))
 
-        # Regional analysis - products by region
+        # Regional analysis - products by region (from dispatches)
         regional_analysis_query = """
             SELECT
                 COALESCE(c.state, 'Unknown') as region,
                 pt.name as product_type,
                 br.name as brand,
-                SUM(ABS(t.quantity_change)) as total_quantity,
+                SUM(di.quantity) as total_quantity,
                 COUNT(DISTINCT c.id) as customer_count,
-                COUNT(DISTINCT t.id) as order_count
-            FROM transactions t
-            JOIN customers c ON t.customer_id = c.id
-            JOIN batches b ON t.batch_id = b.id
-            JOIN product_variants pv ON b.product_variant_id = pv.id
+                COUNT(DISTINCT d.id) as order_count
+            FROM dispatches d
+            JOIN customers c ON d.customer_id = c.id
+            JOIN dispatch_items di ON d.id = di.dispatch_id
+            JOIN product_variants pv ON di.product_variant_id = pv.id
             JOIN product_types pt ON pv.product_type_id = pt.id
             JOIN brands br ON pv.brand_id = br.id
-            WHERE t.transaction_type = 'SALE'
-            AND t.transaction_date >= %s
-            AND t.deleted_at IS NULL
+            WHERE d.dispatch_date >= %s
+            AND d.deleted_at IS NULL
             GROUP BY c.state, pt.name, br.name
             ORDER BY region, total_quantity DESC
         """
         regional_analysis = execute_query(regional_analysis_query, (start_date,))
 
-        # Customer product preferences
+        # Customer product preferences (from dispatches)
         customer_preferences_query = """
             SELECT
                 c.name as customer_name,
                 pt.name as preferred_product,
                 br.name as preferred_brand,
-                SUM(ABS(t.quantity_change)) as total_quantity,
-                COUNT(t.id) as order_frequency
-            FROM transactions t
-            JOIN customers c ON t.customer_id = c.id
-            JOIN batches b ON t.batch_id = b.id
-            JOIN product_variants pv ON b.product_variant_id = pv.id
+                SUM(di.quantity) as total_quantity,
+                COUNT(d.id) as order_frequency
+            FROM dispatches d
+            JOIN customers c ON d.customer_id = c.id
+            JOIN dispatch_items di ON d.id = di.dispatch_id
+            JOIN product_variants pv ON di.product_variant_id = pv.id
             JOIN product_types pt ON pv.product_type_id = pt.id
             JOIN brands br ON pv.brand_id = br.id
-            WHERE t.transaction_type = 'SALE'
-            AND t.transaction_date >= %s
-            AND t.deleted_at IS NULL
+            WHERE d.dispatch_date >= %s
+            AND d.deleted_at IS NULL
             GROUP BY c.name, pt.name, br.name
             ORDER BY total_quantity DESC
             LIMIT 20
         """
         customer_preferences = execute_query(customer_preferences_query, (start_date,))
 
-        # Sales trends - daily/weekly aggregation
+        # Sales trends - daily/weekly aggregation (from dispatches)
         sales_trends_query = """
             SELECT
-                DATE(t.transaction_date) as sale_date,
-                COUNT(DISTINCT t.id) as order_count,
-                SUM(ABS(t.quantity_change)) as total_quantity,
-                COUNT(DISTINCT t.customer_id) as unique_customers
-            FROM transactions t
-            WHERE t.transaction_type = 'SALE'
-            AND t.transaction_date >= %s
-            AND t.deleted_at IS NULL
-            GROUP BY DATE(t.transaction_date)
+                DATE(d.dispatch_date) as sale_date,
+                COUNT(DISTINCT d.id) as order_count,
+                SUM(di.quantity) as total_quantity,
+                COUNT(DISTINCT d.customer_id) as unique_customers
+            FROM dispatches d
+            JOIN dispatch_items di ON d.id = di.dispatch_id
+            WHERE d.dispatch_date >= %s
+            AND d.deleted_at IS NULL
+            GROUP BY DATE(d.dispatch_date)
             ORDER BY sale_date DESC
         """
         sales_trends = execute_query(sales_trends_query, (start_date,))
 
-        # Product performance metrics
+        # Product performance metrics (production vs dispatches)
         product_performance_query = """
             SELECT
                 pt.name as product_type,
                 COUNT(DISTINCT b.id) as batches_produced,
-                COUNT(DISTINCT t.id) as times_sold,
-                SUM(CASE WHEN t.transaction_type = 'PRODUCTION' THEN t.quantity_change ELSE 0 END) as total_produced,
-                SUM(CASE WHEN t.transaction_type = 'SALE' THEN ABS(t.quantity_change) ELSE 0 END) as total_sold,
+                COUNT(DISTINCT d.id) as times_sold,
+                COALESCE(SUM(b.initial_quantity), 0) as total_produced,
+                COALESCE(SUM(di.quantity), 0) as total_sold,
                 ROUND(
-                    CAST(SUM(CASE WHEN t.transaction_type = 'SALE' THEN ABS(t.quantity_change) ELSE 0 END) AS DECIMAL) /
-                    NULLIF(SUM(CASE WHEN t.transaction_type = 'PRODUCTION' THEN t.quantity_change ELSE 0 END), 0) * 100,
+                    CAST(COALESCE(SUM(di.quantity), 0) AS DECIMAL) /
+                    NULLIF(COALESCE(SUM(b.initial_quantity), 0), 0) * 100,
                     2
                 ) as sales_percentage
-            FROM transactions t
-            JOIN batches b ON t.batch_id = b.id
-            JOIN product_variants pv ON b.product_variant_id = pv.id
-            JOIN product_types pt ON pv.product_type_id = pt.id
-            WHERE t.transaction_date >= %s
-            AND t.deleted_at IS NULL
+            FROM product_types pt
+            JOIN product_variants pv ON pt.id = pv.product_type_id
+            LEFT JOIN batches b ON pv.id = b.product_variant_id AND b.production_date >= %s AND b.deleted_at IS NULL
+            LEFT JOIN dispatch_items di ON pv.id = di.product_variant_id
+            LEFT JOIN dispatches d ON di.dispatch_id = d.id AND d.dispatch_date >= %s AND d.deleted_at IS NULL
             GROUP BY pt.name
             ORDER BY total_sold DESC
         """
-        product_performance = execute_query(product_performance_query, (start_date,))
+        product_performance = execute_query(product_performance_query, (start_date, start_date))
 
-        # Summary statistics
+        # Summary statistics (from dispatches and batches)
         summary_stats_query = """
             SELECT
-                COUNT(DISTINCT CASE WHEN t.transaction_type = 'SALE' THEN t.customer_id END) as total_customers,
-                COUNT(DISTINCT CASE WHEN t.transaction_type = 'SALE' THEN t.id END) as total_orders,
+                COUNT(DISTINCT d.customer_id) as total_customers,
+                COUNT(DISTINCT d.id) as total_orders,
                 COUNT(DISTINCT pt.id) as products_sold_count,
-                SUM(CASE WHEN t.transaction_type = 'SALE' THEN ABS(t.quantity_change) ELSE 0 END) as total_quantity_sold,
-                SUM(CASE WHEN t.transaction_type = 'PRODUCTION' THEN t.quantity_change ELSE 0 END) as total_quantity_produced
-            FROM transactions t
-            JOIN batches b ON t.batch_id = b.id
-            JOIN product_variants pv ON b.product_variant_id = pv.id
+                COALESCE(SUM(di.quantity), 0) as total_quantity_sold,
+                (SELECT COALESCE(SUM(b2.initial_quantity), 0)
+                 FROM batches b2
+                 WHERE b2.production_date >= %s
+                 AND b2.deleted_at IS NULL) as total_quantity_produced
+            FROM dispatches d
+            JOIN dispatch_items di ON d.id = di.dispatch_id
+            JOIN product_variants pv ON di.product_variant_id = pv.id
             JOIN product_types pt ON pv.product_type_id = pt.id
-            WHERE t.transaction_date >= %s
-            AND t.deleted_at IS NULL
+            WHERE d.dispatch_date >= %s
+            AND d.deleted_at IS NULL
         """
-        summary_stats = execute_query(summary_stats_query, (start_date,))
+        summary_stats = execute_query(summary_stats_query, (start_date, start_date))
 
         return jsonify({
             'summary': summary_stats[0] if summary_stats else {},
@@ -383,13 +381,13 @@ def get_customer_regions():
                 COALESCE(c.state, 'Unknown') as region,
                 COALESCE(c.city, 'Unknown') as city,
                 COUNT(DISTINCT c.id) as customer_count,
-                COUNT(DISTINCT t.id) as order_count,
-                SUM(ABS(t.quantity_change)) as total_quantity
+                COUNT(DISTINCT d.id) as order_count,
+                COALESCE(SUM(di.quantity), 0) as total_quantity
             FROM customers c
-            LEFT JOIN transactions t ON c.id = t.customer_id
-                AND t.transaction_type = 'SALE'
-                AND t.transaction_date >= %s
-                AND t.deleted_at IS NULL
+            LEFT JOIN dispatches d ON c.id = d.customer_id
+                AND d.dispatch_date >= %s
+                AND d.deleted_at IS NULL
+            LEFT JOIN dispatch_items di ON d.id = di.dispatch_id
             WHERE c.deleted_at IS NULL
             GROUP BY c.state, c.city
             ORDER BY order_count DESC NULLS LAST

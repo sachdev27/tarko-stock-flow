@@ -12,7 +12,7 @@ import Inventory from "./pages/InventoryNew";
 import Transactions from "./pages/TransactionsNew";
 import Dispatch from "./pages/Dispatch";
 import Return from "./pages/Return";
-import Reports from "./pages/ReportsNew";
+import Reports from "./pages/Reports";
 import Admin from "./pages/Admin";
 import Details from "./pages/Details";
 import ExportHDPE from "./pages/ExportHDPE";
