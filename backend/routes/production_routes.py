@@ -71,10 +71,14 @@ def create_batch():
         spare_pipes = json.loads(data.get('spare_pipes', '[]')) if isinstance(data.get('spare_pipes'), str) else data.get('spare_pipes', [])
 
         # For sprinkler pipes with bundles, recalculate quantity correctly
-        # quantity should be: number_of_bundles × bundle_size (pieces)
+        # quantity should be: (number_of_bundles × bundle_size) + spare_pieces (pieces)
         if quantity_based and roll_config_type == 'bundles' and number_of_bundles > 0 and bundle_size > 0:
-            # Recalculate quantity as total pieces
+            # Recalculate quantity as total pieces from bundles
             quantity = float(number_of_bundles * bundle_size)
+            # Add spare pieces to total quantity
+            for spare_pipe in spare_pipes:
+                spare_count = int(spare_pipe.get('length', 1))  # 'length' field contains piece count
+                quantity += float(spare_count)
 
         # Weight tracking - weight_per_meter in kg/m, total_weight in kg
         weight_per_meter_raw = data.get('weight_per_meter')
@@ -399,3 +403,283 @@ def create_batch():
 def get_attachment(filename):
     """Serve uploaded batch attachments"""
     return send_from_directory(UPLOAD_FOLDER, filename)
+
+@production_bp.route('/history', methods=['GET'])
+@jwt_required_with_role('user')
+def get_production_history():
+    """Get production batch history"""
+    try:
+        with get_db_cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    b.id,
+                    b.batch_no,
+                    b.batch_code,
+                    b.production_date,
+                    b.initial_quantity,
+                    b.notes,
+                    b.weight_per_meter,
+                    b.total_weight,
+                    b.piece_length,
+                    b.created_at,
+                    pt.name as product_type_name,
+                    br.name as brand_name,
+                    pv.parameters,
+                    u.email as created_by_email,
+                    COUNT(DISTINCT ist.id) as total_items
+                FROM batches b
+                JOIN product_variants pv ON b.product_variant_id = pv.id
+                JOIN product_types pt ON pv.product_type_id = pt.id
+                JOIN brands br ON pv.brand_id = br.id
+                LEFT JOIN users u ON b.created_by = u.id
+                LEFT JOIN inventory_stock ist ON b.id = ist.batch_id
+                GROUP BY b.id, pt.name, br.name, pv.parameters, u.email
+                ORDER BY b.created_at DESC
+            """)
+
+            batches = cursor.fetchall()
+
+            result = []
+            for batch in batches:
+                result.append({
+                    'id': str(batch['id']),
+                    'batch_no': batch['batch_no'],
+                    'batch_code': batch['batch_code'],
+                    'production_date': batch['production_date'].isoformat() if batch['production_date'] else None,
+                    'initial_quantity': float(batch['initial_quantity']),
+                    'product_type_name': batch['product_type_name'],
+                    'brand_name': batch['brand_name'],
+                    'parameters': batch['parameters'],
+                    'notes': batch['notes'],
+                    'weight_per_meter': float(batch['weight_per_meter']) if batch['weight_per_meter'] else None,
+                    'total_weight': float(batch['total_weight']) if batch['total_weight'] else None,
+                    'piece_length': float(batch['piece_length']) if batch['piece_length'] else None,
+                    'total_items': batch['total_items'],
+                    'created_by_email': batch['created_by_email'],
+                    'created_at': batch['created_at'].isoformat() if batch['created_at'] else None
+                })
+
+            return jsonify({'batches': result}), 200
+
+    except Exception as e:
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"Error fetching production history: {error_trace}")
+        return jsonify({'error': f'Failed to fetch production history: {str(e)}'}), 500
+
+@production_bp.route('/history/<batch_id>', methods=['GET'])
+@jwt_required_with_role('user')
+def get_production_details(batch_id):
+    """Get detailed information about a specific production batch"""
+    try:
+        with get_db_cursor() as cursor:
+            # Get batch details
+            cursor.execute("""
+                SELECT
+                    b.id,
+                    b.batch_no,
+                    b.batch_code,
+                    b.production_date,
+                    b.initial_quantity,
+                    b.notes,
+                    b.attachment_url,
+                    b.weight_per_meter,
+                    b.total_weight,
+                    b.piece_length,
+                    b.created_at,
+                    b.updated_at,
+                    pt.name as product_type_name,
+                    br.name as brand_name,
+                    pv.parameters,
+                    pv.id as product_variant_id,
+                    u.email as created_by_email
+                FROM batches b
+                JOIN product_variants pv ON b.product_variant_id = pv.id
+                JOIN product_types pt ON pv.product_type_id = pt.id
+                JOIN brands br ON pv.brand_id = br.id
+                LEFT JOIN users u ON b.created_by = u.id
+                WHERE b.id = %s
+            """, (batch_id,))
+
+            batch = cursor.fetchone()
+
+            if not batch:
+                return jsonify({'error': 'Batch not found'}), 404
+
+            # Get initial production stock items from the production transaction snapshot
+            cursor.execute("""
+                SELECT roll_snapshot
+                FROM transactions
+                WHERE batch_id = %s AND transaction_type = 'PRODUCTION'
+                ORDER BY created_at
+                LIMIT 1
+            """, (batch_id,))
+
+            production_txn = cursor.fetchone()
+
+            items = []
+
+            if production_txn and production_txn['roll_snapshot']:
+                snapshot = production_txn['roll_snapshot']
+
+                # Check if snapshot is a string (JSON) or already parsed
+                if isinstance(snapshot, str):
+                    import json
+                    snapshot = json.loads(snapshot)
+
+                # Get stock entries from snapshot
+                stock_entries = snapshot.get('stock_entries', [])
+
+                for stock in stock_entries:
+                    item = {
+                        'id': stock.get('stock_id'),
+                        'stock_type': stock.get('stock_type'),
+                        'quantity': stock.get('quantity', 0),
+                        'status': stock.get('status', 'IN_STOCK'),
+                        'notes': f"Initial production: {stock.get('quantity', 0)} items"
+                    }
+
+                    # Add type-specific details from snapshot
+                    if stock['stock_type'] == 'FULL_ROLL':
+                        item['length_per_unit'] = stock.get('length_per_unit')
+                        if item['length_per_unit']:
+                            item['total_length'] = item['length_per_unit'] * item['quantity']
+
+                    elif stock['stock_type'] == 'BUNDLE':
+                        item['pieces_per_bundle'] = stock.get('pieces_per_bundle')
+                        item['piece_length_meters'] = stock.get('piece_length_meters')
+                        if item['pieces_per_bundle'] and item['piece_length_meters']:
+                            item['total_pieces'] = item['quantity'] * item['pieces_per_bundle']
+                            item['total_length'] = item['total_pieces'] * item['piece_length_meters']
+
+                    elif stock['stock_type'] == 'CUT_ROLL':
+                        cut_piece_lengths = stock.get('cut_piece_lengths', [])
+                        item['cut_pieces'] = [
+                            {'length_meters': length, 'status': 'IN_STOCK'}
+                            for length in cut_piece_lengths
+                        ]
+                        item['total_length'] = sum(cut_piece_lengths)
+
+                    elif stock['stock_type'] in ['SPARE', 'SPARE_PIECES']:
+                        spare_count = stock.get('spare_piece_count', 0)
+                        piece_length = stock.get('piece_length_meters')
+                        # For spare pieces, create groups based on the snapshot
+                        item['spare_pieces'] = [
+                            {
+                                'piece_count': spare_count,
+                                'piece_length_meters': piece_length,
+                                'status': 'IN_STOCK'
+                            }
+                        ]
+                        item['total_pieces'] = spare_count
+                        item['piece_length_meters'] = piece_length
+
+                    items.append(item)
+            else:
+                # Fallback: Get current stock items if no production transaction found
+                cursor.execute("""
+                    SELECT
+                        ist.id,
+                        ist.stock_type,
+                        ist.quantity,
+                        ist.status,
+                        ist.length_per_unit,
+                        ist.pieces_per_bundle,
+                        ist.piece_length_meters,
+                        ist.notes as stock_notes
+                    FROM inventory_stock ist
+                    WHERE ist.batch_id = %s
+                    ORDER BY ist.created_at
+                """, (batch_id,))
+
+                stock_items = cursor.fetchall()
+
+                # Process current stock items (existing logic)
+                for stock in stock_items:
+                    item = {
+                        'id': str(stock['id']),
+                        'stock_type': stock['stock_type'],
+                        'quantity': int(stock['quantity']),
+                        'status': stock['status'],
+                        'notes': stock['stock_notes']
+                    }
+
+                    # Add type-specific details
+                    if stock['stock_type'] == 'FULL_ROLL':
+                        item['length_per_unit'] = float(stock['length_per_unit']) if stock['length_per_unit'] else None
+                        item['total_length'] = float(stock['length_per_unit'] * stock['quantity']) if stock['length_per_unit'] else None
+
+                    elif stock['stock_type'] == 'BUNDLE':
+                        item['pieces_per_bundle'] = int(stock['pieces_per_bundle']) if stock['pieces_per_bundle'] else None
+                        item['piece_length_meters'] = float(stock['piece_length_meters']) if stock['piece_length_meters'] else None
+                        if stock['pieces_per_bundle'] and stock['piece_length_meters']:
+                            item['total_pieces'] = int(stock['quantity'] * stock['pieces_per_bundle'])
+                            item['total_length'] = float(stock['quantity'] * stock['pieces_per_bundle'] * stock['piece_length_meters'])
+
+                    elif stock['stock_type'] == 'CUT_ROLL':
+                        # Get cut piece details
+                        cursor.execute("""
+                            SELECT length_meters, status
+                            FROM hdpe_cut_pieces
+                            WHERE stock_id = %s
+                            ORDER BY created_at
+                        """, (stock['id'],))
+                        cut_pieces = cursor.fetchall()
+                        item['cut_pieces'] = [
+                            {
+                                'length_meters': float(cp['length_meters']),
+                                'status': cp['status']
+                            } for cp in cut_pieces
+                        ]
+                        item['total_length'] = sum(float(cp['length_meters']) for cp in cut_pieces)
+
+                    elif stock['stock_type'] in ['SPARE', 'SPARE_PIECES']:
+                        # Get spare piece details
+                        cursor.execute("""
+                            SELECT piece_count, status
+                            FROM sprinkler_spare_pieces
+                            WHERE stock_id = %s
+                            ORDER BY created_at
+                        """, (stock['id'],))
+                        spare_pieces = cursor.fetchall()
+                        # Get piece_length from the stock item itself
+                        piece_length = float(stock['piece_length_meters']) if stock['piece_length_meters'] else None
+                        item['spare_pieces'] = [
+                            {
+                                'piece_count': int(sp['piece_count']),
+                                'piece_length_meters': piece_length,
+                                'status': sp['status']
+                            } for sp in spare_pieces
+                        ]
+                        item['total_pieces'] = sum(int(sp['piece_count']) for sp in spare_pieces)
+                        item['piece_length_meters'] = piece_length
+
+                    items.append(item)
+
+            result = {
+                'id': str(batch['id']),
+                'batch_no': batch['batch_no'],
+                'batch_code': batch['batch_code'],
+                'production_date': batch['production_date'].isoformat() if batch['production_date'] else None,
+                'initial_quantity': float(batch['initial_quantity']),
+                'product_type_name': batch['product_type_name'],
+                'brand_name': batch['brand_name'],
+                'parameters': batch['parameters'],
+                'notes': batch['notes'],
+                'attachment_url': batch['attachment_url'],
+                'weight_per_meter': float(batch['weight_per_meter']) if batch['weight_per_meter'] else None,
+                'total_weight': float(batch['total_weight']) if batch['total_weight'] else None,
+                'piece_length': float(batch['piece_length']) if batch['piece_length'] else None,
+                'created_by_email': batch['created_by_email'],
+                'created_at': batch['created_at'].isoformat() if batch['created_at'] else None,
+                'updated_at': batch['updated_at'].isoformat() if batch['updated_at'] else None,
+                'items': items
+            }
+
+            return jsonify(result), 200
+
+    except Exception as e:
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"Error fetching production details: {error_trace}")
+        return jsonify({'error': f'Failed to fetch production details: {str(e)}'}), 500

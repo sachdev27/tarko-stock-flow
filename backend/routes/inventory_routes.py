@@ -447,21 +447,19 @@ def cut_roll():
 
                 if cut_stock:
                     cut_stock_id = cut_stock['id']
-                    cursor.execute("""
-                        UPDATE inventory_stock
-                        SET quantity = quantity + %s, updated_at = NOW()
-                        WHERE id = %s
-                    """, (len(cut_lengths), cut_stock_id))
+                    # NOTE: No manual quantity update needed for CUT_ROLL stock
+                    # The auto_update_stock_quantity trigger will handle it when pieces are inserted
                 else:
                     import uuid
                     cut_stock_id = str(uuid.uuid4())
+                    # Initialize with 0 quantity, trigger will update it
                     cursor.execute("""
                         INSERT INTO inventory_stock (
                             id, batch_id, product_variant_id, status, stock_type,
                             quantity, notes, created_at, updated_at
-                        ) VALUES (%s, %s, %s, 'IN_STOCK', 'CUT_ROLL', %s, %s, NOW(), NOW())
+                        ) VALUES (%s, %s, %s, 'IN_STOCK', 'CUT_ROLL', 0, %s, NOW(), NOW())
                     """, (cut_stock_id, stock['batch_id'], stock['product_variant_id'],
-                          len(cut_lengths), f'Cut from full roll'))
+                          f'Cut from full roll'))
 
                 # Create transaction first to get transaction_id
                 import json
@@ -506,12 +504,8 @@ def cut_roll():
                     cut_piece_details.append({"length": float(remainder), "piece_id": str(piece_id), "is_remainder": True})
                     notes += f'. Remainder: {remainder}m'
 
-                # Update the quantity to reflect all pieces (cut + remainder)
-                cursor.execute("""
-                    UPDATE inventory_stock
-                    SET quantity = %s, updated_at = NOW()
-                    WHERE id = %s
-                """, (len(pieces_created), cut_stock_id))
+                # NOTE: inventory_stock quantity is automatically updated by trigger
+                # No manual update needed here
 
                 # Update transaction with cut_piece_details
                 cursor.execute("""
@@ -609,15 +603,8 @@ def cut_roll():
                     cut_piece_details.append({"length": float(remainder), "piece_id": str(new_piece_id), "is_remainder": True})
                     notes += f'. Remainder: {remainder}m'
 
-                # Update quantity
-                cursor.execute("""
-                    UPDATE inventory_stock
-                    SET quantity = (
-                        SELECT COUNT(*) FROM hdpe_cut_pieces
-                        WHERE stock_id = %s AND status = 'IN_STOCK'
-                    ), updated_at = NOW()
-                    WHERE id = %s
-                """, (stock_id, stock_id))
+                # NOTE: inventory_stock quantity is automatically updated by trigger
+                # No manual update needed here
 
                 # Update transaction with cut_piece_details
                 cursor.execute("""
@@ -1038,22 +1025,8 @@ def split_bundle():
                 """, (spare_stock_id, remainder, f'Remainder from bundle split: {remainder} pieces', transaction_id, spare_stock_id))
                 pieces_created.append(remainder)
 
-            # Quantity will be auto-updated by trigger, but let's verify it
-            cursor.execute("""
-                SELECT
-                    COALESCE(SUM(piece_count), 0) as total_pieces,
-                    COUNT(*) as piece_groups
-                FROM sprinkler_spare_pieces
-                WHERE stock_id = %s AND status = 'IN_STOCK' AND deleted_at IS NULL
-            """, (spare_stock_id,))
-            spare_info = cursor.fetchone()
-
-            # The trigger should handle this, but update manually for safety
-            cursor.execute("""
-                UPDATE inventory_stock
-                SET quantity = %s, updated_at = NOW()
-                WHERE id = %s
-            """, (spare_info['piece_groups'], spare_stock_id))
+            # NOTE: inventory_stock quantity is automatically updated by trigger
+            # No manual update needed here
 
             # Audit log
             cursor.execute("""

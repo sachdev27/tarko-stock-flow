@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { Layout } from '@/components/Layout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -290,23 +289,22 @@ const ProductionNew = () => {
   const rollConfig = selectedProductType?.roll_configuration || { type: 'standard_rolls', quantity_based: false };
 
   return (
-    <Layout>
-      <div className="max-w-4xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-              <Factory className="h-8 w-8" />
-              Production Entry
-            </h1>
-            <p className="text-muted-foreground mt-1">
-              Create new production batches and track inventory
-            </p>
-          </div>
+    <div className="max-w-4xl mx-auto space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
+            <Factory className="h-8 w-8" />
+            Production Entry
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            Create new production batches and track inventory
+          </p>
         </div>
+      </div>
 
-        {/* Form */}
-        <Card>
+      {/* Form */}
+      <Card>
           <CardHeader>
             <CardTitle>New Production Batch</CardTitle>
             <CardDescription>
@@ -445,7 +443,6 @@ const ProductionNew = () => {
           </CardContent>
         </Card>
       </div>
-    </Layout>
   );
 };
 

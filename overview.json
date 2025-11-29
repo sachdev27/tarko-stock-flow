@@ -1,6 +1,6 @@
 {
   "rootFolder": "/Users/sachdevs/Projects/Tarko-Inv/tarko-stock-flow",
-  "analyzedAt": "2025-11-28T19:37:26.354Z",
+  "analyzedAt": "2025-11-29T07:06:20.265Z",
   "rootStructure": [
     {
       "name": ".gitignore",
@@ -49,6 +49,12 @@
       "type": "file",
       "size": 22725,
       "lines": 742
+    },
+    {
+      "name": "INVENTORY_ROUTES_FIX.md",
+      "type": "file",
+      "size": 1988,
+      "lines": 39
     },
     {
       "name": "QUICK_FIX_GUIDE.md",
@@ -312,6 +318,18 @@
       "## Executive Summary",
       ""
     ],
+    "INVENTORY_ROUTES_FIX.md": [
+      "# Inventory Routes Fix",
+      "",
+      "## Date",
+      "November 23, 2025",
+      "",
+      "## Problem",
+      "The `cut_roll` and `split_bundle` endpoints in `inventory_routes.py` were manually updating `inventory_stock.quantity` for piece-based stock types (`CUT_ROLL`, `SPARE`).",
+      "This was redundant and potentially dangerous because database triggers (`auto_update_stock_quantity`) already handle this.",
+      "",
+      "Specifically, in `cut_roll` (when cutting from `FULL_ROLL`), the code was overwriting the quantity with `len(pieces_created)`, which would be incorrect if the `CUT_ROLL` stock already existed and had pieces (it would reset quantity to just the new pieces count)."
+    ],
     "QUICK_FIX_GUIDE.md": [
       "# Quick Fix Reference Guide",
       "",
@@ -483,7 +501,7 @@
     "overview.json": [
       "{",
       "\"rootFolder\": \"/Users/sachdevs/Projects/Tarko-Inv/tarko-stock-flow\",",
-      "\"analyzedAt\": \"2025-11-28T18:02:16.157Z\",",
+      "\"analyzedAt\": \"2025-11-28T19:37:26.354Z\",",
       "\"rootStructure\": [",
       "{",
       "\"name\": \".gitignore\",",
@@ -602,7 +620,7 @@
     {
       "path": "backend",
       "category": "backend",
-      "fileCount": 172,
+      "fileCount": 173,
       "primaryLanguage": "Python"
     },
     {
@@ -649,22 +667,22 @@
     "root": "# Tarko Inventory Management System"
   },
   "totals": {
-    "numFiles": 978,
-    "numDirs": 96,
-    "totalSizeBytes": 8020166,
-    "totalLinesOfCode": 49628
+    "numFiles": 980,
+    "numDirs": 97,
+    "totalSizeBytes": 8011626,
+    "totalLinesOfCode": 49450
   },
   "fileCategories": {
-    "other": 131,
-    "documentation": 27,
+    "other": 132,
+    "documentation": 28,
     "source": 235,
     "config": 585
   },
   "linesOfCodePerLanguage": {
-    "Python": 24964,
+    "Python": 24813,
     "Shell": 624,
     "JavaScript": 34,
-    "TypeScript": 24006
+    "TypeScript": 23979
   },
   "filesPerLanguage": {
     "Python": 103,
@@ -775,14 +793,14 @@
   "topLevelDirectories": [
     {
       "name": "backend",
-      "numFiles": 172,
-      "totalLoc": 25418,
+      "numFiles": 173,
+      "totalLoc": 25267,
       "dominantLanguage": "Python"
     },
     {
       "name": "src",
       "numFiles": 125,
-      "totalLoc": 23891,
+      "totalLoc": 23864,
       "dominantLanguage": "TypeScript"
     },
     {
@@ -806,8 +824,8 @@
       "path": "backend",
       "name": "backend",
       "level": 1,
-      "numFiles": 172,
-      "totalLoc": 25418,
+      "numFiles": 173,
+      "totalLoc": 25267,
       "dominantLanguage": "Python",
       "category": "General",
       "description": "# Tarko Inventory - Backend API",
@@ -828,7 +846,7 @@
           "name": "routes",
           "level": 2,
           "numFiles": 13,
-          "totalLoc": 8755,
+          "totalLoc": 8603,
           "dominantLanguage": "Python",
           "category": "General",
           "description": "General module with 13 files (Python)",
@@ -838,10 +856,10 @@
           "path": "backend/migrations",
           "name": "migrations",
           "level": 2,
-          "numFiles": 31,
+          "numFiles": 32,
           "totalLoc": 0,
           "category": "General",
-          "description": "General module with 31 files",
+          "description": "General module with 32 files",
           "subdirectories": []
         },
         {
@@ -882,7 +900,7 @@
       "name": "src",
       "level": 1,
       "numFiles": 125,
-      "totalLoc": 23891,
+      "totalLoc": 23864,
       "dominantLanguage": "TypeScript",
       "category": "General",
       "description": "General module with 125 files (TypeScript)",
@@ -892,7 +910,7 @@
           "name": "components",
           "level": 2,
           "numFiles": 90,
-          "totalLoc": 14049,
+          "totalLoc": 14024,
           "dominantLanguage": "TypeScript",
           "category": "General",
           "description": "General module with 90 files (TypeScript)",
@@ -902,7 +920,7 @@
               "name": "inventory",
               "level": 3,
               "numFiles": 12,
-              "totalLoc": 2899,
+              "totalLoc": 2901,
               "dominantLanguage": "TypeScript",
               "category": "General",
               "description": "General module with 12 files (TypeScript)",
@@ -913,7 +931,7 @@
               "name": "transactions",
               "level": 3,
               "numFiles": 11,
-              "totalLoc": 2368,
+              "totalLoc": 2345,
               "dominantLanguage": "TypeScript",
               "category": "General",
               "description": "# Transactions Page - Modularization Guide",
@@ -924,7 +942,7 @@
               "name": "dispatch",
               "level": 3,
               "numFiles": 7,
-              "totalLoc": 2185,
+              "totalLoc": 2181,
               "dominantLanguage": "TypeScript",
               "category": "General",
               "description": "# Dispatch Module - Modular Architecture",
@@ -959,7 +977,7 @@
           "name": "pages",
           "level": 2,
           "numFiles": 16,
-          "totalLoc": 8063,
+          "totalLoc": 8061,
           "dominantLanguage": "TypeScript",
           "category": "General",
           "description": "General module with 16 files (TypeScript)",
@@ -1600,14 +1618,14 @@
     "total": 66
   },
   "complexity": {
-    "averageFileSize": 50.74437627811861,
+    "averageFileSize": 50.45918367346939,
     "maxFileSize": 0,
     "nestedDepth": 0,
     "estimatedComplexity": "high"
   },
   "gitRepo": {
-    "firstCommitDate": "2025-11-23",
-    "totalCommits": 63,
+    "firstCommitDate": "2025-11-29",
+    "totalCommits": 71,
     "numContributors": 0,
     "currentBranch": "sachdevs/activity_page",
     "remoteUrls": [

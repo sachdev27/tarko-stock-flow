@@ -232,23 +232,17 @@ class AggregateInventoryHelper:
 
         if existing_cut_stock:
             cut_stock_id = existing_cut_stock[0]
-            # Update quantity
-            cursor.execute("""
-                UPDATE inventory_stock
-                SET quantity = quantity + %s,
-                    updated_at = NOW()
-                WHERE id = %s
-            """, (len(cut_lengths), cut_stock_id))
+            # NOTE: No manual quantity update needed - trigger handles it
         else:
             # Create new CUT_ROLL stock entry
             cut_stock_id = str(uuid.uuid4())
+            # Initialize with 0 quantity, trigger will update it
             cursor.execute("""
                 INSERT INTO inventory_stock (
                     id, batch_id, product_variant_id, status, stock_type,
                     quantity, parent_stock_id, notes
-                ) VALUES (%s, %s, %s, 'IN_STOCK', 'CUT_ROLL', %s, %s, %s)
-            """, (cut_stock_id, batch_id, product_variant_id,
-                  len(cut_lengths), from_stock_id, notes))
+                ) VALUES (%s, %s, %s, 'IN_STOCK', 'CUT_ROLL', 0, %s, %s)
+            """, (cut_stock_id, batch_id, product_variant_id, from_stock_id, notes))
 
         # Create transaction record first to get transaction_id
         cursor.execute("""
@@ -348,20 +342,16 @@ class AggregateInventoryHelper:
 
         if existing_spare:
             spare_stock_id = existing_spare[0]
-            cursor.execute("""
-                UPDATE inventory_stock
-                SET quantity = quantity + 1,
-                    updated_at = NOW()
-                WHERE id = %s
-            """, (spare_stock_id,))
+            # NOTE: No manual quantity update needed - trigger handles it
         else:
             # Create new SPARE stock entry
             spare_stock_id = str(uuid.uuid4())
+            # Initialize with 0 quantity, trigger will update it
             cursor.execute("""
                 INSERT INTO inventory_stock (
                     id, batch_id, product_variant_id, status, stock_type,
                     quantity, piece_length_meters, parent_stock_id, notes
-                ) VALUES (%s, %s, %s, 'IN_STOCK', 'SPARE', 1, %s, %s, %s)
+                ) VALUES (%s, %s, %s, 'IN_STOCK', 'SPARE', 0, %s, %s, %s)
             """, (spare_stock_id, batch_id, product_variant_id,
                   piece_length_meters, from_stock_id, notes))
 

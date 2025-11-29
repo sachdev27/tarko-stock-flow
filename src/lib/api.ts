@@ -86,6 +86,12 @@ export const production = {
       : {};
     return api.post('/production/batch', data, config);
   },
+
+  getHistory: () =>
+    api.get('/production/history'),
+
+  getDetails: (batchId: string) =>
+    api.get(`/production/history/${batchId}`),
 };
 
 // Transaction endpoints
