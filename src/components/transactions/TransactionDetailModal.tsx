@@ -48,6 +48,9 @@ export function TransactionDetailModal({
   // Check if this is a return transaction
   const isReturn = transaction.transaction_type === 'RETURN';
 
+  // Check if this is a scrap transaction
+  const isScrap = transaction.transaction_type === 'SCRAP';
+
   // Check if this is a reverted transaction
   const isReverted = transaction.transaction_type === 'REVERTED';
 
@@ -224,6 +227,10 @@ export function TransactionDetailModal({
                     <TabsTrigger value="logistics">Logistics</TabsTrigger>
                     <TabsTrigger value="metadata">Metadata</TabsTrigger>
                   </>
+                ) : isScrap ? (
+                  <>
+                    <TabsTrigger value="metadata">Metadata</TabsTrigger>
+                  </>
                 ) : !isReturn ? (
                   <>
                     <TabsTrigger value="rolls">Stock</TabsTrigger>
@@ -315,6 +322,43 @@ export function TransactionDetailModal({
                             <Badge variant="outline" className="font-mono text-base">
                               {transaction.roll_snapshot.dispatch_number}
                             </Badge>
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
+
+                  {/* Scrap-specific information in overview */}
+                  {isScrap && transaction.roll_snapshot && (
+                    <>
+                      <Separator />
+                      <div className="space-y-3">
+                        {transaction.roll_snapshot.scrap_number && (
+                          <div>
+                            <div className="text-sm text-muted-foreground mb-1">Scrap Number</div>
+                            <Badge variant="outline" className="font-mono text-base">
+                              {transaction.roll_snapshot.scrap_number}
+                            </Badge>
+                          </div>
+                        )}
+                        {transaction.roll_snapshot.reason && (
+                          <div>
+                            <div className="text-sm text-muted-foreground mb-1">Reason</div>
+                            <div className="font-medium text-destructive">{transaction.roll_snapshot.reason}</div>
+                          </div>
+                        )}
+                        {transaction.roll_snapshot.status && (
+                          <div>
+                            <div className="text-sm text-muted-foreground mb-1">Status</div>
+                            <Badge className="bg-rose-100 text-rose-700">{transaction.roll_snapshot.status}</Badge>
+                          </div>
+                        )}
+                        {transaction.roll_snapshot.scrap_notes && (
+                          <div>
+                            <div className="text-sm text-muted-foreground mb-1">Scrap Notes</div>
+                            <div className="text-sm bg-muted p-3 rounded-md">
+                              {transaction.roll_snapshot.scrap_notes}
+                            </div>
                           </div>
                         )}
                       </div>
@@ -520,6 +564,96 @@ export function TransactionDetailModal({
                             <span>{transaction.roll_snapshot.spare_pieces}</span>
                           </div>
                         )}
+                      </div>
+                    </div>
+                  ) : isScrap && transaction.roll_snapshot?.item_breakdown && Array.isArray(transaction.roll_snapshot.item_breakdown) && transaction.roll_snapshot.item_breakdown.length > 0 ? (
+                    <div>
+                      <div className="text-sm font-medium mb-3">Items Scrapped</div>
+                      <div className="space-y-3">
+                        {transaction.roll_snapshot.item_breakdown.map((item: any, idx: number) => (
+                          <div key={idx} className="border rounded-lg p-4 bg-rose-50/50 dark:bg-rose-950/50">
+                            <div className="flex items-center justify-between mb-3">
+                              <Badge variant="outline" className="text-base bg-rose-100 text-rose-700 border-rose-300">{item.stock_type?.replace('_', ' ')}</Badge>
+                              <span className="font-bold text-lg">Qty: {item.quantity}</span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3 text-sm">
+                              <div>
+                                <span className="text-muted-foreground">Product:</span>
+                                <span className="ml-2 font-medium">{item.product_type}</span>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground">Brand:</span>
+                                <span className="ml-2 font-medium">{item.brand}</span>
+                              </div>
+                              {item.batch_code && (
+                                <div>
+                                  <span className="text-muted-foreground">Batch:</span>
+                                  <span className="ml-2 font-medium font-mono">{item.batch_code}</span>
+                                </div>
+                              )}
+                              {item.length_per_unit && (
+                                <div>
+                                  <span className="text-muted-foreground">Length per unit:</span>
+                                  <span className="ml-2 font-medium">{Number(item.length_per_unit).toFixed(2)}m</span>
+                                </div>
+                              )}
+                              {item.pieces_per_bundle && (
+                                <div>
+                                  <span className="text-muted-foreground">Bundle size:</span>
+                                  <span className="ml-2 font-medium">{item.pieces_per_bundle} pieces</span>
+                                </div>
+                              )}
+                              {item.piece_length_meters && (
+                                <div>
+                                  <span className="text-muted-foreground">Piece length:</span>
+                                  <span className="ml-2 font-medium">{Number(item.piece_length_meters).toFixed(2)}m</span>
+                                </div>
+                              )}
+                              {item.stock_type === 'CUT_ROLL' && !item.length_per_unit && (
+                                <div className="col-span-2">
+                                  <span className="text-muted-foreground">Cut pieces:</span>
+                                  <span className="ml-2 font-medium">{item.quantity} piece{item.quantity !== 1 ? 's' : ''}</span>
+                                  {item.pieces && item.pieces.length > 0 && (
+                                    <div className="mt-2">
+                                      <div className="flex flex-wrap gap-1">
+                                        {item.pieces
+                                          .filter((p: any) => p.piece_type === 'CUT_PIECE')
+                                          .map((piece: any, i: number) => (
+                                            <Badge key={i} variant="secondary" className="text-xs">
+                                              {piece.length_meters}m
+                                            </Badge>
+                                          ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                              {item.estimated_value && (
+                                <div className="col-span-2">
+                                  <span className="text-muted-foreground">Estimated Value:</span>
+                                  <span className="ml-2 font-medium text-rose-600">₹{Number(item.estimated_value).toFixed(2)}</span>
+                                </div>
+                              )}
+                            </div>
+                            {item.parameters && Object.keys(item.parameters).length > 0 && (
+                              <div className="mt-3">
+                                <div className="text-xs text-muted-foreground mb-2">Parameters:</div>
+                                <div className="flex flex-wrap gap-2">
+                                  {Object.entries(item.parameters).map(([key, value]) => (
+                                    <Badge key={key} variant="secondary">
+                                      {key}: {String(value)}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            {item.item_notes && (
+                              <div className="mt-3 text-sm text-muted-foreground italic">
+                                Note: {item.item_notes}
+                              </div>
+                            )}
+                          </div>
+                        ))}
                       </div>
                     </div>
                   ) : isDispatch && transaction.roll_snapshot?.item_breakdown && transaction.roll_snapshot.item_breakdown.length > 0 ? (
@@ -847,7 +981,7 @@ export function TransactionDetailModal({
                 <CardHeader>
                   <CardTitle className="text-lg flex items-center gap-2">
                     <Box className="h-5 w-5" />
-                    Stock Details
+                    {isScrap ? 'Scrapped Items' : 'Stock Details'}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>

@@ -18,6 +18,9 @@ export const TransactionTypeBadge = ({ transaction }: TransactionTypeBadgeProps)
     if (transaction.transaction_type === 'DISPATCH') {
       return 'DISPATCH';
     }
+    if (transaction.transaction_type === 'SCRAP') {
+      return 'SCRAP';
+    }
     if (transaction.transaction_type === 'CUT_ROLL') {
       return 'CUT ROLL';
     }
@@ -57,6 +60,8 @@ export const TransactionTypeBadge = ({ transaction }: TransactionTypeBadgeProps)
         return 'default' as const;
       case 'DISPATCH':
         return 'destructive' as const;
+      case 'SCRAP':
+        return 'destructive' as const;
       case 'REVERTED':
         return 'outline' as const;
       case 'RETURN':
@@ -83,6 +88,8 @@ export const TransactionTypeBadge = ({ transaction }: TransactionTypeBadgeProps)
         return 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300';
       case 'DISPATCH':
         return 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300';
+      case 'SCRAP':
+        return 'bg-rose-100 text-rose-700 dark:bg-rose-900 dark:text-rose-300';
       case 'REVERTED':
         return 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 line-through';
       case 'RETURN':

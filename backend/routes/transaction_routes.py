@@ -713,6 +713,148 @@ def get_transactions():
         WHERE it.transaction_type IN ('CUT_ROLL', 'SPLIT_BUNDLE', 'COMBINE_SPARES')
         AND it.reverted_at IS NOT NULL""" + date_filter_inv + """
 
+        UNION ALL
+
+        -- Scrap transactions from new scrap system (one row per scrap)
+        SELECT DISTINCT ON (s.id)
+            CONCAT('scrap_', s.id) as id,
+            NULL as dispatch_id,
+            'SCRAP' as transaction_type,
+            -COALESCE(s.total_quantity, 0) as quantity_change,
+            s.scrap_date as transaction_date,
+            NULL as invoice_no,
+            CASE
+                WHEN (SELECT COUNT(DISTINCT si_count.product_variant_id) FROM scrap_items si_count WHERE si_count.scrap_id = s.id) > 1
+                THEN CONCAT('Scrap: ', s.scrap_number, ' (Mixed Products) - ', s.reason)
+                ELSE CONCAT('Scrap: ', s.scrap_number, ' - ', s.reason, COALESCE(': ' || (
+                    SELECT string_agg(
+                        CASE si_agg.stock_type
+                            WHEN 'FULL_ROLL' THEN si_agg.quantity_scrapped::text || 'R'
+                            WHEN 'CUT_ROLL' THEN si_agg.quantity_scrapped::text || 'C'
+                            WHEN 'BUNDLE' THEN si_agg.quantity_scrapped::text || 'B'
+                            WHEN 'SPARE' THEN si_agg.quantity_scrapped::text || 'S'
+                        END, ' + ')
+                    FROM scrap_items si_agg WHERE si_agg.scrap_id = s.id
+                ), ''))
+            END as notes,
+            s.created_at,
+            (SELECT jsonb_build_object(
+                'scrap_number', s.scrap_number,
+                'scrap_id', s.id,
+                'status', s.status,
+                'reason', s.reason,
+                'scrap_notes', s.notes,
+                'total_items', COUNT(si2.id),
+                'item_types', jsonb_agg(DISTINCT si2.stock_type),
+                'mixed_products', COUNT(DISTINCT si2.product_variant_id) > 1,
+                'full_rolls', COALESCE(SUM(CASE WHEN si2.stock_type = 'FULL_ROLL' THEN si2.quantity_scrapped ELSE 0 END), 0),
+                'cut_rolls', COALESCE(SUM(CASE WHEN si2.stock_type = 'CUT_ROLL' THEN si2.quantity_scrapped ELSE 0 END), 0),
+                'bundles', COALESCE(SUM(CASE WHEN si2.stock_type = 'BUNDLE' THEN si2.quantity_scrapped ELSE 0 END), 0),
+                'spare_pieces', COALESCE(SUM(CASE WHEN si2.stock_type = 'SPARE' THEN si2.quantity_scrapped ELSE 0 END), 0),
+                'total_quantity', s.total_quantity,
+                'estimated_loss', s.estimated_loss,
+                'item_breakdown', jsonb_agg(jsonb_build_object(
+                    'stock_type', si2.stock_type,
+                    'quantity', si2.quantity_scrapped,
+                    'product_type', pt2.name,
+                    'brand', br2.name,
+                    'parameters', pv2.parameters,
+                    'batch_code', b2.batch_code,
+                    'length_per_unit', si2.length_per_unit,
+                    'pieces_per_bundle', si2.pieces_per_bundle,
+                    'piece_length_meters', si2.piece_length_meters,
+                    'estimated_value', si2.estimated_value,
+                    'item_notes', si2.notes,
+                    'pieces', COALESCE(
+                        (SELECT jsonb_agg(jsonb_build_object(
+                            'piece_type', sp.piece_type,
+                            'length_meters', sp.length_meters,
+                            'piece_count', sp.piece_count,
+                            'piece_length_meters', sp.piece_length_meters
+                        ) ORDER BY sp.created_at)
+                         FROM scrap_pieces sp
+                         WHERE sp.scrap_item_id = si2.id),
+                        '[]'::jsonb
+                    )
+                ))
+            ) FROM scrap_items si2
+            JOIN batches b2 ON si2.batch_id = b2.id
+            JOIN product_variants pv2 ON si2.product_variant_id = pv2.id
+            JOIN product_types pt2 ON pv2.product_type_id = pt2.id
+            JOIN brands br2 ON pv2.brand_id = br2.id
+            WHERE si2.scrap_id = s.id) as roll_snapshot,
+            CASE
+                WHEN (SELECT COUNT(DISTINCT si_b.batch_id) FROM scrap_items si_b WHERE si_b.scrap_id = s.id) > 1 THEN NULL
+                ELSE (SELECT b2.batch_code FROM scrap_items si4 JOIN batches b2 ON si4.batch_id = b2.id WHERE si4.scrap_id = s.id LIMIT 1)
+            END as batch_code,
+            CASE
+                WHEN (SELECT COUNT(DISTINCT si_b.batch_id) FROM scrap_items si_b WHERE si_b.scrap_id = s.id) > 1 THEN NULL
+                ELSE (SELECT b2.batch_no FROM scrap_items si4 JOIN batches b2 ON si4.batch_id = b2.id WHERE si4.scrap_id = s.id LIMIT 1)
+            END as batch_no,
+            NULL as initial_quantity,
+            NULL as weight_per_meter,
+            NULL as total_weight,
+            NULL as piece_length,
+            NULL as attachment_url,
+            NULL as production_date,
+            CASE
+                WHEN (SELECT COUNT(DISTINCT si_pv.product_variant_id) FROM scrap_items si_pv WHERE si_pv.scrap_id = s.id) > 1 THEN 'Mixed'
+                ELSE (SELECT pt3.name FROM scrap_items si4 JOIN product_variants pv3 ON si4.product_variant_id = pv3.id JOIN product_types pt3 ON pv3.product_type_id = pt3.id WHERE si4.scrap_id = s.id LIMIT 1)
+            END as product_type,
+            CASE
+                WHEN (SELECT COUNT(DISTINCT si_pv.product_variant_id) FROM scrap_items si_pv WHERE si_pv.scrap_id = s.id) > 1 THEN NULL
+                ELSE (SELECT si4.product_variant_id FROM scrap_items si4 WHERE si4.scrap_id = s.id LIMIT 1)
+            END as product_variant_id,
+            CASE
+                WHEN (SELECT COUNT(DISTINCT si_pv.product_variant_id) FROM scrap_items si_pv WHERE si_pv.scrap_id = s.id) > 1 THEN NULL
+                ELSE (SELECT pv3.product_type_id FROM scrap_items si4 JOIN product_variants pv3 ON si4.product_variant_id = pv3.id WHERE si4.scrap_id = s.id LIMIT 1)
+            END as product_type_id,
+            CASE
+                WHEN (SELECT COUNT(DISTINCT si_pv.product_variant_id) FROM scrap_items si_pv WHERE si_pv.scrap_id = s.id) > 1 THEN NULL
+                ELSE (SELECT pv3.brand_id FROM scrap_items si4 JOIN product_variants pv3 ON si4.product_variant_id = pv3.id WHERE si4.scrap_id = s.id LIMIT 1)
+            END as brand_id,
+            CASE
+                WHEN (SELECT COUNT(DISTINCT si_pv.product_variant_id) FROM scrap_items si_pv WHERE si_pv.scrap_id = s.id) > 1 THEN 'Mixed'
+                ELSE (SELECT br3.name FROM scrap_items si4 JOIN product_variants pv3 ON si4.product_variant_id = pv3.id JOIN brands br3 ON pv3.brand_id = br3.id WHERE si4.scrap_id = s.id LIMIT 1)
+            END as brand,
+            CASE
+                WHEN (SELECT COUNT(DISTINCT si_pv.product_variant_id) FROM scrap_items si_pv WHERE si_pv.scrap_id = s.id) > 1 THEN '{}'::jsonb
+                ELSE (SELECT pv3.parameters FROM scrap_items si4 JOIN product_variants pv3 ON si4.product_variant_id = pv3.id WHERE si4.scrap_id = s.id LIMIT 1)
+            END as parameters,
+            (SELECT SUM(
+                CASE
+                    WHEN si_len.stock_type = 'FULL_ROLL' THEN COALESCE(si_len.length_per_unit * si_len.quantity_scrapped, 0)
+                    WHEN si_len.stock_type = 'CUT_ROLL' THEN COALESCE(si_len.length_per_unit * si_len.quantity_scrapped, 0)
+                    WHEN si_len.stock_type = 'BUNDLE' THEN COALESCE(si_len.quantity_scrapped * si_len.pieces_per_bundle * si_len.piece_length_meters, 0)
+                    WHEN si_len.stock_type = 'SPARE' THEN COALESCE(si_len.quantity_scrapped * si_len.piece_length_meters, 0)
+                    ELSE 0
+                END
+             )
+             FROM scrap_items si_len
+             WHERE si_len.scrap_id = s.id) as roll_length_meters,
+            NULL as roll_initial_length_meters,
+            FALSE as roll_is_cut,
+            NULL as roll_type,
+            NULL as roll_bundle_size,
+            NULL as roll_weight,
+            NULL as unit_abbreviation,
+            NULL as customer_name,
+            NULL as customer_city,
+            u.email as created_by_email,
+            u.username as created_by_username,
+            u.full_name as created_by_name,
+            NULL::bigint as standard_rolls_count,
+            NULL::bigint as cut_rolls_count,
+            NULL::bigint as bundles_count,
+            NULL::bigint as spare_pieces_count,
+            NULL::numeric as avg_standard_roll_length,
+            NULL as bundle_size,
+            NULL::numeric[] as cut_rolls_details,
+            NULL::numeric[] as spare_pieces_details
+        FROM scraps s
+        LEFT JOIN users u ON s.created_by = u.id
+        WHERE s.deleted_at IS NULL AND s.status = 'SCRAPPED'""" + date_filter_dispatch + """
+
         ORDER BY transaction_date DESC
         LIMIT 1000
     """
@@ -1025,6 +1167,125 @@ def revert_transactions():
                             user_id, action_type, entity_type, entity_id,
                             description, created_at
                         ) VALUES (%s, 'REVERT_RETURN', 'RETURN', %s, %s, NOW())
+                    """, (user_id, clean_id, log_msg))
+
+                    reverted_count += 1
+                    continue
+
+                # Check if this is a scrap transaction
+                if transaction_id.startswith('scrap_'):
+                    clean_id = transaction_id.replace('scrap_', '')
+
+                    # Get scrap details
+                    cursor.execute("""
+                        SELECT s.*
+                        FROM scraps s
+                        WHERE s.id = %s AND s.deleted_at IS NULL
+                    """, (clean_id,))
+
+                    scrap_record = cursor.fetchone()
+                    if not scrap_record:
+                        failed_transactions.append({'id': transaction_id, 'error': 'Scrap not found or already deleted'})
+                        continue
+
+                    # Check if scrap is already cancelled
+                    if scrap_record.get('status') == 'CANCELLED':
+                        failed_transactions.append({'id': transaction_id, 'error': f"Scrap {scrap_record['scrap_number']} is already cancelled"})
+                        continue
+
+                    # Get all scrapped items
+                    cursor.execute("""
+                        SELECT
+                            si.id,
+                            si.stock_id,
+                            si.stock_type,
+                            si.quantity_scrapped,
+                            si.batch_id
+                        FROM scrap_items si
+                        WHERE si.scrap_id = %s
+                    """, (clean_id,))
+
+                    scrap_items = cursor.fetchall()
+
+                    if not scrap_items:
+                        failed_transactions.append({'id': transaction_id, 'error': 'No scrap items found'})
+                        continue
+
+                    # Restore inventory for each scrapped item
+                    for item in scrap_items:
+                        stock_id = item['stock_id']
+                        stock_type = item['stock_type']
+                        quantity_scrapped = item['quantity_scrapped']
+
+                        # Check if stock still exists
+                        cursor.execute("""
+                            SELECT id, quantity, status
+                            FROM inventory_stock
+                            WHERE id = %s
+                        """, (stock_id,))
+
+                        stock = cursor.fetchone()
+
+                        if not stock:
+                            print(f"Warning: Stock {stock_id} not found, skipping restoration")
+                            continue
+
+                        # Restore quantity to inventory_stock
+                        cursor.execute("""
+                            UPDATE inventory_stock
+                            SET quantity = quantity + %s,
+                                status = 'IN_STOCK',
+                                updated_at = NOW()
+                            WHERE id = %s
+                        """, (quantity_scrapped, stock_id))
+
+                        # For CUT_ROLL and SPARE types, restore pieces status
+                        if stock_type in ('CUT_ROLL', 'SPARE'):
+                            # Get the piece IDs from scrap_pieces
+                            cursor.execute("""
+                                SELECT original_piece_id, piece_type
+                                FROM scrap_pieces sp
+                                JOIN scrap_items si ON sp.scrap_item_id = si.id
+                                WHERE si.id = %s AND sp.original_piece_id IS NOT NULL
+                            """, (item['id'],))
+
+                            pieces = cursor.fetchall()
+
+                            for piece in pieces:
+                                piece_id = piece['original_piece_id']
+                                piece_type = piece['piece_type']
+
+                                if piece_type == 'CUT_PIECE':
+                                    # Restore cut piece status
+                                    cursor.execute("""
+                                        UPDATE hdpe_cut_pieces
+                                        SET status = 'IN_STOCK', deleted_at = NULL, updated_at = NOW()
+                                        WHERE id = %s
+                                    """, (piece_id,))
+                                elif piece_type == 'SPARE_PIECE':
+                                    # Restore spare piece status
+                                    cursor.execute("""
+                                        UPDATE sprinkler_spare_pieces
+                                        SET status = 'IN_STOCK', deleted_at = NULL, updated_at = NOW()
+                                        WHERE id = %s
+                                    """, (piece_id,))
+
+                    # Mark the scrap as cancelled
+                    cursor.execute("""
+                        UPDATE scraps
+                        SET status = 'CANCELLED', updated_at = NOW()
+                        WHERE id = %s
+                    """, (clean_id,))
+
+                    # Create audit log
+                    actor_label = f"{actor.get('name', 'Unknown')} ({actor.get('role', 'Unknown')})" if actor else "Unknown User"
+                    log_msg = f"{actor_label} reverted scrap {scrap_record['scrap_number']}"
+
+                    cursor.execute("""
+                        INSERT INTO audit_logs (
+                            user_id, action_type, entity_type, entity_id,
+                            description, created_at
+                        ) VALUES (%s, 'REVERT_SCRAP', 'SCRAP', %s, %s, NOW())
                     """, (user_id, clean_id, log_msg))
 
                     reverted_count += 1

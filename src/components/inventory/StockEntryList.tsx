@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Box, Scissors, Package, Package2 } from 'lucide-react';
+import { Box, Scissors, Package, Package2, Trash2 } from 'lucide-react';
 import { CutRollDialog } from './CutRollDialog';
 import { SplitBundleDialog } from './SplitBundleDialog';
 import { CombineSparesDialog } from './CombineSparesDialog';
+import { ScrapDialog } from './ScrapDialog';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface StockEntry {
   stock_id: string;
@@ -30,10 +32,12 @@ interface StockEntryListProps {
 }
 
 export const StockEntryList = ({ stockEntries, onUpdate }: StockEntryListProps) => {
+  const { isAdmin } = useAuth();
   const [cutDialogOpen, setCutDialogOpen] = useState(false);
   const [splitDialogOpen, setSplitDialogOpen] = useState(false);
   const [combineDialogOpen, setCombineDialogOpen] = useState(false);
-  const [selectedStock, setSelectedStock] = useState<StockEntry | null>(null);
+  const [scrapDialogOpen, setScrapDialogOpen] = useState(false);
+  const [selectedStock, setSelectedStock] = useState<StockEntry | StockEntry[] | null>(null);
 
   // Group by stock type
   const fullRolls = stockEntries.filter(e => e.stock_type === 'FULL_ROLL');
@@ -120,18 +124,35 @@ export const StockEntryList = ({ stockEntries, onUpdate }: StockEntryListProps) 
                   </div>
                 </div>
               </div>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleCutRoll(firstRoll);
-                }}
-                className="gap-1"
-              >
-                <Scissors className="h-4 w-4" />
-                Cut Roll
-              </Button>
+              <div className="flex gap-2">
+                {isAdmin && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedStock(rollGroup);
+                      setScrapDialogOpen(true);
+                    }}
+                    className="gap-1 text-destructive hover:text-destructive hover:bg-destructive/10"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Scrap
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleCutRoll(firstRoll);
+                  }}
+                  className="gap-1"
+                >
+                  <Scissors className="h-4 w-4" />
+                  Cut Roll
+                </Button>
+              </div>
             </div>
           );
         })
@@ -149,18 +170,35 @@ export const StockEntryList = ({ stockEntries, onUpdate }: StockEntryListProps) 
               </div>
             </div>
           </div>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleCutRoll(entry);
-            }}
-            className="gap-1"
-          >
-            <Scissors className="h-4 w-4" />
-            Cut Further
-          </Button>
+          <div className="flex gap-2">
+            {isAdmin && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedStock([entry]);
+                  setScrapDialogOpen(true);
+                }}
+                className="gap-1 text-destructive hover:text-destructive hover:bg-destructive/10"
+              >
+                <Trash2 className="h-4 w-4" />
+                Scrap
+              </Button>
+            )}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleCutRoll(entry);
+              }}
+              className="gap-1"
+            >
+              <Scissors className="h-4 w-4" />
+              Cut Further
+            </Button>
+          </div>
         </div>
       ))}
 
@@ -187,18 +225,35 @@ export const StockEntryList = ({ stockEntries, onUpdate }: StockEntryListProps) 
                   </div>
                 </div>
               </div>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleSplitBundle(firstBundle);
-                }}
-                className="gap-1"
-              >
-                <Scissors className="h-4 w-4" />
-                Split Bundle
-              </Button>
+              <div className="flex gap-2">
+                {isAdmin && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedStock(bundleGroup);
+                      setScrapDialogOpen(true);
+                    }}
+                    className="gap-1 text-destructive hover:text-destructive hover:bg-destructive/10"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Scrap
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleSplitBundle(firstBundle);
+                  }}
+                  className="gap-1"
+                >
+                  <Scissors className="h-4 w-4" />
+                  Split Bundle
+                </Button>
+              </div>
             </div>
           );
         })}
@@ -231,25 +286,42 @@ export const StockEntryList = ({ stockEntries, onUpdate }: StockEntryListProps) 
                     </div>
                   </div>
                 </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleCombineSpares(spareGroup);
-                  }}
-                  className="gap-1"
-                >
-                  <Package2 className="h-4 w-4" />
-                  Bundle Spares
-                </Button>
+                <div className="flex gap-2">
+                  {isAdmin && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedStock(spareGroup);
+                        setScrapDialogOpen(true);
+                      }}
+                      className="gap-1 text-destructive hover:text-destructive hover:bg-destructive/10"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      Scrap
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleCombineSpares(spareGroup);
+                    }}
+                    className="gap-1"
+                  >
+                    <Package2 className="h-4 w-4" />
+                    Bundle Spares
+                  </Button>
+                </div>
               </div>
             );
           });
       })()}
 
       {/* Cut Roll Dialog */}
-      {selectedStock && (selectedStock.stock_type === 'FULL_ROLL' || selectedStock.stock_type === 'CUT_ROLL') && (
+      {selectedStock && !Array.isArray(selectedStock) && (selectedStock.stock_type === 'FULL_ROLL' || selectedStock.stock_type === 'CUT_ROLL') && (
         <CutRollDialog
           open={cutDialogOpen}
           onOpenChange={setCutDialogOpen}
@@ -264,7 +336,7 @@ export const StockEntryList = ({ stockEntries, onUpdate }: StockEntryListProps) 
       )}
 
       {/* Split Bundle Dialog */}
-      {selectedStock && selectedStock.stock_type === 'BUNDLE' && (
+      {selectedStock && !Array.isArray(selectedStock) && selectedStock.stock_type === 'BUNDLE' && (
         <SplitBundleDialog
           open={splitDialogOpen}
           onOpenChange={setSplitDialogOpen}
@@ -276,7 +348,7 @@ export const StockEntryList = ({ stockEntries, onUpdate }: StockEntryListProps) 
       )}
 
       {/* Combine Spares Dialog */}
-      {selectedStock && selectedStock.stock_type === 'SPARE' && (
+      {selectedStock && !Array.isArray(selectedStock) && selectedStock.stock_type === 'SPARE' && (
         <CombineSparesDialog
           open={combineDialogOpen}
           onOpenChange={setCombineDialogOpen}
@@ -293,6 +365,16 @@ export const StockEntryList = ({ stockEntries, onUpdate }: StockEntryListProps) 
                 }]
           }
           pieceLength={selectedStock.piece_length_meters || 0}
+          onSuccess={handleSuccess}
+        />
+      )}
+
+      {/* Scrap Dialog */}
+      {selectedStock && Array.isArray(selectedStock) && (
+        <ScrapDialog
+          open={scrapDialogOpen}
+          onOpenChange={setScrapDialogOpen}
+          stockEntries={selectedStock}
           onSuccess={handleSuccess}
         />
       )}

@@ -15,6 +15,7 @@ import { WhatsAppShareDialog } from '@/components/inventory/WhatsAppShareDialog'
 import { ImportExportDialog } from '@/components/inventory/ImportExportDialog';
 import { AdvancedFilters } from '@/components/inventory/AdvancedFilters';
 import { KeyboardShortcutsDialog } from '@/components/inventory/KeyboardShortcutsDialog';
+import ScrapHistory from '@/pages/ScrapHistory';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface Batch {
@@ -54,6 +55,7 @@ const InventoryNew = () => {
   const [selectedBrand, setSelectedBrand] = useState<string>('all');
   const [selectedStockType, setSelectedStockType] = useState<string>('all');
   const [parameterFilters, setParameterFilters] = useState<Record<string, string>>({});
+  const [activeTab, setActiveTab] = useState('stock');
 
   // Product types and brands
   const [productTypes, setProductTypes] = useState<Array<{ id: string; name: string }>>([]);
@@ -587,86 +589,100 @@ const InventoryNew = () => {
         {/* Summary Stats */}
         <StockSummary stats={stats} onCardClick={handleStatCardClick} />
 
-        {/* Filters */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Search className="h-4 w-4" />
-              Search & Filters
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {/* Search Bar */}
-            <Input
-              placeholder="Search by batch code, batch no, or brand..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="h-9"
-            />
+        {/* Tabs */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="grid w-full max-w-md grid-cols-2">
+            <TabsTrigger value="stock">Stock Inventory</TabsTrigger>
+            <TabsTrigger value="scrap-history">Scrap History</TabsTrigger>
+          </TabsList>
 
-            {/* Advanced Filters */}
-            <AdvancedFilters
-              productTypes={productTypes}
-              brands={brands}
-              selectedProductType={selectedProduct}
-              selectedBrand={selectedBrand}
-              parameterFilters={parameterFilters}
-              availableParameterValues={availableParameterValues}
-              onProductTypeChange={setSelectedProduct}
-              onBrandChange={setSelectedBrand}
-              onParameterFilterChange={handleParameterFilterChange}
-              onClearFilters={clearAllFilters}
-              selectedStockType={selectedStockType}
-              onStockTypeChange={setSelectedStockType}
-              stockTypes={stockTypes}
-              currentProductTypeName={currentProductTypeName}
-            />
+          <TabsContent value="stock" className="space-y-6 mt-6">
+            {/* Filters */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Search className="h-4 w-4" />
+                  Search & Filters
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {/* Search Bar */}
+                <Input
+                  placeholder="Search by batch code, batch no, or brand..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="h-9"
+                />
 
-            {/* Results Count */}
-            <div className="text-xs text-muted-foreground">
-              Showing {filteredBatches.length} batches
-            </div>
-          </CardContent>
-        </Card>
+                {/* Advanced Filters */}
+                <AdvancedFilters
+                  productTypes={productTypes}
+                  brands={brands}
+                  selectedProductType={selectedProduct}
+                  selectedBrand={selectedBrand}
+                  parameterFilters={parameterFilters}
+                  availableParameterValues={availableParameterValues}
+                  onProductTypeChange={setSelectedProduct}
+                  onBrandChange={setSelectedBrand}
+                  onParameterFilterChange={handleParameterFilterChange}
+                  onClearFilters={clearAllFilters}
+                  selectedStockType={selectedStockType}
+                  onStockTypeChange={setSelectedStockType}
+                  stockTypes={stockTypes}
+                  currentProductTypeName={currentProductTypeName}
+                />
 
-        {/* Product Variant List */}
-        {loading ? (
-          <Card>
-            <CardContent className="py-12">
-              <div className="text-center text-muted-foreground">
-                Loading inventory...
+                {/* Results Count */}
+                <div className="text-xs text-muted-foreground">
+                  Showing {filteredBatches.length} batches
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Product Variant List */}
+            {loading ? (
+              <Card>
+                <CardContent className="py-12">
+                  <div className="text-center text-muted-foreground">
+                    Loading inventory...
+                  </div>
+                </CardContent>
+              </Card>
+            ) : filteredBatches.length === 0 ? (
+              <Card>
+                <CardContent className="py-12">
+                  <div className="text-center">
+                    <Package className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                    <h3 className="text-lg font-semibold mb-2">No batches found</h3>
+                    <p className="text-muted-foreground">
+                      {batches.length === 0
+                        ? 'No inventory available'
+                        : 'Try adjusting your filters'}
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-4">
+                {Object.entries(groupedByProductVariant).map(([key, variant]) => (
+                  <ProductVariantCard
+                    key={key}
+                    productTypeName={variant.productTypeName}
+                    brandName={variant.brandName}
+                    parameters={variant.parameters}
+                    batches={variant.batches}
+                    productVariantId={getProductVariantId(variant.batches)}
+                    onUpdate={fetchBatches}
+                  />
+                ))}
               </div>
-            </CardContent>
-          </Card>
-        ) : filteredBatches.length === 0 ? (
-          <Card>
-            <CardContent className="py-12">
-              <div className="text-center">
-                <Package className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                <h3 className="text-lg font-semibold mb-2">No batches found</h3>
-                <p className="text-muted-foreground">
-                  {batches.length === 0
-                    ? 'No inventory available'
-                    : 'Try adjusting your filters'}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="space-y-4">
-            {Object.entries(groupedByProductVariant).map(([key, variant]) => (
-              <ProductVariantCard
-                key={key}
-                productTypeName={variant.productTypeName}
-                brandName={variant.brandName}
-                parameters={variant.parameters}
-                batches={variant.batches}
-                productVariantId={getProductVariantId(variant.batches)}
-                onUpdate={fetchBatches}
-              />
-            ))}
-          </div>
-        )}
+            )}
+          </TabsContent>
+
+          <TabsContent value="scrap-history" className="mt-6">
+            <ScrapHistory embedded />
+          </TabsContent>
+        </Tabs>
       </div>
 
       {/* Dialogs */}

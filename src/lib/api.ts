@@ -277,4 +277,33 @@ export const versionControl = {
     api.post('/version-control/drive/configure', data),
 };
 
+// Scrap endpoints
+export const scrap = {
+  create: (data: {
+    scrap_date?: string;
+    reason: string;
+    notes?: string;
+    items: Array<{
+      stock_id: string;
+      quantity_to_scrap: number;
+      piece_ids?: string[];
+      estimated_value?: number;
+      notes?: string;
+    }>;
+  }) =>
+    api.post('/scraps/create', data),
+
+  getHistory: (params?: { start_date?: string; end_date?: string; reason?: string; status?: string }) =>
+    api.get('/scraps/history', { params }),
+
+  getDetails: (scrapId: string) =>
+    api.get(`/scraps/history/${scrapId}`),
+
+  getReasons: () =>
+    api.get('/scraps/reasons'),
+
+  revert: (scrapId: string) =>
+    api.post(`/scraps/${scrapId}/revert`),
+};
+
 export default api;
