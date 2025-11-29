@@ -123,7 +123,10 @@ export const StockEntryList = ({ stockEntries, onUpdate }: StockEntryListProps) 
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => handleCutRoll(firstRoll)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleCutRoll(firstRoll);
+                }}
                 className="gap-1"
               >
                 <Scissors className="h-4 w-4" />
@@ -149,7 +152,10 @@ export const StockEntryList = ({ stockEntries, onUpdate }: StockEntryListProps) 
           <Button
             size="sm"
             variant="outline"
-            onClick={() => handleCutRoll(entry)}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleCutRoll(entry);
+            }}
             className="gap-1"
           >
             <Scissors className="h-4 w-4" />
@@ -184,7 +190,10 @@ export const StockEntryList = ({ stockEntries, onUpdate }: StockEntryListProps) 
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => handleSplitBundle(firstBundle)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleSplitBundle(firstBundle);
+                }}
                 className="gap-1"
               >
                 <Scissors className="h-4 w-4" />
@@ -225,7 +234,10 @@ export const StockEntryList = ({ stockEntries, onUpdate }: StockEntryListProps) 
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => handleCombineSpares(spareGroup)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleCombineSpares(spareGroup);
+                  }}
                   className="gap-1"
                 >
                   <Package2 className="h-4 w-4" />

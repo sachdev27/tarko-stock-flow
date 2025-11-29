@@ -317,29 +317,6 @@ export function TransactionDetailModal({
                             </Badge>
                           </div>
                         )}
-
-                        {(transaction.roll_snapshot.total_items || transaction.roll_snapshot.item_breakdown) && (
-                          <div>
-                            <div className="text-sm text-muted-foreground mb-1">Total Items</div>
-                            <div className="font-bold text-lg">
-                              {(() => {
-                                // Calculate aggregated count from item_breakdown
-                                if (transaction.roll_snapshot.item_breakdown && Array.isArray(transaction.roll_snapshot.item_breakdown)) {
-                                  const grouped = transaction.roll_snapshot.item_breakdown.reduce((acc: any, item: any) => {
-                                    const paramStr = JSON.stringify(item.parameters || {});
-                                    const key = `${item.item_type}-${item.length_meters || ''}-${item.piece_length || ''}-${item.bundle_size || ''}-${paramStr}`;
-                                    if (!acc[key]) {
-                                      acc[key] = true;
-                                    }
-                                    return acc;
-                                  }, {});
-                                  return Object.keys(grouped).length;
-                                }
-                                return transaction.roll_snapshot.total_items;
-                              })()}
-                            </div>
-                          </div>
-                        )}
                       </div>
                     </>
                   )}

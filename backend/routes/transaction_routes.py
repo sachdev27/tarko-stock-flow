@@ -322,9 +322,9 @@ def get_transactions():
             u_unit.abbreviation as unit_abbreviation,
             NULL as customer_name,
             NULL as customer_city,
-            NULL as created_by_email,
-            NULL as created_by_username,
-            NULL as created_by_name,
+            u.email as created_by_email,
+            u.username as created_by_username,
+            u.full_name as created_by_name,
             NULL::bigint as standard_rolls_count,
             NULL::bigint as cut_rolls_count,
             NULL::bigint as bundles_count,
@@ -341,6 +341,7 @@ def get_transactions():
         LEFT JOIN product_types pt ON pv.product_type_id = pt.id
         LEFT JOIN brands br ON pv.brand_id = br.id
         LEFT JOIN units u_unit ON pt.unit_id = u_unit.id
+        LEFT JOIN users u ON it.created_by = u.id
         WHERE it.transaction_type IN ('CUT_ROLL', 'SPLIT_BUNDLE', 'COMBINE_SPARES')
         AND it.reverted_at IS NULL""" + date_filter_inv + """
 

@@ -535,7 +535,7 @@ class InventoryOperations:
         """
         # 1. Verify not already reverted
         self.cursor.execute("""
-            SELECT reverted_at FROM inventory_transactions
+            SELECT reverted_at, from_length, to_stock_id FROM inventory_transactions
             WHERE id = %s
         """, (transaction_id,))
 
@@ -545,6 +545,14 @@ class InventoryOperations:
 
         if txn['reverted_at']:
             raise ValidationError(f"Transaction already reverted at {txn['reverted_at']}")
+
+        # Check if this is a legacy transaction (no from_length for re-cuts)
+        is_recut = txn['to_stock_id'] is None
+        if is_recut and txn['from_length'] is None:
+            raise ValidationError(
+                "Cannot revert this operation: Created using legacy method without sufficient tracking data. "
+                "Only operations created with the current system can be reverted."
+            )
 
         # 2. Check if any pieces were dispatched
         self.cursor.execute("""
@@ -614,6 +622,13 @@ class InventoryOperations:
             # CASE: Cutting an existing cut piece into smaller pieces
             # Need to restore the original piece that was marked as DISPATCHED
 
+            # Check if this is a legacy transaction (no from_length tracking)
+            if txn_details['from_length'] is None:
+                raise ValidationError(
+                    "Cannot revert: Transaction created with legacy method without piece tracking. "
+                    "Only operations created after the latest update can be reverted."
+                )
+
             # The original piece is the one that:
             # 1. Is in the same stock as from_stock_id
             # 2. Has the same length as from_length
@@ -633,7 +648,8 @@ class InventoryOperations:
 
         else:
             # CASE: Cutting a FULL_ROLL into CUT_ROLL pieces
-            # Restore FULL_ROLL (+1 quantity) and decrease CUT_ROLL quantity
+            # Restore FULL_ROLL (+1 quantity)
+            # Note: CUT_ROLL quantity will be auto-updated by triggers when pieces are deleted
 
             # 6. Restore original FULL_ROLL (+1 quantity) and un-delete if needed
             if txn_details['from_stock_id']:
@@ -647,15 +663,8 @@ class InventoryOperations:
                     WHERE id = %s
                 """, (txn_details['from_stock_id'],))
 
-            # 6b. Decrease CUT_ROLL stock quantity
-            if txn_details['to_stock_id']:
-                self.cursor.execute("""
-                    UPDATE inventory_stock
-                    SET
-                        quantity = quantity - %s,
-                        updated_at = NOW()
-                    WHERE id = %s
-                """, (deleted_count, txn_details['to_stock_id']))
+            # 6b. For CUT_ROLL stock: triggers will auto-update quantity when pieces are deleted
+            # No manual quantity update needed
 
         # Common: Check if CUT_ROLL stock should be soft-deleted (no pieces left)
         check_stock_id = txn_details['to_stock_id'] or txn_details['from_stock_id']

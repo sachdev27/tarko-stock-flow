@@ -1298,11 +1298,7 @@ export const ProductSelectionSection = ({
           <Card>
             <CardContent className="pt-6">
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 text-sm">
-                  <div className="flex flex-col items-center">
-                    <div className="text-gray-600">Total Items</div>
-                    <div className="font-bold text-lg mt-auto">{selectedRolls.length}</div>
-                  </div>
+                <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
                   <div className="flex flex-col items-center">
                     <div className="text-gray-600">Full Rolls</div>
                     <div className="font-bold text-lg mt-auto">
