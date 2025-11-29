@@ -1,20 +1,25 @@
 import { useState, useEffect } from 'react';
 import { Layout } from '@/components/Layout';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
-import { Plus, Trash2, Edit, Users, Truck, Building2, FileText } from 'lucide-react';
+import { Users, Truck, Building2, FileText } from 'lucide-react';
 import axios from 'axios';
+
+// Import modular components
+import { CustomersTab } from '@/components/details/CustomersTab';
+import { VehiclesTab } from '@/components/details/VehiclesTab';
+import { TransportsTab } from '@/components/details/TransportsTab';
+import { BillToTab } from '@/components/details/BillToTab';
+import { CustomerDialog } from '@/components/details/CustomerDialog';
+import { VehicleDialog } from '@/components/details/VehicleDialog';
+import { TransportDialog } from '@/components/details/TransportDialog';
+import { BillToDialog } from '@/components/details/BillToDialog';
 
 const API_URL = 'http://localhost:5500/api';
 
 const Details = () => {
-  const { token } = useAuth();
+  const { token, isAdmin } = useAuth();
   const [loading, setLoading] = useState(false);
 
   // State for each entity type
@@ -111,13 +116,17 @@ const Details = () => {
     }
   };
 
-  useEffect(() => {
+  const fetchAllData = () => {
     if (token) {
       fetchCustomers();
       fetchVehicles();
       fetchTransports();
       fetchBillTo();
     }
+  };
+
+  useEffect(() => {
+    fetchAllData();
   }, [token]);
 
   // Customer handlers
@@ -367,486 +376,109 @@ const Details = () => {
 
           {/* Customers Tab */}
           <TabsContent value="customers">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle>Customers</CardTitle>
-                <Button onClick={() => {
-                  setEditingCustomer(null);
-                  setCustomerForm({ name: '', city: '', contact_person: '', phone: '', email: '', gstin: '', address: '' });
-                  setCustomerDialog(true);
-                }}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Customer
-                </Button>
-              </CardHeader>
-              <CardContent>
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b">
-                        <th className="text-left p-2">Name</th>
-                        <th className="text-left p-2">City</th>
-                        <th className="text-left p-2">Contact</th>
-                        <th className="text-left p-2">Phone</th>
-                        <th className="text-left p-2">GSTIN</th>
-                        <th className="text-right p-2">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {customers.map((customer) => (
-                        <tr key={customer.id} className="border-b hover:bg-gray-50">
-                          <td className="p-2">{customer.name}</td>
-                          <td className="p-2">{customer.city || '-'}</td>
-                          <td className="p-2">{customer.contact_person || '-'}</td>
-                          <td className="p-2">{customer.phone || '-'}</td>
-                          <td className="p-2">{customer.gstin || '-'}</td>
-                          <td className="p-2 text-right space-x-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleEditCustomer(customer)}
-                            >
-                              <Edit className="h-3 w-3" />
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="destructive"
-                              onClick={() => handleDeleteCustomer(customer.id)}
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </Button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </CardContent>
-            </Card>
+            <CustomersTab
+              customers={customers}
+              onEdit={handleEditCustomer}
+              onDelete={handleDeleteCustomer}
+              onAdd={() => {
+                setEditingCustomer(null);
+                setCustomerForm({ name: '', city: '', contact_person: '', phone: '', email: '', gstin: '', address: '' });
+                setCustomerDialog(true);
+              }}
+              onRefresh={fetchCustomers}
+              isAdmin={isAdmin}
+            />
           </TabsContent>
 
           {/* Vehicles Tab */}
           <TabsContent value="vehicles">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle>Vehicles</CardTitle>
-                <Button onClick={() => {
-                  setEditingVehicle(null);
-                  setVehicleForm({ vehicle_number: '', vehicle_type: '', driver_name: '', driver_phone: '' });
-                  setVehicleDialog(true);
-                }}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Vehicle
-                </Button>
-              </CardHeader>
-              <CardContent>
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b">
-                        <th className="text-left p-2">Vehicle Number</th>
-                        <th className="text-left p-2">Type</th>
-                        <th className="text-left p-2">Driver Name</th>
-                        <th className="text-left p-2">Driver Phone</th>
-                        <th className="text-right p-2">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {vehicles.map((vehicle) => (
-                        <tr key={vehicle.id} className="border-b hover:bg-gray-50">
-                          <td className="p-2">{vehicle.vehicle_number}</td>
-                          <td className="p-2">{vehicle.vehicle_type || '-'}</td>
-                          <td className="p-2">{vehicle.driver_name || '-'}</td>
-                          <td className="p-2">{vehicle.driver_phone || '-'}</td>
-                          <td className="p-2 text-right space-x-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleEditVehicle(vehicle)}
-                            >
-                              <Edit className="h-3 w-3" />
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="destructive"
-                              onClick={() => handleDeleteVehicle(vehicle.id)}
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </Button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </CardContent>
-            </Card>
+            <VehiclesTab
+              vehicles={vehicles}
+              onEdit={handleEditVehicle}
+              onDelete={handleDeleteVehicle}
+              onAdd={() => {
+                setEditingVehicle(null);
+                setVehicleForm({ vehicle_number: '', vehicle_type: '', driver_name: '', driver_phone: '' });
+                setVehicleDialog(true);
+              }}
+              onRefresh={fetchVehicles}
+              isAdmin={isAdmin}
+            />
           </TabsContent>
 
           {/* Transports Tab */}
           <TabsContent value="transports">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle>Transport Companies</CardTitle>
-                <Button onClick={() => {
-                  setEditingTransport(null);
-                  setTransportForm({ name: '', contact_person: '', phone: '' });
-                  setTransportDialog(true);
-                }}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Transport
-                </Button>
-              </CardHeader>
-              <CardContent>
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b">
-                        <th className="text-left p-2">Name</th>
-                        <th className="text-left p-2">Contact Person</th>
-                        <th className="text-left p-2">Phone</th>
-                        <th className="text-right p-2">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {transports.map((transport) => (
-                        <tr key={transport.id} className="border-b hover:bg-gray-50">
-                          <td className="p-2">{transport.name}</td>
-                          <td className="p-2">{transport.contact_person || '-'}</td>
-                          <td className="p-2">{transport.phone || '-'}</td>
-                          <td className="p-2 text-right space-x-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleEditTransport(transport)}
-                            >
-                              <Edit className="h-3 w-3" />
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="destructive"
-                              onClick={() => handleDeleteTransport(transport.id)}
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </Button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </CardContent>
-            </Card>
+            <TransportsTab
+              transports={transports}
+              onEdit={handleEditTransport}
+              onDelete={handleDeleteTransport}
+              onAdd={() => {
+                setEditingTransport(null);
+                setTransportForm({ name: '', contact_person: '', phone: '' });
+                setTransportDialog(true);
+              }}
+              onRefresh={fetchTransports}
+              isAdmin={isAdmin}
+            />
           </TabsContent>
 
           {/* Bill To Tab */}
           <TabsContent value="billto">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle>Bill To Entities</CardTitle>
-                <Button onClick={() => {
-                  setEditingBillTo(null);
-                  setBillToForm({ name: '', city: '', gstin: '', address: '', contact_person: '', phone: '', email: '' });
-                  setBillToDialog(true);
-                }}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Bill To
-                </Button>
-              </CardHeader>
-              <CardContent>
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b">
-                        <th className="text-left p-2">Name</th>
-                        <th className="text-left p-2">City</th>
-                        <th className="text-left p-2">GSTIN</th>
-                        <th className="text-left p-2">Contact</th>
-                        <th className="text-left p-2">Phone</th>
-                        <th className="text-right p-2">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {billToList.map((billTo) => (
-                        <tr key={billTo.id} className="border-b hover:bg-gray-50">
-                          <td className="p-2">{billTo.name}</td>
-                          <td className="p-2">{billTo.city || '-'}</td>
-                          <td className="p-2">{billTo.gstin || '-'}</td>
-                          <td className="p-2">{billTo.contact_person || '-'}</td>
-                          <td className="p-2">{billTo.phone || '-'}</td>
-                          <td className="p-2 text-right space-x-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleEditBillTo(billTo)}
-                            >
-                              <Edit className="h-3 w-3" />
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="destructive"
-                              onClick={() => handleDeleteBillTo(billTo.id)}
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </Button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </CardContent>
-            </Card>
+            <BillToTab
+              billToList={billToList}
+              onEdit={handleEditBillTo}
+              onDelete={handleDeleteBillTo}
+              onAdd={() => {
+                setEditingBillTo(null);
+                setBillToForm({ name: '', city: '', gstin: '', address: '', contact_person: '', phone: '', email: '' });
+                setBillToDialog(true);
+              }}
+              onRefresh={fetchBillTo}
+              isAdmin={isAdmin}
+            />
           </TabsContent>
         </Tabs>
 
-        {/* Customer Dialog */}
-        <Dialog open={customerDialog} onOpenChange={setCustomerDialog}>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>{editingCustomer ? 'Edit Customer' : 'Add Customer'}</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div>
-                <Label>Name *</Label>
-                <Input
-                  value={customerForm.name}
-                  onChange={(e) => setCustomerForm({ ...customerForm, name: e.target.value })}
-                  placeholder="e.g. ABC Industries"
-                  autoFocus
-                />
-              </div>
-              <div>
-                <Label>City</Label>
-                <Input
-                  value={customerForm.city}
-                  onChange={(e) => setCustomerForm({ ...customerForm, city: e.target.value })}
-                  placeholder="e.g. Mumbai, Delhi, Ahmedabad"
-                />
-              </div>
-              <div>
-                <Label>Contact Person</Label>
-                <Input
-                  value={customerForm.contact_person}
-                  onChange={(e) => setCustomerForm({ ...customerForm, contact_person: e.target.value })}
-                  placeholder="e.g. Mr. Sharma"
-                />
-              </div>
-              <div>
-                <Label>Phone</Label>
-                <Input
-                  value={customerForm.phone}
-                  onChange={(e) => setCustomerForm({ ...customerForm, phone: e.target.value })}
-                  placeholder="e.g. +91 98765 43210"
-                  type="tel"
-                />
-              </div>
-              <div>
-                <Label>Email</Label>
-                <Input
-                  value={customerForm.email}
-                  onChange={(e) => setCustomerForm({ ...customerForm, email: e.target.value })}
-                  placeholder="e.g. contact@example.com"
-                  type="email"
-                />
-              </div>
-              <div>
-                <Label>GSTIN</Label>
-                <Input
-                  value={customerForm.gstin}
-                  onChange={(e) => setCustomerForm({ ...customerForm, gstin: e.target.value })}
-                  placeholder="e.g. 22AAAAA0000A1Z5"
-                  maxLength={15}
-                />
-              </div>
-              <div>
-                <Label>Address</Label>
-                <Input
-                  value={customerForm.address}
-                  onChange={(e) => setCustomerForm({ ...customerForm, address: e.target.value })}
-                  placeholder="e.g. 123 Street Name, Area"
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setCustomerDialog(false)}>Cancel</Button>
-              <Button onClick={handleAddCustomer} disabled={loading}>
-                {loading ? 'Saving...' : 'Save'}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        {/* Dialogs */}
+        <CustomerDialog
+          open={customerDialog}
+          onOpenChange={setCustomerDialog}
+          form={customerForm}
+          onFormChange={setCustomerForm}
+          onSave={handleAddCustomer}
+          loading={loading}
+          isEditing={!!editingCustomer}
+        />
 
-        {/* Vehicle Dialog */}
-        <Dialog open={vehicleDialog} onOpenChange={setVehicleDialog}>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>{editingVehicle ? 'Edit Vehicle' : 'Add Vehicle'}</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div>
-                <Label>Driver Name *</Label>
-                <Input
-                  value={vehicleForm.driver_name}
-                  onChange={(e) => setVehicleForm({ ...vehicleForm, driver_name: e.target.value })}
-                  placeholder="e.g. Rajesh Kumar"
-                  autoFocus
-                />
-              </div>
-              <div>
-                <Label>Vehicle Number</Label>
-                <Input
-                  value={vehicleForm.vehicle_number}
-                  onChange={(e) => setVehicleForm({ ...vehicleForm, vehicle_number: e.target.value })}
-                  placeholder="e.g. GJ01AB1234"
-                />
-              </div>
-              <div>
-                <Label>Driver Phone</Label>
-                <Input
-                  value={vehicleForm.driver_phone}
-                  onChange={(e) => setVehicleForm({ ...vehicleForm, driver_phone: e.target.value })}
-                  placeholder="e.g. +91 98765 43210"
-                  type="tel"
-                />
-              </div>
-              <div>
-                <Label>Vehicle Type</Label>
-                <Input
-                  value={vehicleForm.vehicle_type}
-                  onChange={(e) => setVehicleForm({ ...vehicleForm, vehicle_type: e.target.value })}
-                  placeholder="e.g. Truck, Tempo, Mini Truck"
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setVehicleDialog(false)}>Cancel</Button>
-              <Button onClick={handleAddVehicle} disabled={loading}>
-                {loading ? 'Saving...' : 'Save'}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <VehicleDialog
+          open={vehicleDialog}
+          onOpenChange={setVehicleDialog}
+          form={vehicleForm}
+          onFormChange={setVehicleForm}
+          onSave={handleAddVehicle}
+          loading={loading}
+          isEditing={!!editingVehicle}
+        />
 
-        {/* Transport Dialog */}
-        <Dialog open={transportDialog} onOpenChange={setTransportDialog}>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>{editingTransport ? 'Edit Transport' : 'Add Transport'}</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div>
-                <Label>Name *</Label>
-                <Input
-                  value={transportForm.name}
-                  onChange={(e) => setTransportForm({ ...transportForm, name: e.target.value })}
-                  placeholder="e.g. Express Logistics, Fast Transport"
-                  autoFocus
-                />
-              </div>
-              <div>
-                <Label>Contact Person</Label>
-                <Input
-                  value={transportForm.contact_person}
-                  onChange={(e) => setTransportForm({ ...transportForm, contact_person: e.target.value })}
-                  placeholder="e.g. Mr. Patel"
-                />
-              </div>
-              <div>
-                <Label>Phone</Label>
-                <Input
-                  value={transportForm.phone}
-                  onChange={(e) => setTransportForm({ ...transportForm, phone: e.target.value })}
-                  placeholder="e.g. +91 98765 43210"
-                  type="tel"
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setTransportDialog(false)}>Cancel</Button>
-              <Button onClick={handleAddTransport} disabled={loading}>
-                {loading ? 'Saving...' : 'Save'}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <TransportDialog
+          open={transportDialog}
+          onOpenChange={setTransportDialog}
+          form={transportForm}
+          onFormChange={setTransportForm}
+          onSave={handleAddTransport}
+          loading={loading}
+          isEditing={!!editingTransport}
+        />
 
-        {/* Bill To Dialog */}
-        <Dialog open={billToDialog} onOpenChange={setBillToDialog}>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>{editingBillTo ? 'Edit Bill To' : 'Add Bill To'}</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div>
-                <Label>Name *</Label>
-                <Input
-                  value={billToForm.name}
-                  onChange={(e) => setBillToForm({ ...billToForm, name: e.target.value })}
-                  placeholder="e.g. XYZ Corporation"
-                  autoFocus
-                />
-              </div>
-              <div>
-                <Label>City</Label>
-                <Input
-                  value={billToForm.city}
-                  onChange={(e) => setBillToForm({ ...billToForm, city: e.target.value })}
-                  placeholder="e.g. Mumbai, Delhi, Ahmedabad"
-                />
-              </div>
-              <div>
-                <Label>GSTIN</Label>
-                <Input
-                  value={billToForm.gstin}
-                  onChange={(e) => setBillToForm({ ...billToForm, gstin: e.target.value })}
-                  placeholder="e.g. 22AAAAA0000A1Z5"
-                  maxLength={15}
-                />
-              </div>
-              <div>
-                <Label>Address</Label>
-                <Input
-                  value={billToForm.address}
-                  onChange={(e) => setBillToForm({ ...billToForm, address: e.target.value })}
-                  placeholder="e.g. 456 Business Park, Sector"
-                />
-              </div>
-              <div>
-                <Label>Contact Person</Label>
-                <Input
-                  value={billToForm.contact_person}
-                  onChange={(e) => setBillToForm({ ...billToForm, contact_person: e.target.value })}
-                  placeholder="e.g. Ms. Gupta"
-                />
-              </div>
-              <div>
-                <Label>Phone</Label>
-                <Input
-                  value={billToForm.phone}
-                  onChange={(e) => setBillToForm({ ...billToForm, phone: e.target.value })}
-                  placeholder="e.g. +91 98765 43210"
-                  type="tel"
-                />
-              </div>
-              <div>
-                <Label>Email</Label>
-                <Input
-                  value={billToForm.email}
-                  onChange={(e) => setBillToForm({ ...billToForm, email: e.target.value })}
-                  placeholder="e.g. billing@example.com"
-                  type="email"
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setBillToDialog(false)}>Cancel</Button>
-              <Button onClick={handleAddBillTo} disabled={loading}>
-                {loading ? 'Saving...' : 'Save'}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <BillToDialog
+          open={billToDialog}
+          onOpenChange={setBillToDialog}
+          form={billToForm}
+          onFormChange={setBillToForm}
+          onSave={handleAddBillTo}
+          loading={loading}
+          isEditing={!!editingBillTo}
+        />
       </div>
     </Layout>
   );

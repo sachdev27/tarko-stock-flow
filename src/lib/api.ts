@@ -184,6 +184,45 @@ export const admin = {
     });
   },
 
+  // Vehicles Export/Import
+  exportVehicles: () =>
+    api.get('/admin/vehicles/export', { responseType: 'blob' }),
+  downloadVehicleTemplate: () =>
+    api.get('/admin/vehicles/template', { responseType: 'blob' }),
+  importVehicles: (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/admin/vehicles/import', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  },
+
+  // Transports Export/Import
+  exportTransports: () =>
+    api.get('/admin/transports/export', { responseType: 'blob' }),
+  downloadTransportTemplate: () =>
+    api.get('/admin/transports/template', { responseType: 'blob' }),
+  importTransports: (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/admin/transports/import', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  },
+
+  // Bill-To Export/Import
+  exportBillTo: () =>
+    api.get('/admin/bill-to/export', { responseType: 'blob' }),
+  downloadBillToTemplate: () =>
+    api.get('/admin/bill-to/template', { responseType: 'blob' }),
+  importBillTo: (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/admin/bill-to/import', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  },
+
   // Units
   getUnits: () =>
     api.get('/admin/units'),
