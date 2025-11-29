@@ -15,7 +15,7 @@ import { WhatsAppShareDialog } from '@/components/inventory/WhatsAppShareDialog'
 import { ImportExportDialog } from '@/components/inventory/ImportExportDialog';
 import { AdvancedFilters } from '@/components/inventory/AdvancedFilters';
 import { KeyboardShortcutsDialog } from '@/components/inventory/KeyboardShortcutsDialog';
-import ScrapHistory from '@/pages/ScrapHistory';
+import ScrapHistory from '@/components/inventory/ScrapHistory';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface Batch {

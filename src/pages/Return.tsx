@@ -10,7 +10,17 @@ const Return = () => {
 
   return (
     <Layout>
-      <div className="p-4 w-full">
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
+            <PackageX className="h-8 w-8" />
+            Returns
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            Process product returns and view return history
+          </p>
+        </div>
+
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="grid w-full max-w-md grid-cols-2">
             <TabsTrigger value="new" className="flex items-center gap-2">
@@ -23,11 +33,11 @@ const Return = () => {
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="new" className="mt-4">
+          <TabsContent value="new" className="mt-6">
             <ReturnNewModular />
           </TabsContent>
 
-          <TabsContent value="history" className="mt-4">
+          <TabsContent value="history" className="mt-6">
             <ReturnHistory />
           </TabsContent>
         </Tabs>

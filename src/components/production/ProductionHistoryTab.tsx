@@ -69,7 +69,7 @@ interface BatchDetails extends Batch {
   items: StockItem[];
 }
 
-const ProductionHistory = () => {
+export const ProductionHistoryTab = () => {
   const [batches, setBatches] = useState<Batch[]>([]);
   const [filteredBatches, setFilteredBatches] = useState<Batch[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -617,5 +617,3 @@ const ProductionHistory = () => {
     </>
   );
 };
-
-export default ProductionHistory;

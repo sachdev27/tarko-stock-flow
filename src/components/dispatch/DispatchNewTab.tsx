@@ -23,7 +23,7 @@ interface Roll {
   dispatchLength?: number;
 }
 
-const DispatchNewModular = () => {
+export const DispatchNewTab = () => {
   const { token } = useAuth();
 
   // Customer Details State
@@ -440,5 +440,3 @@ const DispatchNewModular = () => {
       </div>
   );
 };
-
-export default DispatchNewModular;

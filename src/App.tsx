@@ -15,8 +15,6 @@ import Return from "./pages/Return";
 import Reports from "./pages/Reports";
 import Admin from "./pages/Admin";
 import Details from "./pages/Details";
-import ExportHDPE from "./pages/ExportHDPE";
-import ExportSprinkler from "./pages/ExportSprinkler";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -100,22 +98,6 @@ const App = () => (
               element={
                 <ProtectedRoute requireUser>
                   <Details />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/export/hdpe"
-              element={
-                <ProtectedRoute>
-                  <ExportHDPE />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/export/sprinkler"
-              element={
-                <ProtectedRoute>
-                  <ExportSprinkler />
                 </ProtectedRoute>
               }
             />

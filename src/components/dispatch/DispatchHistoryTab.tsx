@@ -70,7 +70,7 @@ interface DispatchDetails extends Dispatch {
   items: DispatchItem[];
 }
 
-const DispatchHistory = () => {
+export const DispatchHistoryTab = () => {
   const { token } = useAuth();
   const api = useMemo(() => new DispatchAPI(token || ''), [token]);
   const [dispatches, setDispatches] = useState<Dispatch[]>([]);
@@ -566,5 +566,3 @@ const DispatchHistory = () => {
     </>
   );
 };
-
-export default DispatchHistory;

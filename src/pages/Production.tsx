@@ -2,15 +2,25 @@ import { useState } from 'react';
 import { Layout } from '@/components/Layout';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Factory, ListIcon } from 'lucide-react';
-import ProductionNew from './ProductionNew';
-import ProductionHistory from './ProductionHistory';
+import { ProductionNewTab } from '@/components/production/ProductionNewTab';
+import { ProductionHistoryTab } from '@/components/production/ProductionHistoryTab';
 
 const Production = () => {
   const [activeTab, setActiveTab] = useState('new');
 
   return (
     <Layout>
-      <div className="p-4 w-full">
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
+            <Factory className="h-8 w-8" />
+            Production
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            Create new production batches and view production history
+          </p>
+        </div>
+
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="grid w-full max-w-md grid-cols-2">
             <TabsTrigger value="new" className="flex items-center gap-2">
@@ -23,12 +33,14 @@ const Production = () => {
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="new" className="mt-4">
-            <ProductionNew />
+          <TabsContent value="new" className="mt-6">
+            <div className="max-w-4xl mx-auto">
+              <ProductionNewTab />
+            </div>
           </TabsContent>
 
-          <TabsContent value="history" className="mt-4">
-            <ProductionHistory />
+          <TabsContent value="history" className="mt-6">
+            <ProductionHistoryTab />
           </TabsContent>
         </Tabs>
       </div>

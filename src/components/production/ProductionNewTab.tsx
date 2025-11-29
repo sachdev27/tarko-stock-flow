@@ -3,12 +3,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { Factory, Plus } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { inventory, production, parameters } from '@/lib/api';
 import { toISTDateTimeLocal } from '@/lib/utils';
-import { ProductSelectionForm } from '@/components/production/ProductSelectionForm';
-import { QuantityConfigForm } from '@/components/production/QuantityConfigForm';
-import { BatchDetailsForm } from '@/components/production/BatchDetailsForm';
+import { ProductSelectionForm } from './ProductSelectionForm';
+import { QuantityConfigForm } from './QuantityConfigForm';
+import { BatchDetailsForm } from './BatchDetailsForm';
 
 interface ProductType {
   id: string;
@@ -25,7 +25,7 @@ interface Brand {
   name: string;
 }
 
-const ProductionNew = () => {
+export const ProductionNewTab = () => {
   const [loading, setLoading] = useState(false);
   const [productTypes, setProductTypes] = useState<ProductType[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
@@ -289,161 +289,143 @@ const ProductionNew = () => {
   const rollConfig = selectedProductType?.roll_configuration || { type: 'standard_rolls', quantity_based: false };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-            <Factory className="h-8 w-8" />
-            Production Entry
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            Create new production batches and track inventory
-          </p>
-        </div>
-      </div>
+    <Card>
+      <CardHeader>
+        <CardTitle>New Production Batch</CardTitle>
+        <CardDescription>
+          Enter production details to create a new batch
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Product Selection */}
+          <ProductSelectionForm
+            productTypes={productTypes}
+            brands={brands}
+            formData={formData}
+            parameterOptions={parameterOptions}
+            onChange={handleFieldChange}
+            onParameterChange={handleParameterChange}
+            submitAttempted={submitAttempted}
+          />
 
-      {/* Form */}
-      <Card>
-          <CardHeader>
-            <CardTitle>New Production Batch</CardTitle>
-            <CardDescription>
-              Enter production details to create a new batch
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Product Selection */}
-              <ProductSelectionForm
-                productTypes={productTypes}
-                brands={brands}
-                formData={formData}
-                parameterOptions={parameterOptions}
-                onChange={handleFieldChange}
-                onParameterChange={handleParameterChange}
-                submitAttempted={submitAttempted}
-              />
+          {/* Quantity Configuration */}
+          {formData.productTypeId && (
+            <QuantityConfigForm
+              configType={rollConfig.type}
+              isQuantityBased={rollConfig.quantity_based || false}
+              rollConfig={{
+                numberOfRolls: formData.numberOfRolls,
+                lengthPerRoll: formData.lengthPerRoll,
+                cutRolls: formData.cutRolls
+              }}
+              bundleConfig={{
+                numberOfBundles: formData.numberOfBundles,
+                bundleSize: formData.bundleSize,
+                lengthPerPiece: formData.lengthPerPiece,
+                sparePipes: formData.sparePipes
+              }}
+              onRollChange={(field, value) => handleFieldChange(field, value)}
+              onBundleChange={(field, value) => handleFieldChange(field, value)}
+              onAddCutRoll={(length) => {
+                setFormData(prev => ({
+                  ...prev,
+                  cutRolls: [...prev.cutRolls, { length }]
+                }));
+              }}
+              onRemoveCutRoll={(index) => {
+                setFormData(prev => ({
+                  ...prev,
+                  cutRolls: prev.cutRolls.filter((_, i) => i !== index)
+                }));
+              }}
+              onAddSparePipe={(length) => {
+                setFormData(prev => ({
+                  ...prev,
+                  sparePipes: [...prev.sparePipes, { length }]
+                }));
+              }}
+              onRemoveSparePipe={(index) => {
+                setFormData(prev => ({
+                  ...prev,
+                  sparePipes: prev.sparePipes.filter((_, i) => i !== index)
+                }));
+              }}
+              submitAttempted={submitAttempted}
+            />
+          )}
 
-              {/* Quantity Configuration */}
-              {formData.productTypeId && (
-                <QuantityConfigForm
-                  configType={rollConfig.type}
-                  isQuantityBased={rollConfig.quantity_based || false}
-                  rollConfig={{
-                    numberOfRolls: formData.numberOfRolls,
-                    lengthPerRoll: formData.lengthPerRoll,
-                    cutRolls: formData.cutRolls
-                  }}
-                  bundleConfig={{
-                    numberOfBundles: formData.numberOfBundles,
-                    bundleSize: formData.bundleSize,
-                    lengthPerPiece: formData.lengthPerPiece,
-                    sparePipes: formData.sparePipes
-                  }}
-                  onRollChange={(field, value) => handleFieldChange(field, value)}
-                  onBundleChange={(field, value) => handleFieldChange(field, value)}
-                  onAddCutRoll={(length) => {
-                    setFormData(prev => ({
-                      ...prev,
-                      cutRolls: [...prev.cutRolls, { length }]
-                    }));
-                  }}
-                  onRemoveCutRoll={(index) => {
-                    setFormData(prev => ({
-                      ...prev,
-                      cutRolls: prev.cutRolls.filter((_, i) => i !== index)
-                    }));
-                  }}
-                  onAddSparePipe={(length) => {
-                    setFormData(prev => ({
-                      ...prev,
-                      sparePipes: [...prev.sparePipes, { length }]
-                    }));
-                  }}
-                  onRemoveSparePipe={(index) => {
-                    setFormData(prev => ({
-                      ...prev,
-                      sparePipes: prev.sparePipes.filter((_, i) => i !== index)
-                    }));
-                  }}
-                  submitAttempted={submitAttempted}
-                />
-              )}
+          {/* Total Quantity Display */}
+          {formData.quantity && (
+            <div className="bg-primary/10 p-4 rounded-lg">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold">Total Quantity:</span>
+                <span className="text-2xl font-bold text-primary">
+                  {formData.quantity} {rollConfig.quantity_based ? 'pieces' : 'meters'}
+                </span>
+              </div>
+            </div>
+          )}
 
-              {/* Total Quantity Display */}
-              {formData.quantity && (
-                <div className="bg-primary/10 p-4 rounded-lg">
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold">Total Quantity:</span>
-                    <span className="text-2xl font-bold text-primary">
-                      {formData.quantity} {rollConfig.quantity_based ? 'pieces' : 'meters'}
+          {/* Weight Tracking */}
+          {formData.productTypeId && (
+            <Card className="p-4 bg-red-50 dark:bg-red-950/20 border-2 border-red-400 dark:border-red-600">
+              <h3 className="font-bold text-lg mb-3 text-red-900 dark:text-red-100">⚖️ Weight Tracking</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="weightPerMeter">
+                    Weight per Meter (kg/m) *
+                  </Label>
+                  <input
+                    id="weightPerMeter"
+                    type="number"
+                    step="0.001"
+                    min="0"
+                    placeholder="e.g., 0.450"
+                    value={formData.weightPerMeter}
+                    onChange={(e) => handleFieldChange('weightPerMeter', e.target.value)}
+                    className="flex h-12 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    required
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Weight in kilograms per meter
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="totalWeight">
+                    Total Production Weight (Auto-calculated)
+                  </Label>
+                  <div className="bg-red-100 dark:bg-red-900/20 p-3 rounded-lg border-2 border-red-400">
+                    <span className="text-3xl font-bold text-red-600 dark:text-red-400">
+                      {formData.totalWeight ? `${parseFloat(formData.totalWeight).toFixed(2)} kg` : '0.00 kg'}
                     </span>
                   </div>
+                  {formData.totalWeight && (
+                    <p className="text-xs font-semibold text-red-600">
+                      Total Production Weight
+                    </p>
+                  )}
                 </div>
-              )}
+              </div>
+            </Card>
+          )}
 
-              {/* Weight Tracking */}
-              {formData.productTypeId && (
-                <Card className="p-4 bg-red-50 dark:bg-red-950/20 border-2 border-red-400 dark:border-red-600">
-                  <h3 className="font-bold text-lg mb-3 text-red-900 dark:text-red-100">⚖️ Weight Tracking</h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="weightPerMeter">
-                        Weight per Meter (kg/m) *
-                      </Label>
-                      <input
-                        id="weightPerMeter"
-                        type="number"
-                        step="0.001"
-                        min="0"
-                        placeholder="e.g., 0.450"
-                        value={formData.weightPerMeter}
-                        onChange={(e) => handleFieldChange('weightPerMeter', e.target.value)}
-                        className="flex h-12 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                        required
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        Weight in kilograms per meter
-                      </p>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="totalWeight">
-                        Total Production Weight (Auto-calculated)
-                      </Label>
-                      <div className="bg-red-100 dark:bg-red-900/20 p-3 rounded-lg border-2 border-red-400">
-                        <span className="text-3xl font-bold text-red-600 dark:text-red-400">
-                          {formData.totalWeight ? `${parseFloat(formData.totalWeight).toFixed(2)} kg` : '0.00 kg'}
-                        </span>
-                      </div>
-                      {formData.totalWeight && (
-                        <p className="text-xs font-semibold text-red-600">
-                          Total Production Weight
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </Card>
-              )}
+          {/* Batch Details */}
+          <BatchDetailsForm
+            formData={formData}
+            attachmentFile={attachmentFile}
+            onChange={handleFieldChange}
+            onFileChange={setAttachmentFile}
+            submitAttempted={submitAttempted}
+          />
 
-              {/* Batch Details */}
-              <BatchDetailsForm
-                formData={formData}
-                attachmentFile={attachmentFile}
-                onChange={handleFieldChange}
-                onFileChange={setAttachmentFile}
-                submitAttempted={submitAttempted}
-              />
-
-              {/* Submit Button */}
-              <Button type="submit" className="w-full h-12" disabled={loading}>
-                <Plus className="h-5 w-5 mr-2" />
-                {loading ? 'Creating Batch...' : 'Create Production Batch'}
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
-      </div>
+          {/* Submit Button */}
+          <Button type="submit" className="w-full h-12" disabled={loading}>
+            <Plus className="h-5 w-5 mr-2" />
+            {loading ? 'Creating Batch...' : 'Create Production Batch'}
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
   );
 };
-
-export default ProductionNew;
