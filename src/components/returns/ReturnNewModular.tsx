@@ -351,28 +351,29 @@ const ReturnNewModular = () => {
           />
         </div>
 
-        {/* Product Selection Section */}
-        <div>
-          <h3 className="text-sm font-medium mb-4">Products</h3>
-          <ProductSelectionSection
-            productTypes={productTypes}
-            brands={brands}
-            onAddItem={handleAddItem}
-            productTypeRef={productTypeRef}
-            productSearchRef={productSearchRef}
-          />
-        </div>
+        {/* Product Selection and Cart Section */}
+        <div className="grid gap-6 md:grid-cols-3">
+          {/* Left Side: Product Selection */}
+          <div className="md:col-span-2 space-y-6">
+            <div>
+              <h3 className="text-sm font-medium mb-4">Products</h3>
+              <ProductSelectionSection
+                productTypes={productTypes}
+                brands={brands}
+                onAddItem={handleAddItem}
+                productTypeRef={productTypeRef}
+                productSearchRef={productSearchRef}
+              />
+            </div>
+          </div>
 
-        {/* Cart and Actions */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2">
+          {/* Right Side: Cart and Actions */}
+          <div className="space-y-4">
             <ReturnCartSection
               items={items}
               onRemoveItem={handleRemoveItem}
               onClearCart={handleClearCart}
             />
-          </div>
-          <div className="lg:col-span-1">
             <Button
               onClick={handleSubmit}
               disabled={submitting || items.length === 0}
