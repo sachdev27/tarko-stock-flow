@@ -13,7 +13,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { AlertTriangle, RotateCcw } from 'lucide-react';
+import { AlertTriangle, RotateCcw, RefreshCw } from 'lucide-react';
 import { admin } from '@/lib/api';
 import { toast } from 'sonner';
 
@@ -99,17 +99,138 @@ const DatabaseTab: React.FC = () => {
       {/* Current Database Statistics */}
       <Card>
         <CardHeader>
-          <CardTitle>Current Database Statistics</CardTitle>
-          <CardDescription>Overview of records in each table</CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Current Database Statistics</CardTitle>
+              <CardDescription>Overview of records in each table</CardDescription>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={fetchDatabaseStats}
+              disabled={loading}
+            >
+              {loading ? 'Refreshing...' : 'Refresh Stats'}
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {Object.entries(databaseStats).map(([table, count]) => (
-              <div key={table} className="p-3 border rounded-lg">
-                <p className="text-xs text-muted-foreground capitalize">{table.replace(/_/g, ' ')}</p>
-                <p className="text-2xl font-bold">{typeof count === 'number' ? count.toLocaleString() : count}</p>
+          <div className="space-y-6">
+            {/* Core Configuration */}
+            <div>
+              <h3 className="text-sm font-semibold text-muted-foreground mb-3 flex items-center gap-2">
+                <Badge variant="outline" className="text-xs">Core Configuration</Badge>
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {['users', 'product_types', 'brands', 'customers'].map((table) => (
+                  databaseStats[table] !== undefined && (
+                    <div key={table} className="p-3 border rounded-lg bg-primary/5 hover:bg-primary/10 transition-colors">
+                      <p className="text-xs text-muted-foreground capitalize font-medium">{table.replace(/_/g, ' ')}</p>
+                      <p className="text-2xl font-bold text-primary">{typeof databaseStats[table] === 'number' ? databaseStats[table].toLocaleString() : databaseStats[table]}</p>
+                    </div>
+                  )
+                ))}
               </div>
-            ))}
+            </div>
+
+            {/* Production & Inventory */}
+            <div>
+              <h3 className="text-sm font-semibold text-muted-foreground mb-3 flex items-center gap-2">
+                <Badge variant="outline" className="text-xs">Production & Inventory</Badge>
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {['product_variants', 'batches', 'inventory_stock', 'rolls'].map((table) => (
+                  databaseStats[table] !== undefined && (
+                    <div key={table} className="p-3 border rounded-lg bg-blue-500/5 hover:bg-blue-500/10 transition-colors">
+                      <p className="text-xs text-muted-foreground capitalize font-medium">{table.replace(/_/g, ' ')}</p>
+                      <p className="text-2xl font-bold text-blue-600">{typeof databaseStats[table] === 'number' ? databaseStats[table].toLocaleString() : databaseStats[table]}</p>
+                    </div>
+                  )
+                ))}
+              </div>
+            </div>
+
+            {/* Cut Pieces & Spares */}
+            <div>
+              <h3 className="text-sm font-semibold text-muted-foreground mb-3 flex items-center gap-2">
+                <Badge variant="outline" className="text-xs">Cut Pieces & Spares</Badge>
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {['hdpe_cut_pieces', 'sprinkler_spare_pieces'].map((table) => (
+                  databaseStats[table] !== undefined && (
+                    <div key={table} className="p-3 border rounded-lg bg-purple-500/5 hover:bg-purple-500/10 transition-colors">
+                      <p className="text-xs text-muted-foreground capitalize font-medium">{table.replace(/_/g, ' ')}</p>
+                      <p className="text-2xl font-bold text-purple-600">{typeof databaseStats[table] === 'number' ? databaseStats[table].toLocaleString() : databaseStats[table]}</p>
+                    </div>
+                  )
+                ))}
+              </div>
+            </div>
+
+            {/* Transactions & Operations */}
+            <div>
+              <h3 className="text-sm font-semibold text-muted-foreground mb-3 flex items-center gap-2">
+                <Badge variant="outline" className="text-xs">Transactions & Operations</Badge>
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {['transactions', 'inventory_transactions', 'dispatches', 'dispatch_items', 'returns', 'return_items'].map((table) => (
+                  databaseStats[table] !== undefined && (
+                    <div key={table} className="p-3 border rounded-lg bg-orange-500/5 hover:bg-orange-500/10 transition-colors">
+                      <p className="text-xs text-muted-foreground capitalize font-medium">{table.replace(/_/g, ' ')}</p>
+                      <p className="text-2xl font-bold text-orange-600">{typeof databaseStats[table] === 'number' ? databaseStats[table].toLocaleString() : databaseStats[table]}</p>
+                    </div>
+                  )
+                ))}
+              </div>
+            </div>
+
+            {/* System & Audit */}
+            <div>
+              <h3 className="text-sm font-semibold text-muted-foreground mb-3 flex items-center gap-2">
+                <Badge variant="outline" className="text-xs">System & Audit</Badge>
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {['audit_logs', 'attached_documents', 'locations', 'units'].map((table) => (
+                  databaseStats[table] !== undefined && (
+                    <div key={table} className="p-3 border rounded-lg bg-slate-500/5 hover:bg-slate-500/10 transition-colors">
+                      <p className="text-xs text-muted-foreground capitalize font-medium">{table.replace(/_/g, ' ')}</p>
+                      <p className="text-2xl font-bold text-slate-600">{typeof databaseStats[table] === 'number' ? databaseStats[table].toLocaleString() : databaseStats[table]}</p>
+                    </div>
+                  )
+                ))}
+              </div>
+            </div>
+
+            {/* Additional tables not in main categories */}
+            {Object.keys(databaseStats).some(key =>
+              !['users', 'product_types', 'brands', 'customers', 'product_variants', 'batches',
+                'inventory_stock', 'rolls', 'hdpe_cut_pieces', 'sprinkler_spare_pieces',
+                'transactions', 'inventory_transactions', 'dispatches', 'dispatch_items',
+                'returns', 'return_items', 'audit_logs', 'attached_documents', 'locations', 'units'].includes(key)
+            ) && (
+              <div>
+                <h3 className="text-sm font-semibold text-muted-foreground mb-3 flex items-center gap-2">
+                  <Badge variant="outline" className="text-xs">Other Tables</Badge>
+                </h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {Object.entries(databaseStats).map(([table, count]) => {
+                    const isKnownTable = ['users', 'product_types', 'brands', 'customers', 'product_variants',
+                      'batches', 'inventory_stock', 'rolls', 'hdpe_cut_pieces', 'sprinkler_spare_pieces',
+                      'transactions', 'inventory_transactions', 'dispatches', 'dispatch_items',
+                      'returns', 'return_items', 'audit_logs', 'attached_documents', 'locations', 'units'].includes(table);
+
+                    if (isKnownTable) return null;
+
+                    return (
+                      <div key={table} className="p-3 border rounded-lg hover:bg-muted/50 transition-colors">
+                        <p className="text-xs text-muted-foreground capitalize font-medium">{table.replace(/_/g, ' ')}</p>
+                        <p className="text-2xl font-bold">{typeof count === 'number' ? count.toLocaleString() : count}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -118,38 +239,39 @@ const DatabaseTab: React.FC = () => {
       <Card>
         <CardHeader>
           <CardTitle>Database Reset Options</CardTitle>
-          <CardDescription>Choose the level of reset you want to perform</CardDescription>
+          <CardDescription>Choose the level of reset you want to perform - operations are irreversible</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
             {resetOptions.map((option) => (
-              <Card key={option.value} className={`border-2 ${
-                option.value === 'complete_wipe' ? 'border-destructive' : 'border-border'
+              <Card key={option.value} className={`border-2 transition-all hover:shadow-md ${
+                option.value === 'complete_wipe' ? 'border-destructive bg-destructive/5' : 'border-border'
               }`}>
                 <CardContent className="p-4">
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 space-y-2">
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-semibold">{option.label}</h3>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="font-semibold text-base">{option.label}</h3>
                         <Badge variant={
-                          option.impact === 'Low' ? 'outline' :
-                          option.impact === 'Medium' ? 'secondary' :
-                          option.impact === 'High' ? 'default' :
+                          option.impact === 'Low' || option.impact === 'Low - Only historical records removed' ? 'outline' :
+                          option.impact === 'Medium' || option.impact === 'Medium - Current stock removed' ? 'secondary' :
+                          option.impact === 'High' || option.impact === 'High - All production data removed' ? 'default' :
+                          option.impact === 'Very High' || option.impact === 'Very High - Fresh start for operations' ? 'default' :
                           'destructive'
-                        }>
+                        } className="text-xs">
                           {option.impact}
                         </Badge>
                       </div>
-                      <p className="text-sm text-muted-foreground">{option.description}</p>
-                      <div className="flex items-center gap-2 text-xs">
-                        <span className="text-muted-foreground">Keeps:</span>
+                      <p className="text-sm text-muted-foreground leading-relaxed">{option.description}</p>
+                      <div className="flex items-start gap-2 text-xs bg-muted/50 p-2 rounded">
+                        <span className="text-muted-foreground font-medium min-w-fit">Will Keep:</span>
                         <span className="font-medium">{option.keeps}</span>
                       </div>
                     </div>
                     <Button
                       variant={option.value === 'complete_wipe' ? 'destructive' : 'outline'}
                       onClick={() => handleResetClick(option.value)}
-                      className="shrink-0"
+                      className="shrink-0 min-w-[100px]"
                     >
                       <RotateCcw className="h-4 w-4 mr-2" />
                       Reset

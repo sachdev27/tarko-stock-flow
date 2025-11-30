@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { FilterX } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -23,6 +25,17 @@ const AuditLogsTab: React.FC<AuditLogsTabProps> = ({ auditLogs, users }) => {
   const [auditTimePreset, setAuditTimePreset] = useState<string>('all');
   const [auditStartDate, setAuditStartDate] = useState<string>('');
   const [auditEndDate, setAuditEndDate] = useState<string>('');
+
+  const clearFilters = () => {
+    setAuditUserFilter('');
+    setAuditActionFilter('');
+    setAuditSearchTerm('');
+    setAuditTimePreset('all');
+    setAuditStartDate('');
+    setAuditEndDate('');
+  };
+
+  const hasActiveFilters = auditUserFilter || auditActionFilter || auditSearchTerm || auditTimePreset !== 'all';
 
   const filteredLogs = auditLogs.filter(log => {
     // User filter
@@ -103,6 +116,20 @@ const AuditLogsTab: React.FC<AuditLogsTabProps> = ({ auditLogs, users }) => {
       <CardContent>
         {/* Filters */}
         <div className="mb-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-muted-foreground">Filters</h3>
+            {hasActiveFilters && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={clearFilters}
+                className="h-8 text-xs"
+              >
+                <FilterX className="h-3 w-3 mr-1" />
+                Clear Filters
+              </Button>
+            )}
+          </div>
           {/* Row 1: User, Action, Search */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
@@ -131,11 +158,21 @@ const AuditLogsTab: React.FC<AuditLogsTabProps> = ({ auditLogs, users }) => {
                 <SelectContent>
                   <SelectItem value="all">All Actions</SelectItem>
                   <SelectItem value="CREATE_BATCH">Create Batch</SelectItem>
+                  <SelectItem value="PRODUCTION">Production</SelectItem>
                   <SelectItem value="DISPATCH">Dispatch</SelectItem>
+                  <SelectItem value="RETURN">Return</SelectItem>
                   <SelectItem value="CUT_ROLL">Cut Roll</SelectItem>
+                  <SelectItem value="SPLIT_BUNDLE">Split Bundle</SelectItem>
+                  <SelectItem value="COMBINE_SPARES">Combine Spares</SelectItem>
                   <SelectItem value="EDIT_ROLL">Edit Roll</SelectItem>
                   <SelectItem value="DELETE_BATCH">Delete Batch</SelectItem>
+                  <SelectItem value="CREATE_USER">Create User</SelectItem>
+                  <SelectItem value="UPDATE_USER">Update User</SelectItem>
+                  <SelectItem value="DELETE_USER">Delete User</SelectItem>
                   <SelectItem value="USER_LOGIN">User Login</SelectItem>
+                  <SelectItem value="SNAPSHOT_CREATE">Snapshot Create</SelectItem>
+                  <SelectItem value="ROLLBACK">Rollback</SelectItem>
+                  <SelectItem value="DATABASE_RESET">Database Reset</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -223,148 +260,211 @@ const AuditLogsTab: React.FC<AuditLogsTabProps> = ({ auditLogs, users }) => {
                 key={log.id}
                 className="p-4 bg-secondary/20 rounded-lg border hover:border-primary/50 transition-colors"
               >
-                {/* Header Row */}
-                <div className="flex items-start justify-between mb-2">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <Badge
-                      variant={
-                        log.action_type === 'DISPATCH' ? 'destructive' :
-                        log.action_type === 'CREATE_BATCH' ? 'default' :
-                        log.action_type === 'CUT_ROLL' ? 'secondary' :
-                        'outline'
-                      }
-                      className="text-xs"
-                    >
-                      {log.action_type}
-                    </Badge>
-                    <Badge variant="outline" className="text-xs">
-                      {log.entity_type}
-                    </Badge>
+                {/* Header Row - WHO & WHEN */}
+                <div className="flex items-start justify-between mb-3 pb-3 border-b">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-sm font-bold text-primary">
+                        {log.user_name || log.user_username || 'Unknown User'}
+                      </span>
+                      {log.user_email && (
+                        <span className="text-xs text-muted-foreground">
+                          ({log.user_email})
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Badge
+                        variant={
+                          log.action_type === 'DISPATCH' ? 'destructive' :
+                          log.action_type === 'RETURN' ? 'default' :
+                          log.action_type === 'CREATE_BATCH' || log.action_type === 'PRODUCTION' ? 'default' :
+                          log.action_type === 'CUT_ROLL' || log.action_type === 'SPLIT_BUNDLE' ? 'secondary' :
+                          log.action_type === 'USER_LOGIN' ? 'outline' :
+                          log.action_type === 'DATABASE_RESET' || log.action_type === 'DELETE_BATCH' ? 'destructive' :
+                          log.action_type === 'REVERT_INVENTORY_TRANSACTION' || log.action_type === 'ROLLBACK' ? 'destructive' :
+                          'outline'
+                        }
+                        className="text-xs font-medium"
+                      >
+                        {log.action_type.replace(/_/g, ' ')}
+                      </Badge>
+                      <Badge variant="outline" className="text-xs">
+                        {log.entity_type.replace(/_/g, ' ')}
+                      </Badge>
+                    </div>
                   </div>
-                  <span className="text-xs text-muted-foreground whitespace-nowrap">
-                    {(() => {
-                      const date = new Date(log.created_at);
-                      return `${date.toLocaleDateString('en-IN', {
-                        day: '2-digit',
-                        month: 'short',
-                        year: 'numeric'
-                      })} ${date.toLocaleTimeString('en-IN', {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        hour12: true
-                      })}`;
-                    })()}
-                  </span>
+                  <div className="text-right">
+                    <div className="text-xs font-semibold text-foreground whitespace-nowrap">
+                      {(() => {
+                        const date = new Date(log.created_at);
+                        return date.toLocaleDateString('en-IN', {
+                          day: '2-digit',
+                          month: 'short',
+                          year: 'numeric'
+                        });
+                      })()}
+                    </div>
+                    <div className="text-xs text-muted-foreground whitespace-nowrap">
+                      {(() => {
+                        const date = new Date(log.created_at);
+                        return date.toLocaleTimeString('en-IN', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          hour12: true
+                        });
+                      })()}
+                    </div>
+                  </div>
                 </div>
 
-                {/* User Info */}
-                <div className="mb-2">
-                  <span className="text-sm font-semibold text-primary">
-                    {log.user_name || log.user_username || 'Unknown User'}
-                  </span>
-                  {log.user_email && (
-                    <span className="text-xs text-muted-foreground ml-2">
-                      ({log.user_email})
-                    </span>
-                  )}
-                </div>
-
-                {/* Description */}
-                <div className="text-sm mb-2">
+                {/* WHAT - Description */}
+                <div className="text-sm mb-3 font-medium">
                   {log.description}
                 </div>
 
-                {/* Detailed Information Grid */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3 text-xs">
-                  {/* Customer Name */}
-                  {log.customer_name && (
-                    <div className="p-2 bg-background rounded border">
-                      <div className="text-muted-foreground">Customer</div>
-                      <div className="font-medium">{log.customer_name}</div>
+                {/* HOW MUCH - Detailed Information Grid */}
+                <div className="space-y-2">
+                  {/* Primary Metrics - Always Visible */}
+                  {(log.quantity_change || log.customer_name || log.batch_code || log.invoice_no ||
+                    (log.after_data && typeof log.after_data === 'object')) && (
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                      {/* Quantity Change - Highlighted */}
+                      {log.quantity_change && (
+                        <div className="p-2 bg-primary/10 rounded border border-primary/20">
+                          <div className="text-muted-foreground text-[10px] uppercase">Quantity</div>
+                          <div className="font-bold text-primary">
+                            {log.quantity_change > 0 ? '+' : ''}
+                            {parseFloat(log.quantity_change).toFixed(2)} m
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Customer Name */}
+                      {log.customer_name && (
+                        <div className="p-2 bg-background rounded border">
+                          <div className="text-muted-foreground text-[10px] uppercase">Customer</div>
+                          <div className="font-medium">{log.customer_name}</div>
+                        </div>
+                      )}
+
+                      {/* Invoice Number */}
+                      {log.invoice_no && (
+                        <div className="p-2 bg-background rounded border">
+                          <div className="text-muted-foreground text-[10px] uppercase">Invoice</div>
+                          <div className="font-medium">{log.invoice_no}</div>
+                        </div>
+                      )}
+
+                      {/* Batch Code */}
+                      {log.batch_code && (
+                        <div className="p-2 bg-background rounded border">
+                          <div className="text-muted-foreground text-[10px] uppercase">Batch</div>
+                          <div className="font-medium">{log.batch_code}</div>
+                        </div>
+                      )}
+
+                      {/* Batch Code */}
+                      {log.batch_code && (
+                        <div className="p-2 bg-background rounded border">
+                          <div className="text-muted-foreground text-[10px] uppercase">Batch</div>
+                          <div className="font-medium">{log.batch_code}</div>
+                        </div>
+                      )}
+
+                      {/* Parse after_data for additional details */}
+                      {log.after_data && typeof log.after_data === 'object' && (() => {
+                        const afterData = typeof log.after_data === 'string'
+                          ? JSON.parse(log.after_data)
+                          : log.after_data;
+
+                        return (
+                          <>
+                            {afterData.dispatch_number && (
+                              <div className="p-2 bg-background rounded border">
+                                <div className="text-muted-foreground text-[10px] uppercase">Dispatch #</div>
+                                <div className="font-medium">{afterData.dispatch_number}</div>
+                              </div>
+                            )}
+                            {afterData.total_items && (
+                              <div className="p-2 bg-blue-500/10 rounded border border-blue-500/20">
+                                <div className="text-muted-foreground text-[10px] uppercase">Total Items</div>
+                                <div className="font-bold text-blue-600">{afterData.total_items}</div>
+                              </div>
+                            )}
+                            {afterData.item_count && (
+                              <div className="p-2 bg-background rounded border">
+                                <div className="text-muted-foreground text-[10px] uppercase">Item Count</div>
+                                <div className="font-medium">{afterData.item_count}</div>
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
                     </div>
                   )}
 
-                  {/* Invoice Number */}
-                  {log.invoice_no && (
-                    <div className="p-2 bg-background rounded border">
-                      <div className="text-muted-foreground">Invoice</div>
-                      <div className="font-medium">{log.invoice_no}</div>
-                    </div>
-                  )}
+                  {/* Secondary Details */}
+                  {(rollSnapshot?.weight_kg || rollSnapshot?.product_type || rollSnapshot?.brand ||
+                    (log.roll_length || log.roll_initial_length) ||
+                    (rollSnapshot?.parameters && Object.keys(rollSnapshot.parameters).length > 0)) && (
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+                      {/* Weight (from roll snapshot) */}
+                      {rollSnapshot?.weight_kg && (
+                        <div className="p-2 bg-background rounded border">
+                          <div className="text-muted-foreground text-[10px] uppercase">Weight</div>
+                          <div className="font-medium">
+                            {parseFloat(rollSnapshot.weight_kg).toFixed(2)} kg
+                          </div>
+                        </div>
+                      )}
 
-                  {/* Batch Code */}
-                  {log.batch_code && (
-                    <div className="p-2 bg-background rounded border">
-                      <div className="text-muted-foreground">Batch</div>
-                      <div className="font-medium">{log.batch_code}</div>
-                    </div>
-                  )}
+                      {/* Roll Length */}
+                      {(log.action_type === 'CUT_ROLL' && log.quantity_change) ? (
+                        <div className="p-2 bg-background rounded border">
+                          <div className="text-muted-foreground text-[10px] uppercase">Cut Length</div>
+                          <div className="font-medium">
+                            {Math.abs(parseFloat(log.quantity_change)).toFixed(2)} m
+                          </div>
+                        </div>
+                      ) : (log.roll_length || log.roll_initial_length) ? (
+                        <div className="p-2 bg-background rounded border">
+                          <div className="text-muted-foreground text-[10px] uppercase">Roll Length</div>
+                          <div className="font-medium">
+                            {parseFloat(log.roll_length || log.roll_initial_length).toFixed(2)} m
+                          </div>
+                        </div>
+                      ) : null}
 
-                  {/* Quantity */}
-                  {log.quantity_change && (
-                    <div className="p-2 bg-background rounded border">
-                      <div className="text-muted-foreground">Quantity</div>
-                      <div className="font-medium">
-                        {log.quantity_change > 0 ? '+' : ''}
-                        {parseFloat(log.quantity_change).toFixed(2)} m
-                      </div>
-                    </div>
-                  )}
+                      {/* Product Info from snapshot */}
+                      {rollSnapshot?.product_type && (
+                        <div className="p-2 bg-background rounded border">
+                          <div className="text-muted-foreground text-[10px] uppercase">Product</div>
+                          <div className="font-medium">{rollSnapshot.product_type}</div>
+                        </div>
+                      )}
 
-                  {/* Weight (from roll snapshot) */}
-                  {rollSnapshot?.weight_kg && (
-                    <div className="p-2 bg-background rounded border">
-                      <div className="text-muted-foreground">Weight</div>
-                      <div className="font-medium">
-                        {parseFloat(rollSnapshot.weight_kg).toFixed(2)} kg
-                      </div>
-                    </div>
-                  )}
+                      {/* Brand from snapshot */}
+                      {rollSnapshot?.brand && (
+                        <div className="p-2 bg-background rounded border">
+                          <div className="text-muted-foreground text-[10px] uppercase">Brand</div>
+                          <div className="font-medium">{rollSnapshot.brand}</div>
+                        </div>
+                      )}
 
-                  {/* Roll Length */}
-                  {(log.action_type === 'CUT_ROLL' && log.quantity_change) ? (
-                    <div className="p-2 bg-background rounded border">
-                      <div className="text-muted-foreground">Cut Length</div>
-                      <div className="font-medium">
-                        {Math.abs(parseFloat(log.quantity_change)).toFixed(2)} m
-                      </div>
-                    </div>
-                  ) : (log.roll_length || log.roll_initial_length) ? (
-                    <div className="p-2 bg-background rounded border">
-                      <div className="text-muted-foreground">Roll Length</div>
-                      <div className="font-medium">
-                        {parseFloat(log.roll_length || log.roll_initial_length).toFixed(2)} m
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {/* Product Info from snapshot */}
-                  {rollSnapshot?.product_type && (
-                    <div className="p-2 bg-background rounded border">
-                      <div className="text-muted-foreground">Product</div>
-                      <div className="font-medium">{rollSnapshot.product_type}</div>
-                    </div>
-                  )}
-
-                  {/* Brand from snapshot */}
-                  {rollSnapshot?.brand && (
-                    <div className="p-2 bg-background rounded border">
-                      <div className="text-muted-foreground">Brand</div>
-                      <div className="font-medium">{rollSnapshot.brand}</div>
-                    </div>
-                  )}
-
-                  {/* Parameters from snapshot */}
-                  {rollSnapshot?.parameters && Object.keys(rollSnapshot.parameters).length > 0 && (
-                    <div className="p-2 bg-background rounded border col-span-2">
-                      <div className="text-muted-foreground mb-1">Parameters</div>
-                      <div className="flex flex-wrap gap-1">
-                        {Object.entries(rollSnapshot.parameters).map(([key, value]) => (
-                          <Badge key={key} variant="secondary" className="text-xs">
-                            {key}: {String(value)}
-                          </Badge>
-                        ))}
-                      </div>
+                      {/* Parameters from snapshot */}
+                      {rollSnapshot?.parameters && Object.keys(rollSnapshot.parameters).length > 0 && (
+                        <div className="p-2 bg-background rounded border col-span-2">
+                          <div className="text-muted-foreground text-[10px] uppercase mb-1">Parameters</div>
+                          <div className="flex flex-wrap gap-1">
+                            {Object.entries(rollSnapshot.parameters).map(([key, value]) => (
+                              <Badge key={key} variant="secondary" className="text-xs">
+                                {key}: {String(value)}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -373,8 +473,13 @@ const AuditLogsTab: React.FC<AuditLogsTabProps> = ({ auditLogs, users }) => {
           })}
 
           {filteredLogs.length === 0 && (
-            <div className="text-center py-8 text-muted-foreground">
-              No audit logs found
+            <div className="text-center py-12">
+              <div className="text-muted-foreground space-y-2">
+                <p className="text-lg font-medium">No audit logs found</p>
+                {hasActiveFilters && (
+                  <p className="text-sm">Try adjusting your filters or <button onClick={clearFilters} className="text-primary hover:underline">clear all filters</button></p>
+                )}
+              </div>
             </div>
           )}
         </div>
