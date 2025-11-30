@@ -41,54 +41,102 @@ const Auth = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-factory-bg p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="space-y-1 text-center">
-          <div className="flex justify-center mb-4">
-            <div className="h-12 w-12 rounded-full bg-primary flex items-center justify-center">
-              <Factory className="h-6 w-6 text-primary-foreground" />
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-muted/30 to-background p-4 relative overflow-hidden">
+      {/* Animated background elements */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl animate-pulse delay-1000"></div>
+      </div>
+
+      <div className="w-full max-w-md relative z-10">
+        {/* Animated Icon */}
+        <div className="flex justify-center mb-8">
+          <div className="relative">
+            <div className="absolute inset-0 bg-gradient-to-br from-primary via-blue-600 to-purple-600 rounded-full blur-2xl opacity-40 animate-pulse"></div>
+            <div className="relative bg-gradient-to-br from-primary via-blue-600 to-purple-600 p-6 rounded-2xl shadow-2xl transform hover:scale-105 transition-transform duration-300">
+              <Factory className="h-12 w-12 text-white animate-bounce" />
             </div>
           </div>
-          <CardTitle className="text-2xl font-bold">Tarko Inventory</CardTitle>
-          <CardDescription>
-            Manufacturing & Inventory Management System
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSignIn} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="identifier">Email or Username</Label>
-              <Input
-                id="identifier"
-                type="text"
-                placeholder="email@example.com or username"
-                value={identifier}
-                onChange={(e) => setIdentifier(e.target.value)}
-                required
-                className="h-12"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                className="h-12"
-              />
-            </div>
-            <Button type="submit" className="w-full h-12" disabled={loading}>
-              {loading ? 'Signing in...' : 'Sign In'}
-            </Button>
-          </form>
-          <p className="text-center text-sm text-muted-foreground mt-4">
-            Contact your administrator for account access
+        </div>
+
+        {/* Title */}
+        <div className="text-center mb-8 space-y-2">
+          <h1 className="text-4xl md:text-5xl font-black bg-gradient-to-br from-primary via-blue-600 to-purple-600 bg-clip-text text-transparent">
+            Tarko Inventory
+          </h1>
+          <p className="text-lg text-muted-foreground font-medium">
+            Manufacturing & Inventory Management
           </p>
-        </CardContent>
-      </Card>
+        </div>
+
+        {/* Login Card */}
+        <Card className="border-2 shadow-2xl backdrop-blur-sm bg-background/95 hover:shadow-primary/20 transition-all duration-300">
+          <CardHeader className="space-y-1 text-center pb-4">
+            <CardTitle className="text-2xl font-bold">Welcome Back</CardTitle>
+            <CardDescription>
+              Sign in to access your dashboard
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSignIn} className="space-y-5">
+              <div className="space-y-2">
+                <Label htmlFor="identifier" className="text-sm font-semibold">
+                  Email or Username
+                </Label>
+                <Input
+                  id="identifier"
+                  type="text"
+                  placeholder="email@example.com or username"
+                  value={identifier}
+                  onChange={(e) => setIdentifier(e.target.value)}
+                  required
+                  className="h-12 border-2 focus:border-primary transition-colors"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="password" className="text-sm font-semibold">
+                  Password
+                </Label>
+                <Input
+                  id="password"
+                  type="password"
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  className="h-12 border-2 focus:border-primary transition-colors"
+                />
+              </div>
+              <Button
+                type="submit"
+                className="w-full h-12 text-base font-semibold bg-gradient-to-r from-primary via-blue-600 to-purple-600 hover:opacity-90 transition-all duration-300 shadow-lg hover:shadow-xl"
+                disabled={loading}
+              >
+                {loading ? (
+                  <span className="flex items-center gap-2">
+                    <span className="h-5 w-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                    Signing in...
+                  </span>
+                ) : (
+                  'Sign In'
+                )}
+              </Button>
+            </form>
+
+            {/* Footer */}
+            <div className="mt-6 pt-6 border-t border-border/50">
+              <p className="text-center text-sm text-muted-foreground">
+                Need access? Contact your administrator
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Version info */}
+        <p className="text-center text-xs text-muted-foreground mt-6 font-mono">
+          Inventory Management System v2.0
+        </p>
+      </div>
     </div>
   );
 };
