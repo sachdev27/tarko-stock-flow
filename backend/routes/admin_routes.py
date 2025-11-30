@@ -665,24 +665,33 @@ def reset_database():
 
             if reset_level == 'transactions_only':
                 # Clear only transaction history, keep inventory
+                cursor.execute("DELETE FROM scrap_pieces")  # References scrap_items
+                cursor.execute("DELETE FROM scrap_items")   # References scraps
+                cursor.execute("DELETE FROM scraps")
                 cursor.execute("DELETE FROM transactions")
                 cursor.execute("DELETE FROM inventory_transactions")
-                cursor.execute("DELETE FROM audit_logs WHERE action_type IN ('PRODUCTION', 'DISPATCH', 'CUT_ROLL', 'SPLIT_BUNDLE', 'COMBINE_SPARES')")
-                tables_cleared = ['transactions', 'inventory_transactions', 'audit_logs (filtered)']
+                cursor.execute("DELETE FROM audit_logs WHERE action_type IN ('PRODUCTION', 'DISPATCH', 'CUT_ROLL', 'SPLIT_BUNDLE', 'COMBINE_SPARES', 'SCRAP')")
+                tables_cleared = ['scraps', 'scrap_items', 'scrap_pieces', 'transactions', 'inventory_transactions', 'audit_logs (filtered)']
 
             elif reset_level == 'inventory_and_transactions':
                 # Clear inventory and transactions, keep batches and product setup
+                cursor.execute("DELETE FROM scrap_pieces")  # References scrap_items
+                cursor.execute("DELETE FROM scrap_items")   # References scraps
+                cursor.execute("DELETE FROM scraps")
                 cursor.execute("DELETE FROM sprinkler_spare_pieces")
                 cursor.execute("DELETE FROM hdpe_cut_pieces")
                 cursor.execute("DELETE FROM inventory_stock")
                 cursor.execute("DELETE FROM inventory_transactions")
                 cursor.execute("DELETE FROM transactions")
-                cursor.execute("DELETE FROM audit_logs WHERE action_type IN ('PRODUCTION', 'DISPATCH', 'CUT_ROLL', 'SPLIT_BUNDLE', 'COMBINE_SPARES')")
-                tables_cleared = ['inventory_stock', 'hdpe_cut_pieces', 'sprinkler_spare_pieces', 'transactions', 'inventory_transactions', 'audit_logs (filtered)']
+                cursor.execute("DELETE FROM audit_logs WHERE action_type IN ('PRODUCTION', 'DISPATCH', 'CUT_ROLL', 'SPLIT_BUNDLE', 'COMBINE_SPARES', 'SCRAP')")
+                tables_cleared = ['scraps', 'scrap_items', 'scrap_pieces', 'inventory_stock', 'hdpe_cut_pieces', 'sprinkler_spare_pieces', 'transactions', 'inventory_transactions', 'audit_logs (filtered)']
 
             elif reset_level == 'batches_inventory_transactions':
                 # Clear batches, inventory, and transactions - keeps product types, brands, customers
                 # Delete in correct order to respect foreign key constraints
+                cursor.execute("DELETE FROM scrap_pieces")  # References scrap_items
+                cursor.execute("DELETE FROM scrap_items")   # References scraps and inventory_stock
+                cursor.execute("DELETE FROM scraps")
                 cursor.execute("DELETE FROM inventory_transactions")  # References dispatch_items
                 cursor.execute("DELETE FROM dispatch_items")  # References hdpe_cut_pieces
                 cursor.execute("DELETE FROM dispatches")
@@ -695,12 +704,15 @@ def reset_database():
                 cursor.execute("DELETE FROM inventory_stock")
                 cursor.execute("DELETE FROM transactions")
                 cursor.execute("DELETE FROM batches")
-                cursor.execute("DELETE FROM audit_logs WHERE action_type IN ('PRODUCTION', 'DISPATCH', 'CUT_ROLL', 'SPLIT_BUNDLE', 'COMBINE_SPARES', 'CREATE_BATCH', 'RETURN')")
-                tables_cleared = ['dispatch_items', 'dispatches', 'return_rolls', 'return_bundles', 'return_items', 'returns', 'batches', 'inventory_stock', 'hdpe_cut_pieces', 'sprinkler_spare_pieces', 'transactions', 'inventory_transactions', 'audit_logs (filtered)']
+                cursor.execute("DELETE FROM audit_logs WHERE action_type IN ('PRODUCTION', 'DISPATCH', 'CUT_ROLL', 'SPLIT_BUNDLE', 'COMBINE_SPARES', 'CREATE_BATCH', 'RETURN', 'SCRAP')")
+                tables_cleared = ['scraps', 'scrap_items', 'scrap_pieces', 'dispatch_items', 'dispatches', 'return_rolls', 'return_bundles', 'return_items', 'returns', 'batches', 'inventory_stock', 'hdpe_cut_pieces', 'sprinkler_spare_pieces', 'transactions', 'inventory_transactions', 'audit_logs (filtered)']
 
             elif reset_level == 'full_reset':
                 # Full reset - keeps only users, product types, brands, and customers
                 # Delete in correct order to respect foreign key constraints
+                cursor.execute("DELETE FROM scrap_pieces")  # References scrap_items
+                cursor.execute("DELETE FROM scrap_items")   # References scraps and inventory_stock
+                cursor.execute("DELETE FROM scraps")
                 cursor.execute("DELETE FROM inventory_transactions")
                 cursor.execute("DELETE FROM dispatch_items")
                 cursor.execute("DELETE FROM dispatches")
@@ -715,11 +727,14 @@ def reset_database():
                 cursor.execute("DELETE FROM batches")
                 cursor.execute("DELETE FROM product_variants")
                 cursor.execute("DELETE FROM audit_logs WHERE entity_type NOT IN ('USER')")
-                tables_cleared = ['dispatch_items', 'dispatches', 'return_rolls', 'return_bundles', 'return_items', 'returns', 'product_variants', 'batches', 'inventory_stock', 'hdpe_cut_pieces', 'sprinkler_spare_pieces', 'transactions', 'inventory_transactions', 'audit_logs (filtered)']
+                tables_cleared = ['scraps', 'scrap_items', 'scrap_pieces', 'dispatch_items', 'dispatches', 'return_rolls', 'return_bundles', 'return_items', 'returns', 'product_variants', 'batches', 'inventory_stock', 'hdpe_cut_pieces', 'sprinkler_spare_pieces', 'transactions', 'inventory_transactions', 'audit_logs (filtered)']
 
             elif reset_level == 'complete_wipe':
                 # Complete wipe - removes everything except users and product types
                 # Delete in correct order to respect foreign key constraints
+                cursor.execute("DELETE FROM scrap_pieces")  # References scrap_items
+                cursor.execute("DELETE FROM scrap_items")   # References scraps and inventory_stock
+                cursor.execute("DELETE FROM scraps")
                 cursor.execute("DELETE FROM inventory_transactions")
                 cursor.execute("DELETE FROM dispatch_items")
                 cursor.execute("DELETE FROM dispatches")

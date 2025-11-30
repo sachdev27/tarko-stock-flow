@@ -3,6 +3,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from database import execute_query, execute_insert, get_db_cursor
 from auth import jwt_required_with_role, get_user_identity_details
 from snapshot_storage import snapshot_storage
+from psycopg2.extras import Json
 import json
 from datetime import datetime
 import os
@@ -12,27 +13,101 @@ version_control_bp = Blueprint('version_control', __name__, url_prefix='/api/ver
 # Tables to include in snapshots (excluding sensitive auth data)
 # Order matters for rollback - parent tables first to avoid FK violations
 SNAPSHOT_TABLES = [
+    # Core configuration (no FK dependencies on operational tables)
     'brands',
+    'locations',
+    'units',
     'customers',
+    'bill_to',
+    'vehicles',
+    'transports',
     'product_types',
     'parameter_options',
     'product_variants',
-    'batches',
-    'rolls',
-    'transactions'
-]
+    'product_aliases',
 
-# Tables that have soft delete (deleted_at column)
+    # Production - batches (depends on product_variants)
+    'batches',
+
+    # Inventory stock (depends on batches)
+    'inventory_stock',
+
+    # Transactions (depends on batches)
+    'transactions',
+
+    # Dispatches (depends on customers, bill_to, transport, vehicle)
+    'dispatches',
+
+    # Inventory transactions (depends on batches, inventory_stock, dispatch_items)
+    # Has circular refs with cut pieces and dispatch_items, but we handle NULLs
+    'inventory_transactions',
+
+    # Cut pieces (depend on inventory_stock, inventory_transactions)
+    'hdpe_cut_pieces',
+    'sprinkler_spare_pieces',
+
+    # Dispatch items (depends on dispatches, inventory_stock, hdpe_cut_pieces)
+    'dispatch_items',
+
+    # Returns (depends on customers)
+    'returns',
+
+    # Return items (depends on returns, product_variants)
+    'return_items',
+
+    # Return bundles/rolls (depend on return_items, inventory_stock)
+    'return_bundles',
+    'return_rolls',
+
+    # Scraps (parent)
+    'scraps',
+
+    # Scrap items (depend on scraps, batches, inventory_stock)
+    'scrap_items',
+
+    # Scrap pieces (depend on scrap_items)
+    'scrap_pieces',
+
+    # Lifecycle events (depend on inventory_transactions)
+    'piece_lifecycle_events'
+]# Tables that have soft delete (deleted_at column)
 SOFT_DELETE_TABLES = [
     'batches',
-    'rolls',
-    'transactions'
+    'inventory_stock',
+    'transactions',
+    'dispatches',
+    'returns',
+    'scraps',
+    'product_types',
+    'product_variants',
+    'brands',
+    'customers',
+    'locations',
+    'hdpe_cut_pieces',
+    'sprinkler_spare_pieces',
+    'bill_to',
+    'transports',
+    'vehicles'
 ]
 
 # Tables without updated_at column
 TABLES_WITHOUT_UPDATED_AT = [
-    'parameter_options'
+    'parameter_options',
+    'dispatch_items',
+    'return_items',
+    'return_bundles',
+    'return_rolls',
+    'scrap_items',
+    'scrap_pieces',
+    'piece_lifecycle_events',
+    'product_aliases',
+    'inventory_transactions'
 ]
+
+# Columns that are UUID arrays (need explicit casting)
+UUID_ARRAY_COLUMNS = {
+    'dispatch_items': ['spare_piece_ids']
+}
 
 @version_control_bp.route('/snapshots', methods=['GET'])
 @jwt_required_with_role('admin')
@@ -246,6 +321,9 @@ def rollback_to_snapshot(snapshot_id):
                 result = cursor.fetchone()
                 current_state[table] = result['count']
 
+            # Temporarily disable FK constraint checks to handle circular dependencies
+            cursor.execute("SET session_replication_role = 'replica'")
+
             # Perform rollback for each table in correct order (parent tables first)
             for table in SNAPSHOT_TABLES:
                 # Skip if table not in snapshot data
@@ -269,15 +347,37 @@ def rollback_to_snapshot(snapshot_id):
 
                     # Insert/Update each record from snapshot
                     for record in data:
-                        placeholders = ', '.join(['%s'] * len(columns))
+                        # Build placeholders with proper type casting for UUID arrays
+                        placeholders = []
+                        uuid_array_cols = UUID_ARRAY_COLUMNS.get(table, [])
+
+                        for i, col in enumerate(columns):
+                            if col in uuid_array_cols:
+                                # Cast text array to uuid array
+                                placeholders.append(f'%s::uuid[]')
+                            else:
+                                placeholders.append('%s')
+
+                        placeholders_str = ', '.join(placeholders)
                         cols_str = ', '.join(columns)
 
-                        # Convert dict/list values to JSON strings for PostgreSQL
+                        # Prepare values - snapshot data from row_to_json needs proper handling
                         values = []
                         for col in columns:
                             val = record.get(col)
-                            if isinstance(val, (dict, list)):
-                                values.append(json.dumps(val))
+                            # For dict values (JSONB columns), use psycopg2's Json adapter
+                            if isinstance(val, dict):
+                                values.append(Json(val))
+                            # For list values, check if it looks like a UUID array or JSONB array
+                            elif isinstance(val, list):
+                                # If list is empty, keep as list (will be empty array in DB)
+                                # If list contains dicts, treat as JSONB
+                                # Otherwise keep as list (for UUID arrays, text arrays, etc.)
+                                if val and len(val) > 0 and isinstance(val[0], dict):
+                                    values.append(Json(val))
+                                else:
+                                    # For UUID arrays, we'll cast in SQL (see placeholders above)
+                                    values.append(val)
                             else:
                                 values.append(val)
 
@@ -287,7 +387,7 @@ def rollback_to_snapshot(snapshot_id):
                             if table in TABLES_WITHOUT_UPDATED_AT:
                                 cursor.execute(f"""
                                     INSERT INTO {table} ({cols_str})
-                                    VALUES ({placeholders})
+                                    VALUES ({placeholders_str})
                                     ON CONFLICT (id) DO UPDATE SET
                                         {update_set},
                                         deleted_at = NULL
@@ -295,7 +395,7 @@ def rollback_to_snapshot(snapshot_id):
                             else:
                                 cursor.execute(f"""
                                     INSERT INTO {table} ({cols_str})
-                                    VALUES ({placeholders})
+                                    VALUES ({placeholders_str})
                                     ON CONFLICT (id) DO UPDATE SET
                                         {update_set},
                                         deleted_at = NULL,
@@ -307,14 +407,14 @@ def rollback_to_snapshot(snapshot_id):
                             if table in TABLES_WITHOUT_UPDATED_AT:
                                 cursor.execute(f"""
                                     INSERT INTO {table} ({cols_str})
-                                    VALUES ({placeholders})
+                                    VALUES ({placeholders_str})
                                     ON CONFLICT (id) DO UPDATE SET
                                         {update_set}
                                 """, values)
                             else:
                                 cursor.execute(f"""
                                     INSERT INTO {table} ({cols_str})
-                                    VALUES ({placeholders})
+                                    VALUES ({placeholders_str})
                                     ON CONFLICT (id) DO UPDATE SET
                                         {update_set},
                                         updated_at = NOW()
@@ -346,6 +446,9 @@ def rollback_to_snapshot(snapshot_id):
                         """)
                     else:
                         cursor.execute(f"TRUNCATE TABLE {table} CASCADE")
+
+            # Re-enable FK constraint checks
+            cursor.execute("SET session_replication_role = 'origin'")
 
             # Record rollback in history
             cursor.execute("""
@@ -385,6 +488,13 @@ def rollback_to_snapshot(snapshot_id):
             }), 200
 
     except Exception as e:
+        # Re-enable FK constraints in case of error
+        try:
+            with get_db_cursor() as cursor:
+                cursor.execute("SET session_replication_role = 'origin'")
+        except:
+            pass
+
         # Record failed rollback
         try:
             with get_db_cursor() as cursor:

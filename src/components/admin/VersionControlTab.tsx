@@ -161,6 +161,12 @@ export const VersionControlTab = ({ snapshots, rollbackHistory, onDataChange }: 
                     <span>Created: {formatDate(snapshot.created_at)}</span>
                     <span>By: {snapshot.created_by_name || snapshot.created_by_username}</span>
                     <span>Size: {parseFloat(snapshot.file_size_mb || 0).toFixed(2)} MB</span>
+                    {snapshot.table_counts && (
+                      <span>
+                        {Object.keys(snapshot.table_counts).length} tables, {' '}
+                        {Object.values(snapshot.table_counts).reduce((sum: number, count: any) => sum + (parseInt(count) || 0), 0)} records
+                      </span>
+                    )}
                   </div>
                   {snapshot.tags && snapshot.tags.length > 0 && (
                     <div className="flex gap-1 mt-2">
