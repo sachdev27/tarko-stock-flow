@@ -1,0 +1,428 @@
+"""
+Production Module Test Cases
+Tests all production scenarios including HDPE pipes, Sprinkler pipes, attachments, and edge cases
+"""
+import pytest
+import json
+from io import BytesIO
+
+class TestProductionBatchCreation:
+    """Test suite for production batch creation"""
+
+    # ==================== HDPE PIPE TESTS ====================
+
+    def test_hdpe_standard_rolls_only(self, client, auth_token):
+        """Test creating HDPE batch with only standard rolls"""
+        data = {
+            'product_type_id': 1,  # HDPE Pipe
+            'brand_id': 1,
+            'parameters': {'diameter': '63mm', 'pressure': '10kg'},
+            'production_date': '2025-12-01T10:00:00',
+            'quantity': 1000,  # 1000 meters
+            'number_of_rolls': 2,  # 2 rolls of 500m each
+            'length_per_roll': 500,
+            'weight_per_meter': 1.5,
+            'notes': 'Standard HDPE production'
+        }
+        response = client.post('/api/production/batch',
+                               json=data,
+                               headers={'Authorization': f'Bearer {auth_token}'})
+        assert response.status_code == 201
+        result = response.json()
+        assert 'batch_code' in result
+        assert 'batch_id' in result
+
+    def test_hdpe_cut_rolls_only(self, client, auth_token):
+        """Test creating HDPE batch with only cut rolls"""
+        data = {
+            'product_type_id': 1,
+            'brand_id': 1,
+            'parameters': {'diameter': '63mm', 'pressure': '10kg'},
+            'production_date': '2025-12-01T10:00:00',
+            'quantity': 500,
+            'number_of_rolls': 0,
+            'cut_rolls': [
+                {'length': 150},
+                {'length': 200},
+                {'length': 150}
+            ],
+            'weight_per_meter': 1.5
+        }
+        response = client.post('/api/production/batch',
+                               json=data,
+                               headers={'Authorization': f'Bearer {auth_token}'})
+        assert response.status_code == 201
+
+    def test_hdpe_mixed_standard_and_cut(self, client, auth_token):
+        """Test HDPE batch with both standard and cut rolls"""
+        data = {
+            'product_type_id': 1,
+            'brand_id': 1,
+            'parameters': {'diameter': '50mm', 'pressure': '6kg'},
+            'production_date': '2025-12-01T10:00:00',
+            'quantity': 1500,  # Total 1500m
+            'number_of_rolls': 2,  # 2 standard rolls = 1000m
+            'length_per_roll': 500,
+            'cut_rolls': [
+                {'length': 250},
+                {'length': 250}
+            ],  # Cut rolls = 500m
+            'weight_per_meter': 1.2
+        }
+        response = client.post('/api/production/batch',
+                               json=data,
+                               headers={'Authorization': f'Bearer {auth_token}'})
+        assert response.status_code == 201
+
+    def test_hdpe_with_attachment(self, client, auth_token):
+        """Test HDPE batch with file attachment"""
+        data = {
+            'product_type_id': '1',
+            'brand_id': '1',
+            'parameters': json.dumps({'diameter': '63mm'}),
+            'production_date': '2025-12-01T10:00:00',
+            'quantity': '500',
+            'number_of_rolls': '1',
+            'length_per_roll': '500',
+            'weight_per_meter': '1.5'
+        }
+
+        # Create a test PDF file
+        file_data = BytesIO(b'%PDF-1.4 test content')
+        file_data.name = 'test_certificate.pdf'
+
+        response = client.post('/api/production/batch',
+                               data=data,
+                               files={'attachment': (file_data.name, file_data, 'application/pdf')},
+                               headers={'Authorization': f'Bearer {auth_token}'})
+        assert response.status_code == 201
+        result = response.json()
+        assert 'batch_id' in result
+
+    def test_hdpe_zero_weight(self, client, auth_token):
+        """Test HDPE batch without weight tracking"""
+        data = {
+            'product_type_id': 1,
+            'brand_id': 1,
+            'parameters': {'diameter': '40mm'},
+            'production_date': '2025-12-01T10:00:00',
+            'quantity': 300,
+            'number_of_rolls': 1,
+            'length_per_roll': 300
+        }
+        response = client.post('/api/production/batch',
+                               json=data,
+                               headers={'Authorization': f'Bearer {auth_token}'})
+        assert response.status_code == 201
+
+    # ==================== SPRINKLER PIPE TESTS ====================
+
+    def test_sprinkler_bundles_only(self, client, auth_token):
+        """Test sprinkler pipe with only bundles"""
+        data = {
+            'product_type_id': 2,  # Sprinkler Pipe
+            'brand_id': 1,
+            'parameters': {'diameter': '32mm'},
+            'production_date': '2025-12-01T10:00:00',
+            'quantity': 200,  # Total pieces calculated from bundles
+            'quantity_based': True,
+            'roll_config_type': 'bundles',
+            'number_of_bundles': 20,  # 20 bundles
+            'bundle_size': 10,  # 10 pieces per bundle = 200 pieces
+            'length_per_roll': 6,  # 6m per piece
+            'weight_per_meter': 0.5
+        }
+        response = client.post('/api/production/batch',
+                               json=data,
+                               headers={'Authorization': f'Bearer {auth_token}'})
+        assert response.status_code == 201
+
+    def test_sprinkler_spare_pieces_only(self, client, auth_token):
+        """Test sprinkler pipe with only spare pieces"""
+        data = {
+            'product_type_id': 2,
+            'brand_id': 1,
+            'parameters': {'diameter': '32mm'},
+            'production_date': '2025-12-01T10:00:00',
+            'quantity': 15,  # 15 spare pieces
+            'quantity_based': True,
+            'roll_config_type': 'bundles',
+            'number_of_bundles': 0,
+            'spare_pipes': [
+                {'length': 7},  # 7 pieces
+                {'length': 8}   # 8 pieces
+            ],
+            'length_per_roll': 6
+        }
+        response = client.post('/api/production/batch',
+                               json=data,
+                               headers={'Authorization': f'Bearer {auth_token}'})
+        assert response.status_code == 201
+
+    def test_sprinkler_bundles_and_spares(self, client, auth_token):
+        """Test sprinkler with bundles + spare pieces"""
+        data = {
+            'product_type_id': 2,
+            'brand_id': 1,
+            'parameters': {'diameter': '25mm'},
+            'production_date': '2025-12-01T10:00:00',
+            'quantity': 215,  # 200 from bundles + 15 from spares
+            'quantity_based': True,
+            'roll_config_type': 'bundles',
+            'number_of_bundles': 20,
+            'bundle_size': 10,
+            'spare_pipes': [
+                {'length': 7},
+                {'length': 8}
+            ],
+            'length_per_roll': 6,
+            'weight_per_meter': 0.4
+        }
+        response = client.post('/api/production/batch',
+                               json=data,
+                               headers={'Authorization': f'Bearer {auth_token}'})
+        assert response.status_code == 201
+
+    def test_sprinkler_multiple_spare_groups(self, client, auth_token):
+        """Test sprinkler with multiple different spare piece groups"""
+        data = {
+            'product_type_id': 2,
+            'brand_id': 1,
+            'parameters': {'diameter': '40mm'},
+            'production_date': '2025-12-01T10:00:00',
+            'quantity': 30,
+            'quantity_based': True,
+            'roll_config_type': 'bundles',
+            'number_of_bundles': 0,
+            'spare_pipes': [
+                {'length': 5},
+                {'length': 10},
+                {'length': 7},
+                {'length': 8}
+            ],
+            'length_per_roll': 6
+        }
+        response = client.post('/api/production/batch',
+                               json=data,
+                               headers={'Authorization': f'Bearer {auth_token}'})
+        assert response.status_code == 201
+
+    # ==================== EDGE CASES & VALIDATION ====================
+
+    def test_missing_required_fields(self, client, auth_token):
+        """Test validation for missing required fields"""
+        data = {
+            'product_type_id': 1
+            # Missing brand_id, quantity, etc.
+        }
+        response = client.post('/api/production/batch',
+                               json=data,
+                               headers={'Authorization': f'Bearer {auth_token}'})
+        assert response.status_code == 400
+
+    def test_zero_quantity(self, client, auth_token):
+        """Test batch creation with zero quantity"""
+        data = {
+            'product_type_id': 1,
+            'brand_id': 1,
+            'parameters': {},
+            'production_date': '2025-12-01T10:00:00',
+            'quantity': 0,
+            'number_of_rolls': 0
+        }
+        response = client.post('/api/production/batch',
+                               json=data,
+                               headers={'Authorization': f'Bearer {auth_token}'})
+        assert response.status_code == 400
+
+    def test_negative_quantity(self, client, auth_token):
+        """Test batch creation with negative quantity"""
+        data = {
+            'product_type_id': 1,
+            'brand_id': 1,
+            'parameters': {},
+            'production_date': '2025-12-01T10:00:00',
+            'quantity': -500
+        }
+        response = client.post('/api/production/batch',
+                               json=data,
+                               headers={'Authorization': f'Bearer {auth_token}'})
+        assert response.status_code == 400
+
+    def test_invalid_file_type(self, client, auth_token):
+        """Test attachment with invalid file type"""
+        data = {
+            'product_type_id': '1',
+            'brand_id': '1',
+            'parameters': json.dumps({'diameter': '63mm'}),
+            'quantity': '500',
+            'number_of_rolls': '1'
+        }
+
+        file_data = BytesIO(b'executable content')
+        file_data.name = 'malicious.exe'
+
+        response = client.post('/api/production/batch',
+                               data=data,
+                               files={'attachment': (file_data.name, file_data, 'application/exe')},
+                               headers={'Authorization': f'Bearer {auth_token}'})
+        # Should succeed but not save the file
+        assert response.status_code == 201
+
+    def test_auto_batch_number_generation(self, client, auth_token):
+        """Test automatic batch number generation"""
+        data = {
+            'product_type_id': 1,
+            'brand_id': 1,
+            'parameters': {'diameter': '50mm'},
+            'production_date': '2025-12-01T10:00:00',
+            'quantity': 500,
+            'number_of_rolls': 1,
+            'auto_batch_no': True  # Let system generate batch number
+        }
+        response = client.post('/api/production/batch',
+                               json=data,
+                               headers={'Authorization': f'Bearer {auth_token}'})
+        assert response.status_code == 201
+        result = response.json()
+        assert 'batch_no' in result
+        assert result['batch_no'] is not None
+
+    def test_duplicate_batch_code(self, client, auth_token):
+        """Test creating batch with duplicate batch code"""
+        data = {
+            'product_type_id': 1,
+            'brand_id': 1,
+            'parameters': {},
+            'production_date': '2025-12-01T10:00:00',
+            'quantity': 500,
+            'batch_code': 'TEST-BATCH-001'
+        }
+        # Create first batch
+        response1 = client.post('/api/production/batch',
+                                json=data,
+                                headers={'Authorization': f'Bearer {auth_token}'})
+        assert response1.status_code == 201
+
+        # Try to create duplicate
+        response2 = client.post('/api/production/batch',
+                                json=data,
+                                headers={'Authorization': f'Bearer {auth_token}'})
+        assert response2.status_code == 409  # Conflict
+
+    def test_very_large_quantity(self, client, auth_token):
+        """Test batch with very large quantity (boundary test)"""
+        data = {
+            'product_type_id': 1,
+            'brand_id': 1,
+            'parameters': {},
+            'production_date': '2025-12-01T10:00:00',
+            'quantity': 999999,  # Very large
+            'number_of_rolls': 1000,
+            'length_per_roll': 999.999
+        }
+        response = client.post('/api/production/batch',
+                               json=data,
+                               headers={'Authorization': f'Bearer {auth_token}'})
+        assert response.status_code == 201
+
+    def test_fractional_quantities(self, client, auth_token):
+        """Test batch with fractional/decimal quantities"""
+        data = {
+            'product_type_id': 1,
+            'brand_id': 1,
+            'parameters': {},
+            'production_date': '2025-12-01T10:00:00',
+            'quantity': 123.456,
+            'number_of_rolls': 1,
+            'length_per_roll': 123.456,
+            'weight_per_meter': 1.234
+        }
+        response = client.post('/api/production/batch',
+                               json=data,
+                               headers={'Authorization': f'Bearer {auth_token}'})
+        assert response.status_code == 201
+
+    def test_unauthorized_access(self, client):
+        """Test batch creation without authentication"""
+        data = {
+            'product_type_id': 1,
+            'brand_id': 1,
+            'quantity': 500
+        }
+        response = client.post('/api/production/batch', json=data)
+        assert response.status_code == 401
+
+    def test_future_production_date(self, client, auth_token):
+        """Test batch with future production date"""
+        data = {
+            'product_type_id': 1,
+            'brand_id': 1,
+            'parameters': {},
+            'production_date': '2026-12-01T10:00:00',  # Future date
+            'quantity': 500,
+            'number_of_rolls': 1
+        }
+        response = client.post('/api/production/batch',
+                               json=data,
+                               headers={'Authorization': f'Bearer {auth_token}'})
+        # Should allow future dates (for planning)
+        assert response.status_code == 201
+
+    def test_special_characters_in_notes(self, client, auth_token):
+        """Test batch with special characters in notes"""
+        data = {
+            'product_type_id': 1,
+            'brand_id': 1,
+            'parameters': {},
+            'production_date': '2025-12-01T10:00:00',
+            'quantity': 500,
+            'number_of_rolls': 1,
+            'notes': "Test with special chars: <>'\"&@#$%^*()[]{}|"
+        }
+        response = client.post('/api/production/batch',
+                               json=data,
+                               headers={'Authorization': f'Bearer {auth_token}'})
+        assert response.status_code == 201
+
+
+class TestProductionHistory:
+    """Test production history and details retrieval"""
+
+    def test_get_all_batches(self, client, auth_token):
+        """Test retrieving all production batches"""
+        response = client.get('/api/production/history',
+                             headers={'Authorization': f'Bearer {auth_token}'})
+        assert response.status_code == 200
+        result = response.json()
+        assert 'batches' in result
+        assert isinstance(result['batches'], list)
+
+    def test_get_batch_details(self, client, auth_token, sample_batch_id):
+        """Test retrieving specific batch details"""
+        response = client.get(f'/api/production/history/{sample_batch_id}',
+                             headers={'Authorization': f'Bearer {auth_token}'})
+        assert response.status_code == 200
+        result = response.json()
+        assert 'batch_code' in result
+        assert 'items' in result
+
+    def test_get_nonexistent_batch(self, client, auth_token):
+        """Test retrieving non-existent batch"""
+        fake_id = '00000000-0000-0000-0000-000000000000'
+        response = client.get(f'/api/production/history/{fake_id}',
+                             headers={'Authorization': f'Bearer {auth_token}'})
+        assert response.status_code == 404
+
+    def test_attachment_download(self, client, auth_token, batch_with_attachment):
+        """Test downloading batch attachment"""
+        response = client.get(f'/api/production/attachment/{batch_with_attachment["filename"]}',
+                             headers={'Authorization': f'Bearer {auth_token}'})
+        assert response.status_code == 200
+        assert response.headers['Content-Type'] in ['application/pdf', 'image/jpeg', 'image/png']
+
+    def test_attachment_not_found(self, client, auth_token):
+        """Test downloading non-existent attachment"""
+        response = client.get('/api/production/attachment/nonexistent.pdf',
+                             headers={'Authorization': f'Bearer {auth_token}'})
+        assert response.status_code == 404

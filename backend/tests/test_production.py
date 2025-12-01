@@ -99,13 +99,14 @@ class TestProductionBatchCreation:
 
         # Create a test PDF file
         file_data = BytesIO(b'%PDF-1.4 test content')
-        file_data.name = 'test_certificate.pdf'
-
+        
+        # Flask test client requires files in data dict
+        data['attachment'] = (file_data, 'test_certificate.pdf', 'application/pdf')
+        
         # For multipart/form-data, don't include Content-Type in headers
         headers = {'Authorization': auth_headers['Authorization']}
         response = client.post('/api/production/batch',
                              data=data,
-                             files={'attachment': (file_data.name, file_data, 'application/pdf')},
                              headers=headers,
                              content_type='multipart/form-data')
         assert response.status_code in (200, 201)
@@ -290,12 +291,13 @@ class TestProductionBatchCreation:
 
         # Create invalid file (exe file)
         file_data = BytesIO(b'Invalid executable content')
-        file_data.name = 'malicious.exe'
-
+        
+        # Flask test client requires files in data dict
+        data['attachment'] = (file_data, 'malicious.exe', 'application/x-msdownload')
+        
         headers = {'Authorization': auth_headers['Authorization']}
         response = client.post('/api/production/batch',
                              data=data,
-                             files={'attachment': (file_data.name, file_data, 'application/x-msdownload')},
                              headers=headers,
                              content_type='multipart/form-data')
         # Should either reject or accept without attachment
@@ -439,7 +441,7 @@ class TestProductionHistory:
 
     def test_get_all_batches(self, client, auth_headers):
         """Test retrieving all production batches"""
-        response = client.get('/api/production/batches', headers=auth_headers)
+        response = client.get('/api/production/history', headers=auth_headers)
         assert response.status_code == 200
         # Should return a list (may be empty)
         result = response.json
@@ -450,7 +452,7 @@ class TestProductionHistory:
         batch = hdpe_batch.get('batch', hdpe_batch)
         batch_id = batch.get('batch_id') or batch.get('id')
         
-        response = client.get(f'/api/production/batch/{batch_id}', headers=auth_headers)
+        response = client.get(f'/api/production/history/{batch_id}', headers=auth_headers)
         assert response.status_code == 200
         result = response.json
         assert result is not None
@@ -458,7 +460,7 @@ class TestProductionHistory:
     def test_get_nonexistent_batch(self, client, auth_headers):
         """Test retrieving non-existent batch"""
         fake_uuid = '00000000-0000-0000-0000-000000000000'
-        response = client.get(f'/api/production/batch/{fake_uuid}', headers=auth_headers)
+        response = client.get(f'/api/production/history/{fake_uuid}', headers=auth_headers)
         assert response.status_code in (404, 400)
 
     def test_attachment_download(self, client, auth_headers, batch_with_attachment):

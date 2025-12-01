@@ -1,12 +1,9 @@
 """
 Pytest configuration and shared fixtures for test suite
-REWRITTEN to match actual schema (December 2025)
 """
 import pytest
 import os
 import sys
-import json
-import bcrypt
 from datetime import datetime, timedelta
 
 # Add backend to path
@@ -15,6 +12,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 # Import the existing Flask app
 from app import app as flask_app
 from database import get_db_connection, get_db_cursor, init_connection_pool
+from werkzeug.security import generate_password_hash
 
 
 @pytest.fixture(scope='session')
@@ -54,76 +52,58 @@ def db_connection(app):
 @pytest.fixture(scope='session', autouse=True)
 def setup_test_database(app):
     """Setup test database before all tests"""
-    # Setup phase - Delete test user if exists, then create fresh
-    with get_db_cursor(commit=False) as cursor:
-        # Check if test user exists
-        cursor.execute("SELECT id FROM users WHERE email = 'test@test.com'")
-        result = cursor.fetchone()
+    # Setup phase
+    with get_db_cursor(commit=True) as cursor:
+        # Create or update test user (using pbkdf2:sha256 method compatible with Python 3.9)
+        # First, try to get existing user
+        cursor.execute("SELECT id FROM users WHERE email = %s", ('test@test.com',))
+        user = cursor.fetchone()
         
-        if result:
-            test_user_id = result['id']
-            print(f"Found existing test user with ID: {test_user_id}, deleting...")
-            # Delete all related data in proper order (respecting foreign keys)
-            cleanup_queries = [
-                # Delete audit logs first (references users)
-                f"DELETE FROM audit_logs WHERE user_id = '{test_user_id}'",
-                # Delete transactions and inventory
-                f"DELETE FROM inventory_transactions WHERE batch_id IN (SELECT id FROM batches WHERE created_by = '{test_user_id}')",
-                f"DELETE FROM inventory_stock WHERE batch_id IN (SELECT id FROM batches WHERE created_by = '{test_user_id}')",
-                f"DELETE FROM transactions WHERE batch_id IN (SELECT id FROM batches WHERE created_by = '{test_user_id}')",
-                # Delete batches
-                f"DELETE FROM batches WHERE created_by = '{test_user_id}'",
-                # Delete user roles and user
-                f"DELETE FROM user_roles WHERE user_id = '{test_user_id}'",
-                f"DELETE FROM users WHERE id = '{test_user_id}'"
-            ]
-            for i, query in enumerate(cleanup_queries):
-                try:
-                    cursor.execute(query)
-                    cursor.connection.commit()
-                    print(f"Cleanup {i+1}/{len(cleanup_queries)} succeeded")
-                except Exception as e:
-                    # If error, rollback this specific query and continue
-                    cursor.connection.rollback()
-                    print(f"Cleanup {i+1}/{len(cleanup_queries)} failed: {e}")
-                    pass
+        if user:
+            # Update existing user's password
+            user_id = user['id']
+            cursor.execute("""
+                UPDATE users 
+                SET password_hash = %s, updated_at = %s
+                WHERE id = %s
+            """, (generate_password_hash('testpass123', method='pbkdf2:sha256'), datetime.now(), user_id))
+        else:
+            # Create new user
+            cursor.execute("""
+                INSERT INTO users (email, password_hash, created_at)
+                VALUES (%s, %s, %s)
+                RETURNING id
+            """, ('test@test.com', generate_password_hash('testpass123', method='pbkdf2:sha256'), datetime.now()))
+            user_id = cursor.fetchone()['id']
         
-        # Create fresh test user with bcrypt (matching auth service)
-        password_hash = bcrypt.hashpw('testpass123'.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        # Ensure user has admin role
         cursor.execute("""
-            INSERT INTO users (email, password_hash, created_at, updated_at)
-            VALUES (%s, %s, %s, %s)
-            RETURNING id
-        """, ('test@test.com', password_hash, datetime.now(), datetime.now()))
-        user_id = cursor.fetchone()['id']
+            INSERT INTO user_roles (user_id, role, created_at)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (user_id, role) DO NOTHING
+        """, (user_id, 'admin', datetime.now()))
         
-        # Add admin role
-        cursor.execute("""
-            INSERT INTO user_roles (user_id, role, created_at, updated_at)
-            VALUES (%s, %s, %s, %s)
-        """, (user_id, 'admin', datetime.now(), datetime.now()))
-        
-        cursor.connection.commit()
+        # Note: The existing seed data in schema.sql should provide:
+        # - units (meters, kg, pieces, rolls)
+        # - brands (Tarko Premium, Tarko Standard, Tarko Eco)
+        # - locations (Main Warehouse, Plant Godown, Storage Yard)
+        # - product_types (HDPE Pipe, Sprinkler Pipe)
+        # Additional test data will be created by individual test fixtures
 
     yield
 
-    # Cleanup phase - only delete test data from today
+    # Cleanup phase after all tests
     with get_db_cursor(commit=True) as cursor:
-        # Note: Order matters due to foreign key constraints
-        try:
-            cursor.execute("DELETE FROM inventory_transactions WHERE created_at::date = CURRENT_DATE")
-            cursor.execute("DELETE FROM scrap_items WHERE created_at::date = CURRENT_DATE")
-            cursor.execute("DELETE FROM scraps WHERE created_at::date = CURRENT_DATE")
-            cursor.execute("DELETE FROM return_items WHERE created_at::date = CURRENT_DATE")
-            cursor.execute("DELETE FROM returns WHERE created_at::date = CURRENT_DATE")
-            cursor.execute("DELETE FROM dispatch_items WHERE created_at::date = CURRENT_DATE")
-            cursor.execute("DELETE FROM dispatches WHERE created_at::date = CURRENT_DATE")
-            cursor.execute("DELETE FROM sprinkler_spare_pieces WHERE created_at::date = CURRENT_DATE")
-            cursor.execute("DELETE FROM hdpe_cut_pieces WHERE created_at::date = CURRENT_DATE")
-            cursor.execute("DELETE FROM inventory_stock WHERE created_at::date = CURRENT_DATE")
-            cursor.execute("DELETE FROM batches WHERE created_at::date = CURRENT_DATE")
-        except Exception as e:
-            print(f"Cleanup warning: {e}")
+        # Delete in order that respects foreign key constraints
+        cursor.execute("DELETE FROM inventory_transactions WHERE 1=1")
+        cursor.execute("DELETE FROM dispatch_items WHERE 1=1")
+        cursor.execute("DELETE FROM dispatches WHERE 1=1")
+        cursor.execute("DELETE FROM return_items WHERE 1=1")
+        cursor.execute("DELETE FROM returns WHERE 1=1")
+        cursor.execute("DELETE FROM scrap_records WHERE 1=1")
+        cursor.execute("DELETE FROM spare_pieces WHERE 1=1")
+        cursor.execute("DELETE FROM rolls WHERE 1=1")
+        cursor.execute("DELETE FROM batches WHERE 1=1")
 @pytest.fixture(scope='function')
 def auth_token(client):
     """Get authentication token for tests"""
@@ -132,156 +112,28 @@ def auth_token(client):
         'password': 'testpass123'
     })
     if response.status_code != 200:
-        raise Exception(f"Login failed with status {response.status_code}: {response.json}")
+        raise Exception(f"Login failed: {response.json}")
     return response.json['access_token']
-
-
-@pytest.fixture(scope='function')
-def auth_headers(auth_token):
-    """Get authorization headers"""
-    return {
-        'Authorization': f'Bearer {auth_token}',
-        'Content-Type': 'application/json'
-    }
-
-
-# ==================== HELPER FIXTURES FOR SEEDED DATA ====================
-
-@pytest.fixture(scope='session')
-def get_unit_id():
-    """Get unit ID by abbreviation"""
-    def _get(abbreviation='m'):
-        with get_db_cursor() as cursor:
-            cursor.execute("SELECT id FROM units WHERE abbreviation = %s LIMIT 1", (abbreviation,))
-            result = cursor.fetchone()
-            return str(result['id']) if result else None
-    return _get
-
-
-@pytest.fixture(scope='session')
-def get_brand_id():
-    """Get brand ID by name"""
-    def _get(name=None):
-        with get_db_cursor() as cursor:
-            if name:
-                cursor.execute("SELECT id FROM brands WHERE name = %s AND deleted_at IS NULL LIMIT 1", (name,))
-            else:
-                cursor.execute("SELECT id FROM brands WHERE deleted_at IS NULL LIMIT 1")
-            result = cursor.fetchone()
-            return str(result['id']) if result else None
-    return _get
-
-
-@pytest.fixture(scope='session')
-def get_location_id():
-    """Get location ID by name"""
-    def _get(name='Main Warehouse'):
-        with get_db_cursor() as cursor:
-            cursor.execute("SELECT id FROM locations WHERE name = %s AND deleted_at IS NULL LIMIT 1", (name,))
-            result = cursor.fetchone()
-            return str(result['id']) if result else None
-    return _get
-
-
-@pytest.fixture(scope='session')
-def get_product_type_id():
-    """Get product type ID by name"""
-    def _get(name='HDPE Pipe'):
-        with get_db_cursor() as cursor:
-            cursor.execute("SELECT id FROM product_types WHERE name = %s AND deleted_at IS NULL LIMIT 1", (name,))
-            result = cursor.fetchone()
-            return str(result['id']) if result else None
-    return _get
-
-
-@pytest.fixture(scope='function')
-def test_product_variant(get_product_type_id, get_brand_id):
-    """Create or get a test product variant"""
-    with get_db_cursor(commit=True) as cursor:
-        product_type_id = get_product_type_id('HDPE Pipe')
-        brand_id = get_brand_id()
-        
-        # Try to find existing
-        cursor.execute("""
-            SELECT id, product_type_id, brand_id, parameters
-            FROM product_variants
-            WHERE product_type_id = %s AND brand_id = %s AND deleted_at IS NULL
-            LIMIT 1
-        """, (product_type_id, brand_id))
-        
-        variant = cursor.fetchone()
-        if variant:
-            return {
-                'id': str(variant['id']),
-                'product_type_id': str(variant['product_type_id']),
-                'brand_id': str(variant['brand_id']),
-                'parameters': variant['parameters']
-            }
-        
-        # Create new
-        cursor.execute("""
-            INSERT INTO product_variants (product_type_id, brand_id, parameters, created_at, updated_at)
-            VALUES (%s, %s, %s, %s, %s)
-            RETURNING id, product_type_id, brand_id, parameters
-        """, (product_type_id, brand_id, {'PE': 'PE80', 'PN': 10, 'OD': 110}, datetime.now(), datetime.now()))
-        
-        variant = cursor.fetchone()
-        return {
-            'id': str(variant['id']),
-            'product_type_id': str(variant['product_type_id']),
-            'brand_id': str(variant['brand_id']),
-            'parameters': variant['parameters']
-        }
-
-
-@pytest.fixture(scope='function')
-def test_customer(client, auth_headers):
-    """Create a test customer"""
-    timestamp = int(datetime.now().timestamp())
-    response = client.post('/api/dispatch-entities/customers',
-                          headers=auth_headers,
-                          json={
-                              'name': f'Test Customer {timestamp}',
-                              'contact_person': 'John Doe',
-                              'phone': '1234567890',
-                              'email': f'test{timestamp}@customer.com',
-                              'address': '123 Test St'
-                          })
-    if response.status_code not in (200, 201):
-        # Customer might exist, try to get one
-        with get_db_cursor() as cursor:
-            cursor.execute("SELECT id, name FROM customers WHERE deleted_at IS NULL LIMIT 1")
-            customer = cursor.fetchone()
-            if customer:
-                return {'id': str(customer['id']), 'name': customer['name']}
-        raise Exception(f"Failed to create customer: {response.json}")
-    return response.json
 
 
 # ==================== PRODUCTION FIXTURES ====================
 
 @pytest.fixture
-def hdpe_batch(client, auth_headers, get_product_type_id, get_brand_id):
+def hdpe_batch(client, auth_token):
     """Create HDPE batch for testing"""
-    timestamp = int(datetime.now().timestamp())
     response = client.post('/api/production/batch',
-                          headers=auth_headers,
                           json={
-                              'product_type_id': get_product_type_id('HDPE Pipe'),
-                              'brand_id': get_brand_id(),
-                              'parameters': {'PE': 'PE80', 'PN': 10, 'OD': 110},
-                              'production_date': datetime.now().isoformat(),
-                              'quantity': 1000.0,
-                              'batch_no': f'TEST-HDPE-{timestamp}',
-                              'batch_code': f'HDPE-{timestamp}',
+                              'product_type_id': 1,
+                              'brand_id': 1,
+                              'parameters': {'diameter': '63mm', 'pressure': '10kg'},
+                              'production_date': '2025-12-01T08:00:00',
+                              'quantity': 1000,
                               'number_of_rolls': 2,
-                              'length_per_roll': 500.0,
-                              'weight_per_meter': 1.5,
-                              'notes': 'Test HDPE batch'
-                          })
-    if response.status_code not in (200, 201):
-        raise Exception(f"Failed to create HDPE batch: {response.json}")
-    return response.json
+                              'length_per_roll': 500,
+                              'weight_per_meter': 1.5
+                          },
+                          headers={'Authorization': f'Bearer {auth_token}'})
+    return response.json()
 
 
 @pytest.fixture
@@ -365,34 +217,27 @@ def hdpe_batch_2(client, auth_token):
 
 
 @pytest.fixture
-def batch_with_attachment(client, auth_headers, get_product_type_id, get_brand_id):
+def batch_with_attachment(client, auth_token, tmpdir):
     """Create batch with file attachment"""
     from io import BytesIO
 
-    timestamp = int(datetime.now().timestamp())
     # Create test file
     test_file = BytesIO(b'%PDF-1.4 test content')
     test_file.name = 'test_cert.pdf'
 
-    data = {
-        'product_type_id': str(get_product_type_id('HDPE Pipe')),
-        'brand_id': str(get_brand_id()),
-        'parameters': json.dumps({'PE': 'PE80', 'PN': 10, 'OD': 63}),
-        'production_date': datetime.now().isoformat(),
-        'quantity': '500',
-        'batch_no': f'TEST-ATTACHMENT-{timestamp}',
-        'number_of_rolls': '1',
-        'length_per_roll': '500',
-        'weight_per_meter': '1.5',
-        'attachment': (test_file, 'test_cert.pdf', 'application/pdf')
-    }
-
-    headers = {'Authorization': auth_headers['Authorization']}
     response = client.post('/api/production/batch',
-                          data=data,
-                          headers=headers,
-                          content_type='multipart/form-data')
-    result = response.json
+                          data={
+                              'product_type_id': '1',
+                              'brand_id': '1',
+                              'parameters': '{}',
+                              'production_date': '2025-12-01T08:00:00',
+                              'quantity': '500',
+                              'number_of_rolls': '1',
+                              'length_per_roll': '500'
+                          },
+                          files={'attachment': (test_file.name, test_file, 'application/pdf')},
+                          headers={'Authorization': f'Bearer {auth_token}'})
+    result = response.json()
     result['filename'] = 'test_cert.pdf'
     return result
 
