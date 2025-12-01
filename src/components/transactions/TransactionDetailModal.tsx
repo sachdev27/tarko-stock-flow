@@ -26,6 +26,8 @@ import {
   Tag,
 } from 'lucide-react';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5500/api';
+
 interface TransactionDetailModalProps {
   transaction: TransactionRecord | null;
   open: boolean;
@@ -1189,7 +1191,7 @@ export function TransactionDetailModal({
                       <div>
                         <div className="text-sm text-muted-foreground mb-2">Attachment</div>
                         <a
-                          href={transaction.attachment_url}
+                          href={`${API_URL}${transaction.attachment_url}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-sm text-primary hover:underline"

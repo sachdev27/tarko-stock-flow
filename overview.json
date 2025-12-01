@@ -1,6 +1,6 @@
 {
   "rootFolder": "/Users/sachdevs/Projects/Tarko-Inv/tarko-stock-flow",
-  "analyzedAt": "2025-12-01T10:59:36.182Z",
+  "analyzedAt": "2025-12-01T11:12:52.137Z",
   "rootStructure": [
     {
       "name": ".github",
@@ -81,8 +81,8 @@
     {
       "name": "overview.json",
       "type": "file",
-      "size": 28720,
-      "lines": 964
+      "size": 28559,
+      "lines": 960
     },
     {
       "name": "package-lock.json",
@@ -125,6 +125,10 @@
       "type": "file",
       "size": 2745,
       "lines": 97
+    },
+    {
+      "name": "temp_exports",
+      "type": "dir"
     },
     {
       "name": "tsconfig.app.json",
@@ -263,7 +267,7 @@
     "overview.json": [
       "{",
       "\"rootFolder\": \"/Users/sachdevs/Projects/Tarko-Inv/tarko-stock-flow\",",
-      "\"analyzedAt\": \"2025-12-01T10:51:31.708Z\",",
+      "\"analyzedAt\": \"2025-12-01T11:10:13.642Z\",",
       "\"rootStructure\": [",
       "{",
       "\"name\": \".github\",",
@@ -447,8 +451,8 @@
   },
   "totals": {
     "numFiles": 335,
-    "numDirs": 47,
-    "totalSizeBytes": 4993691,
+    "numDirs": 48,
+    "totalSizeBytes": 4993314,
     "totalLinesOfCode": 45243
   },
   "fileCategories": {
@@ -946,9 +950,9 @@
   },
   "gitRepo": {
     "firstCommitDate": "2025-12-01",
-    "totalCommits": 92,
+    "totalCommits": 94,
     "numContributors": 0,
-    "currentBranch": "sachdevs/activity_page",
+    "currentBranch": "sachdevs/unit_testing",
     "remoteUrls": [
       "https://github.com/sachdev27/tarko-stock-flow.git"
     ]

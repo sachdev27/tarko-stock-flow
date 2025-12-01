@@ -4,15 +4,28 @@ from database import execute_insert, execute_query, get_db_cursor
 from services.auth import jwt_required_with_role, get_user_identity_details
 from services.inventory_helpers_aggregate import AggregateInventoryHelper as InventoryHelper
 from werkzeug.utils import secure_filename
+from pathlib import Path
 import json
 import os
 import uuid
 import psycopg2
+import logging
+
+logger = logging.getLogger(__name__)
 
 production_bp = Blueprint('production', __name__, url_prefix='/api/production')
 
-UPLOAD_FOLDER = 'uploads/batches'
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'pdf'}
+# Use environment variable for upload path, with fallback
+UPLOAD_BASE_PATH = os.getenv('UPLOAD_STORAGE_PATH', './uploads')
+UPLOAD_FOLDER = os.path.join(UPLOAD_BASE_PATH, 'batches')
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt', 'csv'}
+
+# Ensure upload directory exists
+try:
+    Path(UPLOAD_FOLDER).mkdir(parents=True, exist_ok=True)
+    logger.info(f"Upload directory ready: {UPLOAD_FOLDER}")
+except OSError as e:
+    logger.error(f"Failed to create upload directory {UPLOAD_FOLDER}: {e}")
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -110,12 +123,36 @@ def create_batch():
 
         # Handle file upload
         attachment_url = None
-        if file and allowed_file(file.filename):
-            filename = secure_filename(file.filename)
-            unique_filename = f"{uuid.uuid4()}_{filename}"
-            filepath = os.path.join(UPLOAD_FOLDER, unique_filename)
-            file.save(filepath)
-            attachment_url = f"/api/production/attachment/{unique_filename}"
+        if file:
+            logger.info(f"File received: {file.filename}, size: {file.content_length if hasattr(file, 'content_length') else 'unknown'}")
+            if allowed_file(file.filename):
+                try:
+                    filename = secure_filename(file.filename)
+                    unique_filename = f"{uuid.uuid4()}_{filename}"
+                    filepath = os.path.join(UPLOAD_FOLDER, unique_filename)
+
+                    logger.info(f"Saving file to: {filepath}")
+
+                    # Ensure directory exists before saving
+                    Path(UPLOAD_FOLDER).mkdir(parents=True, exist_ok=True)
+
+                    file.save(filepath)
+
+                    # Verify file was saved
+                    if os.path.exists(filepath):
+                        file_size = os.path.getsize(filepath)
+                        logger.info(f"File uploaded successfully: {unique_filename} ({file_size} bytes)")
+                        # Store relative URL without /api prefix (frontend will add it)
+                        attachment_url = f"/production/attachment/{unique_filename}"
+                    else:
+                        logger.error(f"File save reported success but file not found: {filepath}")
+                        attachment_url = None
+                except Exception as e:
+                    logger.error(f"Failed to save attachment: {e}", exc_info=True)
+                    # Don't fail the entire batch creation, just log the error
+                    attachment_url = None
+            else:
+                logger.warning(f"File type not allowed: {file.filename}. Allowed: {ALLOWED_EXTENSIONS}")
 
         actor = get_user_identity_details(user_id)
 
@@ -402,7 +439,21 @@ def create_batch():
 @production_bp.route('/attachment/<filename>', methods=['GET'])
 def get_attachment(filename):
     """Serve uploaded batch attachments"""
-    return send_from_directory(UPLOAD_FOLDER, filename)
+    try:
+        # Use absolute path for reliability
+        abs_upload_folder = os.path.abspath(UPLOAD_FOLDER)
+        logger.info(f"Attempting to serve file: {filename} from {abs_upload_folder}")
+
+        # Check if file exists
+        file_path = os.path.join(abs_upload_folder, filename)
+        if not os.path.exists(file_path):
+            logger.error(f"File not found: {file_path}")
+            return jsonify({'error': 'File not found'}), 404
+
+        return send_from_directory(abs_upload_folder, filename)
+    except Exception as e:
+        logger.error(f"Error serving attachment {filename}: {e}")
+        return jsonify({'error': f'Failed to serve file: {str(e)}'}), 500
 
 @production_bp.route('/history', methods=['GET'])
 @jwt_required_with_role('user')
@@ -418,6 +469,7 @@ def get_production_history():
                     b.production_date,
                     b.initial_quantity,
                     b.notes,
+                    b.attachment_url,
                     b.weight_per_meter,
                     b.total_weight,
                     b.piece_length,
@@ -433,7 +485,7 @@ def get_production_history():
                 JOIN brands br ON pv.brand_id = br.id
                 LEFT JOIN users u ON b.created_by = u.id
                 LEFT JOIN inventory_stock ist ON b.id = ist.batch_id
-                GROUP BY b.id, pt.name, br.name, pv.parameters, u.email
+                GROUP BY b.id, pt.name, br.name, pv.parameters, u.email, b.attachment_url
                 ORDER BY b.created_at DESC
             """)
 
@@ -451,6 +503,7 @@ def get_production_history():
                     'brand_name': batch['brand_name'],
                     'parameters': batch['parameters'],
                     'notes': batch['notes'],
+                    'attachment_url': batch['attachment_url'],
                     'weight_per_meter': float(batch['weight_per_meter']) if batch['weight_per_meter'] else None,
                     'total_weight': float(batch['total_weight']) if batch['total_weight'] else None,
                     'piece_length': float(batch['piece_length']) if batch['piece_length'] else None,

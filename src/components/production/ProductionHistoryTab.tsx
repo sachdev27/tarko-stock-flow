@@ -26,9 +26,11 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Search, Factory, Package, Filter, X } from 'lucide-react';
+import { Search, Factory, Package, Filter, X, Paperclip, ExternalLink } from 'lucide-react';
 import { production } from '@/lib/api';
 import { format } from 'date-fns';
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5500/api';
 
 interface Batch {
   id: string;
@@ -40,6 +42,7 @@ interface Batch {
   brand_name: string;
   parameters: Record<string, unknown>;
   notes?: string;
+  attachment_url?: string;
   weight_per_meter?: number;
   total_weight?: number;
   piece_length?: number;
@@ -356,6 +359,7 @@ export const ProductionHistoryTab = () => {
                     <TableHead>Quantity</TableHead>
                     <TableHead>Weight</TableHead>
                     <TableHead>Items</TableHead>
+                    <TableHead>Attachment</TableHead>
                     <TableHead>Created By</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -408,6 +412,21 @@ export const ProductionHistoryTab = () => {
                       </TableCell>
                       <TableCell>
                         <div className="text-sm">{batch.total_items}</div>
+                      </TableCell>
+                      <TableCell>
+                        {batch.attachment_url ? (
+                          <a
+                            href={`${API_URL}${batch.attachment_url}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="inline-flex items-center gap-1 text-primary hover:underline"
+                          >
+                            <Paperclip className="h-4 w-4" />
+                          </a>
+                        ) : (
+                          <span className="text-gray-400">-</span>
+                        )}
                       </TableCell>
                       <TableCell>
                         <div className="text-sm">{batch.created_by_email}</div>
@@ -491,6 +510,21 @@ export const ProductionHistoryTab = () => {
                   <div className="col-span-2">
                     <div className="text-sm text-gray-500">Notes</div>
                     <div className="text-sm">{selectedBatch.notes}</div>
+                  </div>
+                )}
+                {selectedBatch.attachment_url && (
+                  <div className="col-span-2">
+                    <div className="text-sm text-gray-500 mb-1">Attachment</div>
+                    <a
+                      href={`${API_URL}${selectedBatch.attachment_url}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 text-primary hover:underline font-medium"
+                    >
+                      <Paperclip className="h-4 w-4" />
+                      View Attachment
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
                   </div>
                 )}
               </div>
