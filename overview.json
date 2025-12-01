@@ -1,42 +1,16 @@
 {
   "rootFolder": "/Users/sachdevs/Projects/Tarko-Inv/tarko-stock-flow",
-  "analyzedAt": "2025-11-29T07:06:20.265Z",
+  "analyzedAt": "2025-12-01T10:51:31.708Z",
   "rootStructure": [
+    {
+      "name": ".github",
+      "type": "dir"
+    },
     {
       "name": ".gitignore",
       "type": "file",
-      "size": 1061,
-      "lines": 84
-    },
-    {
-      "name": "CUT_ROLL_DISPATCH_FIX.md",
-      "type": "file",
-      "size": 7331,
-      "lines": 255
-    },
-    {
-      "name": "DEPLOYMENT.md",
-      "type": "file",
-      "size": 8730,
-      "lines": 430
-    },
-    {
-      "name": "DEPLOYMENT_GUIDE.md",
-      "type": "file",
-      "size": 17997,
-      "lines": 670
-    },
-    {
-      "name": "DEV_SETUP.md",
-      "type": "file",
-      "size": 5592,
-      "lines": 304
-    },
-    {
-      "name": "DOCKER_README.md",
-      "type": "file",
-      "size": 7838,
-      "lines": 405
+      "size": 1216,
+      "lines": 94
     },
     {
       "name": "Dockerfile.frontend",
@@ -45,65 +19,13 @@
       "lines": 35
     },
     {
-      "name": "FOUNDATIONAL_ERRORS_ANALYSIS.md",
-      "type": "file",
-      "size": 22725,
-      "lines": 742
-    },
-    {
-      "name": "INVENTORY_ROUTES_FIX.md",
-      "type": "file",
-      "size": 1988,
-      "lines": 39
-    },
-    {
-      "name": "QUICK_FIX_GUIDE.md",
-      "type": "file",
-      "size": 10303,
-      "lines": 360
-    },
-    {
       "name": "README.md",
       "type": "file",
-      "size": 5907,
-      "lines": 212
-    },
-    {
-      "name": "REFACTORING_COMPLETE.md",
-      "type": "file",
-      "size": 15219,
-      "lines": 557
-    },
-    {
-      "name": "REFACTORING_SUCCESS.md",
-      "type": "file",
-      "size": 7353,
+      "size": 6670,
       "lines": 225
     },
     {
-      "name": "RETURN_UX_IMPROVEMENTS.md",
-      "type": "file",
-      "size": 6290,
-      "lines": 190
-    },
-    {
-      "name": "TRANSACTIONS_PAGE_FEATURES.md",
-      "type": "file",
-      "size": 22067,
-      "lines": 803
-    },
-    {
-      "name": "VERSION_CONTROL_README.md",
-      "type": "file",
-      "size": 5660,
-      "lines": 206
-    },
-    {
       "name": "backend",
-      "type": "dir"
-    },
-    {
-      "name": "backups",
       "type": "dir"
     },
     {
@@ -135,6 +57,10 @@
       "lines": 106
     },
     {
+      "name": "docs",
+      "type": "dir"
+    },
+    {
       "name": "eslint.config.js",
       "type": "file",
       "size": 765,
@@ -157,14 +83,10 @@
       "type": "dir"
     },
     {
-      "name": "oldcode",
-      "type": "dir"
-    },
-    {
       "name": "overview.json",
       "type": "file",
-      "size": 49589,
-      "lines": 1617
+      "size": 28720,
+      "lines": 964
     },
     {
       "name": "package-lock.json",
@@ -234,66 +156,6 @@
     }
   ],
   "rootFileSnippets": {
-    "CUT_ROLL_DISPATCH_FIX.md": [
-      "# Cut Roll Dispatch Fix",
-      "",
-      "## Date",
-      "November 23, 2025",
-      "",
-      "## Problem",
-      "Cut rolls were showing incorrectly in the dispatch frontend and being sent to the backend as FULL_ROLL instead of CUT_PIECE, causing the double-decrement bug.",
-      "",
-      "## Root Cause Analysis",
-      ""
-    ],
-    "DEPLOYMENT.md": [
-      "# Tarko Inventory - Production Deployment Guide",
-      "",
-      "## Quick Start with Docker Compose",
-      "",
-      "### Prerequisites",
-      "- Docker Engine 20.10+",
-      "- Docker Compose 2.0+",
-      "- At least 2GB free disk space",
-      "- Open ports: 80, 5432, 5500",
-      ""
-    ],
-    "DEPLOYMENT_GUIDE.md": [
-      "# Comprehensive Refactoring - Deployment Guide",
-      "",
-      "## Overview",
-      "",
-      "This guide covers deploying the industry-standard refactoring that fixes all foundational errors in the inventory system.",
-      "",
-      "**Key Improvements:**",
-      "1. ✅ Immutable `created_by_transaction_id` - never overwritten",
-      "2. ✅ Event sourcing with `piece_lifecycle_events` table - full audit trail",
-      "3. ✅ Optimistic locking with row versioning - prevents race conditions"
-    ],
-    "DEV_SETUP.md": [
-      "# Local Development Setup",
-      "",
-      "## Quick Start",
-      "",
-      "### Backend Setup",
-      "",
-      "1. **Navigate to backend directory**",
-      "```bash",
-      "cd backend",
-      "```"
-    ],
-    "DOCKER_README.md": [
-      "# Tarko Inventory - Production Docker Setup",
-      "",
-      "Complete production-ready deployment with Docker Compose, automated backups, and snapshot management.",
-      "",
-      "## 🚀 Quick Start",
-      "",
-      "### Prerequisites",
-      "- Docker Engine 20.10+",
-      "- Docker Compose 2.0+",
-      "- 2GB free disk space"
-    ],
     "Dockerfile.frontend": [
       "# Build stage",
       "FROM node:20-alpine AS builder",
@@ -306,42 +168,6 @@
       "# Install dependencies",
       "RUN npm ci"
     ],
-    "FOUNDATIONAL_ERRORS_ANALYSIS.md": [
-      "# Foundational Database and Query Errors Analysis",
-      "",
-      "**Date**: November 22, 2024",
-      "**Analysis Type**: Comprehensive system audit",
-      "**Severity**: CRITICAL - Production-impacting bugs found",
-      "",
-      "---",
-      "",
-      "## Executive Summary",
-      ""
-    ],
-    "INVENTORY_ROUTES_FIX.md": [
-      "# Inventory Routes Fix",
-      "",
-      "## Date",
-      "November 23, 2025",
-      "",
-      "## Problem",
-      "The `cut_roll` and `split_bundle` endpoints in `inventory_routes.py` were manually updating `inventory_stock.quantity` for piece-based stock types (`CUT_ROLL`, `SPARE`).",
-      "This was redundant and potentially dangerous because database triggers (`auto_update_stock_quantity`) already handle this.",
-      "",
-      "Specifically, in `cut_roll` (when cutting from `FULL_ROLL`), the code was overwriting the quantity with `len(pieces_created)`, which would be incorrect if the `CUT_ROLL` stock already existed and had pieces (it would reset quantity to just the new pieces count)."
-    ],
-    "QUICK_FIX_GUIDE.md": [
-      "# Quick Fix Reference Guide",
-      "",
-      "This is a condensed checklist for fixing the foundational errors. See FOUNDATIONAL_ERRORS_ANALYSIS.md for detailed explanations.",
-      "",
-      "## 🔴 CRITICAL: Fix COMBINE_SPARES Transaction ID Overwrite",
-      "",
-      "### Files to Change",
-      "- `/backend/routes/inventory_routes.py` (COMBINE_SPARES operation)",
-      "- `/backend/routes/transaction_routes.py` (COMBINE_SPARES revert)",
-      ""
-    ],
     "README.md": [
       "# Tarko Inventory Management System",
       "",
@@ -353,66 +179,6 @@
       "- ✅ **Multi-level Inventory Tracking** - Product → Batch → Roll granularity",
       "- ✅ **Dynamic Product Configuration** - Parameter-driven product definitions",
       "- ✅ **Production Entry** - Daily production recording with batch and roll creation"
-    ],
-    "REFACTORING_COMPLETE.md": [
-      "# Industry-Standard Refactoring - Complete Solution",
-      "",
-      "## Executive Summary",
-      "",
-      "This refactoring implements enterprise-grade solutions to fix all 8 foundational errors discovered in the inventory system. The solution follows industry best practices including event sourcing, immutable data tracking, optimistic locking, and comprehensive audit trails.",
-      "",
-      "## Files Created",
-      "",
-      "### 1. Database Migration: `001_comprehensive_refactoring.sql`",
-      "**Size**: ~800 lines"
-    ],
-    "REFACTORING_SUCCESS.md": [
-      "# 🎉 Transactions Page Refactoring - SUCCESS!",
-      "",
-      "## Transformation Summary",
-      "",
-      "### Before & After Comparison",
-      "",
-      "| Metric | Before | After | Improvement |",
-      "|--------|--------|-------|-------------|",
-      "| **Lines of Code** | 2,538 lines | 279 lines | **89% reduction** |",
-      "| **File Size** | Single monolithic file | 17 modular files | Highly maintainable |"
-    ],
-    "RETURN_UX_IMPROVEMENTS.md": [
-      "# Return Form UX Improvements",
-      "",
-      "## Overview",
-      "Complete restructuring of the return creation form to match the dispatch interface's intuitive UX patterns.",
-      "",
-      "## Changes Implemented",
-      "",
-      "### 1. **New Modular Component Architecture**",
-      "",
-      "Created three new reusable components:"
-    ],
-    "TRANSACTIONS_PAGE_FEATURES.md": [
-      "# Transactions Page - Complete Feature Documentation",
-      "",
-      "## Page Overview",
-      "**File**: `src/pages/TransactionsNew.tsx`",
-      "**Route**: `/transactions`",
-      "**Purpose**: View, filter, and manage all inventory transactions (Production, Sale, Cut, Adjustment, Bundling)",
-      "",
-      "---",
-      "",
-      "## 1. DATA STRUCTURES & INTERFACES"
-    ],
-    "VERSION_CONTROL_README.md": [
-      "# Version Control & Rollback System",
-      "",
-      "## Overview",
-      "The Version Control system provides database snapshot and rollback functionality, allowing administrators to:",
-      "- Create point-in-time snapshots of the entire database",
-      "- Roll back to any previous snapshot",
-      "- Track rollback history for audit purposes",
-      "",
-      "## Features",
-      ""
     ],
     "bun.lockb": [
       "#!/usr/bin/env bun",
@@ -501,14 +267,14 @@
     "overview.json": [
       "{",
       "\"rootFolder\": \"/Users/sachdevs/Projects/Tarko-Inv/tarko-stock-flow\",",
-      "\"analyzedAt\": \"2025-11-28T19:37:26.354Z\",",
+      "\"analyzedAt\": \"2025-12-01T10:50:57.618Z\",",
       "\"rootStructure\": [",
       "{",
-      "\"name\": \".gitignore\",",
-      "\"type\": \"file\",",
-      "\"size\": 1061,",
-      "\"lines\": 84",
-      "},"
+      "\"name\": \".github\",",
+      "\"type\": \"dir\"",
+      "},",
+      "{",
+      "\"name\": \".gitignore\","
     ],
     "package-lock.json": [
       "{",
@@ -620,30 +386,40 @@
     {
       "path": "backend",
       "category": "backend",
-      "fileCount": 173,
+      "fileCount": 81,
       "primaryLanguage": "Python"
+    },
+    {
+      "path": "backend/docs",
+      "category": "docs",
+      "fileCount": 6
     },
     {
       "path": "backend/routes",
       "category": "build",
-      "fileCount": 13,
+      "fileCount": 14,
       "primaryLanguage": "Python"
     },
     {
       "path": "backend/scripts",
       "category": "scripts",
-      "fileCount": 81,
+      "fileCount": 6,
       "primaryLanguage": "Python"
+    },
+    {
+      "path": "docs",
+      "category": "docs",
+      "fileCount": 19
     },
     {
       "path": "public",
       "category": "assets",
-      "fileCount": 3
+      "fileCount": 4
     },
     {
       "path": "src/components",
       "category": "frontend",
-      "fileCount": 90,
+      "fileCount": 141,
       "primaryLanguage": "TypeScript"
     },
     {
@@ -655,40 +431,41 @@
     {
       "path": "src/lib",
       "category": "core",
-      "fileCount": 2,
+      "fileCount": 3,
       "primaryLanguage": "TypeScript"
     }
   ],
   "readmeParagraphs": {
-    "backend/scripts": "# Database Diagnostic Scripts",
     "backend": "# Tarko Inventory - Backend API",
+    "src/components/admin": "# Admin Page Components",
+    "src/components/dashboard": "# Dashboard Components",
     "src/components/dispatch": "# Dispatch Module - Modular Architecture",
     "src/components/transactions": "# Transactions Page - Modularization Guide",
     "root": "# Tarko Inventory Management System"
   },
   "totals": {
-    "numFiles": 980,
-    "numDirs": 97,
-    "totalSizeBytes": 8011626,
-    "totalLinesOfCode": 49450
+    "numFiles": 333,
+    "numDirs": 45,
+    "totalSizeBytes": 4993473,
+    "totalLinesOfCode": 45241
   },
   "fileCategories": {
-    "other": 132,
-    "documentation": 28,
-    "source": 235,
-    "config": 585
+    "other": 60,
+    "documentation": 34,
+    "source": 200,
+    "config": 39
   },
   "linesOfCodePerLanguage": {
-    "Python": 24813,
-    "Shell": 624,
+    "Python": 15476,
+    "Shell": 311,
     "JavaScript": 34,
-    "TypeScript": 23979
+    "TypeScript": 29420
   },
   "filesPerLanguage": {
-    "Python": 103,
-    "Shell": 7,
+    "Python": 25,
+    "Shell": 5,
     "JavaScript": 2,
-    "TypeScript": 123
+    "TypeScript": 168
   },
   "projectTypes": [
     "Python (requirements)",
@@ -700,87 +477,12 @@
     "Vite"
   ],
   "entryPoints": [
-    "backend/backup_scheduler.py",
-    "backend/cleanup_zero_stock.py",
-    "backend/deploy_refactoring.sh",
-    "backend/docker-entrypoint-scheduler.sh",
-    "backend/docker-entrypoint.sh",
-    "backend/hard_delete_zero_stock.py",
-    "backend/init_admin.py",
-    "backend/monitor_inventory.sh",
-    "backend/run_deployment.py",
-    "backend/scripts/DISPATCH_REVERT_INVESTIGATION_SUMMARY.py",
-    "backend/scripts/analyze_current_state.py",
-    "backend/scripts/analyze_revert_issues.py",
-    "backend/scripts/check_activity_feed.py",
-    "backend/scripts/check_batch_3_4.py",
-    "backend/scripts/check_batch_7_details.py",
-    "backend/scripts/check_before_reset.py",
-    "backend/scripts/check_bundle_status.py",
-    "backend/scripts/check_combine_pieces.py",
-    "backend/scripts/check_current_inventory.py",
-    "backend/scripts/check_cut_piece_grouping.py",
-    "backend/scripts/check_deleted_batches.py",
-    "backend/scripts/check_dispatch_revert_issue.py",
-    "backend/scripts/check_inventory.py",
-    "backend/scripts/check_inventory_api_response.py",
-    "backend/scripts/check_last_dispatch_and_inventory.py",
-    "backend/scripts/check_product_types.py",
-    "backend/scripts/check_quantity_issues.py",
-    "backend/scripts/check_return_items_data.py",
-    "backend/scripts/check_return_quantities.py",
-    "backend/scripts/check_return_setup.py",
-    "backend/scripts/check_specific_inventory.py",
-    "backend/scripts/check_sql_params.py",
-    "backend/scripts/compare_activity_inventory.py",
-    "backend/scripts/debug_batches_query.py",
-    "backend/scripts/debug_combine_spare_revert.py",
-    "backend/scripts/debug_combine_transaction.py",
-    "backend/scripts/debug_revert_detailed.py",
-    "backend/scripts/debug_revert_step_by_step.py",
-    "backend/scripts/debug_sprinkler_pipes.py",
-    "backend/scripts/diagnose_dispatch_revert_bug.py",
-    "backend/scripts/diagnose_stock_dispatch.py",
-    "backend/scripts/final_verification.py",
-    "backend/scripts/fix_cut_roll_dispatch_items.py",
-    "backend/scripts/fix_cut_roll_piece_statuses.py",
-    "backend/scripts/fix_dispatch_revert_bug.py",
-    "backend/scripts/fix_foreign_keys.py",
-    "backend/scripts/fix_lifecycle_trigger.py",
-    "backend/scripts/fix_orphaned_sprinkler_pieces.py",
-    "backend/scripts/fix_spare_quantities.py",
-    "backend/scripts/fix_spare_triggers_consistent.py",
-    "backend/scripts/fix_sprinkler_stock.py",
-    "backend/scripts/fix_validation_trigger.py",
-    "backend/scripts/investigate_cut_roll_dispatch.py",
-    "backend/scripts/merge_duplicate_variants.py",
-    "backend/scripts/restore_bundle_stock.py",
-    "backend/scripts/restore_deleted_batches.py",
-    "backend/scripts/setup_return_tables.py",
-    "backend/scripts/test_cut_roll_dispatch_revert.py",
-    "backend/scripts/test_dispatch_revert.py",
-    "backend/scripts/test_inventory_revert_flow.py",
-    "backend/scripts/test_return_creation.py",
-    "backend/scripts/test_revert_combine.py",
-    "backend/scripts/test_reverted_activity_feed.py",
-    "backend/scripts/test_split_bundle_revert_fix.py",
-    "backend/scripts/trace_cut_roll_history.py",
-    "backend/scripts/trace_sprinkler_issue.py",
-    "backend/scripts/transaction_based_revert_fix_summary.py",
-    "backend/scripts/verify_all_revert_fixes.py",
-    "backend/scripts/verify_all_three_operations.py",
-    "backend/scripts/verify_combine_spares_fix.py",
-    "backend/scripts/verify_dispatch_revert_fix.py",
-    "backend/scripts/verify_inventory_revert_changes.py",
-    "backend/scripts/verify_quantity_fix.py",
-    "backend/scripts/verify_return_calculations.py",
-    "backend/scripts/verify_return_tracking.py",
-    "backend/scripts/verify_reverted_dispatch_feature.py",
-    "backend/scripts/verify_sprinkler_available.py",
-    "backend/setup_db.sh",
-    "backend/verify_comprehensive.py",
-    "backend/verify_refactoring.py",
-    "backend/verify_schema_alignment.py",
+    "backend/scripts/backup_scheduler.py",
+    "backend/scripts/docker-entrypoint-scheduler.sh",
+    "backend/scripts/docker-entrypoint.sh",
+    "backend/scripts/init_admin.py",
+    "backend/scripts/run_deployment.py",
+    "backend/scripts/setup_db.sh",
     "deploy.sh",
     "status.sh"
   ],
@@ -792,182 +494,107 @@
   ],
   "topLevelDirectories": [
     {
-      "name": "backend",
-      "numFiles": 173,
-      "totalLoc": 25267,
-      "dominantLanguage": "Python"
-    },
-    {
       "name": "src",
-      "numFiles": 125,
-      "totalLoc": 23864,
+      "numFiles": 172,
+      "totalLoc": 29305,
       "dominantLanguage": "TypeScript"
     },
     {
-      "name": "oldcode",
-      "numFiles": 1,
+      "name": "backend",
+      "numFiles": 81,
+      "totalLoc": 15617,
+      "dominantLanguage": "Python"
+    },
+    {
+      "name": "docs",
+      "numFiles": 19,
       "totalLoc": 0
     },
     {
       "name": "public",
-      "numFiles": 3,
+      "numFiles": 4,
       "totalLoc": 0
     },
     {
       "name": "snapshots",
-      "numFiles": 640,
+      "numFiles": 30,
       "totalLoc": 0
     }
   ],
   "detailedDirectories": [
     {
-      "path": "backend",
-      "name": "backend",
-      "level": 1,
-      "numFiles": 173,
-      "totalLoc": 25267,
-      "dominantLanguage": "Python",
-      "category": "General",
-      "description": "# Tarko Inventory - Backend API",
-      "subdirectories": [
-        {
-          "path": "backend/scripts",
-          "name": "scripts",
-          "level": 2,
-          "numFiles": 81,
-          "totalLoc": 11968,
-          "dominantLanguage": "Python",
-          "category": "Tools/Scripts",
-          "description": "# Database Diagnostic Scripts",
-          "subdirectories": []
-        },
-        {
-          "path": "backend/routes",
-          "name": "routes",
-          "level": 2,
-          "numFiles": 13,
-          "totalLoc": 8603,
-          "dominantLanguage": "Python",
-          "category": "General",
-          "description": "General module with 13 files (Python)",
-          "subdirectories": []
-        },
-        {
-          "path": "backend/migrations",
-          "name": "migrations",
-          "level": 2,
-          "numFiles": 32,
-          "totalLoc": 0,
-          "category": "General",
-          "description": "General module with 32 files",
-          "subdirectories": []
-        },
-        {
-          "path": "backend/backups",
-          "name": "backups",
-          "level": 2,
-          "numFiles": 5,
-          "totalLoc": 0,
-          "category": "General",
-          "description": "General module with 5 files",
-          "subdirectories": []
-        },
-        {
-          "path": "backend/uploads",
-          "name": "uploads",
-          "level": 2,
-          "numFiles": 4,
-          "totalLoc": 0,
-          "category": "General",
-          "description": "General module with 4 files",
-          "subdirectories": [
-            {
-              "path": "backend/uploads/batches",
-              "name": "batches",
-              "level": 3,
-              "numFiles": 4,
-              "totalLoc": 0,
-              "category": "General",
-              "description": "General module with 4 files",
-              "subdirectories": []
-            }
-          ]
-        }
-      ]
-    },
-    {
       "path": "src",
       "name": "src",
       "level": 1,
-      "numFiles": 125,
-      "totalLoc": 23864,
+      "numFiles": 172,
+      "totalLoc": 29305,
       "dominantLanguage": "TypeScript",
       "category": "General",
-      "description": "General module with 125 files (TypeScript)",
+      "description": "General module with 172 files (TypeScript)",
       "subdirectories": [
         {
           "path": "src/components",
           "name": "components",
           "level": 2,
-          "numFiles": 90,
-          "totalLoc": 14024,
+          "numFiles": 141,
+          "totalLoc": 24779,
           "dominantLanguage": "TypeScript",
           "category": "General",
-          "description": "General module with 90 files (TypeScript)",
+          "description": "General module with 141 files (TypeScript)",
           "subdirectories": [
+            {
+              "path": "src/components/admin",
+              "name": "admin",
+              "level": 3,
+              "numFiles": 20,
+              "totalLoc": 4957,
+              "dominantLanguage": "TypeScript",
+              "category": "General",
+              "description": "# Admin Page Components",
+              "subdirectories": []
+            },
             {
               "path": "src/components/inventory",
               "name": "inventory",
               "level": 3,
-              "numFiles": 12,
-              "totalLoc": 2901,
+              "numFiles": 14,
+              "totalLoc": 4176,
               "dominantLanguage": "TypeScript",
               "category": "General",
-              "description": "General module with 12 files (TypeScript)",
-              "subdirectories": []
-            },
-            {
-              "path": "src/components/transactions",
-              "name": "transactions",
-              "level": 3,
-              "numFiles": 11,
-              "totalLoc": 2345,
-              "dominantLanguage": "TypeScript",
-              "category": "General",
-              "description": "# Transactions Page - Modularization Guide",
+              "description": "General module with 14 files (TypeScript)",
               "subdirectories": []
             },
             {
               "path": "src/components/dispatch",
               "name": "dispatch",
               "level": 3,
-              "numFiles": 7,
-              "totalLoc": 2181,
+              "numFiles": 9,
+              "totalLoc": 3193,
               "dominantLanguage": "TypeScript",
               "category": "General",
               "description": "# Dispatch Module - Modular Architecture",
               "subdirectories": []
             },
             {
-              "path": "src/components/returns",
-              "name": "returns",
+              "path": "src/components/details",
+              "name": "details",
               "level": 3,
-              "numFiles": 5,
-              "totalLoc": 1757,
+              "numFiles": 8,
+              "totalLoc": 1249,
               "dominantLanguage": "TypeScript",
               "category": "General",
-              "description": "General module with 5 files (TypeScript)",
+              "description": "General module with 8 files (TypeScript)",
               "subdirectories": []
             },
             {
-              "path": "src/components/production",
-              "name": "production",
+              "path": "src/components/dashboard",
+              "name": "dashboard",
               "level": 3,
-              "numFiles": 3,
-              "totalLoc": 561,
+              "numFiles": 8,
+              "totalLoc": 462,
               "dominantLanguage": "TypeScript",
               "category": "General",
-              "description": "General module with 3 files (TypeScript)",
+              "description": "# Dashboard Components",
               "subdirectories": []
             }
           ]
@@ -976,11 +603,11 @@
           "path": "src/pages",
           "name": "pages",
           "level": 2,
-          "numFiles": 16,
-          "totalLoc": 8061,
+          "numFiles": 11,
+          "totalLoc": 2477,
           "dominantLanguage": "TypeScript",
           "category": "General",
-          "description": "General module with 16 files (TypeScript)",
+          "description": "General module with 11 files (TypeScript)",
           "subdirectories": []
         },
         {
@@ -1010,11 +637,11 @@
           "path": "src/lib",
           "name": "lib",
           "level": 2,
-          "numFiles": 2,
-          "totalLoc": 317,
+          "numFiles": 3,
+          "totalLoc": 605,
           "dominantLanguage": "TypeScript",
           "category": "Library",
-          "description": "Library module with 2 files (TypeScript)",
+          "description": "Library module with 3 files (TypeScript)",
           "subdirectories": []
         },
         {
@@ -1031,62 +658,149 @@
       ]
     },
     {
+      "path": "backend",
+      "name": "backend",
+      "level": 1,
+      "numFiles": 81,
+      "totalLoc": 15617,
+      "dominantLanguage": "Python",
+      "category": "General",
+      "description": "# Tarko Inventory - Backend API",
+      "subdirectories": [
+        {
+          "path": "backend/routes",
+          "name": "routes",
+          "level": 2,
+          "numFiles": 14,
+          "totalLoc": 11581,
+          "dominantLanguage": "Python",
+          "category": "General",
+          "description": "General module with 14 files (Python)",
+          "subdirectories": []
+        },
+        {
+          "path": "backend/scripts",
+          "name": "scripts",
+          "level": 2,
+          "numFiles": 6,
+          "totalLoc": 891,
+          "dominantLanguage": "Python",
+          "category": "Tools/Scripts",
+          "description": "Tools/Scripts module with 6 files (Python)",
+          "subdirectories": []
+        },
+        {
+          "path": "backend/migrations",
+          "name": "migrations",
+          "level": 2,
+          "numFiles": 35,
+          "totalLoc": 0,
+          "category": "General",
+          "description": "General module with 35 files",
+          "subdirectories": [
+            {
+              "path": "backend/migrations/archive",
+              "name": "archive",
+              "level": 3,
+              "numFiles": 12,
+              "totalLoc": 0,
+              "category": "General",
+              "description": "General module with 12 files",
+              "subdirectories": []
+            }
+          ]
+        },
+        {
+          "path": "backend/docs",
+          "name": "docs",
+          "level": 2,
+          "numFiles": 6,
+          "totalLoc": 0,
+          "category": "Documentation",
+          "description": "Documentation module with 6 files",
+          "subdirectories": []
+        },
+        {
+          "path": "backend/uploads",
+          "name": "uploads",
+          "level": 2,
+          "numFiles": 4,
+          "totalLoc": 0,
+          "category": "General",
+          "description": "General module with 4 files",
+          "subdirectories": [
+            {
+              "path": "backend/uploads/batches",
+              "name": "batches",
+              "level": 3,
+              "numFiles": 4,
+              "totalLoc": 0,
+              "category": "General",
+              "description": "General module with 4 files",
+              "subdirectories": []
+            }
+          ]
+        }
+      ]
+    },
+    {
       "path": "snapshots",
       "name": "snapshots",
       "level": 1,
-      "numFiles": 640,
+      "numFiles": 30,
       "totalLoc": 0,
       "category": "General",
-      "description": "General module with 640 files",
+      "description": "General module with 30 files",
       "subdirectories": [
         {
-          "path": "snapshots/daily_backup_20251120_143806",
-          "name": "daily_backup_20251120_143806",
+          "path": "snapshots/60e4fd0b-e305-4665-9854-e93f47ae3e40",
+          "name": "60e4fd0b-e305-4665-9854-e93f47ae3e40",
           "level": 2,
-          "numFiles": 7,
+          "numFiles": 30,
           "totalLoc": 0,
           "category": "General",
-          "description": "General module with 7 files",
+          "description": "General module with 30 files",
+          "subdirectories": []
+        }
+      ]
+    },
+    {
+      "path": "docs",
+      "name": "docs",
+      "level": 1,
+      "numFiles": 19,
+      "totalLoc": 0,
+      "category": "Documentation",
+      "description": "Documentation module with 19 files",
+      "subdirectories": [
+        {
+          "path": "docs/archive",
+          "name": "archive",
+          "level": 2,
+          "numFiles": 8,
+          "totalLoc": 0,
+          "category": "General",
+          "description": "General module with 8 files",
           "subdirectories": []
         },
         {
-          "path": "snapshots/daily_backup_20251120_143807",
-          "name": "daily_backup_20251120_143807",
+          "path": "docs/features",
+          "name": "features",
           "level": 2,
-          "numFiles": 7,
+          "numFiles": 6,
           "totalLoc": 0,
           "category": "General",
-          "description": "General module with 7 files",
+          "description": "General module with 6 files",
           "subdirectories": []
         },
         {
-          "path": "snapshots/daily_backup_20251120_143808",
-          "name": "daily_backup_20251120_143808",
+          "path": "docs/deployment",
+          "name": "deployment",
           "level": 2,
-          "numFiles": 7,
+          "numFiles": 5,
           "totalLoc": 0,
           "category": "General",
-          "description": "General module with 7 files",
-          "subdirectories": []
-        },
-        {
-          "path": "snapshots/daily_backup_20251120_143810",
-          "name": "daily_backup_20251120_143810",
-          "level": 2,
-          "numFiles": 7,
-          "totalLoc": 0,
-          "category": "General",
-          "description": "General module with 7 files",
-          "subdirectories": []
-        },
-        {
-          "path": "snapshots/daily_backup_20251120_143814",
-          "name": "daily_backup_20251120_143814",
-          "level": 2,
-          "numFiles": 7,
-          "totalLoc": 0,
-          "category": "General",
-          "description": "General module with 7 files",
+          "description": "General module with 5 files",
           "subdirectories": []
         }
       ]
@@ -1095,20 +809,10 @@
       "path": "public",
       "name": "public",
       "level": 1,
-      "numFiles": 3,
+      "numFiles": 4,
       "totalLoc": 0,
       "category": "General",
-      "description": "General module with 3 files",
-      "subdirectories": []
-    },
-    {
-      "path": "oldcode",
-      "name": "oldcode",
-      "level": 1,
-      "numFiles": 1,
-      "totalLoc": 0,
-      "category": "General",
-      "description": "General module with 1 files",
+      "description": "General module with 4 files",
       "subdirectories": []
     }
   ],
@@ -1116,407 +820,32 @@
     "coreApplications": [],
     "entryPointDetails": [
       {
-        "path": "../../../../../backend/backup_scheduler.py",
+        "path": "../../../../../backend/scripts/backup_scheduler.py",
         "type": "Unknown",
         "description": ""
       },
       {
-        "path": "../../../../../backend/cleanup_zero_stock.py",
+        "path": "../../../../../backend/scripts/docker-entrypoint-scheduler.sh",
         "type": "Unknown",
         "description": ""
       },
       {
-        "path": "../../../../../backend/deploy_refactoring.sh",
+        "path": "../../../../../backend/scripts/docker-entrypoint.sh",
         "type": "Unknown",
         "description": ""
       },
       {
-        "path": "../../../../../backend/docker-entrypoint-scheduler.sh",
+        "path": "../../../../../backend/scripts/init_admin.py",
         "type": "Unknown",
         "description": ""
       },
       {
-        "path": "../../../../../backend/docker-entrypoint.sh",
+        "path": "../../../../../backend/scripts/run_deployment.py",
         "type": "Unknown",
         "description": ""
       },
       {
-        "path": "../../../../../backend/hard_delete_zero_stock.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/init_admin.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/monitor_inventory.sh",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/run_deployment.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/DISPATCH_REVERT_INVESTIGATION_SUMMARY.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/analyze_current_state.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/analyze_revert_issues.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/check_activity_feed.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/check_batch_3_4.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/check_batch_7_details.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/check_before_reset.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/check_bundle_status.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/check_combine_pieces.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/check_current_inventory.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/check_cut_piece_grouping.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/check_deleted_batches.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/check_dispatch_revert_issue.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/check_inventory.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/check_inventory_api_response.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/check_last_dispatch_and_inventory.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/check_product_types.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/check_quantity_issues.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/check_return_items_data.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/check_return_quantities.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/check_return_setup.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/check_specific_inventory.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/check_sql_params.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/compare_activity_inventory.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/debug_batches_query.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/debug_combine_spare_revert.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/debug_combine_transaction.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/debug_revert_detailed.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/debug_revert_step_by_step.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/debug_sprinkler_pipes.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/diagnose_dispatch_revert_bug.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/diagnose_stock_dispatch.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/final_verification.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/fix_cut_roll_dispatch_items.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/fix_cut_roll_piece_statuses.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/fix_dispatch_revert_bug.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/fix_foreign_keys.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/fix_lifecycle_trigger.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/fix_orphaned_sprinkler_pieces.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/fix_spare_quantities.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/fix_spare_triggers_consistent.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/fix_sprinkler_stock.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/fix_validation_trigger.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/investigate_cut_roll_dispatch.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/merge_duplicate_variants.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/restore_bundle_stock.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/restore_deleted_batches.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/setup_return_tables.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/test_cut_roll_dispatch_revert.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/test_dispatch_revert.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/test_inventory_revert_flow.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/test_return_creation.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/test_revert_combine.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/test_reverted_activity_feed.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/test_split_bundle_revert_fix.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/trace_cut_roll_history.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/trace_sprinkler_issue.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/transaction_based_revert_fix_summary.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/verify_all_revert_fixes.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/verify_all_three_operations.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/verify_combine_spares_fix.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/verify_dispatch_revert_fix.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/verify_inventory_revert_changes.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/verify_quantity_fix.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/verify_return_calculations.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/verify_return_tracking.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/verify_reverted_dispatch_feature.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/verify_sprinkler_available.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/setup_db.sh",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/verify_comprehensive.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/verify_refactoring.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/verify_schema_alignment.py",
+        "path": "../../../../../backend/scripts/setup_db.sh",
         "type": "Unknown",
         "description": ""
       },
@@ -1618,14 +947,14 @@
     "total": 66
   },
   "complexity": {
-    "averageFileSize": 50.45918367346939,
+    "averageFileSize": 135.85885885885887,
     "maxFileSize": 0,
     "nestedDepth": 0,
     "estimatedComplexity": "high"
   },
   "gitRepo": {
-    "firstCommitDate": "2025-11-29",
-    "totalCommits": 71,
+    "firstCommitDate": "2025-12-01",
+    "totalCommits": 91,
     "numContributors": 0,
     "currentBranch": "sachdevs/activity_page",
     "remoteUrls": [
