@@ -1,8 +1,8 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import get_jwt_identity
 from database import get_db_cursor, execute_query
-from auth import jwt_required_with_role, get_user_identity_details
-from inventory_operations import InventoryOperations
+from services.auth import jwt_required_with_role, get_user_identity_details
+from services.inventory_operations import InventoryOperations
 
 transaction_bp = Blueprint('transactions', __name__, url_prefix='/api/transactions')
 

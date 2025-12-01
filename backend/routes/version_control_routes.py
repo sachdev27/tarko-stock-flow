@@ -1,10 +1,10 @@
 from flask import Blueprint, request, jsonify, send_file, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from database import execute_query, execute_insert, get_db_cursor
-from auth import jwt_required_with_role, get_user_identity_details
-from snapshot_storage import snapshot_storage, SnapshotStorage
-from cloud_storage import cloud_storage
-from external_storage import external_storage
+from services.auth import jwt_required_with_role, get_user_identity_details
+from storage.snapshot_storage import snapshot_storage, SnapshotStorage
+from storage.cloud_storage import cloud_storage
+from storage.external_storage import external_storage
 from psycopg2.extras import Json
 import json
 from datetime import datetime
@@ -1191,7 +1191,7 @@ def configure_cloud_storage():
                 f.write(f"{key}={value}\n")
 
         # Reinitialize cloud storage with new credentials
-        from cloud_storage import CloudStorage
+        from storage.cloud_storage import CloudStorage
         global cloud_storage
         cloud_storage = CloudStorage()
 

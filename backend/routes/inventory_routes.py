@@ -1,9 +1,9 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from database import execute_query, execute_insert, get_db_cursor
-from inventory_helpers_aggregate import AggregateInventoryHelper as InventoryHelper
-from inventory_operations import InventoryOperations, ValidationError, ConcurrencyError, ReservationError
-from auth import jwt_required_with_role, get_user_identity_details
+from services.inventory_helpers_aggregate import AggregateInventoryHelper as InventoryHelper
+from services.inventory_operations import InventoryOperations, ValidationError, ConcurrencyError, ReservationError
+from services.auth import jwt_required_with_role, get_user_identity_details
 
 inventory_bp = Blueprint('inventory', __name__, url_prefix='/api/inventory')
 

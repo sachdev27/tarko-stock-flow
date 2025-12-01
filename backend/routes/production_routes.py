@@ -1,8 +1,8 @@
 from flask import Blueprint, request, jsonify, send_from_directory
 from flask_jwt_extended import get_jwt_identity
 from database import execute_insert, execute_query, get_db_cursor
-from auth import jwt_required_with_role, get_user_identity_details
-from inventory_helpers_aggregate import AggregateInventoryHelper as InventoryHelper
+from services.auth import jwt_required_with_role, get_user_identity_details
+from services.inventory_helpers_aggregate import AggregateInventoryHelper as InventoryHelper
 from werkzeug.utils import secure_filename
 import json
 import os

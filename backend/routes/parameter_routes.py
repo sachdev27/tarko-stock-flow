@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify
 from database import execute_insert, execute_query, get_db_cursor
-from auth import jwt_required_with_role
+from services.auth import jwt_required_with_role
 from flask_jwt_extended import jwt_required
 
 parameter_bp = Blueprint('parameters', __name__, url_prefix='/api/parameters')

@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from database import execute_query, execute_insert, get_db_cursor
-from auth import get_user_identity_details, jwt_required_with_role
+from services.auth import get_user_identity_details, jwt_required_with_role
 from decimal import Decimal
 import json
 from datetime import datetime

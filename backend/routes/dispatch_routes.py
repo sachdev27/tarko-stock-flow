@@ -1,8 +1,8 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from database import execute_query, execute_insert, get_db_cursor
-from inventory_helpers_aggregate import AggregateInventoryHelper as InventoryHelper
-from auth import get_user_identity_details
+from services.inventory_helpers_aggregate import AggregateInventoryHelper as InventoryHelper
+from services.auth import get_user_identity_details
 from decimal import Decimal
 import json
 

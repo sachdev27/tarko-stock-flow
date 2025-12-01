@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify, make_response
 from flask_jwt_extended import jwt_required
 from database import execute_query, execute_insert, get_db_cursor
-from auth import jwt_required_with_role, hash_password
+from services.auth import jwt_required_with_role, hash_password
 import json
 import csv
 import io
@@ -500,7 +500,7 @@ def get_users():
 def create_user():
     """Admin creates a new user"""
     from flask_jwt_extended import get_jwt_identity
-    from auth import create_user as auth_create_user
+    from services.auth import create_user as auth_create_user
 
     admin_id = get_jwt_identity()
     data = request.json
@@ -639,7 +639,7 @@ def reset_database():
     """
     try:
         from flask_jwt_extended import get_jwt_identity
-        from auth import get_user_identity_details
+        from services.auth import get_user_identity_details
 
         user_id = get_jwt_identity()
         data = request.get_json()

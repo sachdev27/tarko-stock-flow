@@ -1,6 +1,6 @@
 {
   "rootFolder": "/Users/sachdevs/Projects/Tarko-Inv/tarko-stock-flow",
-  "analyzedAt": "2025-12-01T10:51:31.708Z",
+  "analyzedAt": "2025-12-01T10:59:36.182Z",
   "rootStructure": [
     {
       "name": ".github",
@@ -9,8 +9,8 @@
     {
       "name": ".gitignore",
       "type": "file",
-      "size": 1216,
-      "lines": 94
+      "size": 1240,
+      "lines": 95
     },
     {
       "name": "Dockerfile.frontend",
@@ -45,10 +45,6 @@
       "type": "file",
       "size": 3641,
       "lines": 103
-    },
-    {
-      "name": "dist",
-      "type": "dir"
     },
     {
       "name": "docker-compose.yml",
@@ -267,7 +263,7 @@
     "overview.json": [
       "{",
       "\"rootFolder\": \"/Users/sachdevs/Projects/Tarko-Inv/tarko-stock-flow\",",
-      "\"analyzedAt\": \"2025-12-01T10:50:57.618Z\",",
+      "\"analyzedAt\": \"2025-12-01T10:51:31.708Z\",",
       "\"rootStructure\": [",
       "{",
       "\"name\": \".github\",",
@@ -386,7 +382,7 @@
     {
       "path": "backend",
       "category": "backend",
-      "fileCount": 81,
+      "fileCount": 83,
       "primaryLanguage": "Python"
     },
     {
@@ -404,6 +400,12 @@
       "path": "backend/scripts",
       "category": "scripts",
       "fileCount": 6,
+      "primaryLanguage": "Python"
+    },
+    {
+      "path": "backend/services",
+      "category": "backend",
+      "fileCount": 4,
       "primaryLanguage": "Python"
     },
     {
@@ -444,25 +446,25 @@
     "root": "# Tarko Inventory Management System"
   },
   "totals": {
-    "numFiles": 333,
-    "numDirs": 45,
-    "totalSizeBytes": 4993473,
-    "totalLinesOfCode": 45241
+    "numFiles": 335,
+    "numDirs": 47,
+    "totalSizeBytes": 4993691,
+    "totalLinesOfCode": 45243
   },
   "fileCategories": {
     "other": 60,
     "documentation": 34,
-    "source": 200,
+    "source": 202,
     "config": 39
   },
   "linesOfCodePerLanguage": {
-    "Python": 15476,
+    "Python": 15478,
     "Shell": 311,
     "JavaScript": 34,
     "TypeScript": 29420
   },
   "filesPerLanguage": {
-    "Python": 25,
+    "Python": 27,
     "Shell": 5,
     "JavaScript": 2,
     "TypeScript": 168
@@ -501,8 +503,8 @@
     },
     {
       "name": "backend",
-      "numFiles": 81,
-      "totalLoc": 15617,
+      "numFiles": 83,
+      "totalLoc": 15619,
       "dominantLanguage": "Python"
     },
     {
@@ -661,8 +663,8 @@
       "path": "backend",
       "name": "backend",
       "level": 1,
-      "numFiles": 81,
-      "totalLoc": 15617,
+      "numFiles": 83,
+      "totalLoc": 15619,
       "dominantLanguage": "Python",
       "category": "General",
       "description": "# Tarko Inventory - Backend API",
@@ -676,6 +678,17 @@
           "dominantLanguage": "Python",
           "category": "General",
           "description": "General module with 14 files (Python)",
+          "subdirectories": []
+        },
+        {
+          "path": "backend/services",
+          "name": "services",
+          "level": 2,
+          "numFiles": 4,
+          "totalLoc": 1803,
+          "dominantLanguage": "Python",
+          "category": "Service",
+          "description": "Service module with 4 files (Python)",
           "subdirectories": []
         },
         {
@@ -719,27 +732,6 @@
           "category": "Documentation",
           "description": "Documentation module with 6 files",
           "subdirectories": []
-        },
-        {
-          "path": "backend/uploads",
-          "name": "uploads",
-          "level": 2,
-          "numFiles": 4,
-          "totalLoc": 0,
-          "category": "General",
-          "description": "General module with 4 files",
-          "subdirectories": [
-            {
-              "path": "backend/uploads/batches",
-              "name": "batches",
-              "level": 3,
-              "numFiles": 4,
-              "totalLoc": 0,
-              "category": "General",
-              "description": "General module with 4 files",
-              "subdirectories": []
-            }
-          ]
         }
       ]
     },
@@ -947,14 +939,14 @@
     "total": 66
   },
   "complexity": {
-    "averageFileSize": 135.85885885885887,
+    "averageFileSize": 135.05373134328357,
     "maxFileSize": 0,
     "nestedDepth": 0,
     "estimatedComplexity": "high"
   },
   "gitRepo": {
     "firstCommitDate": "2025-12-01",
-    "totalCommits": 91,
+    "totalCommits": 92,
     "numContributors": 0,
     "currentBranch": "sachdevs/activity_page",
     "remoteUrls": [
