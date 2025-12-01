@@ -4,7 +4,7 @@
 -- Create enum types
 CREATE TYPE app_role AS ENUM ('admin', 'user', 'reader');
 CREATE TYPE transaction_type AS ENUM (
-  'PRODUCTION', 'SALE', 'CUT_ROLL', 'ADJUSTMENT',
+  'PRODUCTION', 'SALE', 'CUT_ROLL', 'CUT_BUNDLE', 'COMBINE_BUNDLE', 'ADJUSTMENT',
   'RETURN', 'TRANSFER_OUT', 'TRANSFER_IN', 'INTERNAL_USE'
 );
 

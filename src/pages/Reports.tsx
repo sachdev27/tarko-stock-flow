@@ -1,547 +1,207 @@
 import { useState, useEffect } from 'react';
 import { Layout } from '@/components/Layout';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { BarChart, Download, Filter, Package, X } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
-import { reports, inventory } from '@/lib/api';
-import { formatDate } from '@/lib/utils';
+import { TrendingUp, Users, Package, MapPin, BarChart3 } from 'lucide-react';
+import { reports } from '@/lib/api';
+import {
+  SummaryCards,
+  TopProducts,
+  TopCustomers,
+  CustomerPreferences,
+  RegionalSales,
+  RegionalProductDistribution,
+  ProductPerformance,
+  SalesTrends
+} from '@/components/reports';
 
-interface ProductSalesData {
-  product_type: string;
-  brand: string;
-  parameters: Record<string, string>;
-  roll_configuration?: {
-    type: string;
-    quantity_based?: boolean;
+interface AnalyticsData {
+  summary: {
+    total_customers: number;
+    total_orders: number;
+    products_sold_count: number;
+    total_quantity_sold: number;
+    total_quantity_produced: number;
   };
-  total_sold: number;
-  sales_count: number;
+  top_products: Array<{
+    product_type: string;
+    brand: string;
+    total_sold: string | number;
+    sales_count: number;
+    unique_customers: number;
+    parameters?: Record<string, string | number | boolean>;
+  }>;
+  top_customers: Array<{
+    customer_name: string;
+    city?: string;
+    state?: string;
+    total_quantity: string | number;
+    order_count: number;
+  }>;
+  regional_analysis: Array<{
+    region: string;
+    product_type: string;
+    brand: string;
+    total_quantity: string | number;
+    customer_count: number;
+    order_count: number;
+  }>;
+  customer_preferences: Array<{
+    customer_name: string;
+    preferred_product: string;
+    preferred_brand: string;
+    total_quantity: string | number;
+    order_frequency: number;
+  }>;
+  sales_trends: Array<{
+    sale_date: string;
+    order_count: number;
+    total_quantity: string | number;
+    unique_customers: number;
+  }>;
+  product_performance: Array<{
+    product_type: string;
+    total_produced: string | number;
+    total_sold: string | number;
+    batches_produced: number;
+    times_sold: number;
+    sales_percentage: string | number;
+  }>;
 }
 
-interface CustomerSales {
-  customer_name: string;
-  total_quantity: number;
-  transaction_count: number;
-  total_amount: number;
+interface RegionalData {
+  region: string;
+  city: string;
+  total_quantity: string | number;
+  order_count: number;
+  customer_count: number;
 }
 
 const Reports = () => {
   const [loading, setLoading] = useState(true);
-  const [topProducts, setTopProducts] = useState<ProductSalesData[]>([]);
-  const [customerSales, setCustomerSales] = useState<CustomerSales[]>([]);
-  const [productInventory, setProductInventory] = useState<any[]>([]);
-  const [allProductInventory, setAllProductInventory] = useState<any[]>([]);
+  const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
   const [dateRange, setDateRange] = useState<string>('30');
-  const [selectedProduct, setSelectedProduct] = useState<string>('all');
+  const [regionalData, setRegionalData] = useState<RegionalData[]>([]);
 
-  // Filter states
-  const [productTypes, setProductTypes] = useState<any[]>([]);
-  const [brands, setBrands] = useState<any[]>([]);
-  const [selectedProductType, setSelectedProductType] = useState<string>('all');
-  const [selectedBrand, setSelectedBrand] = useState<string>('all');
-  const [parameterFilters, setParameterFilters] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    fetchFiltersData();
-  }, []);
-
-  useEffect(() => {
-    if (productTypes.length > 0) {
-      fetchReportsData();
-    }
-  }, [dateRange, selectedProduct, selectedProductType, selectedBrand, parameterFilters]);
-
-  const fetchFiltersData = async () => {
-    try {
-      const [typesRes, brandsRes, inventoryRes] = await Promise.all([
-        inventory.getProductTypes(),
-        inventory.getBrands(),
-        inventory.getBatches(),
-      ]);
-
-      setProductTypes(typesRes.data);
-      setBrands(brandsRes.data);
-
-      // Set first product type as default if available
-      if (typesRes.data.length > 0 && selectedProductType === 'all') {
-        setSelectedProductType(typesRes.data[0].id);
-      }
-    } catch (error) {
-      console.error('Error fetching filter data:', error);
-      toast.error('Failed to load filters');
-    }
-  };
-
-  const fetchReportsData = async () => {
+  const fetchAnalyticsData = async () => {
     setLoading(true);
     try {
-      await Promise.all([
-        fetchTopSellingProducts(),
-        fetchCustomerSales(),
-        fetchProductInventory(),
+      const [overview, regions] = await Promise.all([
+        reports.getAnalyticsOverview(parseInt(dateRange)),
+        reports.getCustomerRegions(parseInt(dateRange))
       ]);
+
+      setAnalyticsData(overview.data);
+      setRegionalData(regions.data);
     } catch (error) {
-      console.error('Error fetching reports data:', error);
-      toast.error('Failed to load reports data');
+      console.error('Error fetching analytics:', error);
+      toast.error('Failed to load analytics data');
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchTopSellingProducts = async () => {
-    try {
-      const response = await reports.getTopSellingProducts(parseInt(dateRange));
-      let products = response.data.map((item: any) => ({
-        ...item,
-        total_sold: parseFloat(item.total_sold || 0),
-      }));
+  useEffect(() => {
+    fetchAnalyticsData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateRange]);
 
-      // Filter by product type
-      if (selectedProductType !== 'all') {
-        const selectedPT = productTypes.find(pt => pt.id === selectedProductType);
-        if (selectedPT) {
-          products = products.filter((p: any) => p.product_type === selectedPT.name);
-        }
-      }
-
-      // Filter by brand
-      if (selectedBrand !== 'all') {
-        const selectedBr = brands.find(b => b.id === selectedBrand);
-        if (selectedBr) {
-          products = products.filter((p: any) => p.brand === selectedBr.name);
-        }
-      }
-
-      // Filter by parameters
-      Object.entries(parameterFilters).forEach(([key, value]) => {
-        if (value && value !== 'all') {
-          products = products.filter((p: any) => p.parameters[key] === value);
-        }
-      });
-
-      // Filter by selected product (old filter for backward compatibility)
-      if (selectedProduct !== 'all') {
-        products = products.filter((p: any) =>
-          `${p.brand}-${p.product_type}` === selectedProduct
-        );
-      }
-
-      setTopProducts(products);
-    } catch (error) {
-      console.error('Error fetching top products:', error);
-      toast.error('Failed to load top selling products');
-    }
-  };
-
-  const fetchCustomerSales = async () => {
-    try {
-      let brand, product_type;
-      if (selectedProduct !== 'all') {
-        [brand, product_type] = selectedProduct.split('-');
-      }
-      const response = await reports.getCustomerSales(parseInt(dateRange), brand, product_type);
-      setCustomerSales(response.data.map((item: any) => ({
-        ...item,
-        total_quantity: parseFloat(item.total_quantity || 0),
-        total_amount: parseFloat(item.total_amount || 0),
-      })));
-    } catch (error) {
-      console.error('Error fetching customer sales:', error);
-      toast.error('Failed to load customer sales');
-    }
-  };
-
-  const fetchProductInventory = async () => {
-    try {
-      const response = await reports.getProductInventory();
-      let products = response.data.map((item: any) => ({
-        ...item,
-        total_quantity: parseFloat(item.total_quantity || 0),
-      }));
-      setAllProductInventory(products);
-
-      // Filter by product type
-      if (selectedProductType !== 'all') {
-        const selectedPT = productTypes.find(pt => pt.id === selectedProductType);
-        if (selectedPT) {
-          products = products.filter((p: any) => p.product_type === selectedPT.name);
-        }
-      }
-
-      // Filter by brand
-      if (selectedBrand !== 'all') {
-        const selectedBr = brands.find(b => b.id === selectedBrand);
-        if (selectedBr) {
-          products = products.filter((p: any) => p.brand === selectedBr.name);
-        }
-      }
-
-      // Filter by parameters
-      Object.entries(parameterFilters).forEach(([key, value]) => {
-        if (value && value !== 'all') {
-          products = products.filter((p: any) => p.parameters[key] === value);
-        }
-      });
-
-      // Filter based on selected product (old filter)
-      if (selectedProduct !== 'all') {
-        const filtered = products.filter((p: any) =>
-          `${p.brand}-${p.product_type}` === selectedProduct
-        );
-        setProductInventory(filtered);
-      } else {
-        setProductInventory(products);
-      }
-    } catch (error) {
-      console.error('Error fetching product inventory:', error);
-      toast.error('Failed to load product inventory');
-    }
-  };  const exportToCSV = (data: any[], filename: string) => {
-    if (data.length === 0) {
-      toast.error('No data to export');
-      return;
-    }
-
-    const headers = Object.keys(data[0]);
-    const csvContent = [
-      headers.join(','),
-      ...data.map(row =>
-        headers.map(header => {
-          const value = row[header];
-          if (typeof value === 'object') {
-            return JSON.stringify(value);
-          }
-          return value;
-        }).join(',')
-      )
-    ].join('\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    // Use IST date in filename (DD-MM-YYYY format)
-    const istDate = formatDate(new Date().toISOString()).replace(/\//g, '-');
-    a.download = `${filename}-${istDate}.csv`;
-    a.click();
-    window.URL.revokeObjectURL(url);
-    toast.success('Report exported successfully');
-  };
-
-  const getFilterDescription = () => {
-    const filters = [];
-    if (selectedProductType !== 'all') {
-      const pt = productTypes.find(p => p.id === selectedProductType);
-      if (pt) filters.push(pt.name);
-    }
-    if (selectedBrand !== 'all') {
-      const br = brands.find(b => b.id === selectedBrand);
-      if (br) filters.push(br.name);
-    }
-    Object.entries(parameterFilters).forEach(([key, value]) => {
-      if (value && value !== 'all') {
-        filters.push(`${key}: ${value}`);
-      }
-    });
-    return filters.length > 0 ? filters.join(' • ') : null;
-  };
+  if (loading || !analyticsData) {
+    return (
+      <Layout>
+        <div className="container mx-auto py-6">
+          <div className="text-center py-12">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto"></div>
+            <p className="mt-4 text-muted-foreground">Loading analytics...</p>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>
-      <div className="space-y-6">
+      <div className="container mx-auto py-6 space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="h-10 w-10 rounded-lg bg-primary flex items-center justify-center">
-              <BarChart className="h-6 w-6 text-primary-foreground" />
-            </div>
-            <div>
-              <h1 className="text-3xl font-bold text-foreground">Reports & Analytics</h1>
-              <p className="text-muted-foreground">Business insights and inventory analysis</p>
-            </div>
+          <div>
+            <h1 className="text-3xl font-bold">Business Analytics</h1>
+            <p className="text-muted-foreground">Comprehensive insights into your business performance</p>
           </div>
-
-          <div className="flex gap-3">
-            <Select value={dateRange} onValueChange={setDateRange}>
-              <SelectTrigger className="w-48 h-12">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="7">Last 7 Days</SelectItem>
-                <SelectItem value="30">Last 30 Days</SelectItem>
-                <SelectItem value="90">Last 90 Days</SelectItem>
-                <SelectItem value="365">Last Year</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          <Select value={dateRange} onValueChange={setDateRange}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="7">Last 7 Days</SelectItem>
+              <SelectItem value="30">Last 30 Days</SelectItem>
+              <SelectItem value="90">Last 90 Days</SelectItem>
+              <SelectItem value="180">Last 6 Months</SelectItem>
+              <SelectItem value="365">Last Year</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
-        {/* Filters Section */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <Filter className="h-5 w-5 mr-2" />
-              Filters
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-              {/* Product Type Filter */}
-              <Select value={selectedProductType} onValueChange={setSelectedProductType}>
-                <SelectTrigger className="h-12">
-                  <div className="flex items-center">
-                    <Package className="h-4 w-4 mr-2" />
-                    <SelectValue placeholder="Product Type" />
-                  </div>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Types</SelectItem>
-                  {productTypes.map((pt) => (
-                    <SelectItem key={pt.id} value={pt.id}>{pt.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+        {/* Key Metrics Summary */}
+        <SummaryCards data={analyticsData.summary} />
 
-              {/* Brand Filter */}
-              <Select value={selectedBrand} onValueChange={setSelectedBrand}>
-                <SelectTrigger className="h-12">
-                  <div className="flex items-center">
-                    <Filter className="h-4 w-4 mr-2" />
-                    <SelectValue placeholder="Brand" />
-                  </div>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Brands</SelectItem>
-                  {brands.map((brand) => (
-                    <SelectItem key={brand.id} value={brand.id}>{brand.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+        {/* Tabs for different analytics views */}
+        <Tabs defaultValue="products" className="space-y-4">
+          <TabsList className="grid w-full grid-cols-5">
+            <TabsTrigger value="products">
+              <Package className="h-4 w-4 mr-2" />
+              Products
+            </TabsTrigger>
+            <TabsTrigger value="customers">
+              <Users className="h-4 w-4 mr-2" />
+              Customers
+            </TabsTrigger>
+            <TabsTrigger value="regions">
+              <MapPin className="h-4 w-4 mr-2" />
+              Regions
+            </TabsTrigger>
+            <TabsTrigger value="performance">
+              <TrendingUp className="h-4 w-4 mr-2" />
+              Performance
+            </TabsTrigger>
+            <TabsTrigger value="trends">
+              <BarChart3 className="h-4 w-4 mr-2" />
+              Trends
+            </TabsTrigger>
+          </TabsList>
 
-              {/* Dynamic Parameter Filters */}
-              {selectedProductType !== 'all' && (() => {
-                const selectedPT = productTypes.find(pt => pt.id === selectedProductType);
-                const paramSchema = selectedPT?.parameter_schema || [];
-                return paramSchema.map((param: any) => (
-                  <Select
-                    key={param.name}
-                    value={parameterFilters[param.name] || 'all'}
-                    onValueChange={(value) => {
-                      setParameterFilters(prev => ({
-                        ...prev,
-                        [param.name]: value === 'all' ? '' : value
-                      }));
-                    }}
-                  >
-                    <SelectTrigger className="h-12">
-                      <SelectValue placeholder={`${param.name}`} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All {param.name}</SelectItem>
-                      {/* Get unique values from product inventory for this parameter */}
-                      {Array.from(new Set(
-                        allProductInventory
-                          .filter(item => {
-                            const selectedPTName = productTypes.find(pt => pt.id === selectedProductType)?.name;
-                            return item.product_type === selectedPTName;
-                          })
-                          .map(item => item.parameters[param.name])
-                          .filter(Boolean)
-                      )).map((value: any) => (
-                        <SelectItem key={value} value={value}>{value}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ));
-              })()}
+          {/* Product Analytics */}
+          <TabsContent value="products" className="space-y-4">
+            <TopProducts products={analyticsData.top_products} />
+          </TabsContent>
 
-              {/* Clear Filters Button */}
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setSelectedProductType(productTypes.length > 0 ? productTypes[0].id : 'all');
-                  setSelectedBrand('all');
-                  setParameterFilters({});
-                  setSelectedProduct('all');
-                }}
-                className="h-12"
-              >
-                <X className="h-4 w-4 mr-2" />
-                Clear Filters
-              </Button>
+          {/* Customer Analytics */}
+          <TabsContent value="customers" className="space-y-4">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <TopCustomers customers={analyticsData.top_customers} />
+              <CustomerPreferences preferences={analyticsData.customer_preferences} />
             </div>
-          </CardContent>
-        </Card>        {/* Top Selling Products */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle>Top Selling Products</CardTitle>
-              <CardDescription>
-                {getFilterDescription() || 'Best performers in the selected period'}
-              </CardDescription>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => exportToCSV(topProducts, 'top-selling-products')}
-            >
-              <Download className="h-4 w-4 mr-2" />
-              Export CSV
-            </Button>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <div className="space-y-3">
-                {[1, 2, 3].map(i => (
-                  <div key={i} className="h-16 bg-muted animate-pulse rounded"></div>
-                ))}
-              </div>
-            ) : topProducts.length === 0 ? (
-              <p className="text-center text-muted-foreground py-8">No sales data available</p>
-            ) : (
-              <div className="space-y-3">
-                {topProducts.map((product, idx) => (
-                  <div
-                    key={idx}
-                    className="flex items-center justify-between p-4 bg-secondary/50 rounded-lg"
-                  >
-                    <div className="flex items-center space-x-4">
-                      <div className="h-10 w-10 rounded-full bg-primary flex items-center justify-center font-bold text-primary-foreground">
-                        {idx + 1}
-                      </div>
-                      <div>
-                        <div className="font-semibold">
-                          {product.brand} - {product.product_type}
-                        </div>
-                        <div className="text-sm text-muted-foreground">
-                          {Object.entries(product.parameters).map(([key, value]) => (
-                            <span key={key} className="mr-3">
-                              {key}: {value}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-2xl font-bold">
-                        {product.total_sold.toFixed(2)} {product.roll_configuration?.type === 'bundles' && product.roll_configuration?.quantity_based ? 'pcs' : 'm'}
-                      </div>
-                      <div className="text-sm text-muted-foreground">
-                        {product.sales_count} transactions
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+          </TabsContent>
 
-        {/* Product-wise Current Inventory */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle>Product-wise Inventory</CardTitle>
-              <CardDescription>
-                {getFilterDescription() || 'Current stock by product type'}
-              </CardDescription>
+          {/* Regional Analytics */}
+          <TabsContent value="regions" className="space-y-4">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <RegionalSales data={regionalData} />
+              <RegionalProductDistribution data={analyticsData.regional_analysis} />
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => exportToCSV(productInventory, 'product-inventory')}
-            >
-              <Download className="h-4 w-4 mr-2" />
-              Export CSV
-            </Button>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {productInventory.map((product, idx) => (
-                <div
-                  key={idx}
-                  className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg"
-                >
-                  <div>
-                    <div className="font-medium">
-                      {product.brand} - {product.product_type}
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      {Object.entries(product.parameters).map(([key, value]) => (
-                        <span key={key} className="mr-3">
-                          {key}: {String(value)}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                  <Badge variant="secondary" className="text-lg px-4 py-1">
-                    {product.roll_configuration?.type === 'bundles' && product.roll_configuration?.quantity_based
-                      ? `${Math.floor(product.total_quantity)} pcs`
-                      : `${product.total_quantity.toFixed(2)} m`
-                    }
-                  </Badge>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+          </TabsContent>
 
-        {/* Customer-wise Sales */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle>Customer-wise Sales</CardTitle>
-              <CardDescription>
-                {getFilterDescription()
-                  ? `Top customers for ${getFilterDescription()}`
-                  : 'Top customers by volume'
-                }
-              </CardDescription>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => exportToCSV(customerSales, 'customer-sales')}
-            >
-              <Download className="h-4 w-4 mr-2" />
-              Export CSV
-            </Button>
-          </CardHeader>
-          <CardContent>
-            {customerSales.length === 0 ? (
-              <p className="text-center text-muted-foreground py-8">No customer sales data</p>
-            ) : (
-              <div className="space-y-3">
-                {customerSales.map((customer, idx) => (
-                  <div
-                    key={idx}
-                    className="flex items-center justify-between p-4 bg-secondary/50 rounded-lg"
-                  >
-                    <div className="flex items-center space-x-4">
-                      <div className="h-10 w-10 rounded-full bg-accent flex items-center justify-center font-bold">
-                        {customer.customer_name.charAt(0).toUpperCase()}
-                      </div>
-                      <div>
-                        <div className="font-semibold">{customer.customer_name}</div>
-                        <div className="text-sm text-muted-foreground">
-                          {customer.transaction_count} transactions
-                        </div>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-2xl font-bold">
-                        {customer.total_quantity.toFixed(2)} units
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+          {/* Product Performance */}
+          <TabsContent value="performance" className="space-y-4">
+            <ProductPerformance data={analyticsData.product_performance} />
+          </TabsContent>
+
+          {/* Sales Trends */}
+          <TabsContent value="trends" className="space-y-4">
+            <SalesTrends trends={analyticsData.sales_trends} />
+          </TabsContent>
+        </Tabs>
       </div>
     </Layout>
   );

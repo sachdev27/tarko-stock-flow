@@ -86,6 +86,12 @@ export const production = {
       : {};
     return api.post('/production/batch', data, config);
   },
+
+  getHistory: () =>
+    api.get('/production/history'),
+
+  getDetails: (batchId: string) =>
+    api.get(`/production/history/${batchId}`),
 };
 
 // Transaction endpoints
@@ -178,6 +184,45 @@ export const admin = {
     });
   },
 
+  // Vehicles Export/Import
+  exportVehicles: () =>
+    api.get('/admin/vehicles/export', { responseType: 'blob' }),
+  downloadVehicleTemplate: () =>
+    api.get('/admin/vehicles/template', { responseType: 'blob' }),
+  importVehicles: (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/admin/vehicles/import', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  },
+
+  // Transports Export/Import
+  exportTransports: () =>
+    api.get('/admin/transports/export', { responseType: 'blob' }),
+  downloadTransportTemplate: () =>
+    api.get('/admin/transports/template', { responseType: 'blob' }),
+  importTransports: (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/admin/transports/import', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  },
+
+  // Bill-To Export/Import
+  exportBillTo: () =>
+    api.get('/admin/bill-to/export', { responseType: 'blob' }),
+  downloadBillToTemplate: () =>
+    api.get('/admin/bill-to/template', { responseType: 'blob' }),
+  importBillTo: (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/admin/bill-to/import', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  },
+
   // Units
   getUnits: () =>
     api.get('/admin/units'),
@@ -195,6 +240,14 @@ export const admin = {
     api.put(`/admin/users/${id}`, data),
   deleteUser: (id: string) =>
     api.delete(`/admin/users/${id}`),
+
+  // Database Reset
+  getResetOptions: () =>
+    api.get('/admin/reset-options'),
+  getDatabaseStats: () =>
+    api.get('/admin/database-stats'),
+  resetDatabase: (resetLevel: string, confirmationToken: string) =>
+    api.post('/admin/reset-database', { reset_level: resetLevel, confirmation_token: confirmationToken }),
 };
 
 // Reports endpoints
@@ -238,11 +291,23 @@ export const versionControl = {
   getSnapshots: () =>
     api.get('/version-control/snapshots'),
 
-  createSnapshot: (data: { snapshot_name?: string; description?: string; tags?: string[] }) =>
+  createSnapshot: (data: { snapshot_name?: string; description?: string; tags?: string[]; storage_path?: string }) =>
     api.post('/version-control/snapshots', data),
 
   deleteSnapshot: (snapshotId: string) =>
     api.delete(`/version-control/snapshots/${snapshotId}`),
+
+  bulkDeleteSnapshots: (snapshotIds: string[]) =>
+    api.post('/version-control/snapshots/bulk-delete', { snapshot_ids: snapshotIds }),
+
+  cleanupOldSnapshots: (days: number) =>
+    api.post('/version-control/snapshots/cleanup-old', { days }),
+
+  getAutoSnapshotSettings: () =>
+    api.get('/version-control/settings/auto-snapshot'),
+
+  updateAutoSnapshotSettings: (data: { enabled: boolean; time: string }) =>
+    api.post('/version-control/settings/auto-snapshot', data),
 
   rollbackToSnapshot: (snapshotId: string, confirm: boolean = false) =>
     api.post(`/version-control/rollback/${snapshotId}`, { confirm }),
@@ -250,6 +315,70 @@ export const versionControl = {
   getRollbackHistory: () =>
     api.get('/version-control/rollback-history'),
 
+  getStorageStats: () =>
+    api.get('/version-control/storage/local/stats'),
+
+  // Cloud Storage
+  getCloudStatus: () =>
+    api.get('/version-control/cloud/status'),
+
+  configureCloud: (data: {
+    provider: string;
+    r2_account_id?: string;
+    r2_access_key_id?: string;
+    r2_secret_access_key?: string;
+    r2_bucket_name?: string;
+    aws_access_key_id?: string;
+    aws_secret_access_key?: string;
+    aws_region?: string;
+    s3_bucket_name?: string;
+  }) =>
+    api.post('/version-control/cloud/configure', data),
+
+  getCloudSnapshots: () =>
+    api.get('/version-control/cloud/snapshots'),
+
+  downloadFromCloud: (snapshotId: string) =>
+    api.post(`/version-control/cloud/snapshots/${snapshotId}/download`),
+
+  restoreFromCloud: (snapshotId: string) =>
+    api.post(`/version-control/cloud/snapshots/${snapshotId}/restore`),
+
+  uploadToCloud: (snapshotId: string) =>
+    api.post(`/version-control/cloud/snapshots/${snapshotId}/upload`),
+
+  deleteFromCloud: (snapshotId: string) =>
+    api.delete(`/version-control/cloud/snapshots/${snapshotId}`),
+
+  bulkDeleteCloudSnapshots: (snapshotIds: string[]) =>
+    api.post('/version-control/cloud/snapshots/bulk-delete', { snapshot_ids: snapshotIds }),
+
+  cleanupOldCloudSnapshots: (days: number) =>
+    api.post('/version-control/cloud/snapshots/cleanup-old', { days }),
+
+  // External Storage
+  detectExternalDevices: () =>
+    api.get('/version-control/external/devices'),
+
+  exportToExternal: (data: { snapshot_id: string; destination_path: string; compress?: boolean }) =>
+    api.post('/version-control/external/export', data),
+
+  importFromExternal: (data: { source_path: string }) =>
+    api.post('/version-control/external/import', data),
+
+  listExternalSnapshots: (data: { device_path: string }) =>
+    api.post('/version-control/external/snapshots', data),
+
+  downloadExternalSnapshot: (data: { snapshot_path: string; format?: string }) =>
+    api.post('/version-control/external/snapshots/download', data, { responseType: 'blob' }),
+
+  verifyExternalSnapshot: (data: { snapshot_path: string }) =>
+    api.post('/version-control/external/verify', data),
+
+  getSuggestedPaths: () =>
+    api.get('/version-control/suggested-paths'),
+
+  // Legacy Google Drive (deprecated)
   testDriveConnection: () =>
     api.get('/version-control/drive/test'),
 
@@ -263,13 +392,33 @@ export const versionControl = {
     api.post('/version-control/drive/configure', data),
 };
 
-// Ledger endpoints
-export const ledger = {
-  getProductLedger: (productVariantId: string, params?: { start_date?: string; end_date?: string; transaction_type?: string }) =>
-    api.get(`/ledger/product/${productVariantId}`, { params }),
+// Scrap endpoints
+export const scrap = {
+  create: (data: {
+    scrap_date?: string;
+    reason: string;
+    notes?: string;
+    items: Array<{
+      stock_id: string;
+      quantity_to_scrap: number;
+      piece_ids?: string[];
+      estimated_value?: number;
+      notes?: string;
+    }>;
+  }) =>
+    api.post('/scraps/create', data),
 
-  getBatchLedger: (batchId: string) =>
-    api.get(`/ledger/batch/${batchId}`),
+  getHistory: (params?: { start_date?: string; end_date?: string; reason?: string; status?: string }) =>
+    api.get('/scraps/history', { params }),
+
+  getDetails: (scrapId: string) =>
+    api.get(`/scraps/history/${scrapId}`),
+
+  getReasons: () =>
+    api.get('/scraps/reasons'),
+
+  revert: (scrapId: string) =>
+    api.post(`/scraps/${scrapId}/revert`),
 };
 
 export default api;

@@ -1,0 +1,105 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: tarko-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: tarko_inventory
+      POSTGRES_USER: tarko_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme123}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./backups:/backups
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tarko_user -d tarko_inventory"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - tarko-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: tarko-backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://tarko_user:${DB_PASSWORD:-changeme123}@postgres:5432/tarko_inventory
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-this-secret-in-production}
+      FLASK_ENV: production
+      PYTHONUNBUFFERED: 1
+      SNAPSHOT_STORAGE_PATH: /app/snapshots
+      BACKUP_RETENTION_DAYS: 30
+    volumes:
+      - ./backend/uploads:/app/uploads
+      - ./snapshots:/app/snapshots
+      - ./backups:/backups
+    ports:
+      - "5500:5500"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - tarko-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5500/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: tarko-frontend
+    restart: unless-stopped
+    environment:
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:5500}
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - tarko-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Backup scheduler - runs daily snapshots
+  backup-scheduler:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.scheduler
+    container_name: tarko-backup-scheduler
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://tarko_user:${DB_PASSWORD:-changeme123}@postgres:5432/tarko_inventory
+      SNAPSHOT_STORAGE_PATH: /app/snapshots
+      BACKUP_SCHEDULE: "0 2 * * *"  # Daily at 2 AM
+      BACKUP_RETENTION_DAYS: 30
+    volumes:
+      - ./snapshots:/app/snapshots
+      - ./backups:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - tarko-network
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  tarko-network:
+    driver: bridge

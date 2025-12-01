@@ -1,7 +1,8 @@
 from flask import Blueprint, request, jsonify, send_from_directory
 from flask_jwt_extended import get_jwt_identity
 from database import execute_insert, execute_query, get_db_cursor
-from auth import jwt_required_with_role, get_user_identity_details
+from services.auth import jwt_required_with_role, get_user_identity_details
+from services.inventory_helpers_aggregate import AggregateInventoryHelper as InventoryHelper
 from werkzeug.utils import secure_filename
 import json
 import os
@@ -43,19 +44,18 @@ def create_batch():
         batch_no = data.get('batch_no')
         batch_code = data.get('batch_code')
         notes = data.get('notes', '')
+
+        # Validate required fields
+        if not product_type_id or not brand_id:
+            return jsonify({'error': 'Product type and brand are required'}), 400
+
+        if quantity <= 0:
+            return jsonify({'error': 'Quantity must be greater than 0'}), 400
+
         # Handle number_of_rolls safely - can be None for sprinkler imports
         number_of_rolls_raw = data.get('number_of_rolls') or data.get('roll_length')
         number_of_rolls = int(number_of_rolls_raw) if number_of_rolls_raw not in (None, '', 'null') else 1
         cut_rolls = json.loads(data.get('cut_rolls', '[]')) if isinstance(data.get('cut_rolls'), str) else data.get('cut_rolls', [])
-
-        # DEBUG: Log piece length extraction
-        print(f"\n{'='*60}")
-        print(f"🔍 PIECE LENGTH DEBUG")
-        print(f"Form/JSON keys: {list(data.keys())}")
-        print(f"length_per_roll: '{data.get('length_per_roll')}'")
-        print(f"lengthPerRoll: '{data.get('lengthPerRoll')}'")
-        print(f"piece_length: '{data.get('piece_length')}'")
-        print(f"{'='*60}\n")
 
         length_per_roll_input = float(data.get('length_per_roll') or data.get('lengthPerRoll') or data.get('roll_length') or data.get('piece_length') or 0)
 
@@ -71,22 +71,19 @@ def create_batch():
         spare_pipes = json.loads(data.get('spare_pipes', '[]')) if isinstance(data.get('spare_pipes'), str) else data.get('spare_pipes', [])
 
         # For sprinkler pipes with bundles, recalculate quantity correctly
-        # quantity should be: number_of_bundles × bundle_size (pieces)
+        # quantity should be: (number_of_bundles × bundle_size) + spare_pieces (pieces)
         if quantity_based and roll_config_type == 'bundles' and number_of_bundles > 0 and bundle_size > 0:
-            # Recalculate quantity as total pieces
+            # Recalculate quantity as total pieces from bundles
             quantity = float(number_of_bundles * bundle_size)
-            print(f"📦 Recalculated Sprinkler quantity: {number_of_bundles} bundles × {bundle_size} pcs = {quantity} pieces")
+            # Add spare pieces to total quantity
+            for spare_pipe in spare_pipes:
+                spare_count = int(spare_pipe.get('length', 1))  # 'length' field contains piece count
+                quantity += float(spare_count)
 
-
-        # Weight tracking - ensure proper conversion and default to None if missing
-        # Note: CSV imports provide kg/m, but system stores g/m, so convert if from import
+        # Weight tracking - weight_per_meter in kg/m, total_weight in kg
         weight_per_meter_raw = data.get('weight_per_meter')
         if weight_per_meter_raw not in (None, '', 'null'):
             weight_per_meter = float(weight_per_meter_raw)
-            # If value is less than 100, assume it's kg/m and convert to g/m
-            # (typical HDPE pipes range from 50-5000 g/m, so kg values would be 0.05-5)
-            if weight_per_meter < 100:
-                weight_per_meter = weight_per_meter * 1000  # Convert kg/m to g/m
         else:
             weight_per_meter = None
 
@@ -97,24 +94,18 @@ def create_batch():
         piece_length_value = None
         if quantity_based and length_per_roll_input > 0:
             piece_length_value = length_per_roll_input
-            print(f"📏 Sprinkler Pipe piece_length: {piece_length_value}m")
-        elif quantity_based:
-            print(f"⚠️  WARNING: Sprinkler Pipe missing piece length!")
-            print(f"   - length_per_roll_input: {length_per_roll_input}")
-            print(f"   - Received data keys: {list(data.keys())}")
 
         # Calculate total_weight from weight_per_meter if provided
+        # weight_per_meter is in kg/m, total_weight is in kg
         if weight_per_meter and not total_weight and quantity > 0:
             if quantity_based and piece_length_value:
-                # For sprinkler pipes: weight = weight_per_meter × total_length
+                # For sprinkler pipes: weight (kg) = weight_per_meter (kg/m) × total_length (m)
                 # total_length = quantity (pieces) × piece_length (meters/piece)
                 total_length = quantity * piece_length_value
                 total_weight = weight_per_meter * total_length
-                print(f"⚖️  Weight calculation (Sprinkler): {weight_per_meter}g/m × ({quantity} pcs × {piece_length_value}m) = {total_weight}g = {total_weight/1000}kg")
             else:
-                # For HDPE rolls: weight = weight_per_meter × quantity (meters)
+                # For HDPE rolls: weight (kg) = weight_per_meter (kg/m) × quantity (meters)
                 total_weight = weight_per_meter * quantity
-                print(f"⚖️  Weight calculation (HDPE): {weight_per_meter}g/m × {quantity}m = {total_weight}g = {total_weight/1000}kg")
 
 
         # Handle file upload
@@ -131,15 +122,7 @@ def create_batch():
         with get_db_cursor() as cursor:
             # Create or get product variant
             # Normalize parameters JSON for consistent comparison
-            param_json = json.dumps(parameters, sort_keys=True)
-            print(f"\n{'='*80}")
-            print(f"DEBUG: Creating batch with parameters:")
-            print(f"  Product Type ID: {product_type_id}")
-            print(f"  Brand ID: {brand_id}")
-            print(f"  Parameters: {param_json}")
-            print(f"{'='*80}\n")
-
-            # First, try to find existing variant
+            param_json = json.dumps(parameters, sort_keys=True)# First, try to find existing variant
             cursor.execute("""
                 SELECT id, parameters FROM product_variants
                 WHERE product_type_id = %s
@@ -151,7 +134,6 @@ def create_batch():
 
             if variant:
                 variant_id = variant['id']
-                print(f"✓ Found existing variant: {variant_id} with params: {variant['parameters']}")
             else:
                 # Create new variant
                 cursor.execute("""
@@ -161,7 +143,6 @@ def create_batch():
                 """, (product_type_id, brand_id, param_json))
                 variant = cursor.fetchone()
                 variant_id = variant['id']
-                print(f"✨ Created new variant: {variant_id} with params: {param_json}")
 
             # Auto-generate batch_no and batch_code if not provided
             if not batch_no:
@@ -200,89 +181,113 @@ def create_batch():
             batch = cursor.fetchone()
             batch_id = batch['id']
 
+            # Determine product category
+            product_category = InventoryHelper.get_product_category(cursor, variant_id)
+
             total_items = 0
 
-            if roll_config_type == 'standard_rolls':
-                # Create standard rolls
+            # ==================================================
+            # HDPE Product: Create rolls with length tracking
+            # ==================================================
+            if product_category == 'HDPE Pipe' and roll_config_type == 'standard_rolls':
+                # Create standard rolls (aggregate)
                 if number_of_rolls > 0:
                     # Calculate length for standard rolls only
                     total_cut_length = sum(float(roll.get('length', 0)) for roll in cut_rolls)
                     standard_total = quantity - total_cut_length
                     if standard_total > 0 and number_of_rolls > 0:
                         length_per_roll = standard_total / number_of_rolls
-                        for i in range(number_of_rolls):
+                        # Create aggregate stock entry for all full rolls
+                        InventoryHelper.create_hdpe_stock(
+                            cursor,
+                            batch_id=batch_id,
+                            product_variant_id=variant_id,
+                            quantity=number_of_rolls,
+                            length_per_roll=length_per_roll,
+                            notes=f'{number_of_rolls} full rolls of {length_per_roll}m each'
+                        )
+                        total_items += number_of_rolls
+
+                # Create cut rolls (aggregate with individual piece tracking)
+                if cut_rolls:
+                    # Create one CUT_ROLL stock entry
+                    cut_stock_id = str(uuid.uuid4())
+                    cursor.execute("""
+                        INSERT INTO inventory_stock (
+                            id, batch_id, product_variant_id, status, stock_type,
+                            quantity, notes
+                        ) VALUES (%s, %s, %s, 'IN_STOCK', 'CUT_ROLL', %s, %s)
+                        RETURNING id
+                    """, (cut_stock_id, batch_id, variant_id, len(cut_rolls),
+                          f'{len(cut_rolls)} cut rolls from production'))
+
+                    # Create production transaction first to get transaction_id
+                    total_cut_length = sum(float(r.get('length', 0)) for r in cut_rolls)
+                    cursor.execute("""
+                        INSERT INTO inventory_transactions (
+                            transaction_type, to_stock_id, to_quantity, batch_id, notes
+                        ) VALUES ('PRODUCTION', %s, %s, %s, %s)
+                        RETURNING id
+                    """, (cut_stock_id, len(cut_rolls), batch_id,
+                          f'Produced {len(cut_rolls)} cut rolls ({total_cut_length}m total)'))
+
+                    production_txn_id = cursor.fetchone()['id']
+
+                    # Add individual cut pieces with IMMUTABLE created_by_transaction_id
+                    for cut_roll in cut_rolls:
+                        roll_length = float(cut_roll.get('length', 0))
+                        if roll_length > 0:
                             cursor.execute("""
-                                INSERT INTO rolls (
-                                    batch_id, product_variant_id, length_meters,
-                                    initial_length_meters, status, is_cut_roll, roll_type, created_at, updated_at
-                                ) VALUES (%s, %s, %s, %s, 'AVAILABLE', FALSE, 'standard', NOW(), NOW())
-                            """, (batch_id, variant_id, length_per_roll, length_per_roll))
+                                INSERT INTO hdpe_cut_pieces (
+                                    stock_id, length_meters, status, notes, created_by_transaction_id, original_stock_id
+                                ) VALUES (%s, %s, 'IN_STOCK', %s, %s, %s)
+                            """, (cut_stock_id, roll_length, f'Cut roll {roll_length}m from production', production_txn_id, cut_stock_id))
                             total_items += 1
 
-                # Create cut rolls
-                for cut_roll in cut_rolls:
-                    roll_length = float(cut_roll.get('length', 0))
-                    if roll_length > 0:
-                        cursor.execute("""
-                            INSERT INTO rolls (
-                                batch_id, product_variant_id, length_meters,
-                                initial_length_meters, status, is_cut_roll, roll_type, created_at, updated_at
-                            ) VALUES (%s, %s, %s, %s, 'AVAILABLE', TRUE, 'cut', NOW(), NOW())
-                        """, (batch_id, variant_id, roll_length, roll_length))
-                        total_items += 1
+            # ==================================================
+            # SPRINKLER Product: Create bundles and spares
+            # ==================================================
+            elif product_category == 'Sprinkler Pipe' and roll_config_type == 'bundles':
+                # piece_length from batch data (length of each individual pipe)
+                piece_length_m = piece_length_value or length_per_roll_input or 6.0
 
-            elif roll_config_type == 'bundles':
-                # Create bundles - each bundle is a single inventory unit with bundle_size pieces
+                # Create bundles (aggregate)
                 if number_of_bundles > 0 and bundle_size > 0:
-                    total_spare_length = sum(float(pipe.get('length', 0)) for pipe in spare_pipes)
-                    bundled_total = quantity - total_spare_length
+                    InventoryHelper.create_sprinkler_bundle_stock(
+                        cursor,
+                        batch_id=batch_id,
+                        product_variant_id=variant_id,
+                        quantity=number_of_bundles,
+                        pieces_per_bundle=bundle_size,
+                        piece_length_meters=piece_length_m,
+                        notes=f'{number_of_bundles} bundles of {bundle_size} pieces each'
+                    )
+                    total_items += number_of_bundles
 
-                    # For quantity-based products (Sprinkler Pipe):
-                    # - length_meters in rolls = bundle_size (number of pieces)
-                    # - piece_length is stored in batches table
-                    # For length-based products (HDPE):
-                    # - length_meters = actual total length of bundle
+                # Create spare pipes (aggregate with individual piece tracking)
+                if spare_pipes:
+                    # Collect all spare piece counts
+                    spare_piece_counts = []
+                    for spare_pipe in spare_pipes:
+                        spare_count = int(spare_pipe.get('length', 1))  # 'length' field contains piece count
+                        if spare_count > 0:
+                            spare_piece_counts.append(spare_count)
+                            total_items += 1
 
-                    for _ in range(number_of_bundles):
-                        if quantity_based:
-                            # For Sprinkler: store piece count as length_meters
-                            bundle_length = bundle_size
-                        else:
-                            # For HDPE: calculate actual length
-                            bundle_length = length_per_roll_input * bundle_size if length_per_roll_input > 0 else bundled_total / number_of_bundles
+                    if spare_piece_counts:
+                        InventoryHelper.create_sprinkler_spare_stock(
+                            cursor,
+                            batch_id=batch_id,
+                            product_variant_id=variant_id,
+                            spare_pieces=spare_piece_counts,
+                            piece_length_meters=piece_length_m,
+                            notes=f'{len(spare_piece_counts)} spare piece groups'
+                        )
 
-                        cursor.execute("""
-                            INSERT INTO rolls (
-                                batch_id, product_variant_id, length_meters,
-                                initial_length_meters, status, is_cut_roll, roll_type, bundle_size, created_at, updated_at
-                            ) VALUES (%s, %s, %s, %s, 'AVAILABLE', FALSE, %s, %s, NOW(), NOW())
-                        """, (batch_id, variant_id, bundle_length, bundle_length, f'bundle_{bundle_size}', bundle_size))
-                        total_items += 1
 
-                # Create spare pipes (not bundled)
-                for spare_pipe in spare_pipes:
-                    pipe_length = float(spare_pipe.get('length', 0))
-                    if pipe_length > 0:
-                        # For quantity-based products (Sprinkler): pipe_length is the count of pieces
-                        # For length-based products (HDPE): pipe_length is the actual length in meters
-                        if quantity_based:
-                            actual_length = pipe_length  # Store the count of spare pieces
-                            spare_count = int(pipe_length)
-                        else:
-                            actual_length = pipe_length  # Store the length in meters
-                            spare_count = None
-
-                        cursor.execute("""
-                            INSERT INTO rolls (
-                                batch_id, product_variant_id, length_meters,
-                                initial_length_meters, status, is_cut_roll, roll_type, bundle_size, created_at, updated_at
-                            ) VALUES (%s, %s, %s, %s, 'AVAILABLE', FALSE, 'spare', %s, NOW(), NOW())
-                        """, (batch_id, variant_id, actual_length, actual_length, spare_count))
-                        total_items += 1
-
-            # Note: We don't create a transaction record for production
-            # Production batches are shown directly from the batches table
-            # Only SALE/DISPATCH operations create transaction records
+            # Ensure at least some stock was created
+            if total_items == 0:
+                raise ValueError('No stock items were created. Please check your roll/bundle configuration.')
 
             # Audit log
             actor_label = f"{actor['name']} ({actor['role']})"
@@ -294,7 +299,7 @@ def create_batch():
             else:
                 log_msg = (
                     f"{actor_label} created batch {batch_code} with {quantity} units "
-                    f"({number_of_bundles} bundles of {bundle_size}, {len(spare_pipes)} spare pipes)"
+                    f"({number_of_bundles} bundles of {bundle_size}, {len(spare_pipes)} spare piece groups)"
                 )
 
             cursor.execute("""
@@ -304,36 +309,65 @@ def create_batch():
                 ) VALUES (%s, 'CREATE_BATCH', 'BATCH', %s, %s, NOW())
             """, (user_id, batch_id, log_msg))
 
-            # Capture roll snapshot for production transaction
+            # Capture stock snapshot for production transaction
             cursor.execute("""
-                SELECT id, roll_type, length_meters, initial_length_meters,
-                       is_cut_roll, bundle_size, status
-                FROM rolls
-                WHERE batch_id = %s AND deleted_at IS NULL
-                ORDER BY created_at
+                SELECT
+                    ist.id,
+                    ist.stock_type,
+                    ist.quantity,
+                    ist.status,
+                    ist.length_per_unit,
+                    ist.pieces_per_bundle,
+                    ist.piece_length_meters,
+                    ssp.piece_count as spare_piece_count
+                FROM inventory_stock ist
+                LEFT JOIN sprinkler_spare_pieces ssp ON ist.id = ssp.stock_id
+                WHERE ist.batch_id = %s
+                ORDER BY ist.created_at
             """, (batch_id,))
 
-            rolls_at_production = cursor.fetchall()
-            roll_snapshots = []
+            stock_at_production = cursor.fetchall()
+            stock_snapshots = []
 
-            for roll in rolls_at_production:
-                roll_snapshots.append({
-                    'roll_id': str(roll['id']),
+            for stock in stock_at_production:
+                snapshot = {
+                    'stock_id': str(stock['id']),
                     'batch_id': str(batch_id),
-                    'roll_type': roll['roll_type'],
-                    'length_meters': float(roll['length_meters']),
-                    'initial_length_meters': float(roll['initial_length_meters']),
-                    'is_cut_roll': roll['is_cut_roll'],
-                    'bundle_size': roll['bundle_size'],
-                    'status': roll['status']
-                })
+                    'stock_type': stock['stock_type'],
+                    'quantity': int(stock['quantity']),
+                    'status': stock['status'],
+                    'length_per_unit': float(stock['length_per_unit']) if stock['length_per_unit'] else None,
+                    'pieces_per_bundle': int(stock['pieces_per_bundle']) if stock['pieces_per_bundle'] else None,
+                    'piece_length_meters': float(stock['piece_length_meters']) if stock['piece_length_meters'] else None
+                }
 
-            roll_snapshot_json = json.dumps({
-                'rolls': roll_snapshots,
-                'total_rolls': len(roll_snapshots)
+                # Add actual piece count for spare pieces
+                if stock['stock_type'] in ['SPARE', 'SPARE_PIECES'] and stock['spare_piece_count']:
+                    snapshot['spare_piece_count'] = int(stock['spare_piece_count'])
+
+                # Add cut piece lengths for HDPE cut rolls
+                if stock['stock_type'] == 'CUT_ROLL':
+                    cursor.execute("""
+                        SELECT length_meters FROM hdpe_cut_pieces
+                        WHERE stock_id = %s
+                        ORDER BY created_at
+                    """, (stock['id'],))
+                    cut_pieces = cursor.fetchall()
+                    if cut_pieces:
+                        snapshot['cut_piece_lengths'] = [float(cp['length_meters']) for cp in cut_pieces]
+                        # Calculate total length for cut rolls
+                        total_cut_length = sum(float(cp['length_meters']) for cp in cut_pieces)
+                        snapshot['total_cut_length'] = total_cut_length
+
+                stock_snapshots.append(snapshot)
+
+            stock_snapshot_json = json.dumps({
+                'stock_entries': stock_snapshots,
+                'total_stock_entries': len(stock_snapshots),
+                'total_items': total_items
             })
 
-            # Create single batch-level production transaction with roll snapshot
+            # Create single batch-level production transaction with stock snapshot
             cursor.execute("""
                 INSERT INTO transactions (
                     batch_id, roll_id, transaction_type, quantity_change,
@@ -341,7 +375,7 @@ def create_batch():
                     roll_snapshot, created_by, created_at, updated_at
                 ) VALUES (%s, NULL, %s, %s, %s, NULL, NULL, %s, %s, %s, NOW(), NOW())
             """, (batch_id, 'PRODUCTION', float(quantity),
-                  production_date or None, notes, roll_snapshot_json, user_id))
+                  production_date or None, notes, stock_snapshot_json, user_id))
 
         return jsonify({
             'id': batch_id,
@@ -360,10 +394,292 @@ def create_batch():
     except ValueError as e:
         return jsonify({'error': f'Invalid data format: {str(e)}'}), 400
     except Exception as e:
-        print(f"Error creating batch: {e}")
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"Error creating batch: {error_trace}")
         return jsonify({'error': f'Failed to create batch: {str(e)}'}), 500
 
 @production_bp.route('/attachment/<filename>', methods=['GET'])
 def get_attachment(filename):
     """Serve uploaded batch attachments"""
     return send_from_directory(UPLOAD_FOLDER, filename)
+
+@production_bp.route('/history', methods=['GET'])
+@jwt_required_with_role('user')
+def get_production_history():
+    """Get production batch history"""
+    try:
+        with get_db_cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    b.id,
+                    b.batch_no,
+                    b.batch_code,
+                    b.production_date,
+                    b.initial_quantity,
+                    b.notes,
+                    b.weight_per_meter,
+                    b.total_weight,
+                    b.piece_length,
+                    b.created_at,
+                    pt.name as product_type_name,
+                    br.name as brand_name,
+                    pv.parameters,
+                    u.email as created_by_email,
+                    COUNT(DISTINCT ist.id) as total_items
+                FROM batches b
+                JOIN product_variants pv ON b.product_variant_id = pv.id
+                JOIN product_types pt ON pv.product_type_id = pt.id
+                JOIN brands br ON pv.brand_id = br.id
+                LEFT JOIN users u ON b.created_by = u.id
+                LEFT JOIN inventory_stock ist ON b.id = ist.batch_id
+                GROUP BY b.id, pt.name, br.name, pv.parameters, u.email
+                ORDER BY b.created_at DESC
+            """)
+
+            batches = cursor.fetchall()
+
+            result = []
+            for batch in batches:
+                result.append({
+                    'id': str(batch['id']),
+                    'batch_no': batch['batch_no'],
+                    'batch_code': batch['batch_code'],
+                    'production_date': batch['production_date'].isoformat() if batch['production_date'] else None,
+                    'initial_quantity': float(batch['initial_quantity']),
+                    'product_type_name': batch['product_type_name'],
+                    'brand_name': batch['brand_name'],
+                    'parameters': batch['parameters'],
+                    'notes': batch['notes'],
+                    'weight_per_meter': float(batch['weight_per_meter']) if batch['weight_per_meter'] else None,
+                    'total_weight': float(batch['total_weight']) if batch['total_weight'] else None,
+                    'piece_length': float(batch['piece_length']) if batch['piece_length'] else None,
+                    'total_items': batch['total_items'],
+                    'created_by_email': batch['created_by_email'],
+                    'created_at': batch['created_at'].isoformat() if batch['created_at'] else None
+                })
+
+            return jsonify({'batches': result}), 200
+
+    except Exception as e:
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"Error fetching production history: {error_trace}")
+        return jsonify({'error': f'Failed to fetch production history: {str(e)}'}), 500
+
+@production_bp.route('/history/<batch_id>', methods=['GET'])
+@jwt_required_with_role('user')
+def get_production_details(batch_id):
+    """Get detailed information about a specific production batch"""
+    try:
+        with get_db_cursor() as cursor:
+            # Get batch details
+            cursor.execute("""
+                SELECT
+                    b.id,
+                    b.batch_no,
+                    b.batch_code,
+                    b.production_date,
+                    b.initial_quantity,
+                    b.notes,
+                    b.attachment_url,
+                    b.weight_per_meter,
+                    b.total_weight,
+                    b.piece_length,
+                    b.created_at,
+                    b.updated_at,
+                    pt.name as product_type_name,
+                    br.name as brand_name,
+                    pv.parameters,
+                    pv.id as product_variant_id,
+                    u.email as created_by_email
+                FROM batches b
+                JOIN product_variants pv ON b.product_variant_id = pv.id
+                JOIN product_types pt ON pv.product_type_id = pt.id
+                JOIN brands br ON pv.brand_id = br.id
+                LEFT JOIN users u ON b.created_by = u.id
+                WHERE b.id = %s
+            """, (batch_id,))
+
+            batch = cursor.fetchone()
+
+            if not batch:
+                return jsonify({'error': 'Batch not found'}), 404
+
+            # Get initial production stock items from the production transaction snapshot
+            cursor.execute("""
+                SELECT roll_snapshot
+                FROM transactions
+                WHERE batch_id = %s AND transaction_type = 'PRODUCTION'
+                ORDER BY created_at
+                LIMIT 1
+            """, (batch_id,))
+
+            production_txn = cursor.fetchone()
+
+            items = []
+
+            if production_txn and production_txn['roll_snapshot']:
+                snapshot = production_txn['roll_snapshot']
+
+                # Check if snapshot is a string (JSON) or already parsed
+                if isinstance(snapshot, str):
+                    import json
+                    snapshot = json.loads(snapshot)
+
+                # Get stock entries from snapshot
+                stock_entries = snapshot.get('stock_entries', [])
+
+                for stock in stock_entries:
+                    item = {
+                        'id': stock.get('stock_id'),
+                        'stock_type': stock.get('stock_type'),
+                        'quantity': stock.get('quantity', 0),
+                        'status': stock.get('status', 'IN_STOCK'),
+                        'notes': f"Initial production: {stock.get('quantity', 0)} items"
+                    }
+
+                    # Add type-specific details from snapshot
+                    if stock['stock_type'] == 'FULL_ROLL':
+                        item['length_per_unit'] = stock.get('length_per_unit')
+                        if item['length_per_unit']:
+                            item['total_length'] = item['length_per_unit'] * item['quantity']
+
+                    elif stock['stock_type'] == 'BUNDLE':
+                        item['pieces_per_bundle'] = stock.get('pieces_per_bundle')
+                        item['piece_length_meters'] = stock.get('piece_length_meters')
+                        if item['pieces_per_bundle'] and item['piece_length_meters']:
+                            item['total_pieces'] = item['quantity'] * item['pieces_per_bundle']
+                            item['total_length'] = item['total_pieces'] * item['piece_length_meters']
+
+                    elif stock['stock_type'] == 'CUT_ROLL':
+                        cut_piece_lengths = stock.get('cut_piece_lengths', [])
+                        item['cut_pieces'] = [
+                            {'length_meters': length, 'status': 'IN_STOCK'}
+                            for length in cut_piece_lengths
+                        ]
+                        item['total_length'] = sum(cut_piece_lengths)
+
+                    elif stock['stock_type'] in ['SPARE', 'SPARE_PIECES']:
+                        spare_count = stock.get('spare_piece_count', 0)
+                        piece_length = stock.get('piece_length_meters')
+                        # For spare pieces, create groups based on the snapshot
+                        item['spare_pieces'] = [
+                            {
+                                'piece_count': spare_count,
+                                'piece_length_meters': piece_length,
+                                'status': 'IN_STOCK'
+                            }
+                        ]
+                        item['total_pieces'] = spare_count
+                        item['piece_length_meters'] = piece_length
+
+                    items.append(item)
+            else:
+                # Fallback: Get current stock items if no production transaction found
+                cursor.execute("""
+                    SELECT
+                        ist.id,
+                        ist.stock_type,
+                        ist.quantity,
+                        ist.status,
+                        ist.length_per_unit,
+                        ist.pieces_per_bundle,
+                        ist.piece_length_meters,
+                        ist.notes as stock_notes
+                    FROM inventory_stock ist
+                    WHERE ist.batch_id = %s
+                    ORDER BY ist.created_at
+                """, (batch_id,))
+
+                stock_items = cursor.fetchall()
+
+                # Process current stock items (existing logic)
+                for stock in stock_items:
+                    item = {
+                        'id': str(stock['id']),
+                        'stock_type': stock['stock_type'],
+                        'quantity': int(stock['quantity']),
+                        'status': stock['status'],
+                        'notes': stock['stock_notes']
+                    }
+
+                    # Add type-specific details
+                    if stock['stock_type'] == 'FULL_ROLL':
+                        item['length_per_unit'] = float(stock['length_per_unit']) if stock['length_per_unit'] else None
+                        item['total_length'] = float(stock['length_per_unit'] * stock['quantity']) if stock['length_per_unit'] else None
+
+                    elif stock['stock_type'] == 'BUNDLE':
+                        item['pieces_per_bundle'] = int(stock['pieces_per_bundle']) if stock['pieces_per_bundle'] else None
+                        item['piece_length_meters'] = float(stock['piece_length_meters']) if stock['piece_length_meters'] else None
+                        if stock['pieces_per_bundle'] and stock['piece_length_meters']:
+                            item['total_pieces'] = int(stock['quantity'] * stock['pieces_per_bundle'])
+                            item['total_length'] = float(stock['quantity'] * stock['pieces_per_bundle'] * stock['piece_length_meters'])
+
+                    elif stock['stock_type'] == 'CUT_ROLL':
+                        # Get cut piece details
+                        cursor.execute("""
+                            SELECT length_meters, status
+                            FROM hdpe_cut_pieces
+                            WHERE stock_id = %s
+                            ORDER BY created_at
+                        """, (stock['id'],))
+                        cut_pieces = cursor.fetchall()
+                        item['cut_pieces'] = [
+                            {
+                                'length_meters': float(cp['length_meters']),
+                                'status': cp['status']
+                            } for cp in cut_pieces
+                        ]
+                        item['total_length'] = sum(float(cp['length_meters']) for cp in cut_pieces)
+
+                    elif stock['stock_type'] in ['SPARE', 'SPARE_PIECES']:
+                        # Get spare piece details
+                        cursor.execute("""
+                            SELECT piece_count, status
+                            FROM sprinkler_spare_pieces
+                            WHERE stock_id = %s
+                            ORDER BY created_at
+                        """, (stock['id'],))
+                        spare_pieces = cursor.fetchall()
+                        # Get piece_length from the stock item itself
+                        piece_length = float(stock['piece_length_meters']) if stock['piece_length_meters'] else None
+                        item['spare_pieces'] = [
+                            {
+                                'piece_count': int(sp['piece_count']),
+                                'piece_length_meters': piece_length,
+                                'status': sp['status']
+                            } for sp in spare_pieces
+                        ]
+                        item['total_pieces'] = sum(int(sp['piece_count']) for sp in spare_pieces)
+                        item['piece_length_meters'] = piece_length
+
+                    items.append(item)
+
+            result = {
+                'id': str(batch['id']),
+                'batch_no': batch['batch_no'],
+                'batch_code': batch['batch_code'],
+                'production_date': batch['production_date'].isoformat() if batch['production_date'] else None,
+                'initial_quantity': float(batch['initial_quantity']),
+                'product_type_name': batch['product_type_name'],
+                'brand_name': batch['brand_name'],
+                'parameters': batch['parameters'],
+                'notes': batch['notes'],
+                'attachment_url': batch['attachment_url'],
+                'weight_per_meter': float(batch['weight_per_meter']) if batch['weight_per_meter'] else None,
+                'total_weight': float(batch['total_weight']) if batch['total_weight'] else None,
+                'piece_length': float(batch['piece_length']) if batch['piece_length'] else None,
+                'created_by_email': batch['created_by_email'],
+                'created_at': batch['created_at'].isoformat() if batch['created_at'] else None,
+                'updated_at': batch['updated_at'].isoformat() if batch['updated_at'] else None,
+                'items': items
+            }
+
+            return jsonify(result), 200
+
+    except Exception as e:
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"Error fetching production details: {error_trace}")
+        return jsonify({'error': f'Failed to fetch production details: {str(e)}'}), 500

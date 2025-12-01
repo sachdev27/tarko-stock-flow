@@ -13,7 +13,9 @@ import {
   Menu,
   X,
   Clock,
-  TruckIcon
+  TruckIcon,
+  Database,
+  PackageX
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -32,9 +34,11 @@ export const Layout = ({ children }: LayoutProps) => {
     { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
     { icon: Package, label: 'Production', path: '/production' },
     { icon: Package, label: 'Inventory', path: '/inventory' },
-    { icon: ArrowRightLeft, label: 'Transactions', path: '/transactions' },
+    { icon: ArrowRightLeft, label: 'Activity', path: '/transactions' },
     { icon: TruckIcon, label: 'Dispatch', path: '/dispatch' },
+    { icon: PackageX, label: 'Returns', path: '/returns' },
     { icon: FileText, label: 'Reports', path: '/reports' },
+    { icon: Database, label: 'Details', path: '/details' },
   ];
 
   if (isAdmin) {

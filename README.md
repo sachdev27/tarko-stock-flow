@@ -77,9 +77,22 @@ Visit `http://localhost:8080` to access the application.
 
 ## 📚 Documentation
 
-- **[MIGRATION_GUIDE.md](./MIGRATION_GUIDE.md)** - Migration from Supabase to local PostgreSQL
+### Deployment & Setup
+- **[Deployment Guide](./docs/deployment/DEPLOYMENT_GUIDE.md)** - Production deployment instructions
+- **[Docker Setup](./docs/deployment/DOCKER_README.md)** - Containerized deployment
+- **[Dev Setup](./docs/deployment/DEV_SETUP.md)** - Development environment setup
+- **[Production Config](./docs/deployment/PRODUCTION_CONFIG.md)** - Production configuration
+
+### Features
+- **[Cloud Backup](./docs/features/CLOUD_BACKUP_SETUP.md)** - R2/S3 backup configuration
+- **[Version Control](./docs/features/VERSION_CONTROL_README.md)** - Database snapshots & rollback
+- **[Dashboard Features](./docs/features/DASHBOARD_REVAMP.md)** - Dashboard capabilities
+- **[Transactions](./docs/features/TRANSACTIONS_PAGE_FEATURES.md)** - Transaction system features
+
+### Backend
 - **[Backend README](./backend/README.md)** - Backend API documentation
 - **[Database Schema](./backend/schema.sql)** - Complete database structure
+- **[Backend Docs](./backend/docs/)** - Additional backend documentation
 
 ## 🏗️ Tech Stack
 

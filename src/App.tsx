@@ -6,15 +6,15 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import Auth from "./pages/Auth";
-import Dashboard from "./pages/DashboardNew";
+import Dashboard from "./pages/Dashboard";
 import Production from "./pages/Production";
-import Inventory from "./pages/Inventory";
+import Inventory from "./pages/InventoryNew";
 import Transactions from "./pages/TransactionsNew";
-import Dispatch from "./pages/DispatchNew";
-import Reports from "./pages/ReportsNew";
+import Dispatch from "./pages/Dispatch";
+import Return from "./pages/Return";
+import Reports from "./pages/Reports";
 import Admin from "./pages/Admin";
-import ExportHDPE from "./pages/ExportHDPE";
-import ExportSprinkler from "./pages/ExportSprinkler";
+import Details from "./pages/Details";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -70,6 +70,14 @@ const App = () => (
               }
             />
             <Route
+              path="/returns"
+              element={
+                <ProtectedRoute requireUser>
+                  <Return />
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/reports"
               element={
                 <ProtectedRoute>
@@ -86,21 +94,16 @@ const App = () => (
               }
             />
             <Route
-              path="/export/hdpe"
+              path="/details"
               element={
-                <ProtectedRoute>
-                  <ExportHDPE />
+                <ProtectedRoute requireUser>
+                  <Details />
                 </ProtectedRoute>
               }
             />
-            <Route
-              path="/export/sprinkler"
-              element={
-                <ProtectedRoute>
-                  <ExportSprinkler />
-                </ProtectedRoute>
-              }
-            />
+            {/* Redirect old return routes to new unified route */}
+            <Route path="/returns/new" element={<Navigate to="/returns" replace />} />
+            <Route path="/returns/history" element={<Navigate to="/returns" replace />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

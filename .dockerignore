@@ -1,0 +1,56 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Dependencies
+node_modules
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv
+env
+ENV
+
+# Build files
+dist
+build
+*.egg-info
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs
+
+# Test files
+.pytest_cache
+.coverage
+htmlcov
+
+# Documentation
+README.md
+*.md
+!DEPLOYMENT.md
+
+# Environment
+.env
+.env.local
+.env.production
+
+# Uploads and data (handled by volumes)
+uploads
+snapshots
+backups
+postgres_data

@@ -21,6 +21,7 @@ dist-ssr
 # Python
 backend/venv/
 backend/__pycache__/
+backend/**/__pycache__/
 backend/*.pyc
 backend/*.pyo
 backend/*.pyd
@@ -68,6 +69,22 @@ bun.lockb
 
 # Google Drive credentials (SECURITY: Never commit!)
 backend/google_drive_credentials.json
+
+# Snapshots and Backups (user data)
+snapshots/
+backups/
+external_backups/
+temp_exports/
+backend/uploads/
+backend/scripts/
+backend/snapshots/
+backend/backups/
+backend/external_backups/
+backend/temp_exports/
+
+# Temporary files
+overview.json
+*.log
 
 # Images and pdf
 *.png
