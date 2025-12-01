@@ -1,0 +1,31 @@
+# Test Dependencies for Tarko Inventory System
+
+# Core Testing Framework
+pytest==7.4.3
+pytest-cov==4.1.0
+pytest-mock==3.12.0
+pytest-xdist==3.5.0  # Parallel test execution
+pytest-timeout==2.2.0  # Timeout support
+
+# HTTP Testing
+requests==2.31.0
+requests-mock==1.11.0
+
+# Database Testing
+pytest-postgresql==5.0.0
+psycopg2-binary==2.9.9
+
+# Code Quality
+coverage==7.3.4
+pytest-html==4.1.1  # HTML test reports
+
+# Fixtures and Factories
+faker==20.1.0  # Fake data generation
+factory-boy==3.3.0  # Test fixture factories
+
+# Performance Testing
+pytest-benchmark==4.0.0
+
+# Additional Utilities
+freezegun==1.4.0  # Mock datetime
+responses==0.24.1  # Mock HTTP responses
