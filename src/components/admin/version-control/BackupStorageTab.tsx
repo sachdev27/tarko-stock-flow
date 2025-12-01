@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
+import { Switch } from '@/components/ui/switch';
 import { Database, RotateCcw, Trash2, CloudUpload, Upload, Save, HardDrive, FolderOpen, RefreshCw, FileUp, Download, Loader2 } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 import { useState, useEffect, useRef } from 'react';
@@ -20,6 +21,9 @@ interface BackupStorageTabProps {
     message: string;
     snapshotId?: string;
   };
+  autoSnapshotEnabled?: boolean;
+  autoSnapshotTime?: string;
+  onToggleAutoSnapshot?: (enabled: boolean) => void;
   onCreateSnapshot: () => void;
   onRollback: (snapshot: any) => void;
   onDelete: (snapshotId: string) => void;
@@ -37,6 +41,9 @@ export const BackupStorageTab = ({
   cloudStatus,
   storageStats,
   operationProgress,
+  autoSnapshotEnabled = false,
+  autoSnapshotTime = '00:00',
+  onToggleAutoSnapshot,
   onCreateSnapshot,
   onRollback,
   onDelete,
@@ -54,6 +61,10 @@ export const BackupStorageTab = ({
   const [systemUsername, setSystemUsername] = useState('');
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Multi-select state
+  const [selectedSnapshots, setSelectedSnapshots] = useState<Set<string>>(new Set());
+  const [selectAll, setSelectAll] = useState(false);
 
   useEffect(() => {
     fetchSuggestedPaths();
@@ -127,6 +138,58 @@ export const BackupStorageTab = ({
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
+    }
+  };
+
+  const handleSelectSnapshot = (snapshotId: string) => {
+    const newSelected = new Set(selectedSnapshots);
+    if (newSelected.has(snapshotId)) {
+      newSelected.delete(snapshotId);
+    } else {
+      newSelected.add(snapshotId);
+    }
+    setSelectedSnapshots(newSelected);
+    setSelectAll(newSelected.size === snapshots.length);
+  };
+
+  const handleSelectAll = () => {
+    if (selectAll) {
+      setSelectedSnapshots(new Set());
+      setSelectAll(false);
+    } else {
+      setSelectedSnapshots(new Set(snapshots.map(s => s.id)));
+      setSelectAll(true);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedSnapshots.size === 0) {
+      toast.error('No snapshots selected');
+      return;
+    }
+
+    if (!confirm(`Delete ${selectedSnapshots.size} selected snapshot(s)?`)) return;
+
+    try {
+      const response = await versionControl.bulkDeleteSnapshots(Array.from(selectedSnapshots));
+      toast.success(response.data.message);
+      setSelectedSnapshots(new Set());
+      setSelectAll(false);
+      window.location.reload();
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Failed to delete snapshots');
+    }
+  };
+
+  const handleCleanupOld = async (days: number) => {
+    if (!confirm(`Delete all automatic snapshots older than ${days} days?`)) return;
+
+    try {
+      const response = await versionControl.cleanupOldSnapshots(days);
+      toast.success(response.data.message);
+      window.location.reload();
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Failed to cleanup old snapshots');
     }
   };
 
@@ -205,14 +268,41 @@ export const BackupStorageTab = ({
               {cloudStatus?.enabled && ' • Auto-syncs to cloud'}
             </CardDescription>
           </div>
-          <Button onClick={onCreateSnapshot} variant="default">
-            <Save className="h-4 w-4 mr-2" />
-            Create Snapshot
-          </Button>
+          <div className="flex gap-2">
+            {selectedSnapshots.size > 0 && (
+              <Button onClick={handleBulkDelete} variant="destructive" size="sm">
+                <Trash2 className="h-4 w-4 mr-2" />
+                Delete ({selectedSnapshots.size})
+              </Button>
+            )}
+            <Button onClick={onCreateSnapshot} variant="default">
+              <Save className="h-4 w-4 mr-2" />
+              Create Snapshot
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent>
         <div className="space-y-6">
+          {/* Auto-Snapshot Toggle */}
+          <div className="p-4 border rounded-lg bg-muted/20">
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <Label className="text-base font-semibold flex items-center gap-2">
+                  🤖 Daily Auto-Snapshot
+                </Label>
+                <p className="text-sm text-muted-foreground">
+                  Automatically create snapshots daily at {autoSnapshotTime}
+                  {cloudStatus?.enabled && ' and sync to cloud'}
+                </p>
+              </div>
+              <Switch
+                checked={autoSnapshotEnabled}
+                onCheckedChange={onToggleAutoSnapshot}
+              />
+            </div>
+          </div>
+
           {/* Progress Indicator */}
           {operationProgress && operationProgress.type && ['upload', 'import', 'export'].includes(operationProgress.type) && (
             <div className="p-4 border rounded-lg bg-primary/5 space-y-3">
@@ -265,32 +355,75 @@ export const BackupStorageTab = ({
           {/* Local Snapshots Section */}
           {activeSection === 'local' && (
             <div className="space-y-4">
-              {/* Upload Button */}
-              <div className="flex justify-between items-center">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".zip,.tar.gz,.tar,.tgz"
-                  onChange={handleFileUpload}
-                  style={{ display: 'none' }}
-                />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleUploadClick}
-                  disabled={uploading}
-                >
-                  <FileUp className="h-4 w-4 mr-2" />
-                  {uploading ? 'Uploading...' : 'Upload Snapshot'}
-                </Button>
+              {/* Upload and Cleanup Actions */}
+              <div className="flex justify-between items-center gap-2">
+                <div className="flex gap-2">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".zip,.tar.gz,.tar,.tgz"
+                    onChange={handleFileUpload}
+                    style={{ display: 'none' }}
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleUploadClick}
+                    disabled={uploading}
+                  >
+                    <FileUp className="h-4 w-4 mr-2" />
+                    {uploading ? 'Uploading...' : 'Upload Snapshot'}
+                  </Button>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleCleanupOld(7)}
+                    title="Delete automatic snapshots older than 7 days"
+                  >
+                    Clean 7d+
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleCleanupOld(30)}
+                    title="Delete automatic snapshots older than 30 days"
+                  >
+                    Clean 30d+
+                  </Button>
+                </div>
               </div>
+
+              {/* Select All Checkbox */}
+              {snapshots.length > 0 && (
+                <div className="flex items-center gap-2 p-3 border rounded-lg bg-muted/30">
+                  <input
+                    type="checkbox"
+                    checked={selectAll}
+                    onChange={handleSelectAll}
+                    className="h-4 w-4 cursor-pointer"
+                  />
+                  <label className="text-sm font-medium cursor-pointer" onClick={handleSelectAll}>
+                    Select All ({selectedSnapshots.size}/{snapshots.length})
+                  </label>
+                </div>
+              )}
 
               {snapshots.length > 0 ? (
                 snapshots.map((snapshot) => (
                   <div
                     key={snapshot.id}
-                    className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors"
+                    className={`flex items-center gap-3 p-4 border rounded-lg hover:bg-muted/50 transition-colors ${
+                      selectedSnapshots.has(snapshot.id) ? 'bg-primary/5 border-primary' : ''
+                    }`}
                   >
+                    <input
+                      type="checkbox"
+                      checked={selectedSnapshots.has(snapshot.id)}
+                      onChange={() => handleSelectSnapshot(snapshot.id)}
+                      className="h-4 w-4 cursor-pointer"
+                    />
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
                         <h3 className="font-semibold">{snapshot.snapshot_name}</h3>
@@ -310,12 +443,13 @@ export const BackupStorageTab = ({
                         <p className="text-sm text-muted-foreground mt-1">{snapshot.description}</p>
                       )}
                       <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
-                        <span>Created: {formatDate(snapshot.created_at)}</span>
-                        <span>By: {snapshot.created_by_name || snapshot.created_by_username}</span>
-                        <span>Size: {parseFloat(snapshot.file_size_mb || 0).toFixed(2)} MB</span>
+                        <span>📅 {new Date(snapshot.created_at).toLocaleDateString()}</span>
+                        <span>🕐 {new Date(snapshot.created_at).toLocaleTimeString()}</span>
+                        <span>👤 {snapshot.created_by_name || snapshot.created_by_username}</span>
+                        <span>💾 {parseFloat(snapshot.file_size_mb || 0).toFixed(2)} MB</span>
                         {snapshot.table_counts && (
                           <span>
-                            {Object.keys(snapshot.table_counts).length} tables
+                            📊 {Object.keys(snapshot.table_counts).length} tables
                           </span>
                         )}
                       </div>

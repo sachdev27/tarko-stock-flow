@@ -63,9 +63,14 @@ export const VersionControlTab = ({ snapshots, rollbackHistory, onDataChange }: 
   const [storagePathDialog, setStoragePathDialog] = useState(false);
   const [storageStats, setStorageStats] = useState<any>(null);
 
+  // Auto-snapshot state
+  const [autoSnapshotEnabled, setAutoSnapshotEnabled] = useState(false);
+  const [autoSnapshotTime, setAutoSnapshotTime] = useState('00:00');
+
   useEffect(() => {
     fetchCloudStatus();
     fetchStorageStats();
+    fetchAutoSnapshotSettings();
   }, []);
 
   const fetchStorageStats = async () => {
@@ -74,6 +79,29 @@ export const VersionControlTab = ({ snapshots, rollbackHistory, onDataChange }: 
       setStorageStats(response.data);
     } catch (error: any) {
       console.error('Failed to fetch storage stats:', error);
+    }
+  };
+
+  const fetchAutoSnapshotSettings = async () => {
+    try {
+      const response = await versionControl.getAutoSnapshotSettings();
+      setAutoSnapshotEnabled(response.data.enabled);
+      setAutoSnapshotTime(response.data.time);
+    } catch (error: any) {
+      console.error('Failed to fetch auto-snapshot settings:', error);
+    }
+  };
+
+  const handleToggleAutoSnapshot = async (enabled: boolean) => {
+    try {
+      await versionControl.updateAutoSnapshotSettings({
+        enabled,
+        time: autoSnapshotTime
+      });
+      setAutoSnapshotEnabled(enabled);
+      toast.success(`Daily auto-snapshot ${enabled ? 'enabled' : 'disabled'}${enabled && cloudStatus?.enabled ? ' with cloud sync' : ''}`);
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Failed to update auto-snapshot settings');
     }
   };
 
@@ -435,6 +463,9 @@ export const VersionControlTab = ({ snapshots, rollbackHistory, onDataChange }: 
             cloudStatus={cloudStatus}
             storageStats={storageStats}
             operationProgress={operationProgress}
+            autoSnapshotEnabled={autoSnapshotEnabled}
+            autoSnapshotTime={autoSnapshotTime}
+            onToggleAutoSnapshot={handleToggleAutoSnapshot}
             onCreateSnapshot={() => setSnapshotDialog(true)}
             onRollback={openRollbackDialog}
             onDelete={handleDeleteSnapshot}

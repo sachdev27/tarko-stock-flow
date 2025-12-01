@@ -1,3 +1,4 @@
+import React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -6,6 +7,8 @@ import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { Cloud, CloudDownload, RotateCcw, Trash2, Settings, RefreshCw, CloudUpload, CheckCircle2, XCircle, Clock, Loader2 } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
+import { versionControl } from '@/lib/api';
+import { toast } from 'sonner';
 
 interface CloudBackupTabProps {
   cloudStatus: any;
@@ -47,6 +50,9 @@ export const CloudBackupTab = ({
   onManualSync,
   onCreateAndUpload,
 }: CloudBackupTabProps) => {
+  const [selectedCloudSnapshots, setSelectedCloudSnapshots] = React.useState<Set<string>>(new Set());
+  const [selectAllCloud, setSelectAllCloud] = React.useState(false);
+
   const getUnsyncedSnapshots = () => {
     if (!localSnapshots || !cloudSnapshots) return [];
     const cloudIds = new Set(cloudSnapshots.map(s => s.id));
@@ -56,6 +62,58 @@ export const CloudBackupTab = ({
   const unsyncedSnapshots = getUnsyncedSnapshots();
 
   const isOperationActive = operationProgress && operationProgress.type && ['upload', 'download', 'restore'].includes(operationProgress.type);
+
+  const handleSelectCloudSnapshot = (snapshotId: string) => {
+    const newSelected = new Set(selectedCloudSnapshots);
+    if (newSelected.has(snapshotId)) {
+      newSelected.delete(snapshotId);
+    } else {
+      newSelected.add(snapshotId);
+    }
+    setSelectedCloudSnapshots(newSelected);
+    setSelectAllCloud(newSelected.size === cloudSnapshots.length);
+  };
+
+  const handleSelectAllCloud = () => {
+    if (selectAllCloud) {
+      setSelectedCloudSnapshots(new Set());
+      setSelectAllCloud(false);
+    } else {
+      setSelectedCloudSnapshots(new Set(cloudSnapshots.map(s => s.id)));
+      setSelectAllCloud(true);
+    }
+  };
+
+  const handleBulkDeleteCloud = async () => {
+    if (selectedCloudSnapshots.size === 0) {
+      toast.error('No cloud snapshots selected');
+      return;
+    }
+
+    if (!confirm(`Delete ${selectedCloudSnapshots.size} selected cloud snapshot(s)?`)) return;
+
+    try {
+      const response = await versionControl.bulkDeleteCloudSnapshots(Array.from(selectedCloudSnapshots));
+      toast.success(response.data.message);
+      setSelectedCloudSnapshots(new Set());
+      setSelectAllCloud(false);
+      window.location.reload();
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Failed to delete cloud snapshots');
+    }
+  };
+
+  const handleCleanupOldCloud = async (days: number) => {
+    if (!confirm(`Delete all cloud snapshots older than ${days} days?`)) return;
+
+    try {
+      const response = await versionControl.cleanupOldCloudSnapshots(days);
+      toast.success(response.data.message);
+      window.location.reload();
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Failed to cleanup old cloud snapshots');
+    }
+  };
 
   return (
     <Card>
@@ -79,6 +137,12 @@ export const CloudBackupTab = ({
           </div>
           {cloudStatus?.enabled ? (
             <div className="flex gap-2">
+              {selectedCloudSnapshots.size > 0 && (
+                <Button onClick={handleBulkDeleteCloud} variant="destructive" size="sm">
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete ({selectedCloudSnapshots.size})
+                </Button>
+              )}
               <Button variant="outline" size="sm" onClick={onEditConfig}>
                 <Settings className="h-4 w-4 mr-2" />
                 Settings
@@ -214,7 +278,43 @@ export const CloudBackupTab = ({
 
             {/* Cloud Snapshots */}
             <div>
-              <h3 className="font-semibold text-sm mb-3">Cloud Backups ({cloudSnapshots.length})</h3>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-semibold text-sm">Cloud Backups ({cloudSnapshots.length})</h3>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleCleanupOldCloud(7)}
+                    title="Delete cloud snapshots older than 7 days"
+                  >
+                    Clean 7d+
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleCleanupOldCloud(30)}
+                    title="Delete cloud snapshots older than 30 days"
+                  >
+                    Clean 30d+
+                  </Button>
+                </div>
+              </div>
+
+              {/* Select All Checkbox */}
+              {cloudSnapshots.length > 0 && (
+                <div className="flex items-center gap-2 p-3 border rounded-lg bg-muted/30 mb-3">
+                  <input
+                    type="checkbox"
+                    checked={selectAllCloud}
+                    onChange={handleSelectAllCloud}
+                    className="h-4 w-4 cursor-pointer"
+                  />
+                  <label className="text-sm font-medium cursor-pointer" onClick={handleSelectAllCloud}>
+                    Select All ({selectedCloudSnapshots.size}/{cloudSnapshots.length})
+                  </label>
+                </div>
+              )}
+
               {cloudLoading ? (
                 <div className="text-center py-8 text-muted-foreground">Loading cloud snapshots...</div>
               ) : cloudSnapshots.length > 0 ? (
@@ -222,8 +322,16 @@ export const CloudBackupTab = ({
                   {cloudSnapshots.map((snapshot) => (
                     <div
                       key={snapshot.id}
-                      className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors"
+                      className={`flex items-center gap-3 p-4 border rounded-lg hover:bg-muted/50 transition-colors ${
+                        selectedCloudSnapshots.has(snapshot.id) ? 'bg-primary/5 border-primary' : ''
+                      }`}
                     >
+                      <input
+                        type="checkbox"
+                        checked={selectedCloudSnapshots.has(snapshot.id)}
+                        onChange={() => handleSelectCloudSnapshot(snapshot.id)}
+                        className="h-4 w-4 cursor-pointer"
+                      />
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
                           <Cloud className="h-4 w-4 text-blue-500" />
@@ -231,9 +339,10 @@ export const CloudBackupTab = ({
                           <Badge variant="outline" className="text-xs">{snapshot.provider}</Badge>
                         </div>
                         <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
-                          <span>Uploaded: {formatDate(snapshot.uploaded_at)}</span>
-                          <span>Size: {snapshot.total_size_mb?.toFixed(2)} MB</span>
-                          <span>{snapshot.file_count} files</span>
+                          <span>📅 {new Date(snapshot.uploaded_at).toLocaleDateString()}</span>
+                          <span>🕐 {new Date(snapshot.uploaded_at).toLocaleTimeString()}</span>
+                          <span>💾 {snapshot.total_size_mb?.toFixed(2)} MB</span>
+                          <span>📂 {snapshot.file_count} files</span>
                         </div>
                       </div>
                       <div className="flex items-center gap-2">

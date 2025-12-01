@@ -289,19 +289,30 @@ def create_snapshot():
 @version_control_bp.route('/snapshots/<uuid:snapshot_id>', methods=['DELETE'])
 @jwt_required_with_role('admin')
 def delete_snapshot(snapshot_id):
-    """Delete a snapshot"""
+    """Delete a snapshot from database and filesystem"""
     user_id = get_jwt_identity()
 
     try:
         with get_db_cursor() as cursor:
             # Check if snapshot exists
             cursor.execute("""
-                SELECT snapshot_name FROM database_snapshots WHERE id = %s
+                SELECT snapshot_name, storage_path FROM database_snapshots WHERE id = %s
             """, (str(snapshot_id),))
 
             snapshot = cursor.fetchone()
             if not snapshot:
                 return jsonify({'error': 'Snapshot not found'}), 404
+
+            # Delete files from filesystem
+            try:
+                storage_base = Path(snapshot.get('storage_path') or snapshot_storage.storage_path)
+                snapshot_path = storage_base / str(snapshot_id)
+                if snapshot_path.exists():
+                    shutil.rmtree(snapshot_path)
+                    current_app.logger.info(f"Deleted snapshot files from: {snapshot_path}")
+            except Exception as fs_error:
+                current_app.logger.error(f"Failed to delete snapshot files: {fs_error}")
+                # Continue with database deletion even if file deletion fails
 
             # Delete rollback history first (FK constraint)
             cursor.execute("""
@@ -326,10 +337,177 @@ def delete_snapshot(snapshot_id):
                 f"{actor['name']} deleted snapshot '{snapshot['snapshot_name']}'"
             ))
 
-            return jsonify({'message': 'Snapshot deleted successfully'}), 200
+            return jsonify({'message': 'Snapshot deleted successfully from database and filesystem'}), 200
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@version_control_bp.route('/snapshots/bulk-delete', methods=['POST'])
+@jwt_required_with_role('admin')
+def bulk_delete_snapshots():
+    """Delete multiple snapshots at once"""
+    user_id = get_jwt_identity()
+    data = request.json or {}
+    snapshot_ids = data.get('snapshot_ids', [])
+
+    if not snapshot_ids:
+        return jsonify({'error': 'No snapshot IDs provided'}), 400
+
+    deleted_count = 0
+    failed_count = 0
+    errors = []
+
+    try:
+        with get_db_cursor() as cursor:
+            for snapshot_id in snapshot_ids:
+                try:
+                    # Check if snapshot exists
+                    cursor.execute("""
+                        SELECT snapshot_name, storage_path FROM database_snapshots WHERE id = %s
+                    """, (str(snapshot_id),))
+
+                    snapshot = cursor.fetchone()
+                    if not snapshot:
+                        failed_count += 1
+                        errors.append(f"Snapshot {snapshot_id} not found")
+                        continue
+
+                    # Delete files from filesystem
+                    try:
+                        storage_base = Path(snapshot.get('storage_path') or snapshot_storage.storage_path)
+                        snapshot_path = storage_base / str(snapshot_id)
+                        if snapshot_path.exists():
+                            shutil.rmtree(snapshot_path)
+                    except Exception as fs_error:
+                        current_app.logger.error(f"Failed to delete snapshot files for {snapshot_id}: {fs_error}")
+
+                    # Delete rollback history
+                    cursor.execute("""
+                        DELETE FROM rollback_history WHERE snapshot_id = %s
+                    """, (str(snapshot_id),))
+
+                    # Delete snapshot
+                    cursor.execute("""
+                        DELETE FROM database_snapshots WHERE id = %s
+                    """, (str(snapshot_id),))
+
+                    deleted_count += 1
+
+                    # Create audit log
+                    actor = get_user_identity_details(user_id)
+                    cursor.execute("""
+                        INSERT INTO audit_logs (
+                            user_id, action_type, entity_type, entity_id,
+                            description, created_at
+                        ) VALUES (%s, 'DELETE_SNAPSHOT', 'SNAPSHOT', %s, %s, NOW())
+                    """, (
+                        user_id,
+                        str(snapshot_id),
+                        f"{actor['name']} bulk deleted snapshot '{snapshot['snapshot_name']}'"
+                    ))
+
+                except Exception as e:
+                    failed_count += 1
+                    errors.append(f"Failed to delete {snapshot_id}: {str(e)}")
+                    current_app.logger.error(f"Error deleting snapshot {snapshot_id}: {str(e)}")
+
+            return jsonify({
+                'message': f'Bulk delete completed: {deleted_count} deleted, {failed_count} failed',
+                'deleted_count': deleted_count,
+                'failed_count': failed_count,
+                'errors': errors if errors else None
+            }), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@version_control_bp.route('/snapshots/cleanup-old', methods=['POST'])
+@jwt_required_with_role('admin')
+def cleanup_old_snapshots():
+    """Delete snapshots older than specified days"""
+    user_id = get_jwt_identity()
+    data = request.json or {}
+    days = data.get('days', 7)  # Default to 7 days
+
+    try:
+        with get_db_cursor() as cursor:
+            # Find old snapshots
+            cursor.execute("""
+                SELECT id, snapshot_name, storage_path, created_at
+                FROM database_snapshots
+                WHERE created_at < NOW() - INTERVAL '%s days'
+                AND is_automatic = true
+                ORDER BY created_at ASC
+            """, (days,))
+
+            old_snapshots = cursor.fetchall()
+
+            if not old_snapshots:
+                return jsonify({
+                    'message': f'No automatic snapshots older than {days} days found',
+                    'deleted_count': 0
+                }), 200
+
+            deleted_count = 0
+            failed_count = 0
+            errors = []
+
+            for snapshot in old_snapshots:
+                try:
+                    snapshot_id = snapshot['id']
+
+                    # Delete files from filesystem
+                    try:
+                        storage_base = Path(snapshot.get('storage_path') or snapshot_storage.storage_path)
+                        snapshot_path = storage_base / str(snapshot_id)
+                        if snapshot_path.exists():
+                            shutil.rmtree(snapshot_path)
+                    except Exception as fs_error:
+                        current_app.logger.error(f"Failed to delete snapshot files for {snapshot_id}: {fs_error}")
+
+                    # Delete rollback history
+                    cursor.execute("""
+                        DELETE FROM rollback_history WHERE snapshot_id = %s
+                    """, (str(snapshot_id),))
+
+                    # Delete snapshot
+                    cursor.execute("""
+                        DELETE FROM database_snapshots WHERE id = %s
+                    """, (str(snapshot_id),))
+
+                    deleted_count += 1
+
+                    # Create audit log
+                    actor = get_user_identity_details(user_id)
+                    cursor.execute("""
+                        INSERT INTO audit_logs (
+                            user_id, action_type, entity_type, entity_id,
+                            description, created_at
+                        ) VALUES (%s, 'DELETE_SNAPSHOT', 'SNAPSHOT', %s, %s, NOW())
+                    """, (
+                        user_id,
+                        str(snapshot_id),
+                        f"{actor['name']} auto-cleaned old snapshot '{snapshot['snapshot_name']}' (older than {days} days)"
+                    ))
+
+                except Exception as e:
+                    failed_count += 1
+                    errors.append(f"Failed to delete {snapshot_id}: {str(e)}")
+                    current_app.logger.error(f"Error deleting snapshot {snapshot_id}: {str(e)}")
+
+            return jsonify({
+                'message': f'Cleanup completed: {deleted_count} snapshots deleted (older than {days} days)',
+                'deleted_count': deleted_count,
+                'failed_count': failed_count,
+                'days': days,
+                'errors': errors if errors else None
+            }), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 
 @version_control_bp.route('/rollback/<uuid:snapshot_id>', methods=['POST'])
 @jwt_required_with_role('admin')
@@ -858,6 +1036,76 @@ def get_local_storage_stats():
         return jsonify({'error': str(e)}), 500
 
 
+@version_control_bp.route('/settings/auto-snapshot', methods=['GET', 'POST'])
+@jwt_required_with_role('admin')
+def auto_snapshot_settings():
+    """Get or update auto-snapshot settings"""
+    if request.method == 'GET':
+        try:
+            with get_db_cursor() as cursor:
+                cursor.execute("""
+                    SELECT setting_value FROM system_settings
+                    WHERE setting_key = 'auto_snapshot_enabled'
+                """)
+                result = cursor.fetchone()
+                enabled = result['setting_value'] == 'true' if result else False
+
+                cursor.execute("""
+                    SELECT setting_value FROM system_settings
+                    WHERE setting_key = 'auto_snapshot_time'
+                """)
+                result = cursor.fetchone()
+                time = result['setting_value'] if result else '00:00'
+
+                return jsonify({
+                    'enabled': enabled,
+                    'time': time
+                }), 200
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
+    else:  # POST
+        data = request.json or {}
+        enabled = data.get('enabled', False)
+        time = data.get('time', '00:00')
+
+        try:
+            with get_db_cursor() as cursor:
+                # Create system_settings table if it doesn't exist
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS system_settings (
+                        id SERIAL PRIMARY KEY,
+                        setting_key VARCHAR(100) UNIQUE NOT NULL,
+                        setting_value TEXT,
+                        updated_at TIMESTAMP DEFAULT NOW()
+                    )
+                """)
+
+                # Update or insert auto_snapshot_enabled
+                cursor.execute("""
+                    INSERT INTO system_settings (setting_key, setting_value, updated_at)
+                    VALUES ('auto_snapshot_enabled', %s, NOW())
+                    ON CONFLICT (setting_key)
+                    DO UPDATE SET setting_value = %s, updated_at = NOW()
+                """, (str(enabled).lower(), str(enabled).lower()))
+
+                # Update or insert auto_snapshot_time
+                cursor.execute("""
+                    INSERT INTO system_settings (setting_key, setting_value, updated_at)
+                    VALUES ('auto_snapshot_time', %s, NOW())
+                    ON CONFLICT (setting_key)
+                    DO UPDATE SET setting_value = %s, updated_at = NOW()
+                """, (time, time))
+
+                return jsonify({
+                    'message': 'Auto-snapshot settings updated',
+                    'enabled': enabled,
+                    'time': time
+                }), 200
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
+
 # ==================== CLOUD STORAGE ROUTES ====================
 
 @version_control_bp.route('/cloud/status', methods=['GET'])
@@ -1224,6 +1472,111 @@ def delete_cloud_snapshot(snapshot_id):
             }), 200
         else:
             return jsonify({'error': 'Failed to delete snapshot from cloud'}), 500
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@version_control_bp.route('/cloud/snapshots/bulk-delete', methods=['POST'])
+@jwt_required_with_role('admin')
+def bulk_delete_cloud_snapshots():
+    """Delete multiple snapshots from cloud at once"""
+    data = request.json or {}
+    snapshot_ids = data.get('snapshot_ids', [])
+
+    if not snapshot_ids:
+        return jsonify({'error': 'No snapshot IDs provided'}), 400
+
+    try:
+        if not cloud_storage.enabled:
+            return jsonify({'error': 'Cloud backup is not enabled'}), 400
+
+        deleted_count = 0
+        failed_count = 0
+        errors = []
+
+        for snapshot_id in snapshot_ids:
+            try:
+                success = cloud_storage.delete_cloud_snapshot(snapshot_id)
+                if success:
+                    deleted_count += 1
+                else:
+                    failed_count += 1
+                    errors.append(f"Failed to delete {snapshot_id} from cloud")
+            except Exception as e:
+                failed_count += 1
+                errors.append(f"Error deleting {snapshot_id}: {str(e)}")
+                current_app.logger.error(f"Error deleting cloud snapshot {snapshot_id}: {str(e)}")
+
+        return jsonify({
+            'message': f'Bulk delete completed: {deleted_count} deleted, {failed_count} failed',
+            'deleted_count': deleted_count,
+            'failed_count': failed_count,
+            'errors': errors if errors else None
+        }), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@version_control_bp.route('/cloud/snapshots/cleanup-old', methods=['POST'])
+@jwt_required_with_role('admin')
+def cleanup_old_cloud_snapshots():
+    """Delete cloud snapshots older than specified days"""
+    data = request.json or {}
+    days = data.get('days', 7)  # Default to 7 days
+
+    try:
+        if not cloud_storage.enabled:
+            return jsonify({'error': 'Cloud backup is not enabled'}), 400
+
+        # List all cloud snapshots
+        snapshots = cloud_storage.list_cloud_snapshots()
+
+        # Filter snapshots older than specified days
+        from datetime import datetime, timedelta
+        cutoff_date = datetime.now() - timedelta(days=days)
+
+        old_snapshots = []
+        for snapshot in snapshots:
+            try:
+                uploaded_at = datetime.fromisoformat(snapshot.get('uploaded_at', '').replace('Z', '+00:00'))
+                if uploaded_at < cutoff_date:
+                    old_snapshots.append(snapshot)
+            except Exception as e:
+                current_app.logger.error(f"Error parsing date for snapshot {snapshot.get('id')}: {str(e)}")
+
+        if not old_snapshots:
+            return jsonify({
+                'message': f'No cloud snapshots older than {days} days found',
+                'deleted_count': 0
+            }), 200
+
+        deleted_count = 0
+        failed_count = 0
+        errors = []
+
+        for snapshot in old_snapshots:
+            try:
+                snapshot_id = snapshot['id']
+                success = cloud_storage.delete_cloud_snapshot(snapshot_id)
+                if success:
+                    deleted_count += 1
+                else:
+                    failed_count += 1
+                    errors.append(f"Failed to delete {snapshot_id}")
+            except Exception as e:
+                failed_count += 1
+                errors.append(f"Error deleting {snapshot_id}: {str(e)}")
+                current_app.logger.error(f"Error deleting cloud snapshot {snapshot_id}: {str(e)}")
+
+        return jsonify({
+            'message': f'Cleanup completed: {deleted_count} cloud snapshots deleted (older than {days} days)',
+            'deleted_count': deleted_count,
+            'failed_count': failed_count,
+            'days': days,
+            'errors': errors if errors else None
+        }), 200
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500

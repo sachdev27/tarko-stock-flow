@@ -297,6 +297,18 @@ export const versionControl = {
   deleteSnapshot: (snapshotId: string) =>
     api.delete(`/version-control/snapshots/${snapshotId}`),
 
+  bulkDeleteSnapshots: (snapshotIds: string[]) =>
+    api.post('/version-control/snapshots/bulk-delete', { snapshot_ids: snapshotIds }),
+
+  cleanupOldSnapshots: (days: number) =>
+    api.post('/version-control/snapshots/cleanup-old', { days }),
+
+  getAutoSnapshotSettings: () =>
+    api.get('/version-control/settings/auto-snapshot'),
+
+  updateAutoSnapshotSettings: (data: { enabled: boolean; time: string }) =>
+    api.post('/version-control/settings/auto-snapshot', data),
+
   rollbackToSnapshot: (snapshotId: string, confirm: boolean = false) =>
     api.post(`/version-control/rollback/${snapshotId}`, { confirm }),
 
@@ -337,6 +349,12 @@ export const versionControl = {
 
   deleteFromCloud: (snapshotId: string) =>
     api.delete(`/version-control/cloud/snapshots/${snapshotId}`),
+
+  bulkDeleteCloudSnapshots: (snapshotIds: string[]) =>
+    api.post('/version-control/cloud/snapshots/bulk-delete', { snapshot_ids: snapshotIds }),
+
+  cleanupOldCloudSnapshots: (days: number) =>
+    api.post('/version-control/cloud/snapshots/cleanup-old', { days }),
 
   // External Storage
   detectExternalDevices: () =>
