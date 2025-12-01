@@ -22,16 +22,13 @@ vi.mock('react-router-dom', async () => {
   };
 });
 
-// Mock toast from sonner
-vi.mock('sonner', () => ({
-  toast: {
-    success: vi.fn(),
-    error: vi.fn()
-  }
+// Mock toast
+const mockToast = vi.fn();
+vi.mock('@/hooks/use-toast', () => ({
+  useToast: () => ({
+    toast: mockToast
+  })
 }));
-
-import { toast } from 'sonner';
-const mockToast = toast as any;
 
 describe('Auth Page - Login Form', () => {
   const mockSignIn = vi.fn();
@@ -50,8 +47,8 @@ describe('Auth Page - Login Form', () => {
   it('renders login form with identifier and password fields', () => {
     render(<Auth />);
 
-    expect(screen.getByLabelText(/email or username/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/password/i)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/email.*username/i)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/password/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /sign in/i })).toBeInTheDocument();
   });
 
@@ -74,7 +71,7 @@ describe('Auth Page - Login Form', () => {
     const user = userEvent.setup();
     render(<Auth />);
 
-    const identifierInput = screen.getByLabelText(/email or username/i);
+    const identifierInput = screen.getByPlaceholderText(/email.*username/i);
     await user.type(identifierInput, 'testuser');
 
     expect(identifierInput).toHaveValue('testuser');
@@ -84,7 +81,7 @@ describe('Auth Page - Login Form', () => {
     const user = userEvent.setup();
     render(<Auth />);
 
-    const passwordInput = screen.getByLabelText(/password/i);
+    const passwordInput = screen.getByPlaceholderText(/password/i);
     await user.type(passwordInput, 'testpass123');
 
     expect(passwordInput).toHaveValue('testpass123');
@@ -93,7 +90,7 @@ describe('Auth Page - Login Form', () => {
   it('password field has type="password"', () => {
     render(<Auth />);
 
-    const passwordInput = screen.getByLabelText(/password/i);
+    const passwordInput = screen.getByPlaceholderText(/password/i);
     expect(passwordInput).toHaveAttribute('type', 'password');
   });
 });
@@ -120,7 +117,7 @@ describe('Auth Page - Form Validation', () => {
     await user.click(submitButton);
 
     await waitFor(() => {
-      expect(mockToast.error).toHaveBeenCalledWith(
+      expect(mockToast).toHaveBeenCalledWith(
         expect.objectContaining({
           variant: 'destructive',
           title: expect.stringMatching(/error/i)
@@ -134,14 +131,14 @@ describe('Auth Page - Form Validation', () => {
     const user = userEvent.setup();
     render(<Auth />);
 
-    const identifierInput = screen.getByLabelText(/email or username/i);
+    const identifierInput = screen.getByPlaceholderText(/email.*username/i);
     await user.type(identifierInput, 'testuser');
 
     const submitButton = screen.getByRole('button', { name: /sign in/i });
     await user.click(submitButton);
 
     await waitFor(() => {
-      expect(mockToast.error).toHaveBeenCalledWith(
+      expect(mockToast).toHaveBeenCalledWith(
         expect.objectContaining({
           variant: 'destructive',
           title: expect.stringMatching(/error/i)
@@ -159,7 +156,7 @@ describe('Auth Page - Form Validation', () => {
     await user.click(submitButton);
 
     await waitFor(() => {
-      expect(mockToast.error).toHaveBeenCalledWith(
+      expect(mockToast).toHaveBeenCalledWith(
         expect.objectContaining({
           variant: 'destructive'
         })
@@ -189,8 +186,8 @@ describe('Auth Page - Form Submission', () => {
 
     render(<Auth />);
 
-    await user.type(screen.getByLabelText(/email or username/i), 'testuser');
-    await user.type(screen.getByLabelText(/password/i), 'testpass123');
+    await user.type(screen.getByPlaceholderText(/email.*username/i), 'testuser');
+    await user.type(screen.getByPlaceholderText(/password/i), 'testpass123');
     await user.click(screen.getByRole('button', { name: /sign in/i }));
 
     await waitFor(() => {
@@ -204,12 +201,16 @@ describe('Auth Page - Form Submission', () => {
 
     render(<Auth />);
 
-    await user.type(screen.getByLabelText(/email or username/i), 'testuser');
-    await user.type(screen.getByLabelText(/password/i), 'testpass123');
+    await user.type(screen.getByPlaceholderText(/email.*username/i), 'testuser');
+    await user.type(screen.getByPlaceholderText(/password/i), 'testpass123');
     await user.click(screen.getByRole('button', { name: /sign in/i }));
 
     await waitFor(() => {
-      expect(mockToast.success).toHaveBeenCalled();
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: expect.stringMatching(/success/i)
+        })
+      );
       expect(mockNavigate).toHaveBeenCalledWith('/dashboard');
     });
   });
@@ -220,12 +221,12 @@ describe('Auth Page - Form Submission', () => {
 
     render(<Auth />);
 
-    await user.type(screen.getByLabelText(/email or username/i), 'wronguser');
-    await user.type(screen.getByLabelText(/password/i), 'wrongpass');
+    await user.type(screen.getByPlaceholderText(/email.*username/i), 'wronguser');
+    await user.type(screen.getByPlaceholderText(/password/i), 'wrongpass');
     await user.click(screen.getByRole('button', { name: /sign in/i }));
 
     await waitFor(() => {
-      expect(mockToast.error).toHaveBeenCalledWith(
+      expect(mockToast).toHaveBeenCalledWith(
         expect.objectContaining({
           variant: 'destructive',
           description: 'Invalid credentials'
@@ -241,12 +242,12 @@ describe('Auth Page - Form Submission', () => {
 
     render(<Auth />);
 
-    await user.type(screen.getByLabelText(/email or username/i), 'testuser');
-    await user.type(screen.getByLabelText(/password/i), 'testpass123');
+    await user.type(screen.getByPlaceholderText(/email.*username/i), 'testuser');
+    await user.type(screen.getByPlaceholderText(/password/i), 'testpass123');
     await user.click(screen.getByRole('button', { name: /sign in/i }));
 
     await waitFor(() => {
-      expect(mockToast.error).toHaveBeenCalledWith(
+      expect(mockToast).toHaveBeenCalledWith(
         expect.objectContaining({
           variant: 'destructive'
         })
@@ -274,8 +275,8 @@ describe('Auth Page - Form Submission', () => {
 
     render(<Auth />);
 
-    await user.type(screen.getByLabelText(/email or username/i), 'testuser');
-    await user.type(screen.getByLabelText(/password/i), 'testpass123');
+    await user.type(screen.getByPlaceholderText(/email.*username/i), 'testuser');
+    await user.type(screen.getByPlaceholderText(/password/i), 'testpass123');
     await user.click(screen.getByRole('button', { name: /sign in/i }));
 
     // Button should be disabled during submission
@@ -362,8 +363,8 @@ describe('Auth Page - UI Elements', () => {
   it('inputs have proper labels or placeholders', () => {
     render(<Auth />);
 
-    const identifierInput = screen.getByLabelText(/email or username/i);
-    const passwordInput = screen.getByLabelText(/password/i);
+    const identifierInput = screen.getByPlaceholderText(/email.*username/i);
+    const passwordInput = screen.getByPlaceholderText(/password/i);
 
     expect(identifierInput).toHaveAttribute('placeholder');
     expect(passwordInput).toHaveAttribute('placeholder');

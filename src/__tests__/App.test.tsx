@@ -3,7 +3,7 @@
  * Tests routing, navigation, and protected routes
  */
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@/test/test-utils';
+import { renderWithoutRouter } from '@/test/test-utils';
 import App from '../App';
 
 // Mock the pages
@@ -36,34 +36,34 @@ vi.mock('../contexts/AuthContext', () => ({
 
 describe('App Component', () => {
   it('renders without crashing', () => {
-    render(<App />);
+    renderWithoutRouter(<App />);
     expect(document.body).toBeInTheDocument();
   });
 
   it('provides QueryClient to the application', () => {
-    const { container } = render(<App />);
+    const { container } = renderWithoutRouter(<App />);
     expect(container).toBeInTheDocument();
   });
 
   it('wraps application with TooltipProvider', () => {
-    const { container } = render(<App />);
+    const { container } = renderWithoutRouter(<App />);
     expect(container).toBeInTheDocument();
   });
 
   it('includes Toaster components for notifications', () => {
-    const { container } = render(<App />);
+    const { container } = renderWithoutRouter(<App />);
     expect(container).toBeInTheDocument();
   });
 });
 
 describe('App Routing', () => {
   it('has routes configured', () => {
-    const { container } = render(<App />);
+    const { container } = renderWithoutRouter(<App />);
     expect(container).toBeInTheDocument();
   });
 
   it('includes protected routes', () => {
-    const { container } = render(<App />);
+    const { container } = renderWithoutRouter(<App />);
     // ProtectedRoute component should be in use
     expect(container).toBeInTheDocument();
   });

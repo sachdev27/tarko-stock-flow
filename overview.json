@@ -1,6 +1,6 @@
 {
   "rootFolder": "/Users/sachdevs/Projects/Tarko-Inv/tarko-stock-flow",
-  "analyzedAt": "2025-12-01T11:12:52.137Z",
+  "analyzedAt": "2025-12-01T19:33:45.486Z",
   "rootStructure": [
     {
       "name": ".github",
@@ -49,8 +49,8 @@
     {
       "name": "docker-compose.yml",
       "type": "file",
-      "size": 2735,
-      "lines": 106
+      "size": 2775,
+      "lines": 107
     },
     {
       "name": "docs",
@@ -81,20 +81,20 @@
     {
       "name": "overview.json",
       "type": "file",
-      "size": 28559,
+      "size": 28576,
       "lines": 960
     },
     {
       "name": "package-lock.json",
       "type": "file",
-      "size": 232734,
-      "lines": 6471
+      "size": 216489,
+      "lines": 7558
     },
     {
       "name": "package.json",
       "type": "file",
-      "size": 2707,
-      "lines": 84
+      "size": 3078,
+      "lines": 95
     },
     {
       "name": "postcss.config.js",
@@ -149,10 +149,20 @@
       "lines": 23
     },
     {
+      "name": "uploads",
+      "type": "dir"
+    },
+    {
       "name": "vite.config.ts",
       "type": "file",
       "size": 327,
       "lines": 18
+    },
+    {
+      "name": "vitest.config.ts",
+      "type": "file",
+      "size": 610,
+      "lines": 31
     }
   ],
   "rootFileSnippets": {
@@ -267,7 +277,7 @@
     "overview.json": [
       "{",
       "\"rootFolder\": \"/Users/sachdevs/Projects/Tarko-Inv/tarko-stock-flow\",",
-      "\"analyzedAt\": \"2025-12-01T11:10:13.642Z\",",
+      "\"analyzedAt\": \"2025-12-01T11:12:52.137Z\",",
       "\"rootStructure\": [",
       "{",
       "\"name\": \".github\",",
@@ -380,13 +390,25 @@
       "host: \"::\",",
       "port: 8080,",
       "},"
+    ],
+    "vitest.config.ts": [
+      "import { defineConfig } from 'vitest/config';",
+      "import react from '@vitejs/plugin-react-swc';",
+      "import path from 'path';",
+      "",
+      "export default defineConfig({",
+      "plugins: [react()],",
+      "test: {",
+      "globals: true,",
+      "environment: 'jsdom',",
+      "setupFiles: './src/test/setup.ts',"
     ]
   },
   "importantFolders": [
     {
       "path": "backend",
       "category": "backend",
-      "fileCount": 83,
+      "fileCount": 122,
       "primaryLanguage": "Python"
     },
     {
@@ -413,14 +435,37 @@
       "primaryLanguage": "Python"
     },
     {
+      "path": "backend/tests",
+      "category": "tests",
+      "fileCount": 12,
+      "primaryLanguage": "Python"
+    },
+    {
       "path": "docs",
       "category": "docs",
-      "fileCount": 19
+      "fileCount": 23
+    },
+    {
+      "path": "docs/testing",
+      "category": "tests",
+      "fileCount": 2
     },
     {
       "path": "public",
       "category": "assets",
       "fileCount": 4
+    },
+    {
+      "path": "src/__tests__",
+      "category": "tests",
+      "fileCount": 5,
+      "primaryLanguage": "TypeScript"
+    },
+    {
+      "path": "src/__tests__/components",
+      "category": "frontend",
+      "fileCount": 2,
+      "primaryLanguage": "TypeScript"
     },
     {
       "path": "src/components",
@@ -439,9 +484,16 @@
       "category": "core",
       "fileCount": 3,
       "primaryLanguage": "TypeScript"
+    },
+    {
+      "path": "src/test",
+      "category": "tests",
+      "fileCount": 2,
+      "primaryLanguage": "TypeScript"
     }
   ],
   "readmeParagraphs": {
+    "backend/tests": "# Test Suite Quick Start Guide",
     "backend": "# Tarko Inventory - Backend API",
     "src/components/admin": "# Admin Page Components",
     "src/components/dashboard": "# Dashboard Components",
@@ -450,28 +502,29 @@
     "root": "# Tarko Inventory Management System"
   },
   "totals": {
-    "numFiles": 335,
-    "numDirs": 48,
-    "totalSizeBytes": 4993314,
-    "totalLinesOfCode": 45243
+    "numFiles": 391,
+    "numDirs": 60,
+    "totalSizeBytes": 6028328,
+    "totalLinesOfCode": 51518
   },
   "fileCategories": {
-    "other": 60,
-    "documentation": 34,
-    "source": 202,
+    "other": 65,
+    "documentation": 40,
+    "source": 221,
+    "test": 26,
     "config": 39
   },
   "linesOfCodePerLanguage": {
-    "Python": 15478,
-    "Shell": 311,
+    "Python": 19410,
+    "Shell": 389,
     "JavaScript": 34,
-    "TypeScript": 29420
+    "TypeScript": 31685
   },
   "filesPerLanguage": {
-    "Python": 27,
-    "Shell": 5,
+    "Python": 37,
+    "Shell": 6,
     "JavaScript": 2,
-    "TypeScript": 168
+    "TypeScript": 176
   },
   "projectTypes": [
     "Python (requirements)",
@@ -483,6 +536,7 @@
     "Vite"
   ],
   "entryPoints": [
+    "backend/run_tests.sh",
     "backend/scripts/backup_scheduler.py",
     "backend/scripts/docker-entrypoint-scheduler.sh",
     "backend/scripts/docker-entrypoint.sh",
@@ -501,19 +555,19 @@
   "topLevelDirectories": [
     {
       "name": "src",
-      "numFiles": 172,
-      "totalLoc": 29305,
+      "numFiles": 179,
+      "totalLoc": 31539,
       "dominantLanguage": "TypeScript"
     },
     {
       "name": "backend",
-      "numFiles": 83,
-      "totalLoc": 15619,
+      "numFiles": 122,
+      "totalLoc": 19629,
       "dominantLanguage": "Python"
     },
     {
       "name": "docs",
-      "numFiles": 19,
+      "numFiles": 23,
       "totalLoc": 0
     },
     {
@@ -525,6 +579,11 @@
       "name": "snapshots",
       "numFiles": 30,
       "totalLoc": 0
+    },
+    {
+      "name": "uploads",
+      "numFiles": 5,
+      "totalLoc": 0
     }
   ],
   "detailedDirectories": [
@@ -532,18 +591,18 @@
       "path": "src",
       "name": "src",
       "level": 1,
-      "numFiles": 172,
-      "totalLoc": 29305,
+      "numFiles": 179,
+      "totalLoc": 31539,
       "dominantLanguage": "TypeScript",
       "category": "General",
-      "description": "General module with 172 files (TypeScript)",
+      "description": "General module with 179 files (TypeScript)",
       "subdirectories": [
         {
           "path": "src/components",
           "name": "components",
           "level": 2,
           "numFiles": 141,
-          "totalLoc": 24779,
+          "totalLoc": 24815,
           "dominantLanguage": "TypeScript",
           "category": "General",
           "description": "General module with 141 files (TypeScript)",
@@ -606,15 +665,38 @@
           ]
         },
         {
-          "path": "src/pages",
-          "name": "pages",
+          "path": "src/__tests__",
+          "name": "__tests__",
           "level": 2,
-          "numFiles": 11,
-          "totalLoc": 2477,
+          "numFiles": 5,
+          "totalLoc": 2104,
           "dominantLanguage": "TypeScript",
-          "category": "General",
-          "description": "General module with 11 files (TypeScript)",
-          "subdirectories": []
+          "category": "Testing",
+          "description": "Testing module with 5 files (TypeScript)",
+          "subdirectories": [
+            {
+              "path": "src/__tests__/components",
+              "name": "components",
+              "level": 3,
+              "numFiles": 2,
+              "totalLoc": 1168,
+              "dominantLanguage": "TypeScript",
+              "category": "General",
+              "description": "General module with 2 files (TypeScript)",
+              "subdirectories": []
+            },
+            {
+              "path": "src/__tests__/pages",
+              "name": "pages",
+              "level": 3,
+              "numFiles": 2,
+              "totalLoc": 865,
+              "dominantLanguage": "TypeScript",
+              "category": "General",
+              "description": "General module with 2 files (TypeScript)",
+              "subdirectories": []
+            }
+          ]
         },
         {
           "path": "src/hooks",
@@ -667,8 +749,8 @@
       "path": "backend",
       "name": "backend",
       "level": 1,
-      "numFiles": 83,
-      "totalLoc": 15619,
+      "numFiles": 122,
+      "totalLoc": 19629,
       "dominantLanguage": "Python",
       "category": "General",
       "description": "# Tarko Inventory - Backend API",
@@ -678,7 +760,7 @@
           "name": "routes",
           "level": 2,
           "numFiles": 14,
-          "totalLoc": 11581,
+          "totalLoc": 11634,
           "dominantLanguage": "Python",
           "category": "General",
           "description": "General module with 14 files (Python)",
@@ -764,10 +846,10 @@
       "path": "docs",
       "name": "docs",
       "level": 1,
-      "numFiles": 19,
+      "numFiles": 23,
       "totalLoc": 0,
       "category": "Documentation",
-      "description": "Documentation module with 19 files",
+      "description": "Documentation module with 23 files",
       "subdirectories": [
         {
           "path": "docs/archive",
@@ -783,15 +865,56 @@
           "path": "docs/features",
           "name": "features",
           "level": 2,
-          "numFiles": 6,
+          "numFiles": 7,
           "totalLoc": 0,
           "category": "General",
-          "description": "General module with 6 files",
+          "description": "General module with 7 files",
           "subdirectories": []
         },
         {
           "path": "docs/deployment",
           "name": "deployment",
+          "level": 2,
+          "numFiles": 5,
+          "totalLoc": 0,
+          "category": "General",
+          "description": "General module with 5 files",
+          "subdirectories": []
+        },
+        {
+          "path": "docs/testing",
+          "name": "testing",
+          "level": 2,
+          "numFiles": 2,
+          "totalLoc": 0,
+          "category": "Testing",
+          "description": "Testing module with 2 files",
+          "subdirectories": []
+        },
+        {
+          "path": "docs/fixes",
+          "name": "fixes",
+          "level": 2,
+          "numFiles": 1,
+          "totalLoc": 0,
+          "category": "General",
+          "description": "General module with 1 files",
+          "subdirectories": []
+        }
+      ]
+    },
+    {
+      "path": "uploads",
+      "name": "uploads",
+      "level": 1,
+      "numFiles": 5,
+      "totalLoc": 0,
+      "category": "General",
+      "description": "General module with 5 files",
+      "subdirectories": [
+        {
+          "path": "uploads/batches",
+          "name": "batches",
           "level": 2,
           "numFiles": 5,
           "totalLoc": 0,
@@ -815,6 +938,11 @@
   "architecturalInsights": {
     "coreApplications": [],
     "entryPointDetails": [
+      {
+        "path": "../../../../../backend/run_tests.sh",
+        "type": "Unknown",
+        "description": ""
+      },
       {
         "path": "../../../../../backend/scripts/backup_scheduler.py",
         "type": "Unknown",
@@ -925,32 +1053,39 @@
     "development": [
       "@eslint/js",
       "@tailwindcss/typography",
+      "@testing-library/dom",
+      "@testing-library/jest-dom",
+      "@testing-library/react",
+      "@testing-library/user-event",
       "@types/node",
       "@types/react",
       "@types/react-dom",
       "@vitejs/plugin-react-swc",
+      "@vitest/ui",
       "autoprefixer",
       "eslint",
       "eslint-plugin-react-hooks",
       "eslint-plugin-react-refresh",
       "globals",
+      "jsdom",
       "postcss",
       "tailwindcss",
       "typescript",
       "typescript-eslint",
-      "vite"
+      "vite",
+      "vitest"
     ],
-    "total": 66
+    "total": 73
   },
   "complexity": {
-    "averageFileSize": 135.05373134328357,
+    "averageFileSize": 131.75959079283888,
     "maxFileSize": 0,
     "nestedDepth": 0,
     "estimatedComplexity": "high"
   },
   "gitRepo": {
-    "firstCommitDate": "2025-12-01",
-    "totalCommits": 94,
+    "firstCommitDate": "2025-12-02",
+    "totalCommits": 104,
     "numContributors": 0,
     "currentBranch": "sachdevs/unit_testing",
     "remoteUrls": [
