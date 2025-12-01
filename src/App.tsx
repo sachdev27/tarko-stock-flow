@@ -5,7 +5,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "./contexts/AuthContext";
 import { ProtectedRoute } from "./components/ProtectedRoute";
+import { SetupChecker } from "./components/SetupChecker";
 import Auth from "./pages/Auth";
+import Setup from "./pages/Setup";
 import Dashboard from "./pages/Dashboard";
 import Production from "./pages/Production";
 import Inventory from "./pages/InventoryNew";
@@ -26,8 +28,10 @@ const App = () => (
         <Toaster />
         <Sonner />
         <BrowserRouter>
-          <Routes>
+          <SetupChecker>
+            <Routes>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/setup" element={<Setup />} />
             <Route path="/auth" element={<Auth />} />
             <Route
               path="/dashboard"
@@ -107,6 +111,7 @@ const App = () => (
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
+          </SetupChecker>
         </BrowserRouter>
       </AuthProvider>
     </TooltipProvider>

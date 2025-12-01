@@ -20,6 +20,7 @@ from routes.dispatch_entities_routes import dispatch_entities_bp
 from routes.version_control_routes import version_control_bp
 from routes.return_routes import return_bp
 from routes.scrap_routes import scrap_bp
+from routes.setup_routes import setup_bp
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -41,6 +42,7 @@ CORS(app,
 jwt = JWTManager(app)
 
 # Register blueprints
+app.register_blueprint(setup_bp, url_prefix='/api/setup')
 app.register_blueprint(auth_bp)
 app.register_blueprint(inventory_bp)
 app.register_blueprint(production_bp)
@@ -67,27 +69,6 @@ def not_found(error):
 def internal_error(error):
     return jsonify({'error': 'Internal server error'}), 500
 
-def init_default_admin():
-    """Initialize default admin user on startup"""
-    try:
-        import subprocess
-        result = subprocess.run(
-            ['python', 'init_admin.py'],
-            capture_output=True,
-            text=True,
-            timeout=10
-        )
-        if result.returncode == 0:
-            logger.info("Default admin initialization completed")
-            if result.stdout:
-                logger.info(result.stdout)
-        else:
-            logger.warning(f"Admin initialization returned code {result.returncode}")
-            if result.stderr:
-                logger.warning(result.stderr)
-    except Exception as e:
-        logger.warning(f"Could not initialize default admin: {e}")
-
 if __name__ == '__main__':
     # Initialize database connection pool
     logger.info("Initializing database connection pool...")
@@ -96,7 +77,7 @@ if __name__ == '__main__':
     # Register cleanup
     atexit.register(close_connection_pool)
 
-    # Initialize default admin user
-    init_default_admin()
+    logger.info("Tarko Inventory API starting...")
+    logger.info("If this is a fresh installation, navigate to /setup to create an admin account")
 
     app.run(debug=True, host='0.0.0.0', port=5500)
