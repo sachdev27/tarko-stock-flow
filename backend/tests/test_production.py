@@ -148,7 +148,7 @@ class TestProductionBatchCreation:
             'batch_no': f'TEST-SPR-BUNDLE-{timestamp}',
             'batch_code': f'SPR-BUNDLE-{timestamp}',
             'quantity': 200.0,  # Will be recalculated: 20 bundles × 10 pieces = 200
-            'quantity_based': True,
+            'quantity_based': 'true',
             'roll_config_type': 'bundles',
             'number_of_bundles': 20,
             'bundle_size': 10,  # 10 pieces per bundle
@@ -170,9 +170,9 @@ class TestProductionBatchCreation:
             'production_date': datetime.now().isoformat(),
             'batch_no': f'TEST-SPR-SPARE-{timestamp}',
             'batch_code': f'SPR-SPARE-{timestamp}',
-            'quantity': 15.0,  # Will be recalculated: 7 + 8 = 15 pieces
-            'quantity_based': True,
-            'roll_config_type': 'spare_pieces',
+            'quantity': 15.0,  # 15 spare pieces
+            'quantity_based': 'true',
+            'roll_config_type': 'bundles',  # Must be 'bundles' even for spare-only batches
             'number_of_bundles': 0,
             'spare_pipes': [
                 {'length': 7},  # 7 pieces at 6m each
@@ -182,6 +182,8 @@ class TestProductionBatchCreation:
             'weight_per_meter': 0.5
         }
         response = client.post('/api/production/batch', headers=auth_headers, json=data)
+        if response.status_code not in (200, 201):
+            print(f"Sprinkler spare pieces error: {response.json}")
         assert response.status_code in (200, 201)
 
     def test_sprinkler_bundles_and_spares(self, client, auth_headers, get_product_type_id, get_brand_id):
@@ -195,7 +197,7 @@ class TestProductionBatchCreation:
             'batch_no': f'TEST-SPR-BOTH-{timestamp}',
             'batch_code': f'SPR-BOTH-{timestamp}',
             'quantity': 215.0,  # Will be recalculated: (20×10) + 7 + 8 = 215
-            'quantity_based': True,
+            'quantity_based': 'true',
             'roll_config_type': 'bundles',
             'number_of_bundles': 20,
             'bundle_size': 10,
@@ -219,8 +221,8 @@ class TestProductionBatchCreation:
             'production_date': datetime.now().isoformat(),
             'batch_no': f'TEST-SPR-MULTI-{timestamp}',
             'batch_code': f'SPR-MULTI-{timestamp}',
-            'quantity': 165.0,  # Will be recalculated: (15×10) + 5 + 7 + 3 = 165
-            'quantity_based': True,
+            'quantity': 165.0,  # (15×10) + 10 + 5 spares = 165
+            'quantity_based': 'true',
             'roll_config_type': 'bundles',
             'number_of_bundles': 15,
             'bundle_size': 10,
