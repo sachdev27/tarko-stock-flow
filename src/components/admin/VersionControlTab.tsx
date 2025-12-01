@@ -41,6 +41,14 @@ export const VersionControlTab = ({ snapshots, rollbackHistory, onDataChange }: 
   const [cloudProvider, setCloudProvider] = useState('r2');
   const [autoSync, setAutoSync] = useState(true);
 
+  // Progress tracking
+  const [operationProgress, setOperationProgress] = useState<{
+    type: 'upload' | 'download' | 'restore' | 'export' | 'import' | 'create' | null;
+    progress: number;
+    message: string;
+    snapshotId?: string;
+  }>({ type: null, progress: 0, message: '' });
+
   // External storage state
   const [externalDevices, setExternalDevices] = useState<any[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<string>('');
@@ -132,36 +140,54 @@ export const VersionControlTab = ({ snapshots, rollbackHistory, onDataChange }: 
     }
 
     setLoading(true);
+    setOperationProgress({ type: 'create', progress: 10, message: 'Preparing snapshot...' });
     try {
+      setOperationProgress({ type: 'create', progress: 30, message: 'Capturing database state...' });
       await versionControl.createSnapshot(snapshotForm);
+      setOperationProgress({ type: 'create', progress: 80, message: 'Finalizing snapshot...' });
       toast.success('Snapshot created successfully' + (cloudStatus?.enabled ? ' and syncing to cloud...' : ''));
+      setOperationProgress({ type: 'create', progress: 100, message: 'Complete!' });
+      setTimeout(() => setOperationProgress({ type: null, progress: 0, message: '' }), 1000);
       setSnapshotDialog(false);
       setSnapshotForm({ snapshot_name: '', description: '', tags: [] });
       onDataChange();
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Failed to create snapshot');
+      setOperationProgress({ type: null, progress: 0, message: '' });
     } finally {
       setLoading(false);
     }
   };
 
   const handleUploadToCloud = async (snapshotId: string) => {
+    setOperationProgress({ type: 'upload', progress: 10, message: 'Preparing upload...', snapshotId });
     try {
+      setOperationProgress({ type: 'upload', progress: 30, message: 'Uploading to cloud...', snapshotId });
       await versionControl.uploadToCloud(snapshotId);
+      setOperationProgress({ type: 'upload', progress: 90, message: 'Finalizing...', snapshotId });
       toast.success('Snapshot uploaded to cloud successfully');
+      setOperationProgress({ type: 'upload', progress: 100, message: 'Upload complete!', snapshotId });
+      setTimeout(() => setOperationProgress({ type: null, progress: 0, message: '' }), 1000);
       fetchCloudSnapshots();
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Failed to upload to cloud');
+      setOperationProgress({ type: null, progress: 0, message: '' });
     }
   };
 
   const handleDownloadFromCloud = async (snapshotId: string) => {
+    setOperationProgress({ type: 'download', progress: 10, message: 'Connecting to cloud...', snapshotId });
     try {
+      setOperationProgress({ type: 'download', progress: 30, message: 'Downloading from cloud...', snapshotId });
       await versionControl.downloadFromCloud(snapshotId);
+      setOperationProgress({ type: 'download', progress: 80, message: 'Registering snapshot...', snapshotId });
       toast.success('Snapshot downloaded from cloud successfully');
+      setOperationProgress({ type: 'download', progress: 100, message: 'Download complete!', snapshotId });
+      setTimeout(() => setOperationProgress({ type: null, progress: 0, message: '' }), 1000);
       onDataChange();
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Failed to download from cloud');
+      setOperationProgress({ type: null, progress: 0, message: '' });
     }
   };
 
@@ -169,24 +195,29 @@ export const VersionControlTab = ({ snapshots, rollbackHistory, onDataChange }: 
     if (!confirm('Restore database from cloud snapshot? This will replace current data.')) return;
 
     setCloudLoading(true);
+    setOperationProgress({ type: 'restore', progress: 10, message: 'Connecting to cloud...', snapshotId });
     try {
       // First download from cloud and register in database
-      toast.info('Downloading snapshot from cloud...');
+      setOperationProgress({ type: 'restore', progress: 20, message: 'Downloading snapshot from cloud...', snapshotId });
       const downloadResponse = await versionControl.restoreFromCloud(snapshotId);
 
       if (downloadResponse.data.needs_rollback) {
         // Then automatically rollback to this snapshot
-        toast.info('Restoring database from snapshot...');
+        setOperationProgress({ type: 'restore', progress: 50, message: 'Restoring database from snapshot...', snapshotId });
         const rollbackResponse = await versionControl.rollbackToSnapshot(snapshotId, true);
 
+        setOperationProgress({ type: 'restore', progress: 90, message: 'Finalizing restore...', snapshotId });
         toast.success(`✅ Restore from cloud completed! ${rollbackResponse.data.affected_tables.length} tables restored.`);
       } else {
         toast.success('Database restored from cloud successfully');
       }
 
+      setOperationProgress({ type: 'restore', progress: 100, message: 'Restore complete!', snapshotId });
+      setTimeout(() => setOperationProgress({ type: null, progress: 0, message: '' }), 1500);
       onDataChange();
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Failed to restore from cloud');
+      setOperationProgress({ type: null, progress: 0, message: '' });
     } finally {
       setCloudLoading(false);
     }
@@ -234,24 +265,31 @@ export const VersionControlTab = ({ snapshots, rollbackHistory, onDataChange }: 
 
   const handleImportFromExternal = async (sourcePath: string) => {
     setLoading(true);
+    setOperationProgress({ type: 'import', progress: 10, message: 'Reading external backup...' });
     try {
       // First import the snapshot (copies files and registers in DB)
+      setOperationProgress({ type: 'import', progress: 30, message: 'Importing snapshot files...' });
       const importResponse = await versionControl.importFromExternal({
         source_path: sourcePath
       });
       const snapshotId = importResponse.data.snapshot_id;
 
+      setOperationProgress({ type: 'import', progress: 50, message: 'Snapshot imported successfully' });
       toast.success('Snapshot imported successfully');
 
       // Then automatically rollback to this snapshot
-      toast.info('Restoring database from snapshot...');
+      setOperationProgress({ type: 'import', progress: 60, message: 'Restoring database from snapshot...' });
       const rollbackResponse = await versionControl.rollbackToSnapshot(snapshotId, true);
 
+      setOperationProgress({ type: 'import', progress: 90, message: 'Finalizing restore...' });
       toast.success(`✅ Restore completed! ${rollbackResponse.data.affected_tables.length} tables restored.`);
+      setOperationProgress({ type: 'import', progress: 100, message: 'Import & restore complete!' });
+      setTimeout(() => setOperationProgress({ type: null, progress: 0, message: '' }), 1500);
       setImportDialog(false);
       onDataChange();
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Failed to import and restore snapshot');
+      setOperationProgress({ type: null, progress: 0, message: '' });
     } finally {
       setLoading(false);
     }
@@ -396,6 +434,7 @@ export const VersionControlTab = ({ snapshots, rollbackHistory, onDataChange }: 
             snapshots={snapshots}
             cloudStatus={cloudStatus}
             storageStats={storageStats}
+            operationProgress={operationProgress}
             onCreateSnapshot={() => setSnapshotDialog(true)}
             onRollback={openRollbackDialog}
             onDelete={handleDeleteSnapshot}
@@ -419,6 +458,7 @@ export const VersionControlTab = ({ snapshots, rollbackHistory, onDataChange }: 
             cloudLoading={cloudLoading}
             localSnapshots={snapshots}
             autoSync={autoSync}
+            operationProgress={operationProgress}
             onConfigureCloud={() => setCloudConfigDialog(true)}
             onEditConfig={() => setCloudConfigDialog(true)}
             onDownload={handleDownloadFromCloud}
@@ -460,6 +500,8 @@ export const VersionControlTab = ({ snapshots, rollbackHistory, onDataChange }: 
         snapshot={selectedSnapshot}
         onExport={handleExportToExternal}
         loading={loading}
+        operationProgress={operationProgress}
+        onProgressUpdate={setOperationProgress}
       />
 
         <ImportDialog
@@ -469,6 +511,7 @@ export const VersionControlTab = ({ snapshots, rollbackHistory, onDataChange }: 
           loading={loading}
           snapshot={selectedExternalSnapshot}
           devicePath={selectedDevice}
+          operationProgress={operationProgress}
         />      <CloudConfigDialog
         open={cloudConfigDialog}
         onOpenChange={setCloudConfigDialog}

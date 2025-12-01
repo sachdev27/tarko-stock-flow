@@ -3,9 +3,11 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Progress } from '@/components/ui/progress';
 import { useState, useEffect } from 'react';
 import { versionControl } from '@/lib/api';
 import { toast } from 'sonner';
+import { Loader2 } from 'lucide-react';
 
 interface ImportDialogProps {
   open: boolean;
@@ -14,6 +16,12 @@ interface ImportDialogProps {
   loading: boolean;
   snapshot?: any; // Pre-selected snapshot from external backups
   devicePath?: string; // Pre-selected device path
+  operationProgress?: {
+    type: 'upload' | 'download' | 'restore' | 'export' | 'import' | 'create' | null;
+    progress: number;
+    message: string;
+    snapshotId?: string;
+  };
 }
 
 export const ImportDialog = ({
@@ -23,6 +31,7 @@ export const ImportDialog = ({
   loading: parentLoading,
   snapshot: providedSnapshot,
   devicePath,
+  operationProgress,
 }: ImportDialogProps) => {
   const [importPath, setImportPath] = useState(devicePath || '');
   const [snapshots, setSnapshots] = useState<any[]>(providedSnapshot ? [providedSnapshot] : []);
@@ -151,6 +160,20 @@ export const ImportDialog = ({
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
+          {/* Import Progress */}
+          {operationProgress && operationProgress.type === 'import' && (
+            <div className="p-4 border rounded-lg bg-primary/5 space-y-3">
+              <div className="flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span className="font-medium text-sm">{operationProgress.message}</span>
+              </div>
+              <Progress value={operationProgress.progress} className="h-2" />
+              <div className="text-xs text-muted-foreground text-right">
+                {operationProgress.progress}%
+              </div>
+            </div>
+          )}
+
           {isDirectRestore ? (
             /* Direct restore mode - just show snapshot info and confirm */
             <div className="space-y-4">

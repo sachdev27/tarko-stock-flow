@@ -3,7 +3,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
-import { Cloud, CloudDownload, RotateCcw, Trash2, Settings, RefreshCw, CloudUpload, CheckCircle2, XCircle, Clock } from 'lucide-react';
+import { Progress } from '@/components/ui/progress';
+import { Cloud, CloudDownload, RotateCcw, Trash2, Settings, RefreshCw, CloudUpload, CheckCircle2, XCircle, Clock, Loader2 } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 
 interface CloudBackupTabProps {
@@ -12,6 +13,12 @@ interface CloudBackupTabProps {
   cloudLoading: boolean;
   localSnapshots: any[];
   autoSync: boolean;
+  operationProgress?: {
+    type: 'upload' | 'download' | 'restore' | 'export' | 'import' | 'create' | null;
+    progress: number;
+    message: string;
+    snapshotId?: string;
+  };
   onConfigureCloud: () => void;
   onEditConfig: () => void;
   onDownload: (snapshotId: string) => void;
@@ -29,6 +36,7 @@ export const CloudBackupTab = ({
   cloudLoading,
   localSnapshots,
   autoSync,
+  operationProgress,
   onConfigureCloud,
   onEditConfig,
   onDownload,
@@ -46,6 +54,8 @@ export const CloudBackupTab = ({
   };
 
   const unsyncedSnapshots = getUnsyncedSnapshots();
+
+  const isOperationActive = operationProgress && operationProgress.type && ['upload', 'download', 'restore'].includes(operationProgress.type);
 
   return (
     <Card>
@@ -105,6 +115,20 @@ export const CloudBackupTab = ({
           </div>
         ) : (
           <div className="space-y-6">
+            {/* Progress Indicator */}
+            {isOperationActive && (
+              <div className="p-4 border rounded-lg bg-primary/5 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span className="font-medium text-sm">{operationProgress.message}</span>
+                </div>
+                <Progress value={operationProgress.progress} className="h-2" />
+                <div className="text-xs text-muted-foreground text-right">
+                  {operationProgress.progress}%
+                </div>
+              </div>
+            )}
+
             {/* Sync Settings */}
             <div className="p-4 border rounded-lg bg-muted/20">
               <div className="flex items-center justify-between mb-4">

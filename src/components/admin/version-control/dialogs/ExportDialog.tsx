@@ -3,9 +3,10 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Progress } from '@/components/ui/progress';
 import { useState, useEffect } from 'react';
 import { versionControl } from '@/lib/api';
-import { Download } from 'lucide-react';
+import { Download, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface ExportDialogProps {
@@ -14,6 +15,13 @@ interface ExportDialogProps {
   snapshot: any;
   onExport: (path: string) => void;
   loading: boolean;
+  operationProgress?: {
+    type: 'upload' | 'download' | 'restore' | 'export' | 'import' | 'create' | null;
+    progress: number;
+    message: string;
+    snapshotId?: string;
+  };
+  onProgressUpdate?: (progress: any) => void;
 }
 
 export const ExportDialog = ({
@@ -22,11 +30,15 @@ export const ExportDialog = ({
   snapshot,
   onExport,
   loading,
+  operationProgress,
+  onProgressUpdate,
 }: ExportDialogProps) => {
   const [exportPath, setExportPath] = useState('');
   const [suggestedPaths, setSuggestedPaths] = useState<string[]>([]);
   const [downloadFormat, setDownloadFormat] = useState<string>('zip');
   const [os, setOs] = useState<string>('unknown');
+  const [downloadProgress, setDownloadProgress] = useState(0);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -74,49 +86,79 @@ export const ExportDialog = ({
   const handleDownload = async () => {
     if (!snapshot?.id) return;
 
+    setIsDownloading(true);
+    setDownloadProgress(0);
+    onProgressUpdate?.({ type: 'export', progress: 5, message: 'Preparing download...', snapshotId: snapshot.id });
+
     try {
-      toast.info('Preparing download...');
-
       const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5500/api';
-      const response = await fetch(`${API_URL}/version-control/snapshots/${snapshot.id}/download?format=${downloadFormat}`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+      const url = `${API_URL}/version-control/snapshots/${snapshot.id}/download?format=${downloadFormat}`;
+
+      // Use XMLHttpRequest for progress tracking
+      const xhr = new XMLHttpRequest();
+
+      xhr.open('GET', url, true);
+      xhr.setRequestHeader('Authorization', `Bearer ${localStorage.getItem('token')}`);
+      xhr.responseType = 'blob';
+
+      xhr.onprogress = (event) => {
+        if (event.lengthComputable) {
+          const percentComplete = Math.round((event.loaded / event.total) * 100);
+          setDownloadProgress(percentComplete);
+          onProgressUpdate?.({
+            type: 'export',
+            progress: percentComplete,
+            message: `Downloading... ${percentComplete}%`,
+            snapshotId: snapshot.id
+          });
         }
-      });
+      };
 
-      if (!response.ok) {
-        // Try to get error message from JSON response
-        const contentType = response.headers.get('content-type');
-        if (contentType && contentType.includes('application/json')) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || 'Download failed');
+      xhr.onload = () => {
+        if (xhr.status === 200) {
+          const blob = xhr.response;
+
+          // Check if blob is suspiciously small (might be an error)
+          if (blob.size < 1000) {
+            console.error('Downloaded file is suspiciously small:', blob.size, 'bytes');
+            throw new Error('Downloaded file appears to be invalid (too small)');
+          }
+
+          const blobUrl = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = blobUrl;
+          const extension = downloadFormat === 'tar.gz' ? '.tar.gz' : '.zip';
+          a.download = `${snapshot.snapshot_name || snapshot.id}${extension}`;
+          document.body.appendChild(a);
+          a.click();
+          window.URL.revokeObjectURL(blobUrl);
+          document.body.removeChild(a);
+
+          onProgressUpdate?.({ type: 'export', progress: 100, message: 'Download complete!', snapshotId: snapshot.id });
+          toast.success('Snapshot downloaded to your Downloads folder');
+
+          setTimeout(() => {
+            setIsDownloading(false);
+            setDownloadProgress(0);
+            onProgressUpdate?.({ type: null, progress: 0, message: '' });
+            onOpenChange(false);
+          }, 1000);
+        } else {
+          throw new Error(`Download failed with status ${xhr.status}`);
         }
-        throw new Error(`Download failed with status ${response.status}`);
-      }
+      };
 
-      const blob = await response.blob();
+      xhr.onerror = () => {
+        throw new Error('Network error during download');
+      };
 
-      // Check if blob is suspiciously small (might be an error)
-      if (blob.size < 1000) {
-        console.error('Downloaded file is suspiciously small:', blob.size, 'bytes');
-        throw new Error('Downloaded file appears to be invalid (too small)');
-      }
-
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      const extension = downloadFormat === 'tar.gz' ? '.tar.gz' : '.zip';
-      a.download = `${snapshot.snapshot_name || snapshot.id}${extension}`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-
-      toast.success('Snapshot downloaded to your Downloads folder');
-      onOpenChange(false);
+      xhr.send();
     } catch (error: any) {
       toast.error(error.message || 'Failed to download snapshot');
       console.error('Download error:', error);
+      setIsDownloading(false);
+      setDownloadProgress(0);
+      onProgressUpdate?.({ type: null, progress: 0, message: '' });
     }
   };
 
@@ -136,6 +178,17 @@ export const ExportDialog = ({
               Size: {parseFloat(snapshot?.file_size_mb || 0).toFixed(2)} MB
             </p>
           </div>
+
+          {/* Download Progress */}
+          {isDownloading && (
+            <div className="p-4 border rounded-lg bg-primary/5 space-y-3">
+              <div className="flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span className="font-medium text-sm">Downloading... {downloadProgress}%</span>
+              </div>
+              <Progress value={downloadProgress} className="h-2" />
+            </div>
+          )}
 
           {/* Quick Download Option */}
           <div className="border rounded-lg p-4 bg-primary/5">

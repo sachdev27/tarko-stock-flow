@@ -3,7 +3,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Database, RotateCcw, Trash2, CloudUpload, Upload, Save, HardDrive, FolderOpen, RefreshCw, FileUp, Download } from 'lucide-react';
+import { Progress } from '@/components/ui/progress';
+import { Database, RotateCcw, Trash2, CloudUpload, Upload, Save, HardDrive, FolderOpen, RefreshCw, FileUp, Download, Loader2 } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 import { useState, useEffect, useRef } from 'react';
 import { versionControl } from '@/lib/api';
@@ -13,6 +14,12 @@ interface BackupStorageTabProps {
   snapshots: any[];
   cloudStatus: any;
   storageStats: any;
+  operationProgress?: {
+    type: 'upload' | 'download' | 'restore' | 'export' | 'import' | 'create' | null;
+    progress: number;
+    message: string;
+    snapshotId?: string;
+  };
   onCreateSnapshot: () => void;
   onRollback: (snapshot: any) => void;
   onDelete: (snapshotId: string) => void;
@@ -29,6 +36,7 @@ export const BackupStorageTab = ({
   snapshots,
   cloudStatus,
   storageStats,
+  operationProgress,
   onCreateSnapshot,
   onRollback,
   onDelete,
@@ -205,6 +213,20 @@ export const BackupStorageTab = ({
       </CardHeader>
       <CardContent>
         <div className="space-y-6">
+          {/* Progress Indicator */}
+          {operationProgress && operationProgress.type && ['upload', 'import', 'export'].includes(operationProgress.type) && (
+            <div className="p-4 border rounded-lg bg-primary/5 space-y-3">
+              <div className="flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span className="font-medium text-sm">{operationProgress.message}</span>
+              </div>
+              <Progress value={operationProgress.progress} className="h-2" />
+              <div className="text-xs text-muted-foreground text-right">
+                {operationProgress.progress}%
+              </div>
+            </div>
+          )}
+
           {/* Section Tabs */}
           <div className="flex gap-2 border-b">
             <button
