@@ -87,7 +87,8 @@ export const BackupStorageTab = ({
       const formData = new FormData();
       formData.append('file', file);
 
-      const response = await fetch('/api/version-control/snapshots/upload', {
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5500/api';
+      const response = await fetch(`${API_URL}/version-control/snapshots/upload`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -96,8 +97,12 @@ export const BackupStorageTab = ({
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Upload failed');
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          const error = await response.json();
+          throw new Error(error.error || 'Upload failed');
+        }
+        throw new Error(`Upload failed with status ${response.status}`);
       }
 
       const data = await response.json();
@@ -402,16 +407,6 @@ export const BackupStorageTab = ({
                       >
                         <RefreshCw className={`h-4 w-4 ${loadingSnapshots ? 'animate-spin' : ''}`} />
                       </Button>
-                      {externalSnapshots.length > 0 && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => onExport({ id: 'new' })}
-                        >
-                          <Upload className="h-4 w-4 mr-2" />
-                          Export Here
-                        </Button>
-                      )}
                     </div>
                   </div>
 
@@ -444,12 +439,28 @@ export const BackupStorageTab = ({
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => {
-                                const a = document.createElement('a');
-                                a.href = `${selectedPath}/TarkoInventoryBackups/${snapshot.id}`;
-                                a.download = snapshot.snapshot_name || snapshot.id;
-                                a.click();
-                                toast.success('Download started');
+                              onClick={async () => {
+                                try {
+                                  toast.info('Preparing download...');
+                                  const response = await versionControl.downloadExternalSnapshot({
+                                    snapshot_path: snapshot.path,
+                                    format: 'zip'
+                                  });
+
+                                  const blob = new Blob([response.data], { type: 'application/zip' });
+                                  const url = window.URL.createObjectURL(blob);
+                                  const a = document.createElement('a');
+                                  a.href = url;
+                                  a.download = `${snapshot.snapshot_name || snapshot.id}.zip`;
+                                  document.body.appendChild(a);
+                                  a.click();
+                                  document.body.removeChild(a);
+                                  window.URL.revokeObjectURL(url);
+                                  toast.success('Download completed');
+                                } catch (error: any) {
+                                  toast.error('Download failed');
+                                  console.error('Download error:', error);
+                                }
                               }}
                             >
                               <Download className="h-4 w-4" />

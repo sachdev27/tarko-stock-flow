@@ -170,8 +170,20 @@ export const VersionControlTab = ({ snapshots, rollbackHistory, onDataChange }: 
 
     setCloudLoading(true);
     try {
-      await versionControl.restoreFromCloud(snapshotId);
-      toast.success('Database restored from cloud successfully');
+      // First download from cloud and register in database
+      toast.info('Downloading snapshot from cloud...');
+      const downloadResponse = await versionControl.restoreFromCloud(snapshotId);
+
+      if (downloadResponse.data.needs_rollback) {
+        // Then automatically rollback to this snapshot
+        toast.info('Restoring database from snapshot...');
+        const rollbackResponse = await versionControl.rollbackToSnapshot(snapshotId, true);
+
+        toast.success(`✅ Restore from cloud completed! ${rollbackResponse.data.affected_tables.length} tables restored.`);
+      } else {
+        toast.success('Database restored from cloud successfully');
+      }
+
       onDataChange();
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Failed to restore from cloud');
@@ -223,14 +235,23 @@ export const VersionControlTab = ({ snapshots, rollbackHistory, onDataChange }: 
   const handleImportFromExternal = async (sourcePath: string) => {
     setLoading(true);
     try {
-      await versionControl.importFromExternal({
+      // First import the snapshot (copies files and registers in DB)
+      const importResponse = await versionControl.importFromExternal({
         source_path: sourcePath
       });
+      const snapshotId = importResponse.data.snapshot_id;
+
       toast.success('Snapshot imported successfully');
+
+      // Then automatically rollback to this snapshot
+      toast.info('Restoring database from snapshot...');
+      const rollbackResponse = await versionControl.rollbackToSnapshot(snapshotId, true);
+
+      toast.success(`✅ Restore completed! ${rollbackResponse.data.affected_tables.length} tables restored.`);
       setImportDialog(false);
       onDataChange();
     } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to import snapshot');
+      toast.error(error.response?.data?.error || 'Failed to import and restore snapshot');
     } finally {
       setLoading(false);
     }

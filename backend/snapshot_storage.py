@@ -45,10 +45,10 @@ class SnapshotStorage:
         try:
             # Ensure base storage path exists
             self.storage_path.mkdir(parents=True, exist_ok=True)
-            
+
             snapshot_dir = self.storage_path / snapshot_id
             snapshot_dir.mkdir(parents=True, exist_ok=True)
-            
+
             snapshot_dir = self.storage_path / snapshot_id
             snapshot_dir.mkdir(parents=True, exist_ok=True)
 
@@ -174,20 +174,20 @@ class SnapshotStorage:
                 return False
 
             export_dest = Path(export_path)
-            
+
             # If export_dest already includes the snapshot_id, use it directly
             # Otherwise, append the snapshot_id
             if export_dest.name != snapshot_id:
                 export_dest = export_dest / snapshot_id
-            
+
             # Create parent directory if it doesn't exist
             export_dest.parent.mkdir(parents=True, exist_ok=True)
-            
+
             # Copy the snapshot directory
             if export_dest.exists():
                 shutil.rmtree(export_dest)
             shutil.copytree(snapshot_dir, export_dest, dirs_exist_ok=True)
-            
+
             logger.info(f"Snapshot exported to {export_path}")
             return True
 

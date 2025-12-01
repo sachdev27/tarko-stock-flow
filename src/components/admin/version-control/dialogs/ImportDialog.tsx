@@ -142,10 +142,10 @@ export const ImportDialog = ({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{isDirectRestore ? 'Restore from Backup' : 'Import Snapshot'}</DialogTitle>
+          <DialogTitle>{isDirectRestore ? 'Restore from External Backup' : 'Import Snapshot'}</DialogTitle>
           <DialogDescription>
             {isDirectRestore
-              ? 'Confirm restoring database from this backup snapshot'
+              ? 'This will import the backup and restore your database to this snapshot'
               : 'Select a folder containing backup snapshots'
             }
           </DialogDescription>

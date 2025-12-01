@@ -75,15 +75,33 @@ export const ExportDialog = ({
     if (!snapshot?.id) return;
 
     try {
-      const response = await fetch(`/api/version-control/snapshots/${snapshot.id}/download?format=${downloadFormat}`, {
+      toast.info('Preparing download...');
+
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5500/api';
+      const response = await fetch(`${API_URL}/version-control/snapshots/${snapshot.id}/download?format=${downloadFormat}`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
       });
 
-      if (!response.ok) throw new Error('Download failed');
+      if (!response.ok) {
+        // Try to get error message from JSON response
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Download failed');
+        }
+        throw new Error(`Download failed with status ${response.status}`);
+      }
 
       const blob = await response.blob();
+
+      // Check if blob is suspiciously small (might be an error)
+      if (blob.size < 1000) {
+        console.error('Downloaded file is suspiciously small:', blob.size, 'bytes');
+        throw new Error('Downloaded file appears to be invalid (too small)');
+      }
+
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -96,8 +114,8 @@ export const ExportDialog = ({
 
       toast.success('Snapshot downloaded to your Downloads folder');
       onOpenChange(false);
-    } catch (error) {
-      toast.error('Failed to download snapshot');
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to download snapshot');
       console.error('Download error:', error);
     }
   };
@@ -142,9 +160,12 @@ export const ExportDialog = ({
                 onClick={handleDownload}
                 className="w-full"
                 variant="default"
+                disabled={!snapshot?.id || snapshot.id === 'new'}
               >
                 <Download className="h-4 w-4 mr-2" />
-                Download as {downloadFormat === 'tar.gz' ? '.tar.gz' : '.zip'}
+                {!snapshot?.id || snapshot.id === 'new'
+                  ? 'Select a snapshot first'
+                  : `Download as ${downloadFormat === 'tar.gz' ? '.tar.gz' : '.zip'}`}
               </Button>
             </div>
           </div>

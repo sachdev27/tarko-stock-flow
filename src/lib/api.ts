@@ -351,6 +351,9 @@ export const versionControl = {
   listExternalSnapshots: (data: { device_path: string }) =>
     api.post('/version-control/external/snapshots', data),
 
+  downloadExternalSnapshot: (data: { snapshot_path: string; format?: string }) =>
+    api.post('/version-control/external/snapshots/download', data, { responseType: 'blob' }),
+
   verifyExternalSnapshot: (data: { snapshot_path: string }) =>
     api.post('/version-control/external/verify', data),
 
