@@ -59,7 +59,7 @@ def setup_test_database(app):
         # Check if test user exists
         cursor.execute("SELECT id FROM users WHERE email = 'test@test.com'")
         result = cursor.fetchone()
-        
+
         if result:
             test_user_id = result['id']
             print(f"Found existing test user with ID: {test_user_id}, deleting...")
@@ -67,6 +67,20 @@ def setup_test_database(app):
             cleanup_queries = [
                 # Delete audit logs first (references users)
                 f"DELETE FROM audit_logs WHERE user_id = '{test_user_id}'",
+                # Delete scrap_pieces (references scrap_items)
+                f"DELETE FROM scrap_pieces WHERE scrap_item_id IN (SELECT id FROM scrap_items WHERE batch_id IN (SELECT id FROM batches WHERE created_by = '{test_user_id}'))",
+                # Delete scrap_items (references inventory_stock and batches)
+                f"DELETE FROM scrap_items WHERE batch_id IN (SELECT id FROM batches WHERE created_by = '{test_user_id}')",
+                # Delete scraps (created_by user)
+                f"DELETE FROM scraps WHERE created_by = '{test_user_id}'",
+                # Delete dispatch_items through their parent dispatches
+                f"DELETE FROM dispatch_items WHERE dispatch_id IN (SELECT id FROM dispatches WHERE created_by = '{test_user_id}')",
+                # Delete dispatches
+                f"DELETE FROM dispatches WHERE created_by = '{test_user_id}'",
+                # Delete return_items through their parent returns
+                f"DELETE FROM return_items WHERE return_id IN (SELECT id FROM returns WHERE created_by = '{test_user_id}')",
+                # Delete returns
+                f"DELETE FROM returns WHERE created_by = '{test_user_id}'",
                 # Delete transactions and inventory
                 f"DELETE FROM inventory_transactions WHERE batch_id IN (SELECT id FROM batches WHERE created_by = '{test_user_id}')",
                 f"DELETE FROM inventory_stock WHERE batch_id IN (SELECT id FROM batches WHERE created_by = '{test_user_id}')",
@@ -87,7 +101,7 @@ def setup_test_database(app):
                     cursor.connection.rollback()
                     print(f"Cleanup {i+1}/{len(cleanup_queries)} failed: {e}")
                     pass
-        
+
         # Create fresh test user with bcrypt (matching auth service)
         password_hash = bcrypt.hashpw('testpass123'.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
         cursor.execute("""
@@ -96,13 +110,13 @@ def setup_test_database(app):
             RETURNING id
         """, ('test@test.com', password_hash, datetime.now(), datetime.now()))
         user_id = cursor.fetchone()['id']
-        
+
         # Add admin role
         cursor.execute("""
             INSERT INTO user_roles (user_id, role, created_at, updated_at)
             VALUES (%s, %s, %s, %s)
         """, (user_id, 'admin', datetime.now(), datetime.now()))
-        
+
         cursor.connection.commit()
 
     yield
@@ -200,7 +214,7 @@ def test_product_variant(get_product_type_id, get_brand_id):
     with get_db_cursor(commit=True) as cursor:
         product_type_id = get_product_type_id('HDPE Pipe')
         brand_id = get_brand_id()
-        
+
         # Try to find existing
         cursor.execute("""
             SELECT id, product_type_id, brand_id, parameters
@@ -208,7 +222,7 @@ def test_product_variant(get_product_type_id, get_brand_id):
             WHERE product_type_id = %s AND brand_id = %s AND deleted_at IS NULL
             LIMIT 1
         """, (product_type_id, brand_id))
-        
+
         variant = cursor.fetchone()
         if variant:
             return {
@@ -217,14 +231,14 @@ def test_product_variant(get_product_type_id, get_brand_id):
                 'brand_id': str(variant['brand_id']),
                 'parameters': variant['parameters']
             }
-        
+
         # Create new
         cursor.execute("""
             INSERT INTO product_variants (product_type_id, brand_id, parameters, created_at, updated_at)
             VALUES (%s, %s, %s, %s, %s)
             RETURNING id, product_type_id, brand_id, parameters
         """, (product_type_id, brand_id, {'PE': 'PE80', 'PN': 10, 'OD': 110}, datetime.now(), datetime.now()))
-        
+
         variant = cursor.fetchone()
         return {
             'id': str(variant['id']),
@@ -263,7 +277,8 @@ def test_customer(client, auth_headers):
 @pytest.fixture
 def hdpe_batch(client, auth_headers, get_product_type_id, get_brand_id):
     """Create HDPE batch for testing"""
-    timestamp = int(datetime.now().timestamp())
+    import time
+    timestamp = int(time.time() * 1000000)  # microseconds for uniqueness
     response = client.post('/api/production/batch',
                           headers=auth_headers,
                           json={
@@ -306,7 +321,7 @@ def hdpe_batch_with_cuts(client, auth_token, get_product_type_id, get_brand_id):
                               ]
                           },
                           headers={'Authorization': f'Bearer {auth_token}'})
-    return response.json()
+    return response.json
 
 
 @pytest.fixture
@@ -335,7 +350,7 @@ def sprinkler_batch(client, auth_token, get_product_type_id, get_brand_id):
                               'weight_per_meter': 0.5
                           },
                           headers={'Authorization': f'Bearer {auth_token}'})
-    return response.json()
+    return response.json
 
 
 @pytest.fixture
@@ -356,14 +371,14 @@ def hdpe_batch_1(client, auth_token, get_product_type_id, get_brand_id):
                               'length_per_roll': 500
                           },
                           headers={'Authorization': f'Bearer {auth_token}'})
-    return response.json()
+    return response.json
 
 
 @pytest.fixture
 def hdpe_batch_2(client, auth_token, get_product_type_id, get_brand_id):
     """Second HDPE batch for multi-batch tests"""
     import time
-    timestamp = int(time.time() * 1000000)  # microseconds for uniqueness  
+    timestamp = int(time.time() * 1000000)  # microseconds for uniqueness
     response = client.post('/api/production/batch',
                           json={
                               'product_type_id': get_product_type_id('HDPE Pipe'),
@@ -377,7 +392,7 @@ def hdpe_batch_2(client, auth_token, get_product_type_id, get_brand_id):
                               'length_per_roll': 500
                           },
                           headers={'Authorization': f'Bearer {auth_token}'})
-    return response.json()
+    return response.json
 
 
 @pytest.fixture
