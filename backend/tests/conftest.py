@@ -285,14 +285,18 @@ def hdpe_batch(client, auth_headers, get_product_type_id, get_brand_id):
 
 
 @pytest.fixture
-def hdpe_batch_with_cuts(client, auth_token):
+def hdpe_batch_with_cuts(client, auth_token, get_product_type_id, get_brand_id):
     """Create HDPE batch with cut rolls"""
+    import time
+    timestamp = int(time.time() * 1000000)  # microseconds for uniqueness
     response = client.post('/api/production/batch',
                           json={
-                              'product_type_id': 1,
-                              'brand_id': 1,
+                              'product_type_id': get_product_type_id('HDPE Pipe'),
+                              'brand_id': get_brand_id(),
                               'parameters': {'diameter': '50mm'},
                               'production_date': '2025-12-01T08:00:00',
+                              'batch_no': f'TEST-CUTS-{timestamp}',
+                              'batch_code': f'CUTS-{timestamp}',
                               'quantity': 600,
                               'number_of_rolls': 1,
                               'length_per_roll': 300,
@@ -306,16 +310,20 @@ def hdpe_batch_with_cuts(client, auth_token):
 
 
 @pytest.fixture
-def sprinkler_batch(client, auth_token):
+def sprinkler_batch(client, auth_token, get_product_type_id, get_brand_id):
     """Create sprinkler batch for testing"""
+    import time
+    timestamp = int(time.time() * 1000000)  # microseconds for uniqueness
     response = client.post('/api/production/batch',
                           json={
-                              'product_type_id': 2,
-                              'brand_id': 1,
+                              'product_type_id': get_product_type_id('Sprinkler Pipe'),
+                              'brand_id': get_brand_id(),
                               'parameters': {'diameter': '32mm'},
                               'production_date': '2025-12-01T08:00:00',
+                              'batch_no': f'TEST-SPR-{timestamp}',
+                              'batch_code': f'SPR-{timestamp}',
                               'quantity': 215,
-                              'quantity_based': True,
+                              'quantity_based': 'true',
                               'roll_config_type': 'bundles',
                               'number_of_bundles': 20,
                               'bundle_size': 10,
@@ -331,14 +339,18 @@ def sprinkler_batch(client, auth_token):
 
 
 @pytest.fixture
-def hdpe_batch_1(client, auth_token):
+def hdpe_batch_1(client, auth_token, get_product_type_id, get_brand_id):
     """First HDPE batch for multi-batch tests"""
+    import time
+    timestamp = int(time.time() * 1000000)  # microseconds for uniqueness
     response = client.post('/api/production/batch',
                           json={
-                              'product_type_id': 1,
-                              'brand_id': 1,
+                              'product_type_id': get_product_type_id('HDPE Pipe'),
+                              'brand_id': get_brand_id(),
                               'parameters': {'diameter': '40mm'},
                               'production_date': '2025-12-01T08:00:00',
+                              'batch_no': f'TEST-BATCH1-{timestamp}',
+                              'batch_code': f'BATCH1-{timestamp}',
                               'quantity': 500,
                               'number_of_rolls': 1,
                               'length_per_roll': 500
@@ -348,14 +360,18 @@ def hdpe_batch_1(client, auth_token):
 
 
 @pytest.fixture
-def hdpe_batch_2(client, auth_token):
+def hdpe_batch_2(client, auth_token, get_product_type_id, get_brand_id):
     """Second HDPE batch for multi-batch tests"""
+    import time
+    timestamp = int(time.time() * 1000000)  # microseconds for uniqueness  
     response = client.post('/api/production/batch',
                           json={
-                              'product_type_id': 1,
-                              'brand_id': 1,
+                              'product_type_id': get_product_type_id('HDPE Pipe'),
+                              'brand_id': get_brand_id(),
                               'parameters': {'diameter': '40mm'},
                               'production_date': '2025-12-01T09:00:00',
+                              'batch_no': f'TEST-BATCH2-{timestamp}',
+                              'batch_code': f'BATCH2-{timestamp}',
                               'quantity': 500,
                               'number_of_rolls': 1,
                               'length_per_roll': 500

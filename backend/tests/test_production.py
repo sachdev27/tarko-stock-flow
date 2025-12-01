@@ -99,10 +99,10 @@ class TestProductionBatchCreation:
 
         # Create a test PDF file
         file_data = BytesIO(b'%PDF-1.4 test content')
-        
+
         # Flask test client requires files in data dict
         data['attachment'] = (file_data, 'test_certificate.pdf', 'application/pdf')
-        
+
         # For multipart/form-data, don't include Content-Type in headers
         headers = {'Authorization': auth_headers['Authorization']}
         response = client.post('/api/production/batch',
@@ -293,10 +293,10 @@ class TestProductionBatchCreation:
 
         # Create invalid file (exe file)
         file_data = BytesIO(b'Invalid executable content')
-        
+
         # Flask test client requires files in data dict
         data['attachment'] = (file_data, 'malicious.exe', 'application/x-msdownload')
-        
+
         headers = {'Authorization': auth_headers['Authorization']}
         response = client.post('/api/production/batch',
                              data=data,
@@ -330,7 +330,7 @@ class TestProductionBatchCreation:
         """Test creating batch with duplicate batch code"""
         timestamp = int(datetime.now().timestamp())
         batch_code = f'DUPLICATE-TEST-{timestamp}'
-        
+
         data = {
             'product_type_id': get_product_type_id('HDPE Pipe'),
             'brand_id': get_brand_id(),
@@ -341,11 +341,11 @@ class TestProductionBatchCreation:
             'number_of_rolls': 1,
             'length_per_roll': 500.0
         }
-        
+
         # Create first batch
         response1 = client.post('/api/production/batch', headers=auth_headers, json=data)
         assert response1.status_code in (200, 201)
-        
+
         # Try to create duplicate
         response2 = client.post('/api/production/batch', headers=auth_headers, json=data)
         # Should either fail or auto-modify the code
@@ -453,7 +453,7 @@ class TestProductionHistory:
         """Test retrieving specific batch details"""
         batch = hdpe_batch.get('batch', hdpe_batch)
         batch_id = batch.get('batch_id') or batch.get('id')
-        
+
         response = client.get(f'/api/production/history/{batch_id}', headers=auth_headers)
         assert response.status_code == 200
         result = response.json
@@ -468,7 +468,7 @@ class TestProductionHistory:
     def test_attachment_download(self, client, auth_headers, batch_with_attachment):
         """Test downloading batch attachment"""
         batch = batch_with_attachment.get('batch', batch_with_attachment)
-        
+
         # Check if attachment_url exists
         attachment_url = batch.get('attachment_url')
         if attachment_url:
