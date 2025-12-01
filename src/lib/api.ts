@@ -291,7 +291,7 @@ export const versionControl = {
   getSnapshots: () =>
     api.get('/version-control/snapshots'),
 
-  createSnapshot: (data: { snapshot_name?: string; description?: string; tags?: string[] }) =>
+  createSnapshot: (data: { snapshot_name?: string; description?: string; tags?: string[]; storage_path?: string }) =>
     api.post('/version-control/snapshots', data),
 
   deleteSnapshot: (snapshotId: string) =>
@@ -303,6 +303,61 @@ export const versionControl = {
   getRollbackHistory: () =>
     api.get('/version-control/rollback-history'),
 
+  getStorageStats: () =>
+    api.get('/version-control/storage/local/stats'),
+
+  // Cloud Storage
+  getCloudStatus: () =>
+    api.get('/version-control/cloud/status'),
+
+  configureCloud: (data: {
+    provider: string;
+    r2_account_id?: string;
+    r2_access_key_id?: string;
+    r2_secret_access_key?: string;
+    r2_bucket_name?: string;
+    aws_access_key_id?: string;
+    aws_secret_access_key?: string;
+    aws_region?: string;
+    s3_bucket_name?: string;
+  }) =>
+    api.post('/version-control/cloud/configure', data),
+
+  getCloudSnapshots: () =>
+    api.get('/version-control/cloud/snapshots'),
+
+  downloadFromCloud: (snapshotId: string) =>
+    api.post(`/version-control/cloud/snapshots/${snapshotId}/download`),
+
+  restoreFromCloud: (snapshotId: string) =>
+    api.post(`/version-control/cloud/snapshots/${snapshotId}/restore`),
+
+  uploadToCloud: (snapshotId: string) =>
+    api.post(`/version-control/cloud/snapshots/${snapshotId}/upload`),
+
+  deleteFromCloud: (snapshotId: string) =>
+    api.delete(`/version-control/cloud/snapshots/${snapshotId}`),
+
+  // External Storage
+  detectExternalDevices: () =>
+    api.get('/version-control/external/devices'),
+
+  exportToExternal: (data: { snapshot_id: string; destination_path: string; compress?: boolean }) =>
+    api.post('/version-control/external/export', data),
+
+  importFromExternal: (data: { source_path: string }) =>
+    api.post('/version-control/external/import', data),
+
+  listExternalSnapshots: (data: { device_path: string }) =>
+    api.post('/version-control/external/snapshots', data),
+
+  verifyExternalSnapshot: (data: { snapshot_path: string }) =>
+    api.post('/version-control/external/verify', data),
+
+  getSuggestedPaths: () =>
+    api.get('/version-control/suggested-paths'),
+
+  // Legacy Google Drive (deprecated)
   testDriveConnection: () =>
     api.get('/version-control/drive/test'),
 

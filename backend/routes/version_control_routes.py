@@ -1,12 +1,20 @@
-from flask import Blueprint, request, jsonify, send_file
+from flask import Blueprint, request, jsonify, send_file, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from database import execute_query, execute_insert, get_db_cursor
 from auth import jwt_required_with_role, get_user_identity_details
-from snapshot_storage import snapshot_storage
+from snapshot_storage import snapshot_storage, SnapshotStorage
+from cloud_storage import cloud_storage
+from external_storage import external_storage
 from psycopg2.extras import Json
 import json
 from datetime import datetime
 import os
+import threading
+from pathlib import Path
+import traceback
+import tempfile
+import shutil
+import zipfile
 
 version_control_bp = Blueprint('version_control', __name__, url_prefix='/api/version-control')
 
@@ -69,7 +77,10 @@ SNAPSHOT_TABLES = [
     'scrap_pieces',
 
     # Lifecycle events (depend on inventory_transactions)
-    'piece_lifecycle_events'
+    'piece_lifecycle_events',
+
+    # Audit logs (system tracking)
+    'audit_logs'
 ]# Tables that have soft delete (deleted_at column)
 SOFT_DELETE_TABLES = [
     'batches',
@@ -101,7 +112,8 @@ TABLES_WITHOUT_UPDATED_AT = [
     'scrap_pieces',
     'piece_lifecycle_events',
     'product_aliases',
-    'inventory_transactions'
+    'inventory_transactions',
+    'audit_logs'
 ]
 
 # Columns that are UUID arrays (need explicit casting)
@@ -124,6 +136,7 @@ def get_snapshots():
             ds.file_size_mb,
             ds.is_automatic,
             ds.tags,
+            ds.storage_path,
             u.username as created_by_username,
             u.full_name as created_by_name
         FROM database_snapshots ds
@@ -131,6 +144,15 @@ def get_snapshots():
         ORDER BY ds.created_at DESC
     """
     snapshots = execute_query(query)
+
+    # Check if snapshot files actually exist on disk and resolve path
+    for snapshot in snapshots:
+        # Use custom storage path if set, otherwise use default
+        storage_base = Path(snapshot.get('storage_path') or snapshot_storage.storage_path)
+        snapshot_path = storage_base / str(snapshot['id'])
+        snapshot['files_exist'] = snapshot_path.exists()
+        snapshot['resolved_storage_path'] = str(storage_base.resolve())
+
     return jsonify(snapshots), 200
 
 @version_control_bp.route('/snapshots', methods=['POST'])
@@ -144,6 +166,7 @@ def create_snapshot():
     description = data.get('description', '')
     tags = data.get('tags', [])
     is_automatic = data.get('is_automatic', False)
+    storage_path = data.get('storage_path')  # User-specified storage path
 
     try:
         with get_db_cursor() as cursor:
@@ -173,9 +196,9 @@ def create_snapshot():
             cursor.execute("""
                 INSERT INTO database_snapshots (
                     snapshot_name, description, snapshot_data, table_counts,
-                    created_by, file_size_mb, is_automatic, tags
+                    created_by, file_size_mb, is_automatic, tags, storage_path
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id, snapshot_name, created_at, table_counts
             """, (
                 snapshot_name,
@@ -185,7 +208,8 @@ def create_snapshot():
                 user_id,
                 file_size_mb,
                 is_automatic,
-                tags
+                tags,
+                str(storage_path) if storage_path else str(snapshot_storage.storage_path)
             ))
 
             snapshot = cursor.fetchone()
@@ -201,14 +225,38 @@ def create_snapshot():
                 'table_counts': table_counts,
                 'file_size_mb': file_size_mb,
                 'is_automatic': is_automatic,
-                'tags': tags
+                'tags': tags,
+                'storage_path': storage_path
             }
 
-            storage_success = snapshot_storage.save_snapshot(snapshot_id, snapshot_data, metadata)
+            # Use custom storage path if provided
+            if storage_path:
+                custom_storage = SnapshotStorage(storage_path)
+                storage_success = custom_storage.save_snapshot(snapshot_id, snapshot_data, metadata)
+            else:
+                storage_success = snapshot_storage.save_snapshot(snapshot_id, snapshot_data, metadata)
+
             if not storage_success:
                 # Log warning but don't fail the operation
                 import logging
                 logging.warning(f"Failed to save snapshot {snapshot_id} to local storage")
+
+            # Sync to cloud storage in background (non-blocking)
+            if cloud_storage.enabled and storage_success:
+                def sync_to_cloud():
+                    try:
+                        # Use custom path if provided, otherwise use default
+                        if storage_path:
+                            local_path = Path(storage_path) / snapshot_id
+                        else:
+                            local_path = Path(snapshot_storage.storage_path) / snapshot_id
+                        cloud_storage.upload_snapshot(snapshot_id, local_path, encrypt=True)
+                    except Exception as e:
+                        import logging
+                        logging.error(f"Failed to sync snapshot {snapshot_id} to cloud: {e}")
+
+                sync_thread = threading.Thread(target=sync_to_cloud, daemon=True)
+                sync_thread.start()
 
             # Create audit log
             actor = get_user_identity_details(user_id)
@@ -290,6 +338,7 @@ def rollback_to_snapshot(snapshot_id):
     user_id = get_jwt_identity()
     data = request.json or {}
     confirm = data.get('confirm', False)
+    selective_tables = data.get('tables', None)  # Optional: restore only specific tables
 
     if not confirm:
         return jsonify({'error': 'Rollback must be confirmed with "confirm": true'}), 400
@@ -324,8 +373,21 @@ def rollback_to_snapshot(snapshot_id):
             # Temporarily disable FK constraint checks to handle circular dependencies
             cursor.execute("SET session_replication_role = 'replica'")
 
+            # Determine which tables to restore
+            tables_to_restore = selective_tables if selective_tables else SNAPSHOT_TABLES
+
+            # If selective restore, validate table names
+            if selective_tables:
+                invalid_tables = [t for t in selective_tables if t not in SNAPSHOT_TABLES]
+                if invalid_tables:
+                    return jsonify({'error': f'Invalid table names: {", ".join(invalid_tables)}'}), 400
+
             # Perform rollback for each table in correct order (parent tables first)
             for table in SNAPSHOT_TABLES:
+                # Skip if selective restore and table not selected
+                if selective_tables and table not in selective_tables:
+                    continue
+
                 # Skip if table not in snapshot data
                 if table not in snapshot_data:
                     continue
@@ -610,35 +672,89 @@ def list_local_snapshots():
 @version_control_bp.route('/snapshots/<snapshot_id>/download', methods=['GET'])
 @jwt_required_with_role(['admin'])
 def download_snapshot(snapshot_id):
-    """Download a snapshot as a zip file"""
+    """Download a snapshot as zip or tar.gz file"""
     try:
-        import tempfile
-        import shutil
-        from pathlib import Path
+        import tarfile
 
-        snapshot_dir = snapshot_storage.storage_path / snapshot_id
+        current_app.logger.info(f"Download request for snapshot {snapshot_id}")
+
+        # Get format from query parameter (default: zip)
+        format_type = request.args.get('format', 'zip')
+        current_app.logger.info(f"Format requested: {format_type}")
+        if format_type not in ['zip', 'tar.gz']:
+            return jsonify({'error': 'Invalid format. Use zip or tar.gz'}), 400
+
+        # Get storage_path from database
+        snapshot_info = execute_query(
+            'SELECT storage_path FROM database_snapshots WHERE id = %s',
+            (snapshot_id,)
+        )
+        if not snapshot_info:
+            current_app.logger.error(f"Snapshot {snapshot_id} not found in database")
+            return jsonify({'error': 'Snapshot not found in database'}), 404
+
+        storage_base = Path(snapshot_info[0].get('storage_path') or snapshot_storage.storage_path)
+        snapshot_dir = storage_base / snapshot_id
+        current_app.logger.info(f"Storage base: {storage_base}")
+        current_app.logger.info(f"Snapshot dir: {snapshot_dir}")
+        current_app.logger.info(f"Snapshot dir exists: {snapshot_dir.exists()}")
 
         if not snapshot_dir.exists():
-            return jsonify({'error': 'Snapshot not found in local storage'}), 404
+            current_app.logger.error(f"Snapshot directory not found: {snapshot_dir}")
+            return jsonify({
+                'error': 'Snapshot files not found in storage',
+                'expected_path': str(snapshot_dir),
+                'storage_base': str(storage_base)
+            }), 404
 
-        # Create temporary zip file
-        temp_dir = tempfile.mkdtemp()
-        zip_path = Path(temp_dir) / f"{snapshot_id}.zip"
+        # Create temporary archive file
+        temp_dir = Path(tempfile.mkdtemp())
+        current_app.logger.info(f"Temp dir created: {temp_dir}")
 
-        shutil.make_archive(
-            str(zip_path.with_suffix('')),
-            'zip',
-            snapshot_dir
-        )
+        if format_type == 'zip':
+            archive_filename = f"snapshot_{snapshot_id}.zip"
+            archive_path = temp_dir / archive_filename
+
+            # Use zipfile module for maximum compatibility
+            file_count = 0
+            with zipfile.ZipFile(str(archive_path), 'w', zipfile.ZIP_DEFLATED) as zipf:
+                for file_path in snapshot_dir.rglob('*'):
+                    if file_path.is_file():
+                        arcname = snapshot_id + '/' + str(file_path.relative_to(snapshot_dir))
+                        zipf.write(file_path, arcname)
+                        file_count += 1
+
+            current_app.logger.info(f"Created zip with {file_count} files")
+            mimetype = 'application/zip'
+        else:  # tar.gz
+            archive_filename = f"snapshot_{snapshot_id}.tar.gz"
+            archive_path = temp_dir / archive_filename
+
+            # Create tar.gz archive
+            with tarfile.open(str(archive_path), 'w:gz') as tarf:
+                tarf.add(snapshot_dir, arcname=snapshot_id)
+
+            current_app.logger.info(f"Created tar.gz archive")
+            mimetype = 'application/gzip'
+
+        # Check archive size
+        import os
+        archive_size = os.path.getsize(archive_path)
+        current_app.logger.info(f"Archive created: {archive_path}")
+        current_app.logger.info(f"Archive size: {archive_size} bytes ({archive_size/1024:.2f} KB)")
+
+        if archive_size < 1000:
+            current_app.logger.error(f"Archive suspiciously small: {archive_size} bytes")
 
         return send_file(
-            str(zip_path),
+            str(archive_path),
             as_attachment=True,
-            download_name=f"snapshot_{snapshot_id}.zip",
-            mimetype='application/zip'
+            download_name=archive_filename,
+            mimetype=mimetype
         )
 
     except Exception as e:
+        current_app.logger.error(f"Download error: {traceback.format_exc()}")
         return jsonify({'error': str(e)}), 500
 
 @version_control_bp.route('/snapshots/<snapshot_id>/export', methods=['POST'])
@@ -652,15 +768,741 @@ def export_snapshot_to_path(snapshot_id):
         if not export_path:
             return jsonify({'error': 'export_path is required'}), 400
 
-        success = snapshot_storage.export_snapshot(snapshot_id, export_path)
+        # Get storage_path from database
+        snapshot_info = execute_query(
+            'SELECT storage_path FROM database_snapshots WHERE id = %s',
+            (snapshot_id,)
+        )
+        if not snapshot_info:
+            return jsonify({'error': 'Snapshot not found in database'}), 404
+
+        storage_base = Path(snapshot_info[0].get('storage_path') or snapshot_storage.storage_path)
+        snapshot_dir = storage_base / snapshot_id
+
+        if not snapshot_dir.exists():
+            return jsonify({
+                'error': 'Snapshot files not found in storage',
+                'expected_path': str(snapshot_dir)
+            }), 404
+
+        # Create base export directory if it doesn't exist
+        export_base = Path(export_path)
+        export_base.mkdir(parents=True, exist_ok=True)
+
+        # Create TarkoInventoryBackups subdirectory
+        backup_dir = export_base / 'TarkoInventoryBackups'
+        backup_dir.mkdir(parents=True, exist_ok=True)
+
+        # Export to the backup directory (copy from actual storage location)
+        final_export_path = backup_dir / snapshot_id
+
+        try:
+            if final_export_path.exists():
+                shutil.rmtree(final_export_path)
+            shutil.copytree(snapshot_dir, final_export_path, dirs_exist_ok=True)
+
+            return jsonify({
+                'message': 'Snapshot exported successfully',
+                'export_path': str(final_export_path),
+                'source_path': str(snapshot_dir)
+            }), 200
+        except Exception as copy_error:
+            current_app.logger.error(f"Copy error: {copy_error}")
+            return jsonify({
+                'error': f'Failed to copy snapshot: {str(copy_error)}',
+                'source': str(snapshot_dir),
+                'destination': str(final_export_path)
+            }), 500
+
+    except Exception as e:
+        current_app.logger.error(f"Export error: {traceback.format_exc()}")
+        return jsonify({'error': str(e)}), 500
+
+
+@version_control_bp.route('/storage/local/stats', methods=['GET'])
+@jwt_required_with_role('admin')
+def get_local_storage_stats():
+    """Get local storage statistics"""
+    try:
+        snapshots = snapshot_storage.list_snapshots()
+
+        total_size = 0
+        for snap in snapshots:
+            total_size += snap.get('size_mb', 0)
+
+        actual_path = snapshot_storage.storage_path.resolve()
+        current_app.logger.info(f"Storage stats - Path: {actual_path}, Snapshots: {len(snapshots)}, Size: {total_size} MB")
+
+        return jsonify({
+            'storage_path': str(actual_path),
+            'snapshot_count': len(snapshots),
+            'total_size_mb': round(total_size, 2),
+            'total_size_gb': round(total_size / 1024, 2)
+        }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ==================== CLOUD STORAGE ROUTES ====================
+
+@version_control_bp.route('/cloud/status', methods=['GET'])
+@jwt_required_with_role('admin')
+def get_cloud_status():
+    """Get cloud storage status and statistics"""
+    try:
+        stats = cloud_storage.get_storage_stats()
+
+        # Get bucket name from environment (use correct variable names)
+        bucket_name = None
+        if cloud_storage.enabled:
+            if cloud_storage.provider == 'r2':
+                bucket_name = os.getenv('R2_BUCKET_NAME')
+            elif cloud_storage.provider == 's3':
+                bucket_name = os.getenv('S3_BUCKET_NAME')
+
+        return jsonify({
+            'enabled': cloud_storage.enabled,
+            'provider': cloud_storage.provider if cloud_storage.enabled else None,
+            'bucket_name': bucket_name,
+            'stats': stats
+        }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@version_control_bp.route('/cloud/configure', methods=['POST'])
+@jwt_required_with_role('admin')
+def configure_cloud_storage():
+    """Configure cloud storage credentials (hot reload without restart)"""
+    try:
+        data = request.get_json()
+        provider = data.get('provider', 'r2')
+
+        # Load environment file or create if doesn't exist
+        env_path = Path('.env')
+        env_vars = {}
+
+        if env_path.exists():
+            with open(env_path, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith('#') and '=' in line:
+                        key, value = line.split('=', 1)
+                        env_vars[key] = value
+
+        # Update cloud settings
+        env_vars['ENABLE_CLOUD_BACKUP'] = 'true'
+        env_vars['CLOUD_STORAGE_PROVIDER'] = provider
+
+        # Set runtime environment variables (hot reload)
+        os.environ['ENABLE_CLOUD_BACKUP'] = 'true'
+        os.environ['CLOUD_STORAGE_PROVIDER'] = provider
+
+        if provider == 'r2':
+            env_vars['R2_ACCOUNT_ID'] = data.get('r2_account_id', '')
+            env_vars['R2_ACCESS_KEY_ID'] = data.get('r2_access_key_id', '')
+            env_vars['R2_SECRET_ACCESS_KEY'] = data.get('r2_secret_access_key', '')
+            env_vars['R2_BUCKET_NAME'] = data.get('r2_bucket_name', 'tarko-inventory-backups')
+
+            # Set runtime environment
+            os.environ['R2_ACCOUNT_ID'] = data.get('r2_account_id', '')
+            os.environ['R2_ACCESS_KEY_ID'] = data.get('r2_access_key_id', '')
+            os.environ['R2_SECRET_ACCESS_KEY'] = data.get('r2_secret_access_key', '')
+            os.environ['R2_BUCKET_NAME'] = data.get('r2_bucket_name', 'tarko-inventory-backups')
+
+        elif provider == 's3':
+            env_vars['AWS_ACCESS_KEY_ID'] = data.get('aws_access_key_id', '')
+            env_vars['AWS_SECRET_ACCESS_KEY'] = data.get('aws_secret_access_key', '')
+            env_vars['AWS_REGION'] = data.get('aws_region', 'us-east-1')
+            env_vars['S3_BUCKET_NAME'] = data.get('s3_bucket_name', 'tarko-inventory-backups')
+
+            # Set runtime environment
+            os.environ['AWS_ACCESS_KEY_ID'] = data.get('aws_access_key_id', '')
+            os.environ['AWS_SECRET_ACCESS_KEY'] = data.get('aws_secret_access_key', '')
+            os.environ['AWS_REGION'] = data.get('aws_region', 'us-east-1')
+            os.environ['S3_BUCKET_NAME'] = data.get('s3_bucket_name', 'tarko-inventory-backups')
+
+        # Write back to .env file for persistence
+        with open(env_path, 'w') as f:
+            for key, value in env_vars.items():
+                f.write(f"{key}={value}\n")
+
+        # Reinitialize cloud storage with new credentials
+        from cloud_storage import CloudStorage
+        global cloud_storage
+        cloud_storage = CloudStorage()
+
+        return jsonify({
+            'success': True,
+            'message': 'Cloud configuration saved and applied immediately!',
+            'restart_required': False
+        }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@version_control_bp.route('/cloud/snapshots', methods=['GET'])
+@jwt_required_with_role('admin')
+def list_cloud_snapshots():
+    """List all snapshots available in cloud storage"""
+    try:
+        if not cloud_storage.enabled:
+            return jsonify({'error': 'Cloud backup is not enabled'}), 400
+
+        snapshots = cloud_storage.list_cloud_snapshots()
+        return jsonify({'snapshots': snapshots}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@version_control_bp.route('/cloud/snapshots/<snapshot_id>/download', methods=['POST'])
+@jwt_required_with_role('admin')
+def download_cloud_snapshot(snapshot_id):
+    """Download snapshot from cloud to local storage"""
+    try:
+        if not cloud_storage.enabled:
+            return jsonify({'error': 'Cloud backup is not enabled'}), 400
+
+        # Download to local storage
+        local_path = Path(snapshot_storage.storage_path) / snapshot_id
+        success = cloud_storage.download_snapshot(snapshot_id, local_path)
 
         if success:
             return jsonify({
-                'message': 'Snapshot exported successfully',
-                'export_path': export_path
+                'message': 'Snapshot downloaded from cloud successfully',
+                'snapshot_id': snapshot_id,
+                'local_path': str(local_path)
             }), 200
         else:
-            return jsonify({'error': 'Failed to export snapshot'}), 500
+            return jsonify({'error': 'Failed to download snapshot from cloud'}), 500
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@version_control_bp.route('/cloud/snapshots/<snapshot_id>/restore', methods=['POST'])
+@jwt_required_with_role('admin')
+def restore_from_cloud(snapshot_id):
+    """Download snapshot from cloud and restore database"""
+    user_id = get_jwt_identity()
+
+    try:
+        current_app.logger.info(f"Starting cloud restore for snapshot: {snapshot_id}")
+
+        if not cloud_storage.enabled:
+            current_app.logger.error("Cloud backup is not enabled")
+            return jsonify({'error': 'Cloud backup is not enabled'}), 400
+
+        # Download snapshot from cloud to local storage
+        local_path = Path(snapshot_storage.storage_path) / snapshot_id
+
+        current_app.logger.info(f"Downloading snapshot to: {local_path}")
+        current_app.logger.info(f"Storage path: {snapshot_storage.storage_path}")
+
+        if local_path.exists():
+            current_app.logger.info(f"Snapshot already exists locally, using existing copy")
+        else:
+            current_app.logger.info(f"Downloading snapshot from cloud...")
+            download_success = cloud_storage.download_snapshot(snapshot_id, local_path)
+            if not download_success:
+                current_app.logger.error(f"Failed to download snapshot {snapshot_id} from cloud")
+                return jsonify({'error': 'Failed to download snapshot from cloud'}), 500
+            current_app.logger.info(f"Successfully downloaded snapshot to {local_path}")
+
+        # Load snapshot data
+        current_app.logger.info(f"Loading snapshot data")
+        snapshot_data = snapshot_storage.load_snapshot(snapshot_id)
+        if not snapshot_data:
+            current_app.logger.error(f"Failed to load snapshot {snapshot_id}")
+            return jsonify({'error': 'Failed to load downloaded snapshot'}), 500
+
+        current_app.logger.info(f"Snapshot loaded successfully, starting database restore")
+        current_app.logger.info(f"Tables in snapshot: {list(snapshot_data.keys())}")
+        current_app.logger.info(f"Row counts: {dict((k, len(v) if v else 0) for k, v in snapshot_data.items())}")
+
+        # Perform rollback using the downloaded data
+        with get_db_cursor() as cursor:
+            # Temporarily disable FK constraints
+            cursor.execute("SET session_replication_role = 'replica'")
+            current_app.logger.info("Disabled foreign key constraints for restore")
+
+            try:
+                # Clear existing data and restore from snapshot (same logic as local rollback)
+                for table in reversed(SNAPSHOT_TABLES):
+                    if table in snapshot_data and snapshot_data[table]:
+                        current_app.logger.info(f"Restoring table: {table} ({len(snapshot_data[table])} rows)")
+                        # Truncate table
+                        cursor.execute(f"TRUNCATE TABLE {table} RESTART IDENTITY CASCADE")
+                        current_app.logger.info(f"Truncated table: {table}")
+
+                        # Restore data
+                        table_data = snapshot_data[table]
+                        if table_data:
+                            for row in table_data:
+                                columns = list(row.keys())
+                                values = [row[col] for col in columns]
+
+                                # Handle JSON/ARRAY types
+                                processed_values = []
+                                for col, val in zip(columns, values):
+                                    if isinstance(val, dict):
+                                        processed_values.append(Json(val))
+                                    elif isinstance(val, list) and val and isinstance(val[0], dict):
+                                        processed_values.append(Json(val))
+                                    else:
+                                        processed_values.append(val)
+
+                                # Build INSERT with type casting for UUID arrays
+                                placeholders = []
+                                for col in columns:
+                                    if table in UUID_ARRAY_COLUMNS and col in UUID_ARRAY_COLUMNS[table]:
+                                        placeholders.append('%s::uuid[]')
+                                    else:
+                                        placeholders.append('%s')
+
+                                placeholders_str = ', '.join(placeholders)
+                                columns_str = ', '.join(columns)
+
+                                query = f"INSERT INTO {table} ({columns_str}) VALUES ({placeholders_str})"
+                                cursor.execute(query, processed_values)
+
+                        current_app.logger.info(f"Successfully restored {len(table_data)} rows to {table}")
+
+                # Re-enable FK constraints
+                cursor.execute("SET session_replication_role = 'origin'")
+                current_app.logger.info("Re-enabled foreign key constraints")
+
+                # Log rollback
+                actor = get_user_identity_details(user_id)
+                cursor.execute("""
+                    INSERT INTO audit_logs (
+                        user_id, action_type, entity_type, entity_id,
+                        description, created_at
+                    ) VALUES (%s, 'ROLLBACK', 'SNAPSHOT', %s, %s, NOW())
+                """, (
+                    user_id,
+                    snapshot_id,
+                    f"{actor['name']} restored database from cloud snapshot '{snapshot_id}'"
+                ))
+                current_app.logger.info(f"Successfully restored database from cloud snapshot: {snapshot_id}")
+
+                return jsonify({
+                    'message': 'Database restored from cloud snapshot successfully',
+                    'snapshot_id': snapshot_id
+                }), 200
+
+            except Exception as inner_error:
+                # Re-enable FK constraints on error
+                cursor.execute("SET session_replication_role = 'origin'")
+                current_app.logger.error(f"Error during database restore: {str(inner_error)}")
+                current_app.logger.error(f"Traceback: {traceback.format_exc()}")
+                raise
+
+    except Exception as e:
+        current_app.logger.error(f"Cloud restore failed for snapshot {snapshot_id}: {str(e)}")
+        current_app.logger.error(f"Full traceback: {traceback.format_exc()}")
+        return jsonify({
+            'error': f'Failed to restore from cloud: {str(e)}'
+        }), 500
+
+
+@version_control_bp.route('/cloud/snapshots/<snapshot_id>/upload', methods=['POST'])
+@jwt_required_with_role('admin')
+def upload_to_cloud(snapshot_id):
+    """Manually upload local snapshot to cloud"""
+    try:
+        if not cloud_storage.enabled:
+            return jsonify({'error': 'Cloud backup is not enabled'}), 400
+
+        local_path = Path(snapshot_storage.storage_path) / snapshot_id
+
+        if not local_path.exists():
+            return jsonify({'error': 'Snapshot not found locally'}), 404
+
+        success = cloud_storage.upload_snapshot(snapshot_id, local_path, encrypt=True)
+
+        if success:
+            return jsonify({
+                'message': 'Snapshot uploaded to cloud successfully',
+                'snapshot_id': snapshot_id
+            }), 200
+        else:
+            return jsonify({'error': 'Failed to upload snapshot to cloud'}), 500
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@version_control_bp.route('/cloud/snapshots/<snapshot_id>', methods=['DELETE'])
+@jwt_required_with_role('admin')
+def delete_cloud_snapshot(snapshot_id):
+    """Delete snapshot from cloud storage"""
+    try:
+        if not cloud_storage.enabled:
+            return jsonify({'error': 'Cloud backup is not enabled'}), 400
+
+        success = cloud_storage.delete_cloud_snapshot(snapshot_id)
+
+        if success:
+            return jsonify({
+                'message': 'Snapshot deleted from cloud successfully',
+                'snapshot_id': snapshot_id
+            }), 200
+        else:
+            return jsonify({'error': 'Failed to delete snapshot from cloud'}), 500
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ==================== EXTERNAL STORAGE ROUTES ====================
+
+@version_control_bp.route('/external/devices', methods=['GET'])
+@jwt_required_with_role('admin')
+def detect_external_devices():
+    """Detect available external storage devices"""
+    try:
+        devices = external_storage.detect_external_devices()
+        return jsonify({'devices': devices}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@version_control_bp.route('/external/export', methods=['POST'])
+@jwt_required_with_role('admin')
+def export_to_external():
+    """Export snapshot to external storage device"""
+    try:
+        data = request.get_json()
+        snapshot_id = data.get('snapshot_id')
+        destination_path = data.get('destination_path')
+        compress = data.get('compress', True)
+
+        if not snapshot_id or not destination_path:
+            return jsonify({'error': 'snapshot_id and destination_path are required'}), 400
+
+        # Get local snapshot path
+        local_path = Path(snapshot_storage.storage_path) / snapshot_id
+
+        if not local_path.exists():
+            current_app.logger.error(f"Snapshot directory not found: {local_path}")
+            return jsonify({
+                'error': f'Snapshot files not found on disk. The snapshot may have been deleted or not properly saved.',
+                'snapshot_id': snapshot_id,
+                'expected_path': str(local_path)
+            }), 404
+
+        current_app.logger.info(f"Exporting snapshot {snapshot_id} from {local_path} to {destination_path}")
+
+        success, error = external_storage.export_snapshot(
+            snapshot_id,
+            local_path,
+            destination_path,
+            compress=compress
+        )
+
+        if success:
+            return jsonify({
+                'message': 'Snapshot exported to external storage successfully',
+                'snapshot_id': snapshot_id,
+                'destination': destination_path
+            }), 200
+        else:
+            current_app.logger.error(f"Export failed: {error}")
+            return jsonify({'error': error or 'Failed to export snapshot'}), 500
+
+    except Exception as e:
+        current_app.logger.error(f"Export error: {traceback.format_exc()}")
+        return jsonify({'error': str(e)}), 500
+
+
+@version_control_bp.route('/external/import', methods=['POST'])
+@jwt_required_with_role('admin')
+def import_from_external():
+    """Import snapshot from external storage device"""
+    try:
+        data = request.get_json()
+        source_path = data.get('source_path')
+
+        if not source_path:
+            return jsonify({'error': 'source_path is required'}), 400
+
+        # Import to local storage
+        destination_path = Path(snapshot_storage.storage_path)
+        success, snapshot_id, error = external_storage.import_snapshot(
+            source_path,
+            destination_path
+        )
+
+        if success:
+            return jsonify({
+                'message': 'Snapshot imported from external storage successfully',
+                'snapshot_id': snapshot_id
+            }), 200
+        else:
+            return jsonify({'error': error or 'Failed to import snapshot'}), 500
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@version_control_bp.route('/snapshots/upload', methods=['POST'])
+@jwt_required_with_role(['admin'])
+def upload_snapshot():
+    """Upload a snapshot archive file (zip or tar.gz) and import it"""
+    try:
+        import tarfile
+
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file provided'}), 400
+
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
+
+        # Determine file type
+        filename = file.filename.lower()
+        is_zip = filename.endswith('.zip')
+        is_tar = filename.endswith(('.tar.gz', '.tar', '.tgz'))
+
+        if not (is_zip or is_tar):
+            return jsonify({'error': 'Invalid file format. Please upload .zip, .tar.gz, .tar, or .tgz file'}), 400
+
+        # Create temporary directory for extraction
+        temp_dir = Path(tempfile.mkdtemp())
+
+        try:
+            # Save uploaded file
+            upload_path = temp_dir / file.filename
+            file.save(str(upload_path))
+
+            # Extract archive
+            extract_dir = temp_dir / 'extracted'
+            extract_dir.mkdir()
+
+            if is_zip:
+                with zipfile.ZipFile(str(upload_path), 'r') as zipf:
+                    zipf.extractall(str(extract_dir))
+            else:  # tar format
+                with tarfile.open(str(upload_path), 'r:*') as tarf:
+                    tarf.extractall(str(extract_dir))
+
+            # Find the snapshot directory
+            extracted_dirs = [d for d in extract_dir.iterdir() if d.is_dir()]
+            if not extracted_dirs:
+                return jsonify({'error': 'Invalid snapshot file - no directory found'}), 400
+
+            snapshot_dir = extracted_dirs[0]
+
+            # Verify it has metadata.json
+            metadata_file = snapshot_dir / 'metadata.json'
+            if not metadata_file.exists():
+                return jsonify({'error': 'Invalid snapshot file - no metadata.json found'}), 400
+
+            # Read metadata to get snapshot ID
+            with open(metadata_file, 'r') as f:
+                metadata = json.load(f)
+
+            snapshot_id = metadata.get('id') or snapshot_dir.name
+
+            # Copy to snapshots directory
+            destination = snapshot_storage.storage_path / snapshot_id
+            if destination.exists():
+                return jsonify({
+                    'error': f'A snapshot with ID {snapshot_id} already exists in local storage',
+                    'snapshot_id': snapshot_id
+                }), 409
+
+            shutil.copytree(snapshot_dir, destination)
+
+            return jsonify({
+                'message': 'Snapshot uploaded and imported successfully',
+                'snapshot_id': snapshot_id
+            }), 200
+
+        finally:
+            # Cleanup temp directory
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    except Exception as e:
+        current_app.logger.error(f"Upload error: {traceback.format_exc()}")
+        return jsonify({'error': str(e)}), 500
+
+
+@version_control_bp.route('/external/snapshots', methods=['POST'])
+@jwt_required_with_role(['admin'])
+def list_external_snapshots():
+    """List snapshots available on external device"""
+    try:
+        data = request.get_json()
+        device_path = data.get('device_path')
+
+        if not device_path:
+            return jsonify({'error': 'device_path is required'}), 400
+
+        # Resolve path and handle trailing slashes
+        base_path = Path(device_path).expanduser().resolve()
+
+        current_app.logger.info(f"Checking path: {device_path} -> {base_path}")
+
+        if not base_path.exists():
+            current_app.logger.error(f"Path does not exist: {base_path}")
+            return jsonify({'error': f'Path does not exist: {device_path}'}), 400
+
+        snapshots = []
+
+        # Look in TarkoInventoryBackups subdirectory first
+        backup_dir = base_path / 'TarkoInventoryBackups'
+
+        # Check both TarkoInventoryBackups and base path
+        search_paths = []
+        if backup_dir.exists():
+            search_paths.append(backup_dir)
+        search_paths.append(base_path)  # Also check base path
+
+        for search_path in search_paths:
+            try:
+                if not search_path.exists() or not search_path.is_dir():
+                    continue
+
+                # Try to list directory contents
+                try:
+                    items = list(search_path.iterdir())
+                except PermissionError as pe:
+                    current_app.logger.warning(f"Permission denied accessing {search_path}: {pe}")
+                    continue
+
+                for item in items:
+                    try:
+                        if not item.is_dir():
+                            continue
+
+                        # Check if it has metadata.json (valid snapshot)
+                        metadata_file = item / 'metadata.json'
+                        if not metadata_file.exists():
+                            continue
+
+                        with open(metadata_file, 'r') as f:
+                            metadata = json.load(f)
+
+                        # Calculate size
+                        size_bytes = 0
+                        try:
+                            size_bytes = sum(f.stat().st_size for f in item.rglob('*') if f.is_file())
+                        except:
+                            size_bytes = 0
+
+                        # Avoid duplicates
+                        if not any(s['id'] == item.name for s in snapshots):
+                            snapshots.append({
+                                'id': item.name,
+                                'exported_at': metadata.get('created_at', ''),
+                                'size_mb': round(size_bytes / (1024 * 1024), 2) if size_bytes > 0 else 0,
+                                'snapshot_name': metadata.get('snapshot_name', item.name),
+                                'description': metadata.get('description', ''),
+                                'location': 'external',
+                                'path': str(item)
+                            })
+                    except Exception as e:
+                        current_app.logger.warning(f"Could not read snapshot {item.name}: {e}")
+                        continue
+            except Exception as e:
+                current_app.logger.warning(f"Error scanning {search_path}: {e}")
+                continue
+
+        # Sort by export date
+        snapshots.sort(key=lambda x: x.get('exported_at', ''), reverse=True)
+
+        current_app.logger.info(f"Found {len(snapshots)} snapshots in {device_path}")
+
+        return jsonify({
+            'snapshots': snapshots,
+            'count': len(snapshots),
+            'searched_paths': [str(p) for p in search_paths]
+        }), 200
+
+    except Exception as e:
+        current_app.logger.error(f"List external snapshots error: {traceback.format_exc()}")
+        return jsonify({'error': str(e)}), 500
+
+
+@version_control_bp.route('/external/verify', methods=['POST'])
+@jwt_required_with_role('admin')
+def verify_external_snapshot():
+    """Verify integrity of snapshot on external device"""
+    try:
+        data = request.get_json()
+        snapshot_path = data.get('snapshot_path')
+
+        if not snapshot_path:
+            return jsonify({'error': 'snapshot_path is required'}), 400
+
+        valid, error = external_storage.verify_external_snapshot(snapshot_path)
+
+        if valid:
+            return jsonify({
+                'message': 'Snapshot verified successfully',
+                'valid': True
+            }), 200
+        else:
+            return jsonify({
+                'message': error or 'Snapshot verification failed',
+                'valid': False
+            }), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@version_control_bp.route('/suggested-paths', methods=['GET'])
+@jwt_required_with_role('admin')
+def get_suggested_paths():
+    """Get suggested backup paths based on user's OS and username"""
+    try:
+        user_id = get_jwt_identity()
+
+        # Get user details
+        from database import execute_query
+        user = execute_query(
+            "SELECT username, full_name FROM users WHERE id = %s",
+            (user_id,)
+        )
+
+        username = user[0]['username'] if user else 'user'
+
+        # Get system username and platform
+        import platform
+        import getpass
+        system_user = getpass.getuser()
+        system = platform.system()
+
+        suggestions = []
+
+        if system == 'Darwin':  # macOS
+            # Downloads folder has access by default on macOS, Documents/Desktop require Full Disk Access
+            suggestions = [
+                f"/Users/{system_user}/Downloads/tarko-backups",
+                f"/Users/{system_user}/Desktop/tarko-backups",
+                f"/Users/{system_user}/Documents/tarko-backups"
+            ]
+        elif system == 'Windows':
+            suggestions = [
+                f"C:\\Users\\{system_user}\\Documents\\tarko-backups",
+                f"C:\\Users\\{system_user}\\Desktop\\tarko-backups",
+                f"C:\\Users\\{system_user}\\Downloads\\tarko-backups"
+            ]
+        elif system == 'Linux':
+            suggestions = [
+                f"/home/{system_user}/Documents/tarko-backups",
+                f"/home/{system_user}/Desktop/tarko-backups",
+                f"/home/{system_user}/Downloads/tarko-backups"
+            ]
+
+        return jsonify({
+            'suggestions': suggestions,
+            'system': system,
+            'username': system_user
+        }), 200
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500

@@ -710,6 +710,13 @@ def reset_database():
             elif reset_level == 'full_reset':
                 # Full reset - keeps only users, product types, brands, and customers
                 # Delete in correct order to respect foreign key constraints
+
+                # Log product_types count BEFORE deletion
+                cursor.execute("SELECT COUNT(*) FROM product_types")
+                result = cursor.fetchone()
+                pt_count_before = result['count'] if result else 0
+                print(f"DEBUG: product_types count BEFORE full_reset: {pt_count_before}")
+
                 cursor.execute("DELETE FROM scrap_pieces")  # References scrap_items
                 cursor.execute("DELETE FROM scrap_items")   # References scraps and inventory_stock
                 cursor.execute("DELETE FROM scraps")
@@ -727,6 +734,14 @@ def reset_database():
                 cursor.execute("DELETE FROM batches")
                 cursor.execute("DELETE FROM product_variants")
                 cursor.execute("DELETE FROM audit_logs WHERE entity_type NOT IN ('USER')")
+
+                # Log product_types count AFTER deletion to verify they're preserved
+                cursor.execute("SELECT COUNT(*) FROM product_types")
+                result = cursor.fetchone()
+                pt_count_after = result['count'] if result else 0
+                print(f"DEBUG: product_types count AFTER full_reset: {pt_count_after}")
+                print(f"DEBUG: Product types PRESERVED: {pt_count_before == pt_count_after}")
+
                 tables_cleared = ['scraps', 'scrap_items', 'scrap_pieces', 'dispatch_items', 'dispatches', 'return_rolls', 'return_bundles', 'return_items', 'returns', 'product_variants', 'batches', 'inventory_stock', 'hdpe_cut_pieces', 'sprinkler_spare_pieces', 'transactions', 'inventory_transactions', 'audit_logs (filtered)']
 
             elif reset_level == 'complete_wipe':

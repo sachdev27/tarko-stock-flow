@@ -1,16 +1,20 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { Database, History, RotateCcw, Trash2, Save } from 'lucide-react';
-import { formatDate } from '@/lib/utils';
+import { Database, History, Cloud, Save } from 'lucide-react';
 import { versionControl } from '@/lib/api';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { useState } from 'react';
-import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { useState, useEffect } from 'react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { BackupStorageTab } from './version-control/BackupStorageTab';
+import { CloudBackupTab } from './version-control/CloudBackupTab';
+import { RollbackHistoryTab } from './version-control/RollbackHistoryTab';
+import {
+  CreateSnapshotDialog,
+  RollbackConfirmDialog,
+  ExportDialog,
+  ImportDialog,
+  CloudConfigDialog,
+  StoragePathDialog,
+} from './version-control/dialogs';
 
 interface VersionControlTabProps {
   snapshots: any[];
@@ -29,6 +33,98 @@ export const VersionControlTab = ({ snapshots, rollbackHistory, onDataChange }: 
     tags: [] as string[],
   });
 
+  // Cloud storage state
+  const [cloudStatus, setCloudStatus] = useState<any>(null);
+  const [cloudSnapshots, setCloudSnapshots] = useState<any[]>([]);
+  const [cloudLoading, setCloudLoading] = useState(false);
+  const [cloudConfigDialog, setCloudConfigDialog] = useState(false);
+  const [cloudProvider, setCloudProvider] = useState('r2');
+  const [autoSync, setAutoSync] = useState(true);
+
+  // External storage state
+  const [externalDevices, setExternalDevices] = useState<any[]>([]);
+  const [selectedDevice, setSelectedDevice] = useState<string>('');
+  const [externalSnapshots, setExternalSnapshots] = useState<any[]>([]);
+  const [exportDialog, setExportDialog] = useState(false);
+  const [importDialog, setImportDialog] = useState(false);
+  const [selectedExternalSnapshot, setSelectedExternalSnapshot] = useState<any>(null);
+  const [detectingDevices, setDetectingDevices] = useState(false);
+  const [loadingSnapshots, setLoadingSnapshots] = useState(false);
+
+  // Local storage path state
+  const [storagePathDialog, setStoragePathDialog] = useState(false);
+  const [storageStats, setStorageStats] = useState<any>(null);
+
+  useEffect(() => {
+    fetchCloudStatus();
+    fetchStorageStats();
+  }, []);
+
+  const fetchStorageStats = async () => {
+    try {
+      const response = await versionControl.getStorageStats();
+      setStorageStats(response.data);
+    } catch (error: any) {
+      console.error('Failed to fetch storage stats:', error);
+    }
+  };
+
+  const fetchCloudStatus = async () => {
+    try {
+      const response = await versionControl.getCloudStatus();
+      setCloudStatus(response.data);
+    } catch (error: any) {
+      console.error('Failed to fetch cloud status:', error);
+    }
+  };
+
+  const fetchCloudSnapshots = async () => {
+    if (!cloudStatus?.enabled) return;
+    setCloudLoading(true);
+    try {
+      const response = await versionControl.getCloudSnapshots();
+      setCloudSnapshots(response.data.snapshots || []);
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Failed to load cloud snapshots');
+    } finally {
+      setCloudLoading(false);
+    }
+  };
+
+  const fetchExternalDevices = async () => {
+    setDetectingDevices(true);
+    try {
+      const response = await versionControl.detectExternalDevices();
+      setExternalDevices(response.data.devices || []);
+      if (response.data.devices?.length > 0) {
+        toast.success(`Found ${response.data.devices.length} external device(s)`);
+      } else {
+        toast.info('No external devices detected');
+      }
+    } catch (error: any) {
+      toast.error('Failed to detect devices');
+      console.error('Failed to detect devices:', error);
+    } finally {
+      setDetectingDevices(false);
+    }
+  };
+
+  const fetchExternalSnapshots = async (devicePath: string) => {
+    setLoadingSnapshots(true);
+    try {
+      const response = await versionControl.listExternalSnapshots({ device_path: devicePath });
+      setExternalSnapshots(response.data.snapshots || []);
+      if (response.data.snapshots?.length > 0) {
+        toast.success(`Found ${response.data.snapshots.length} snapshot(s) on device`);
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Failed to list external snapshots');
+      setExternalSnapshots([]);
+    } finally {
+      setLoadingSnapshots(false);
+    }
+  };
+
   const handleCreateSnapshot = async () => {
     if (!snapshotForm.snapshot_name) {
       toast.error('Snapshot name is required');
@@ -38,12 +134,103 @@ export const VersionControlTab = ({ snapshots, rollbackHistory, onDataChange }: 
     setLoading(true);
     try {
       await versionControl.createSnapshot(snapshotForm);
-      toast.success('Snapshot created successfully');
+      toast.success('Snapshot created successfully' + (cloudStatus?.enabled ? ' and syncing to cloud...' : ''));
       setSnapshotDialog(false);
       setSnapshotForm({ snapshot_name: '', description: '', tags: [] });
       onDataChange();
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Failed to create snapshot');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUploadToCloud = async (snapshotId: string) => {
+    try {
+      await versionControl.uploadToCloud(snapshotId);
+      toast.success('Snapshot uploaded to cloud successfully');
+      fetchCloudSnapshots();
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Failed to upload to cloud');
+    }
+  };
+
+  const handleDownloadFromCloud = async (snapshotId: string) => {
+    try {
+      await versionControl.downloadFromCloud(snapshotId);
+      toast.success('Snapshot downloaded from cloud successfully');
+      onDataChange();
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Failed to download from cloud');
+    }
+  };
+
+  const handleRestoreFromCloud = async (snapshotId: string) => {
+    if (!confirm('Restore database from cloud snapshot? This will replace current data.')) return;
+
+    setCloudLoading(true);
+    try {
+      await versionControl.restoreFromCloud(snapshotId);
+      toast.success('Database restored from cloud successfully');
+      onDataChange();
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Failed to restore from cloud');
+    } finally {
+      setCloudLoading(false);
+    }
+  };
+
+  const handleDeleteFromCloud = async (snapshotId: string) => {
+    if (!confirm('Delete snapshot from cloud storage?')) return;
+
+    try {
+      await versionControl.deleteFromCloud(snapshotId);
+      toast.success('Snapshot deleted from cloud');
+      fetchCloudSnapshots();
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Failed to delete from cloud');
+    }
+  };
+
+  const handleExportToExternal = async (destinationPath: string) => {
+    if (!selectedSnapshot) {
+      toast.error('Please select a snapshot');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await versionControl.exportToExternal({
+        snapshot_id: selectedSnapshot.id,
+        destination_path: destinationPath,
+        compress: true
+      });
+      toast.success('Snapshot exported successfully');
+      setExportDialog(false);
+      setSelectedSnapshot(null);
+
+      // Refresh external snapshots if the path is currently selected
+      if (selectedDevice === destinationPath) {
+        await fetchExternalSnapshots(destinationPath);
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Failed to export snapshot');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleImportFromExternal = async (sourcePath: string) => {
+    setLoading(true);
+    try {
+      await versionControl.importFromExternal({
+        source_path: sourcePath
+      });
+      toast.success('Snapshot imported successfully');
+      setImportDialog(false);
+      onDataChange();
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Failed to import snapshot');
     } finally {
       setLoading(false);
     }
@@ -83,202 +270,198 @@ export const VersionControlTab = ({ snapshots, rollbackHistory, onDataChange }: 
     setRollbackDialog(true);
   };
 
+  const handleSelectDevice = (path: string) => {
+    setSelectedDevice(path);
+    fetchExternalSnapshots(path);
+  };
+
+  const handleImportClick = (snapshot?: any) => {
+    if (snapshot) {
+      setSelectedExternalSnapshot(snapshot);
+    }
+    setImportDialog(true);
+  };
+
+  const handleSaveCloudConfig = async (config: any) => {
+    try {
+      const response = await versionControl.configureCloud(config);
+      toast.success('Cloud backup enabled successfully! 🎉');
+      // Refresh cloud status immediately
+      setTimeout(() => {
+        fetchCloudStatus();
+      }, 500);
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Failed to save cloud configuration');
+      throw error;
+    }
+  };
+
+  const handleToggleAutoSync = async (enabled: boolean) => {
+    setAutoSync(enabled);
+    toast.success(`Auto-sync ${enabled ? 'enabled' : 'disabled'}`);
+    // TODO: Save to backend preference
+  };
+
+  const handleManualSync = async () => {
+    if (!cloudStatus?.enabled) {
+      toast.error('Cloud backup is not configured');
+      return;
+    }
+
+    setCloudLoading(true);
+    try {
+      // Find all local snapshots not in cloud
+      const cloudIds = new Set(cloudSnapshots.map((s: any) => s.id));
+      const unsyncedSnapshots = snapshots.filter((s: any) => !cloudIds.has(s.id));
+
+      if (unsyncedSnapshots.length === 0) {
+        toast.info('All snapshots are already synced to cloud');
+        setCloudLoading(false);
+        return;
+      }
+
+      toast.info(`Syncing ${unsyncedSnapshots.length} snapshot(s)...`);
+
+      // Upload each unsynced snapshot
+      for (const snapshot of unsyncedSnapshots) {
+        await versionControl.uploadToCloud(snapshot.id);
+      }
+
+      toast.success(`Synced ${unsyncedSnapshots.length} snapshot(s) to cloud`);
+      await fetchCloudSnapshots();
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Sync failed');
+    } finally {
+      setCloudLoading(false);
+    }
+  };
+
+  const handleCreateAndUpload = async () => {
+    if (!cloudStatus?.enabled) {
+      toast.error('Cloud backup is not configured');
+      return;
+    }
+
+    // Open dialog with auto-upload intention
+    setSnapshotForm({
+      snapshot_name: `Cloud Backup ${new Date().toLocaleDateString()}`,
+      description: 'Automatic cloud backup',
+      tags: ['cloud', 'auto']
+    });
+    setSnapshotDialog(true);
+  };
+
   return (
     <div className="space-y-6">
-      {/* Snapshots Card */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <Database className="h-5 w-5" />
-                Database Snapshots
-              </CardTitle>
-              <CardDescription>
-                Create and manage database snapshots for version control and rollback
-              </CardDescription>
-            </div>
-            <Dialog open={snapshotDialog} onOpenChange={setSnapshotDialog}>
-              <DialogTrigger asChild>
-                <Button>
-                  <Save className="h-4 w-4 mr-2" />
-                  Create Snapshot
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Create Database Snapshot</DialogTitle>
-                  <DialogDescription>
-                    Save the current state of the database for version control
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="snapshot_name">Snapshot Name *</Label>
-                    <Input
-                      id="snapshot_name"
-                      value={snapshotForm.snapshot_name}
-                      onChange={(e) => setSnapshotForm({ ...snapshotForm, snapshot_name: e.target.value })}
-                      placeholder="e.g., before-major-update"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="snapshot_desc">Description</Label>
-                    <Textarea
-                      id="snapshot_desc"
-                      value={snapshotForm.description}
-                      onChange={(e) => setSnapshotForm({ ...snapshotForm, description: e.target.value })}
-                      placeholder="Optional description"
-                      rows={3}
-                    />
-                  </div>
-                  <Button onClick={handleCreateSnapshot} disabled={loading} className="w-full">
-                    {loading ? 'Creating...' : 'Create Snapshot'}
-                  </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {snapshots.map((snapshot) => (
-              <div
-                key={snapshot.id}
-                className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors"
-              >
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-semibold">{snapshot.snapshot_name}</h3>
-                    {snapshot.is_automatic && (
-                      <Badge variant="secondary" className="text-xs">Auto</Badge>
-                    )}
-                  </div>
-                  {snapshot.description && (
-                    <p className="text-sm text-muted-foreground mt-1">{snapshot.description}</p>
-                  )}
-                  <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
-                    <span>Created: {formatDate(snapshot.created_at)}</span>
-                    <span>By: {snapshot.created_by_name || snapshot.created_by_username}</span>
-                    <span>Size: {parseFloat(snapshot.file_size_mb || 0).toFixed(2)} MB</span>
-                    {snapshot.table_counts && (
-                      <span>
-                        {Object.keys(snapshot.table_counts).length} tables, {' '}
-                        {Object.values(snapshot.table_counts).reduce((sum: number, count: any) => sum + (parseInt(count) || 0), 0)} records
-                      </span>
-                    )}
-                  </div>
-                  {snapshot.tags && snapshot.tags.length > 0 && (
-                    <div className="flex gap-1 mt-2">
-                      {snapshot.tags.map((tag: string, idx: number) => (
-                        <Badge key={idx} variant="outline" className="text-xs">
-                          {tag}
-                        </Badge>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="default"
-                    size="sm"
-                    onClick={() => openRollbackDialog(snapshot)}
-                  >
-                    <RotateCcw className="h-4 w-4 mr-1" />
-                    Rollback
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => handleDeleteSnapshot(snapshot.id)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            ))}
-            {snapshots.length === 0 && (
-              <div className="text-center py-8 text-muted-foreground">
-                No snapshots created yet. Create your first snapshot to enable version control.
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+      <Tabs defaultValue="backups" className="w-full">
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="backups">
+            <Database className="h-4 w-4 mr-2" />
+            Backup Storage
+          </TabsTrigger>
+          <TabsTrigger value="cloud" onClick={() => fetchCloudSnapshots()}>
+            <Cloud className="h-4 w-4 mr-2" />
+            Cloud Backup
+            {cloudStatus?.enabled && <Badge variant="secondary" className="ml-2 text-xs">Active</Badge>}
+          </TabsTrigger>
+          <TabsTrigger value="history">
+            <History className="h-4 w-4 mr-2" />
+            History
+          </TabsTrigger>
+        </TabsList>
 
-      {/* Rollback History Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <History className="h-5 w-5" />
-            Rollback History
-          </CardTitle>
-          <CardDescription>
-            View history of all rollback operations
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            {rollbackHistory.map((entry) => (
-              <div
-                key={entry.id}
-                className={`p-4 border rounded-lg ${entry.success ? 'bg-green-50 dark:bg-green-950/20' : 'bg-red-50 dark:bg-red-950/20'}`}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <h4 className="font-medium">{entry.snapshot_name}</h4>
-                      <Badge variant={entry.success ? 'default' : 'destructive'}>
-                        {entry.success ? 'Success' : 'Failed'}
-                      </Badge>
-                    </div>
-                    <div className="text-sm text-muted-foreground mt-1">
-                      Rolled back by {entry.rolled_back_by_name || entry.rolled_back_by_username} on {formatDate(entry.rolled_back_at)}
-                    </div>
-                    {entry.affected_tables && (
-                      <div className="text-xs text-muted-foreground mt-1">
-                        Affected tables: {entry.affected_tables.join(', ')}
-                      </div>
-                    )}
-                    {entry.error_message && (
-                      <div className="text-xs text-red-600 mt-1">
-                        Error: {entry.error_message}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-            {rollbackHistory.length === 0 && (
-              <div className="text-center py-8 text-muted-foreground">
-                No rollback operations performed yet
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+        <TabsContent value="backups" className="space-y-4">
+          <BackupStorageTab
+            snapshots={snapshots}
+            cloudStatus={cloudStatus}
+            storageStats={storageStats}
+            onCreateSnapshot={() => setSnapshotDialog(true)}
+            onRollback={openRollbackDialog}
+            onDelete={handleDeleteSnapshot}
+            onUploadToCloud={handleUploadToCloud}
+            onExport={(snapshot) => {
+              setSelectedSnapshot(snapshot);
+              setExportDialog(true);
+            }}
+            onShowStoragePath={() => setStoragePathDialog(true)}
+            onSelectDevice={handleSelectDevice}
+            externalSnapshots={externalSnapshots}
+            loadingSnapshots={loadingSnapshots}
+            onImport={handleImportClick}
+          />
+        </TabsContent>
 
-      {/* Rollback Confirmation Dialog */}
-      <AlertDialog open={rollbackDialog} onOpenChange={setRollbackDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Confirm Rollback</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to rollback to snapshot "{selectedSnapshot?.snapshot_name}"?
-              This will restore the database to its state at {selectedSnapshot?.created_at && formatDate(selectedSnapshot.created_at)}.
-              Current data will be backed up automatically before rollback.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <Button variant="outline" onClick={() => setRollbackDialog(false)}>
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={handleRollback} disabled={loading}>
-              {loading ? 'Rolling back...' : 'Confirm Rollback'}
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        <TabsContent value="cloud" className="space-y-4">
+          <CloudBackupTab
+            cloudStatus={cloudStatus}
+            cloudSnapshots={cloudSnapshots}
+            cloudLoading={cloudLoading}
+            localSnapshots={snapshots}
+            autoSync={autoSync}
+            onConfigureCloud={() => setCloudConfigDialog(true)}
+            onEditConfig={() => setCloudConfigDialog(true)}
+            onDownload={handleDownloadFromCloud}
+            onRestore={handleRestoreFromCloud}
+            onDelete={handleDeleteFromCloud}
+            onUploadToCloud={handleUploadToCloud}
+            onToggleAutoSync={handleToggleAutoSync}
+            onManualSync={handleManualSync}
+            onCreateAndUpload={handleCreateAndUpload}
+          />
+        </TabsContent>
+
+        <TabsContent value="history" className="space-y-4">
+          <RollbackHistoryTab rollbackHistory={rollbackHistory} />
+        </TabsContent>
+      </Tabs>
+
+      <CreateSnapshotDialog
+        open={snapshotDialog}
+        onOpenChange={setSnapshotDialog}
+        snapshotForm={snapshotForm}
+        onFormChange={setSnapshotForm}
+        onSubmit={handleCreateSnapshot}
+        loading={loading}
+        cloudEnabled={cloudStatus?.enabled}
+      />
+
+      <RollbackConfirmDialog
+        open={rollbackDialog}
+        onOpenChange={setRollbackDialog}
+        snapshot={selectedSnapshot}
+        onConfirm={handleRollback}
+        loading={loading}
+      />
+
+      <ExportDialog
+        open={exportDialog}
+        onOpenChange={setExportDialog}
+        snapshot={selectedSnapshot}
+        onExport={handleExportToExternal}
+        loading={loading}
+      />
+
+        <ImportDialog
+          open={importDialog}
+          onOpenChange={setImportDialog}
+          onImport={handleImportFromExternal}
+          loading={loading}
+          snapshot={selectedExternalSnapshot}
+          devicePath={selectedDevice}
+        />      <CloudConfigDialog
+        open={cloudConfigDialog}
+        onOpenChange={setCloudConfigDialog}
+        provider={cloudProvider}
+        onProviderChange={setCloudProvider}
+        onSave={handleSaveCloudConfig}
+        cloudStatus={cloudStatus}
+      />
+
+      <StoragePathDialog
+        open={storagePathDialog}
+        onOpenChange={setStoragePathDialog}
+        storageStats={storageStats}
+      />
     </div>
   );
 };
