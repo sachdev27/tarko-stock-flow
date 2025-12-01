@@ -146,6 +146,7 @@ class TestProductionBatchCreation:
             'production_date': datetime.now().isoformat(),
             'batch_no': f'TEST-SPR-BUNDLE-{timestamp}',
             'batch_code': f'SPR-BUNDLE-{timestamp}',
+            'quantity': 200.0,  # Will be recalculated: 20 bundles × 10 pieces = 200
             'quantity_based': True,
             'roll_config_type': 'bundles',
             'number_of_bundles': 20,
@@ -154,6 +155,8 @@ class TestProductionBatchCreation:
             'weight_per_meter': 0.5
         }
         response = client.post('/api/production/batch', headers=auth_headers, json=data)
+        if response.status_code not in (200, 201):
+            print(f"Sprinkler bundles error: {response.json}")
         assert response.status_code in (200, 201)
 
     def test_sprinkler_spare_pieces_only(self, client, auth_headers, get_product_type_id, get_brand_id):
@@ -166,6 +169,7 @@ class TestProductionBatchCreation:
             'production_date': datetime.now().isoformat(),
             'batch_no': f'TEST-SPR-SPARE-{timestamp}',
             'batch_code': f'SPR-SPARE-{timestamp}',
+            'quantity': 15.0,  # Will be recalculated: 7 + 8 = 15 pieces
             'quantity_based': True,
             'roll_config_type': 'spare_pieces',
             'number_of_bundles': 0,
@@ -189,6 +193,7 @@ class TestProductionBatchCreation:
             'production_date': datetime.now().isoformat(),
             'batch_no': f'TEST-SPR-BOTH-{timestamp}',
             'batch_code': f'SPR-BOTH-{timestamp}',
+            'quantity': 215.0,  # Will be recalculated: (20×10) + 7 + 8 = 215
             'quantity_based': True,
             'roll_config_type': 'bundles',
             'number_of_bundles': 20,
@@ -213,6 +218,7 @@ class TestProductionBatchCreation:
             'production_date': datetime.now().isoformat(),
             'batch_no': f'TEST-SPR-MULTI-{timestamp}',
             'batch_code': f'SPR-MULTI-{timestamp}',
+            'quantity': 165.0,  # Will be recalculated: (15×10) + 5 + 7 + 3 = 165
             'quantity_based': True,
             'roll_config_type': 'bundles',
             'number_of_bundles': 15,
