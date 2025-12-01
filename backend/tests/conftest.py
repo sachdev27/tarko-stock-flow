@@ -73,6 +73,9 @@ def setup_test_database(app):
                 f"DELETE FROM scrap_items WHERE batch_id IN (SELECT id FROM batches WHERE created_by = '{test_user_id}')",
                 # Delete scraps (created_by user)
                 f"DELETE FROM scraps WHERE created_by = '{test_user_id}'",
+                # Delete inventory_transactions that reference dispatch_items or batch_id
+                f"DELETE FROM inventory_transactions WHERE dispatch_item_id IN (SELECT id FROM dispatch_items WHERE dispatch_id IN (SELECT id FROM dispatches WHERE created_by = '{test_user_id}'))",
+                f"DELETE FROM inventory_transactions WHERE batch_id IN (SELECT id FROM batches WHERE created_by = '{test_user_id}')",
                 # Delete dispatch_items through their parent dispatches
                 f"DELETE FROM dispatch_items WHERE dispatch_id IN (SELECT id FROM dispatches WHERE created_by = '{test_user_id}')",
                 # Delete dispatches
@@ -81,8 +84,7 @@ def setup_test_database(app):
                 f"DELETE FROM return_items WHERE return_id IN (SELECT id FROM returns WHERE created_by = '{test_user_id}')",
                 # Delete returns
                 f"DELETE FROM returns WHERE created_by = '{test_user_id}'",
-                # Delete transactions and inventory
-                f"DELETE FROM inventory_transactions WHERE batch_id IN (SELECT id FROM batches WHERE created_by = '{test_user_id}')",
+                # Delete inventory and transactions
                 f"DELETE FROM inventory_stock WHERE batch_id IN (SELECT id FROM batches WHERE created_by = '{test_user_id}')",
                 f"DELETE FROM transactions WHERE batch_id IN (SELECT id FROM batches WHERE created_by = '{test_user_id}')",
                 # Delete batches
