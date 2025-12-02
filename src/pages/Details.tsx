@@ -16,7 +16,7 @@ import { VehicleDialog } from '@/components/details/VehicleDialog';
 import { TransportDialog } from '@/components/details/TransportDialog';
 import { BillToDialog } from '@/components/details/BillToDialog';
 
-const API_URL = 'http://localhost:5500/api';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5500/api';
 
 const Details = () => {
   const { token, isAdmin } = useAuth();

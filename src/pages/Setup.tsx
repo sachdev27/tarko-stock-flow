@@ -24,7 +24,7 @@ const Setup = () => {
   useEffect(() => {
     const checkSetupRequired = async () => {
       try {
-        const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5500/api';
+        const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5500/api';
         const response = await axios.get(`${API_BASE_URL}/setup/check`);
 
         // If setup is not required (admin already exists), redirect to login
