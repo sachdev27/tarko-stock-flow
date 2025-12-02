@@ -26,12 +26,15 @@ echo ""
 
 # Get Firebase project ID
 if [ -f .firebaserc ]; then
-    PROJECT_ID=$(grep -oP '"default": "\K[^"]+' .firebaserc)
-    if [ "$PROJECT_ID" = "your-firebase-project-id" ]; then
+    PROJECT_ID=$(grep '"default"' .firebaserc | sed 's/.*"default": "\([^"]*\)".*/\1/')
+    if [ "$PROJECT_ID" = "your-firebase-project-id" ] || [ -z "$PROJECT_ID" ]; then
         echo "⚠️  Please update .firebaserc with your Firebase project ID"
         read -p "Enter your Firebase project ID: " NEW_PROJECT_ID
-        sed -i.bak "s/your-firebase-project-id/$NEW_PROJECT_ID/" .firebaserc
-        rm .firebaserc.bak
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            sed -i '' "s/your-firebase-project-id/$NEW_PROJECT_ID/" .firebaserc
+        else
+            sed -i "s/your-firebase-project-id/$NEW_PROJECT_ID/" .firebaserc
+        fi
         PROJECT_ID=$NEW_PROJECT_ID
     fi
     echo "📦 Using Firebase project: $PROJECT_ID"
@@ -43,17 +46,51 @@ fi
 echo ""
 echo "🔍 Checking environment configuration..."
 
-# Check if VITE_API_URL is set
-if [ -z "$VITE_API_URL" ]; then
-    echo "⚠️  VITE_API_URL environment variable not set"
-    read -p "Enter your backend API URL (e.g., https://api.yourdomain.com): " API_URL
+# Check .env file for VITE_API_URL
+if [ -f .env ]; then
+    ENV_API_URL=$(grep "^VITE_API_URL=" .env | cut -d '=' -f2-)
+    if [ "$ENV_API_URL" = "http://your-domain.com" ] || [ -z "$ENV_API_URL" ]; then
+        echo "⚠️  VITE_API_URL not configured in .env file"
+        echo ""
+        echo "Please enter your backend API URL"
+        echo "Examples:"
+        echo "  - Local: http://localhost:5500"
+        echo "  - Server: http://192.168.1.100:5500"
+        echo "  - Domain: https://api.yourdomain.com"
+        echo ""
+        read -p "Backend API URL: " API_URL
+
+        # Validate input
+        if [ -z "$API_URL" ]; then
+            echo "❌ API URL cannot be empty"
+            exit 1
+        fi
+
+        # Update .env file
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            sed -i '' "s|^VITE_API_URL=.*|VITE_API_URL=$API_URL|" .env
+        else
+            sed -i "s|^VITE_API_URL=.*|VITE_API_URL=$API_URL|" .env
+        fi
+        export VITE_API_URL=$API_URL
+    else
+        export VITE_API_URL=$ENV_API_URL
+    fi
+else
+    echo "⚠️  .env file not found"
+    read -p "Enter your backend API URL (e.g., http://your-server-ip:5500): " API_URL
+
+    if [ -z "$API_URL" ]; then
+        echo "❌ API URL cannot be empty"
+        exit 1
+    fi
+
     export VITE_API_URL=$API_URL
 fi
 
-echo "✅ API URL: $VITE_API_URL"
 echo ""
-
-# Install dependencies if needed
+echo "✅ API URL: $VITE_API_URL"
+echo ""# Install dependencies if needed
 if [ ! -d "node_modules" ]; then
     echo "📦 Installing dependencies..."
     npm install

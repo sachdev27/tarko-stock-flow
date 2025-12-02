@@ -12,15 +12,19 @@ if ! command -v docker &> /dev/null; then
     exit 1
 fi
 
-# Check if Docker Compose is installed
-if ! command -v docker-compose &> /dev/null; then
+# Check if Docker Compose is installed (try both old and new commands)
+if command -v docker-compose &> /dev/null; then
+    COMPOSE_CMD="docker-compose"
+elif docker compose version &> /dev/null; then
+    COMPOSE_CMD="docker compose"
+else
     echo "❌ Docker Compose is not installed. Please install Docker Compose first."
     echo "   Visit: https://docs.docker.com/compose/install/"
     exit 1
 fi
 
 echo "✅ Docker is installed"
-echo "✅ Docker Compose is installed"
+echo "✅ Docker Compose is installed ($COMPOSE_CMD)"
 echo ""
 
 # Check if .env exists
@@ -51,13 +55,11 @@ if [ ! -f .env ]; then
     echo "   - Other optional settings as needed"
     echo ""
     read -p "Press Enter to continue after reviewing .env file..."
-else
-    echo "✅ .env file already exists"
 fi
 
 echo ""
 echo "🔨 Building Docker images..."
-docker-compose build backend postgres
+$COMPOSE_CMD build backend postgres
 
 if [ $? -ne 0 ]; then
     echo "❌ Build failed. Please check the error messages above."
@@ -68,7 +70,7 @@ echo ""
 echo "✅ Build completed successfully"
 echo ""
 echo "🚀 Starting services..."
-docker-compose up -d postgres backend
+$COMPOSE_CMD up -d postgres backend
 
 if [ $? -ne 0 ]; then
     echo "❌ Failed to start services. Please check the error messages above."
@@ -81,7 +83,7 @@ sleep 10
 
 echo ""
 echo "🔍 Checking service status..."
-docker-compose ps
+$COMPOSE_CMD ps
 
 echo ""
 echo "╔════════════════════════════════════════════════════════════════╗"
@@ -93,10 +95,10 @@ echo "   • Health:    http://localhost:5500/api/health"
 echo "   • Endpoint:  http://localhost:5500/api"
 echo ""
 echo "📊 View logs:"
-echo "   docker-compose logs -f backend"
+echo "   $COMPOSE_CMD logs -f backend"
 echo ""
 echo "🛑 Stop services:"
-echo "   docker-compose down"
+echo "   $COMPOSE_CMD down"
 echo ""
 echo "💡 Next steps:"
 echo "   1. Deploy frontend to Firebase: ./deploy-firebase.sh"

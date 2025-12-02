@@ -16,10 +16,11 @@ def check_admin_exists():
         with get_db_connection() as conn:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
             cursor.execute("""
-                SELECT COUNT(*) as admin_count
-                FROM users
-                WHERE role = 'admin'
-                AND deleted_at IS NULL
+                SELECT COUNT(DISTINCT u.id) as admin_count
+                FROM users u
+                JOIN user_roles ur ON u.id = ur.user_id
+                WHERE ur.role = 'admin'
+                AND u.deleted_at IS NULL
             """)
             result = cursor.fetchone()
 
@@ -41,10 +42,11 @@ def create_admin():
         with get_db_connection() as conn:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
             cursor.execute("""
-                SELECT COUNT(*) as admin_count
-                FROM users
-                WHERE role = 'admin'
-                AND deleted_at IS NULL
+                SELECT COUNT(DISTINCT u.id) as admin_count
+                FROM users u
+                JOIN user_roles ur ON u.id = ur.user_id
+                WHERE ur.role = 'admin'
+                AND u.deleted_at IS NULL
             """)
             result = cursor.fetchone()
 
@@ -53,62 +55,62 @@ def create_admin():
 
             # Get admin details from request
             data = request.get_json()
-            username = data.get('username')
             email = data.get('email')
             password = data.get('password')
-            full_name = data.get('full_name', 'Administrator')
 
-            if not username or not email or not password:
-                return jsonify({'error': 'Username, email, and password are required'}), 400
+            if not email or not password:
+                return jsonify({'error': 'Email and password are required'}), 400
 
-            # Check if user exists but is soft-deleted
+            # Check if user exists
             cursor.execute("""
                 SELECT id, deleted_at
                 FROM users
-                WHERE email = %s OR username = %s
-            """, (email, username))
+                WHERE email = %s
+            """, (email,))
             existing_user = cursor.fetchone()
 
-            if existing_user:
-                if existing_user['deleted_at'] is not None:
-                    # Restore soft-deleted user as admin
-                    password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-
-                    cursor.execute("""
-                        UPDATE users
-                        SET deleted_at = NULL,
-                            is_active = true,
-                            role = 'admin',
-                            password_hash = %s,
-                            full_name = %s
-                        WHERE id = %s
-                        RETURNING id, username, email, full_name, role
-                    """, (password_hash, full_name, existing_user['id']))
-
-                    admin = cursor.fetchone()
-
-                    return jsonify({
-                        'message': 'Admin user restored and updated successfully',
-                        'user': dict(admin)
-                    }), 200
-                else:
-                    return jsonify({'error': 'User already exists'}), 400
+            if existing_user and existing_user['deleted_at'] is None:
+                return jsonify({'error': 'User already exists'}), 400
 
             # Hash password
             password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
-            # Create admin user
-            cursor.execute("""
-                INSERT INTO users (username, email, password_hash, full_name, role, is_active)
-                VALUES (%s, %s, %s, %s, 'admin', true)
-                RETURNING id, username, email, full_name, role
-            """, (username, email, password_hash, full_name))
+            user_id = None
 
-            admin = cursor.fetchone()
+            if existing_user and existing_user['deleted_at'] is not None:
+                # Restore soft-deleted user
+                cursor.execute("""
+                    UPDATE users
+                    SET deleted_at = NULL,
+                        password_hash = %s,
+                        updated_at = now()
+                    WHERE id = %s
+                    RETURNING id, email
+                """, (password_hash, existing_user['id']))
+                user = cursor.fetchone()
+                user_id = user['id']
+            else:
+                # Create new user
+                cursor.execute("""
+                    INSERT INTO users (email, password_hash)
+                    VALUES (%s, %s)
+                    RETURNING id, email
+                """, (email, password_hash))
+                user = cursor.fetchone()
+                user_id = user['id']
+
+            # Add admin role
+            cursor.execute("""
+                INSERT INTO user_roles (user_id, role)
+                VALUES (%s, 'admin')
+                ON CONFLICT (user_id, role) DO NOTHING
+            """, (user_id,))
+
+            conn.commit()
 
             return jsonify({
                 'message': 'Admin user created successfully',
-                'user': dict(admin)
+                'user': {'id': str(user_id), 'email': email}
             }), 201
 
     except Exception as e:
