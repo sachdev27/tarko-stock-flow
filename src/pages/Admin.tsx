@@ -16,6 +16,7 @@ import DatabaseTab from '@/components/admin/DatabaseTab';
 import { CloudCredentialsTab } from '@/components/admin/CloudCredentialsTab';
 import { RetentionPoliciesTab } from '@/components/admin/RetentionPoliciesTab';
 import { ArchiveManagementTab, DeletionLogTab } from '@/components/admin/ArchiveManagementTab';
+import { SMTPConfigTab } from '@/components/admin/SMTPConfigTab';
 
 const Admin = () => {
   const { user, isAdmin } = useAuth();
@@ -173,11 +174,12 @@ const Admin = () => {
           <TabsContent value="backups">
             <div className="space-y-6">
               <Tabs defaultValue="credentials" className="space-y-6">
-                <TabsList className="grid w-full grid-cols-4">
+                <TabsList className="grid w-full grid-cols-5">
                   <TabsTrigger value="credentials">Cloud Credentials</TabsTrigger>
                   <TabsTrigger value="retention">Retention Policies</TabsTrigger>
                   <TabsTrigger value="archive">Archive Management</TabsTrigger>
                   <TabsTrigger value="deletion-log">Deletion Log</TabsTrigger>
+                  <TabsTrigger value="smtp">Email (SMTP)</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="credentials">
@@ -194,6 +196,10 @@ const Admin = () => {
 
                 <TabsContent value="deletion-log">
                   <DeletionLogTab />
+                </TabsContent>
+
+                <TabsContent value="smtp">
+                  <SMTPConfigTab />
                 </TabsContent>
               </Tabs>
             </div>
