@@ -1,6 +1,6 @@
 {
   "rootFolder": "/Users/sachdevs/Projects/Tarko-Inv/tarko-stock-flow",
-  "analyzedAt": "2025-12-01T10:59:36.182Z",
+  "analyzedAt": "2025-12-02T18:15:08.289Z",
   "rootStructure": [
     {
       "name": ".github",
@@ -81,8 +81,8 @@
     {
       "name": "overview.json",
       "type": "file",
-      "size": 28720,
-      "lines": 964
+      "size": 28283,
+      "lines": 953
     },
     {
       "name": "package-lock.json",
@@ -127,6 +127,10 @@
       "lines": 97
     },
     {
+      "name": "temp_exports",
+      "type": "dir"
+    },
+    {
       "name": "tsconfig.app.json",
       "type": "file",
       "size": 652,
@@ -143,6 +147,10 @@
       "type": "file",
       "size": 481,
       "lines": 23
+    },
+    {
+      "name": "uploads",
+      "type": "dir"
     },
     {
       "name": "vite.config.ts",
@@ -263,7 +271,7 @@
     "overview.json": [
       "{",
       "\"rootFolder\": \"/Users/sachdevs/Projects/Tarko-Inv/tarko-stock-flow\",",
-      "\"analyzedAt\": \"2025-12-01T10:51:31.708Z\",",
+      "\"analyzedAt\": \"2025-12-02T18:14:48.001Z\",",
       "\"rootStructure\": [",
       "{",
       "\"name\": \".github\",",
@@ -382,7 +390,7 @@
     {
       "path": "backend",
       "category": "backend",
-      "fileCount": 83,
+      "fileCount": 107,
       "primaryLanguage": "Python"
     },
     {
@@ -399,8 +407,8 @@
     {
       "path": "backend/scripts",
       "category": "scripts",
-      "fileCount": 6,
-      "primaryLanguage": "Python"
+      "fileCount": 4,
+      "primaryLanguage": "Shell"
     },
     {
       "path": "backend/services",
@@ -446,25 +454,26 @@
     "root": "# Tarko Inventory Management System"
   },
   "totals": {
-    "numFiles": 335,
-    "numDirs": 47,
-    "totalSizeBytes": 4993691,
-    "totalLinesOfCode": 45243
+    "numFiles": 359,
+    "numDirs": 53,
+    "totalSizeBytes": 4978549,
+    "totalLinesOfCode": 44753
   },
   "fileCategories": {
     "other": 60,
     "documentation": 34,
-    "source": 202,
+    "source": 200,
+    "test": 26,
     "config": 39
   },
   "linesOfCodePerLanguage": {
-    "Python": 15478,
+    "Python": 14988,
     "Shell": 311,
     "JavaScript": 34,
     "TypeScript": 29420
   },
   "filesPerLanguage": {
-    "Python": 27,
+    "Python": 25,
     "Shell": 5,
     "JavaScript": 2,
     "TypeScript": 168
@@ -482,8 +491,6 @@
     "backend/scripts/backup_scheduler.py",
     "backend/scripts/docker-entrypoint-scheduler.sh",
     "backend/scripts/docker-entrypoint.sh",
-    "backend/scripts/init_admin.py",
-    "backend/scripts/run_deployment.py",
     "backend/scripts/setup_db.sh",
     "deploy.sh",
     "status.sh"
@@ -503,8 +510,8 @@
     },
     {
       "name": "backend",
-      "numFiles": 83,
-      "totalLoc": 15619,
+      "numFiles": 107,
+      "totalLoc": 15129,
       "dominantLanguage": "Python"
     },
     {
@@ -663,8 +670,8 @@
       "path": "backend",
       "name": "backend",
       "level": 1,
-      "numFiles": 83,
-      "totalLoc": 15619,
+      "numFiles": 107,
+      "totalLoc": 15129,
       "dominantLanguage": "Python",
       "category": "General",
       "description": "# Tarko Inventory - Backend API",
@@ -695,11 +702,11 @@
           "path": "backend/scripts",
           "name": "scripts",
           "level": 2,
-          "numFiles": 6,
-          "totalLoc": 891,
-          "dominantLanguage": "Python",
+          "numFiles": 4,
+          "totalLoc": 401,
+          "dominantLanguage": "Shell",
           "category": "Tools/Scripts",
-          "description": "Tools/Scripts module with 6 files (Python)",
+          "description": "Tools/Scripts module with 4 files (Shell)",
           "subdirectories": []
         },
         {
@@ -827,16 +834,6 @@
         "description": ""
       },
       {
-        "path": "../../../../../backend/scripts/init_admin.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
-        "path": "../../../../../backend/scripts/run_deployment.py",
-        "type": "Unknown",
-        "description": ""
-      },
-      {
         "path": "../../../../../backend/scripts/setup_db.sh",
         "type": "Unknown",
         "description": ""
@@ -939,16 +936,16 @@
     "total": 66
   },
   "complexity": {
-    "averageFileSize": 135.05373134328357,
+    "averageFileSize": 124.66016713091922,
     "maxFileSize": 0,
     "nestedDepth": 0,
     "estimatedComplexity": "high"
   },
   "gitRepo": {
     "firstCommitDate": "2025-12-01",
-    "totalCommits": 92,
+    "totalCommits": 94,
     "numContributors": 0,
-    "currentBranch": "sachdevs/activity_page",
+    "currentBranch": "sachdevs/bugs_and_features",
     "remoteUrls": [
       "https://github.com/sachdev27/tarko-stock-flow.git"
     ]

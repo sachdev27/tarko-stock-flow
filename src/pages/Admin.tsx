@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
-import { Settings, Shield, Database } from 'lucide-react';
+import { Settings, Shield, Database, HardDrive } from 'lucide-react';
 import { admin, parameters, versionControl } from '@/lib/api';
 import { BrandsTab } from '@/components/admin/BrandsTab';
 import { ProductTypesTab } from '@/components/admin/ProductTypesTab';
@@ -13,6 +13,9 @@ import { ParametersTab } from '@/components/admin/ParametersTab';
 import { VersionControlTab } from '@/components/admin/VersionControlTab';
 import AuditLogsTab from '@/components/admin/AuditLogsTab';
 import DatabaseTab from '@/components/admin/DatabaseTab';
+import { CloudCredentialsTab } from '@/components/admin/CloudCredentialsTab';
+import { RetentionPoliciesTab } from '@/components/admin/RetentionPoliciesTab';
+import { ArchiveManagementTab, DeletionLogTab } from '@/components/admin/ArchiveManagementTab';
 
 const Admin = () => {
   const { user, isAdmin } = useAuth();
@@ -120,12 +123,16 @@ const Admin = () => {
         </div>
 
         <Tabs defaultValue="brands" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-7">
+          <TabsList className="grid w-full grid-cols-8">
             <TabsTrigger value="brands">Brands</TabsTrigger>
             <TabsTrigger value="products">Products</TabsTrigger>
             <TabsTrigger value="users">Users</TabsTrigger>
             <TabsTrigger value="parameters">Parameters</TabsTrigger>
             <TabsTrigger value="version-control">Version Control</TabsTrigger>
+            <TabsTrigger value="backups">
+              <HardDrive className="h-4 w-4 mr-2" />
+              Backups
+            </TabsTrigger>
             <TabsTrigger value="audit">Audit Logs</TabsTrigger>
             <TabsTrigger value="database" className="text-destructive">
               <Database className="h-4 w-4 mr-2" />
@@ -160,6 +167,36 @@ const Admin = () => {
               rollbackHistory={rollbackHistory}
               onDataChange={fetchAllData}
             />
+          </TabsContent>
+
+          {/* Backup Management Tab */}
+          <TabsContent value="backups">
+            <div className="space-y-6">
+              <Tabs defaultValue="credentials" className="space-y-6">
+                <TabsList className="grid w-full grid-cols-4">
+                  <TabsTrigger value="credentials">Cloud Credentials</TabsTrigger>
+                  <TabsTrigger value="retention">Retention Policies</TabsTrigger>
+                  <TabsTrigger value="archive">Archive Management</TabsTrigger>
+                  <TabsTrigger value="deletion-log">Deletion Log</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="credentials">
+                  <CloudCredentialsTab />
+                </TabsContent>
+
+                <TabsContent value="retention">
+                  <RetentionPoliciesTab />
+                </TabsContent>
+
+                <TabsContent value="archive">
+                  <ArchiveManagementTab />
+                </TabsContent>
+
+                <TabsContent value="deletion-log">
+                  <DeletionLogTab />
+                </TabsContent>
+              </Tabs>
+            </div>
           </TabsContent>
 
           {/* Audit Logs Tab */}
