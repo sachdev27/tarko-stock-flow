@@ -447,6 +447,9 @@ export const backupConfig = {
   decryptCredential: (id: string) =>
     api.post(`/backup-config/cloud-credentials/${id}/decrypt`),
 
+  testCloudCredential: (id: string) =>
+    api.post(`/backup-config/cloud-credentials/${id}/test`),
+
   // Retention Policies
   getRetentionPolicies: () =>
     api.get('/backup-config/retention-policies'),

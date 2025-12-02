@@ -140,9 +140,9 @@ def get_decrypted_credentials(credential_id):
 
         # Log access for audit
         cursor.execute("""
-            INSERT INTO audit_logs (user_id, action, details)
-            VALUES (%s, 'decrypt_credentials', %s)
-        """, (get_jwt_identity(), f'Accessed credentials {credential_id}'))
+            INSERT INTO audit_logs (user_id, action_type, entity_type, entity_id, description)
+            VALUES (%s, 'decrypt_credentials', 'cloud_credentials', %s, %s)
+        """, (get_jwt_identity(), credential_id, f'Admin decrypted cloud credentials'))
 
         cursor.execute("""
             SELECT id, provider, account_id, access_key_id,
@@ -159,6 +159,83 @@ def get_decrypted_credentials(credential_id):
         result['secret_access_key'] = encryption_service.decrypt(result['secret_access_key'])
 
         return jsonify(result)
+
+@backup_config_bp.route('/cloud-credentials/<credential_id>/test', methods=['POST'])
+@jwt_required_with_role("admin")
+def test_cloud_credentials(credential_id):
+    """Test cloud credentials connection"""
+    try:
+        import boto3
+        from botocore.config import Config as BotoConfig
+        from botocore.exceptions import ClientError
+
+        with get_db_connection() as conn:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor.execute("""
+                SELECT provider, account_id, access_key_id, secret_access_key,
+                       bucket_name, region, endpoint_url
+                FROM cloud_credentials
+                WHERE id = %s
+            """, (credential_id,))
+
+            cred = cursor.fetchone()
+            if not cred:
+                return jsonify({'success': False, 'error': 'Credentials not found'}), 404
+
+            # Decrypt secret
+            secret_key = encryption_service.decrypt(cred['secret_access_key'])
+
+            # Test connection based on provider
+            if cred['provider'] == 'r2':
+                endpoint_url = cred['endpoint_url'] or f"https://{cred['account_id']}.r2.cloudflarestorage.com"
+                s3_client = boto3.client(
+                    's3',
+                    endpoint_url=endpoint_url,
+                    aws_access_key_id=cred['access_key_id'],
+                    aws_secret_access_key=secret_key,
+                    config=BotoConfig(signature_version='s3v4'),
+                    region_name='auto'
+                )
+            elif cred['provider'] == 's3':
+                s3_client = boto3.client(
+                    's3',
+                    aws_access_key_id=cred['access_key_id'],
+                    aws_secret_access_key=secret_key,
+                    region_name=cred['region'] or 'us-east-1'
+                )
+            else:
+                return jsonify({'success': False, 'error': 'Unsupported provider'}), 400
+
+            # Try to access the bucket
+            s3_client.head_bucket(Bucket=cred['bucket_name'])
+
+            return jsonify({
+                'success': True,
+                'message': f'Successfully connected to {cred["provider"].upper()} bucket: {cred["bucket_name"]}'
+            })
+
+    except ClientError as e:
+        error_code = e.response['Error']['Code']
+        if error_code == '403':
+            return jsonify({
+                'success': False,
+                'error': 'Access denied. Check credentials and bucket permissions.'
+            }), 200
+        elif error_code == '404':
+            return jsonify({
+                'success': False,
+                'error': 'Bucket not found. Check bucket name.'
+            }), 200
+        else:
+            return jsonify({
+                'success': False,
+                'error': f'Connection error: {str(e)}'
+            }), 200
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Test failed: {str(e)}'
+        }), 200
 
 # ==================== Retention Policies ====================
 

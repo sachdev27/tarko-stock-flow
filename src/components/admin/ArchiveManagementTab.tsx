@@ -38,6 +38,8 @@ import {
   useCloudCredentials,
   useDeletionLog,
 } from '@/hooks/useBackupConfig';
+import { useQuery } from '@tanstack/react-query';
+import { versionControl } from '@/lib/api';
 
 interface CloudCredential {
   id: string;
@@ -79,6 +81,13 @@ export const ArchiveManagementTab = () => {
   const addBucket = useAddArchiveBucket();
   const archiveBackup = useArchiveBackup();
 
+  // Fetch available snapshots
+  const { data: snapshotsResponse, isLoading: snapshotsLoading } = useQuery({
+    queryKey: ['snapshots'],
+    queryFn: () => versionControl.getSnapshots(),
+  });
+  const snapshots = snapshotsResponse?.data || [];
+
   const [bucketDialogOpen, setBucketDialogOpen] = useState(false);
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
   const [bucketForm, setBucketForm] = useState({
@@ -96,7 +105,18 @@ export const ArchiveManagementTab = () => {
 
   const handleAddBucket = async (e: React.FormEvent) => {
     e.preventDefault();
-    await addBucket.mutateAsync(bucketForm);
+    if (!bucketForm.credentials_id) {
+      return; // Form validation will prevent this
+    }
+
+    // Get provider from selected credential
+    const selectedCred = credentials?.find((c: any) => c.id === bucketForm.credentials_id);
+    const payload = {
+      ...bucketForm,
+      provider: selectedCred?.provider || 'r2',
+    };
+
+    await addBucket.mutateAsync(payload);
     setBucketDialogOpen(false);
     setBucketForm({ bucket_name: '', credentials_id: '', description: '' });
   };
@@ -164,17 +184,24 @@ export const ArchiveManagementTab = () => {
                     </div>
 
                     <div className="grid gap-2">
-                      <Label htmlFor="credentials_id">Cloud Credentials</Label>
+                      <Label htmlFor="credentials_id">Cloud Credentials *</Label>
                       <Select
                         value={bucketForm.credentials_id}
                         onValueChange={(value) =>
                           setBucketForm({ ...bucketForm, credentials_id: value })
                         }
+                        required
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Select credentials" />
                         </SelectTrigger>
                         <SelectContent>
+                          {credentials?.length === 0 && (
+                            <div className="px-2 py-4 text-sm text-muted-foreground text-center">
+                              No cloud credentials available.<br />
+                              Add credentials in the Cloud Credentials tab first.
+                            </div>
+                          )}
                           {credentials?.map((cred: CloudCredential) => (
                             <SelectItem key={cred.id} value={cred.id}>
                               {cred.provider.toUpperCase()} - {cred.bucket_name}
@@ -182,6 +209,11 @@ export const ArchiveManagementTab = () => {
                           ))}
                         </SelectContent>
                       </Select>
+                      {credentials?.length === 0 && (
+                        <p className="text-xs text-amber-600 dark:text-amber-400">
+                          ⚠️ Please create cloud credentials first in the Cloud Credentials tab
+                        </p>
+                      )}
                     </div>
 
                     <div className="grid gap-2">
@@ -199,8 +231,11 @@ export const ArchiveManagementTab = () => {
                     <Button type="button" variant="outline" onClick={() => setBucketDialogOpen(false)}>
                       Cancel
                     </Button>
-                    <Button type="submit" disabled={addBucket.isPending}>
-                      Add Bucket
+                    <Button
+                      type="submit"
+                      disabled={!bucketForm.bucket_name || !bucketForm.credentials_id || addBucket.isPending}
+                    >
+                      {addBucket.isPending ? 'Adding...' : 'Add Bucket'}
                     </Button>
                   </DialogFooter>
                 </form>
@@ -286,14 +321,36 @@ export const ArchiveManagementTab = () => {
                     </div>
 
                     <div className="grid gap-2">
-                      <Label htmlFor="backup_id">Backup ID</Label>
-                      <Input
-                        id="backup_id"
+                      <Label htmlFor="backup_id">Backup/Snapshot</Label>
+                      <Select
                         value={archiveForm.backup_id}
-                        onChange={(e) => setArchiveForm({ ...archiveForm, backup_id: e.target.value })}
-                        placeholder="20240101_120000"
-                        required
-                      />
+                        onValueChange={(value) =>
+                          setArchiveForm({ ...archiveForm, backup_id: value })
+                        }
+                        disabled={snapshotsLoading}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder={snapshotsLoading ? "Loading snapshots..." : "Select a snapshot"} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {snapshots && snapshots.length > 0 ? (
+                            snapshots.map((snapshot: any) => (
+                              <SelectItem key={snapshot.id} value={snapshot.snapshot_name}>
+                                <div className="flex flex-col">
+                                  <span className="font-medium">{snapshot.snapshot_name}</span>
+                                  <span className="text-xs text-muted-foreground">
+                                    {new Date(snapshot.created_at).toLocaleString()} • {(snapshot.size / 1024 / 1024).toFixed(2)} MB
+                                  </span>
+                                </div>
+                              </SelectItem>
+                            ))
+                          ) : (
+                            <SelectItem value="_no_snapshots" disabled>
+                              No snapshots available
+                            </SelectItem>
+                          )}
+                        </SelectContent>
+                      </Select>
                     </div>
 
                     <div className="grid gap-2">

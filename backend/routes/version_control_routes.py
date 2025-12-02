@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify, send_file, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from database import execute_query, execute_insert, get_db_cursor
+from database import execute_query, execute_insert, get_db_cursor, get_db_connection
 from services.auth import jwt_required_with_role, get_user_identity_details
 from storage.snapshot_storage import snapshot_storage, SnapshotStorage
 from storage.cloud_storage import cloud_storage
@@ -1115,13 +1115,10 @@ def get_cloud_status():
     try:
         stats = cloud_storage.get_storage_stats()
 
-        # Get bucket name from environment (use correct variable names)
+        # Get bucket name from cloud_storage instance (reads from DB or env)
         bucket_name = None
         if cloud_storage.enabled:
-            if cloud_storage.provider == 'r2':
-                bucket_name = os.getenv('R2_BUCKET_NAME')
-            elif cloud_storage.provider == 's3':
-                bucket_name = os.getenv('S3_BUCKET_NAME')
+            bucket_name = cloud_storage.bucket_name
 
         return jsonify({
             'enabled': cloud_storage.enabled,
@@ -1136,68 +1133,83 @@ def get_cloud_status():
 @version_control_bp.route('/cloud/configure', methods=['POST'])
 @jwt_required_with_role('admin')
 def configure_cloud_storage():
-    """Configure cloud storage credentials (hot reload without restart)"""
+    """Configure cloud storage credentials (saves to database with encryption)"""
     try:
+        from services.encryption_service import get_encryption_service
+        from psycopg2.extras import RealDictCursor
+
         data = request.get_json()
         provider = data.get('provider', 'r2')
+        credential_id = data.get('credential_id')  # Use existing credential if provided
 
-        # Load environment file or create if doesn't exist
-        env_path = Path('.env')
-        env_vars = {}
+        with get_db_connection() as conn:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
 
-        if env_path.exists():
-            with open(env_path, 'r') as f:
-                for line in f:
-                    line = line.strip()
-                    if line and not line.startswith('#') and '=' in line:
-                        key, value = line.split('=', 1)
-                        env_vars[key] = value
+            # Deactivate all existing configs
+            cursor.execute("UPDATE cloud_backup_config SET is_active = FALSE WHERE is_active = TRUE")
 
-        # Update cloud settings
-        env_vars['ENABLE_CLOUD_BACKUP'] = 'true'
-        env_vars['CLOUD_STORAGE_PROVIDER'] = provider
+            # If credential_id is provided, use those credentials
+            if credential_id:
+                cursor.execute("""
+                    SELECT provider, account_id, access_key_id, secret_access_key,
+                           bucket_name, region, endpoint_url
+                    FROM cloud_credentials
+                    WHERE id = %s AND is_active = TRUE
+                """, (credential_id,))
 
-        # Set runtime environment variables (hot reload)
-        os.environ['ENABLE_CLOUD_BACKUP'] = 'true'
-        os.environ['CLOUD_STORAGE_PROVIDER'] = provider
+                cred = cursor.fetchone()
+                if not cred:
+                    return jsonify({'error': 'Credential not found'}), 404
 
-        if provider == 'r2':
-            env_vars['R2_ACCOUNT_ID'] = data.get('r2_account_id', '')
-            env_vars['R2_ACCESS_KEY_ID'] = data.get('r2_access_key_id', '')
-            env_vars['R2_SECRET_ACCESS_KEY'] = data.get('r2_secret_access_key', '')
-            env_vars['R2_BUCKET_NAME'] = data.get('r2_bucket_name', 'tarko-inventory-backups')
+                # Use credentials from cloud_credentials table
+                provider = cred['provider']
+                account_id = cred['account_id']
+                access_key_id = cred['access_key_id']
+                encrypted_secret = cred['secret_access_key']  # Already encrypted
+                bucket_name = cred['bucket_name']
+                region = cred['region']
+                endpoint_url = cred['endpoint_url']
+            else:
+                # Manual entry - prepare and encrypt
+                if provider == 'r2':
+                    account_id = data.get('r2_account_id', '')
+                    access_key_id = data.get('r2_access_key_id', '')
+                    secret_access_key = data.get('r2_secret_access_key', '')
+                    bucket_name = data.get('r2_bucket_name', 'tarko-inventory-backups')
+                    region = None
+                    endpoint_url = f"https://{account_id}.r2.cloudflarestorage.com" if account_id else None
+                elif provider == 's3':
+                    account_id = None
+                    access_key_id = data.get('aws_access_key_id', '')
+                    secret_access_key = data.get('aws_secret_access_key', '')
+                    bucket_name = data.get('s3_bucket_name', 'tarko-inventory-backups')
+                    region = data.get('aws_region', 'us-east-1')
+                    endpoint_url = None
+                else:
+                    return jsonify({'error': 'Invalid provider'}), 400
 
-            # Set runtime environment
-            os.environ['R2_ACCOUNT_ID'] = data.get('r2_account_id', '')
-            os.environ['R2_ACCESS_KEY_ID'] = data.get('r2_access_key_id', '')
-            os.environ['R2_SECRET_ACCESS_KEY'] = data.get('r2_secret_access_key', '')
-            os.environ['R2_BUCKET_NAME'] = data.get('r2_bucket_name', 'tarko-inventory-backups')
+                # Encrypt secret access key
+                encryption_service = get_encryption_service()
+                encrypted_secret = encryption_service.encrypt(secret_access_key)
 
-        elif provider == 's3':
-            env_vars['AWS_ACCESS_KEY_ID'] = data.get('aws_access_key_id', '')
-            env_vars['AWS_SECRET_ACCESS_KEY'] = data.get('aws_secret_access_key', '')
-            env_vars['AWS_REGION'] = data.get('aws_region', 'us-east-1')
-            env_vars['S3_BUCKET_NAME'] = data.get('s3_bucket_name', 'tarko-inventory-backups')
+            # Insert new config
+            cursor.execute("""
+                INSERT INTO cloud_backup_config
+                (provider, account_id, access_key_id, secret_access_key,
+                 bucket_name, region, endpoint_url, is_enabled, is_active)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, TRUE, TRUE)
+            """, (provider, account_id, access_key_id, encrypted_secret,
+                  bucket_name, region, endpoint_url))
 
-            # Set runtime environment
-            os.environ['AWS_ACCESS_KEY_ID'] = data.get('aws_access_key_id', '')
-            os.environ['AWS_SECRET_ACCESS_KEY'] = data.get('aws_secret_access_key', '')
-            os.environ['AWS_REGION'] = data.get('aws_region', 'us-east-1')
-            os.environ['S3_BUCKET_NAME'] = data.get('s3_bucket_name', 'tarko-inventory-backups')
+            conn.commit()
 
-        # Write back to .env file for persistence
-        with open(env_path, 'w') as f:
-            for key, value in env_vars.items():
-                f.write(f"{key}={value}\n")
-
-        # Reinitialize cloud storage with new credentials
-        from storage.cloud_storage import CloudStorage
-        global cloud_storage
-        cloud_storage = CloudStorage()
+        # Reinitialize cloud storage with new credentials from database
+        import storage.cloud_storage as cloud_storage_module
+        cloud_storage_module.cloud_storage = cloud_storage_module.CloudStorage()
 
         return jsonify({
             'success': True,
-            'message': 'Cloud configuration saved and applied immediately!',
+            'message': 'Cloud configuration saved to database and applied immediately!',
             'restart_required': False
         }), 200
     except Exception as e:

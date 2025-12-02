@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -29,13 +29,14 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Cloud, Trash2, Edit, Key } from 'lucide-react';
+import { Plus, Cloud, Trash2, Edit, Key, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import {
   useCloudCredentials,
   useAddCloudCredential,
   useUpdateCloudCredential,
   useDeleteCloudCredential,
 } from '@/hooks/useBackupConfig';
+import { backupConfig } from '@/lib/api';
 import { toast } from 'sonner';
 
 interface CloudCredential {
@@ -68,8 +69,42 @@ export const CloudCredentialsTab = () => {
     region: '',
     endpoint_url: '',
   });
+  const [connectionStatus, setConnectionStatus] = useState<Record<string, 'checking' | 'valid' | 'invalid'>>({});
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  // Check connection status for all credentials
+  useEffect(() => {
+    if (credentials) {
+      checkAllConnections();
+    }
+  }, [credentials]);
+
+  const checkAllConnections = async () => {
+    if (!credentials) return;
+
+    for (const cred of credentials) {
+      if (cred.is_active) {
+        await checkConnection(cred.id);
+      }
+    }
+  };
+
+  const checkConnection = async (credId: string) => {
+    setConnectionStatus((prev) => ({ ...prev, [credId]: 'checking' }));
+
+    try {
+      const response = await backupConfig.testCloudCredential(credId);
+      if (response.data.success) {
+        setConnectionStatus((prev) => ({ ...prev, [credId]: 'valid' }));
+        toast.success(response.data.message);
+      } else {
+        setConnectionStatus((prev) => ({ ...prev, [credId]: 'invalid' }));
+        toast.error(response.data.error);
+      }
+    } catch (error: any) {
+      setConnectionStatus((prev) => ({ ...prev, [credId]: 'invalid' }));
+      toast.error(error.response?.data?.error || 'Connection test failed');
+    }
+  };  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (editingId) {
@@ -307,14 +342,25 @@ export const CloudCredentialsTab = () => {
                     {cred.access_key_id}
                   </TableCell>
                   <TableCell>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-3">
                       <Switch
                         checked={cred.is_active}
                         onCheckedChange={() => handleToggleActive(cred.id, cred.is_active)}
                       />
-                      <Badge variant={cred.is_active ? 'default' : 'secondary'}>
-                        {cred.is_active ? 'Active' : 'Inactive'}
-                      </Badge>
+                      <div className="flex items-center gap-2">
+                        {cred.is_active && connectionStatus[cred.id] === 'checking' && (
+                          <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+                        )}
+                        {cred.is_active && connectionStatus[cred.id] === 'valid' && (
+                          <CheckCircle className="h-4 w-4 text-green-500" />
+                        )}
+                        {cred.is_active && connectionStatus[cred.id] === 'invalid' && (
+                          <XCircle className="h-4 w-4 text-red-500" />
+                        )}
+                        <Badge variant={cred.is_active ? 'default' : 'secondary'}>
+                          {cred.is_active ? 'Active' : 'Inactive'}
+                        </Badge>
+                      </div>
                     </div>
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
@@ -322,6 +368,20 @@ export const CloudCredentialsTab = () => {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-2">
+                      {cred.is_active && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => checkConnection(cred.id)}
+                          disabled={connectionStatus[cred.id] === 'checking'}
+                        >
+                          {connectionStatus[cred.id] === 'checking' ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            'Test'
+                          )}
+                        </Button>
+                      )}
                       <Button size="sm" variant="ghost" onClick={() => handleEdit(cred)}>
                         <Edit className="h-4 w-4" />
                       </Button>
