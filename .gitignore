@@ -87,6 +87,10 @@ backend/temp_exports/
 overview.json
 *.log
 
+# Firebase
+.firebase/
+.firebaserc.backup
+
 # Images and pdf
 *.png
 *.jpg

@@ -38,6 +38,7 @@ services:
       SNAPSHOT_STORAGE_PATH: /app/snapshots
       UPLOAD_STORAGE_PATH: /app/uploads
       BACKUP_RETENTION_DAYS: 30
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
     volumes:
       - ./backend/uploads:/app/uploads
       - ./snapshots:/app/snapshots
@@ -55,26 +56,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-
-  frontend:
-    build:
-      context: .
-      dockerfile: Dockerfile.frontend
-    container_name: tarko-frontend
-    restart: unless-stopped
-    environment:
-      VITE_API_URL: ${VITE_API_URL:-http://localhost:5500}
-    ports:
-      - "80:80"
-    depends_on:
-      - backend
-    networks:
-      - tarko-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:80"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
   # Backup scheduler - runs daily snapshots
   backup-scheduler:
