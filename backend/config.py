@@ -12,6 +12,10 @@ class Config:
     SNAPSHOT_STORAGE_PATH = os.getenv('SNAPSHOT_STORAGE_PATH', './snapshots')
     BACKUP_RETENTION_DAYS = int(os.getenv('BACKUP_RETENTION_DAYS', '30'))
 
+    # File Upload Configuration
+    UPLOAD_STORAGE_PATH = os.getenv('UPLOAD_STORAGE_PATH', './uploads')
+    MAX_UPLOAD_SIZE_MB = int(os.getenv('MAX_UPLOAD_SIZE_MB', '10'))
+
     # Cloud Storage Configuration (Cloudflare R2 / AWS S3)
     ENABLE_CLOUD_BACKUP = os.getenv('ENABLE_CLOUD_BACKUP', 'false').lower() == 'true'
     CLOUD_STORAGE_PROVIDER = os.getenv('CLOUD_STORAGE_PROVIDER', 'r2')  # 'r2' or 's3'
