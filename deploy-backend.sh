@@ -57,7 +57,7 @@ fi
 
 echo ""
 echo "🔨 Building Docker images..."
-docker-compose build backend postgres backup-scheduler
+docker-compose build backend postgres
 
 if [ $? -ne 0 ]; then
     echo "❌ Build failed. Please check the error messages above."
@@ -68,7 +68,7 @@ echo ""
 echo "✅ Build completed successfully"
 echo ""
 echo "🚀 Starting services..."
-docker-compose up -d postgres backend backup-scheduler
+docker-compose up -d postgres backend
 
 if [ $? -ne 0 ]; then
     echo "❌ Failed to start services. Please check the error messages above."

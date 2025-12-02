@@ -57,27 +57,6 @@ services:
       retries: 3
       start_period: 40s
 
-  # Backup scheduler - runs daily snapshots
-  backup-scheduler:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile.scheduler
-    container_name: tarko-backup-scheduler
-    restart: unless-stopped
-    environment:
-      DATABASE_URL: postgresql://tarko_user:${DB_PASSWORD:-changeme123}@postgres:5432/tarko_inventory
-      SNAPSHOT_STORAGE_PATH: /app/snapshots
-      BACKUP_SCHEDULE: "0 2 * * *"  # Daily at 2 AM
-      BACKUP_RETENTION_DAYS: 30
-    volumes:
-      - ./snapshots:/app/snapshots
-      - ./backups:/backups
-    depends_on:
-      postgres:
-        condition: service_healthy
-    networks:
-      - tarko-network
-
 volumes:
   postgres_data:
     driver: local
