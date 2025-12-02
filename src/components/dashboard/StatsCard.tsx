@@ -14,7 +14,7 @@ interface StatsCardProps {
 export const StatsCard = ({ title, value, icon: Icon, description, color, bgColor, onClick }: StatsCardProps) => {
   return (
     <Card
-      className={`hover:shadow-lg transition-all hover:scale-105 ${onClick ? 'cursor-pointer' : ''}`}
+      className={`hover:shadow-lg transition-all sm:hover:scale-105 ${onClick ? 'cursor-pointer' : ''}`}
       onClick={onClick}
     >
       <CardHeader className="flex flex-row items-center justify-between pb-2">

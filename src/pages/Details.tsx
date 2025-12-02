@@ -355,7 +355,7 @@ const Details = () => {
         </div>
 
         <Tabs defaultValue="customers" className="space-y-4">
-          <TabsList>
+          <TabsList className="w-full flex-wrap sm:inline-flex">
             <TabsTrigger value="customers">
               <Users className="h-4 w-4 mr-2" />
               Customers

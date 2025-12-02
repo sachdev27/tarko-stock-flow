@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here.
 All colors MUST be HSL.
 */
 
@@ -108,5 +108,48 @@ All colors MUST be HSL.
 
   body {
     @apply bg-background text-foreground;
+  }
+
+  /* Mobile-specific fixes */
+  @media (max-width: 768px) {
+    /* Prevent horizontal scroll on mobile */
+    html, body {
+      overflow-x: hidden;
+      width: 100%;
+      position: relative;
+    }
+
+    /* Ensure dialogs don't exceed viewport */
+    [role="dialog"] {
+      max-width: calc(100vw - 2rem);
+    }
+
+    /* Fix touch targets for mobile */
+    button, a, [role="button"] {
+      min-height: 44px;
+      min-width: 44px;
+    }
+
+    /* Improve scrolling on iOS */
+    * {
+      -webkit-overflow-scrolling: touch;
+    }
+
+    /* Better spacing for cards and sections on mobile */
+    .space-y-6 > * + * {
+      margin-top: 1rem !important;
+    }
+  }
+}
+
+@layer utilities {
+  /* Hide scrollbar but keep functionality */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
   }
 }

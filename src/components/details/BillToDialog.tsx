@@ -26,7 +26,7 @@ interface BillToDialogProps {
 export const BillToDialog = ({ open, onOpenChange, form, onFormChange, onSave, loading, isEditing }: BillToDialogProps) => {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>{isEditing ? 'Edit Bill To' : 'Add Bill To'}</DialogTitle>
         </DialogHeader>

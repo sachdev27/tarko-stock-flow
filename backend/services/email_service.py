@@ -92,11 +92,11 @@ def get_password_reset_html(user_name, reset_token, reset_link):
             overflow: hidden;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         }}
-        .header {
+        .header {{
             background: linear-gradient(135deg, #1565C0 0%, #0D47A1 100%);
             padding: 40px 30px;
             text-align: center;
-        }
+        }}
         .header h1 {{
             color: #ffffff;
             margin: 0;
@@ -117,7 +117,7 @@ def get_password_reset_html(user_name, reset_token, reset_link):
             margin-bottom: 30px;
             line-height: 1.8;
         }}
-        .reset-button {
+        .reset-button {{
             display: inline-block;
             padding: 14px 40px;
             background: linear-gradient(135deg, #1976D2 0%, #1565C0 100%);
@@ -130,7 +130,7 @@ def get_password_reset_html(user_name, reset_token, reset_link):
             margin: 20px 0;
             transition: transform 0.2s;
             box-shadow: 0 2px 4px rgba(21, 101, 192, 0.3);
-        }
+        }}
         .reset-button:hover {{
             transform: translateY(-2px);
         }}
@@ -186,10 +186,10 @@ def get_password_reset_html(user_name, reset_token, reset_link):
         .footer p {{
             margin: 8px 0;
         }}
-        .footer a {
+        .footer a {{
             color: #1976D2;
             text-decoration: none;
-        }
+        }}
         .icon {{
             width: 60px;
             height: 60px;
@@ -351,11 +351,11 @@ def send_password_changed_notification(to_email, user_name):
 <html>
 <head>
     <style>
-        body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
-        .container {{ max-width: 600px; margin: 40px auto; padding: 20px; background: #f9f9f9; border-radius: 8px; }}
-        .content {{ background: white; padding: 30px; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }}
-        .header {{ background: linear-gradient(135deg, #1565C0 0%, #0D47A1 100%); color: white; padding: 20px; text-align: center; border-radius: 6px 6px 0 0; box-shadow: 0 2px 4px rgba(21, 101, 192, 0.2); }}
-        .success {{ color: #2E7D32; font-size: 24px; }}
+        body {{{{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}}}
+        .container {{{{ max-width: 600px; margin: 40px auto; padding: 20px; background: #f9f9f9; border-radius: 8px; }}}}
+        .content {{{{ background: white; padding: 30px; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }}}}
+        .header {{{{ background: linear-gradient(135deg, #1565C0 0%, #0D47A1 100%); color: white; padding: 20px; text-align: center; border-radius: 6px 6px 0 0; box-shadow: 0 2px 4px rgba(21, 101, 192, 0.2); }}}}
+        .success {{{{ color: #2E7D32; font-size: 24px; }}}}
     </style>
 </head>
 <body>
@@ -428,8 +428,8 @@ def test_smtp_connection(smtp_server, smtp_port, smtp_email, smtp_password,
         body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
         .container {{ max-width: 600px; margin: 40px auto; padding: 20px; background: #f9f9f9; border-radius: 8px; }}
         .content {{ background: white; padding: 30px; border-radius: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }}
-        .header {{ background: linear-gradient(135deg, #1565C0 0%, #0D47A1 100%); color: white; padding: 20px; text-align: center; border-radius: 6px 6px 0 0; box-shadow: 0 2px 4px rgba(21, 101, 192, 0.2); }}
-        .success {{ color: #2E7D32; font-size: 48px; text-align: center; margin: 20px 0; }}
+        .header {{{{ background: linear-gradient(135deg, #1565C0 0%, #0D47A1 100%); color: white; padding: 20px; text-align: center; border-radius: 6px 6px 0 0; box-shadow: 0 2px 4px rgba(21, 101, 192, 0.2); }}}}
+        .success {{{{ color: #2E7D32; font-size: 48px; text-align: center; margin: 20px 0; }}}}
     </style>
 </head>
 <body>

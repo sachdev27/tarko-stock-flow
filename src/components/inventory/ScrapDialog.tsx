@@ -319,7 +319,7 @@ export const ScrapDialog = ({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-w-3xl max-h-[90vh] overflow-y-auto"
+        className="max-w-3xl"
         onClick={(e) => e.stopPropagation()}
         onPointerDownOutside={(e) => {
           e.preventDefault();

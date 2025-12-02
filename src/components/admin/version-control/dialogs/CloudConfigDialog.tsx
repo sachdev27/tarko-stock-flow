@@ -172,7 +172,7 @@ export const CloudConfigDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>{cloudStatus?.enabled ? 'Edit Cloud Configuration' : 'Configure Cloud Backup'}</DialogTitle>
           <DialogDescription>

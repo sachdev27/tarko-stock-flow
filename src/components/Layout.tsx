@@ -30,6 +30,11 @@ export const Layout = ({ children }: LayoutProps) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [currentTime, setCurrentTime] = useState('');
 
+  // Close mobile menu when route changes
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [location.pathname]);
+
   const menuItems = [
     { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
     { icon: Package, label: 'Production', path: '/production' },
@@ -69,7 +74,7 @@ export const Layout = ({ children }: LayoutProps) => {
   return (
     <div className="min-h-screen bg-factory-bg">
       {/* Header */}
-      <header className="bg-card border-b border-border sticky top-0 z-50">
+      <header className="bg-card border-b border-border sticky top-0 z-40">
         <div className="flex items-center justify-between px-4 h-16">
           <div className="flex items-center space-x-3">
             <div className="h-10 w-10 rounded-lg bg-primary flex items-center justify-center">
@@ -109,7 +114,7 @@ export const Layout = ({ children }: LayoutProps) => {
 
         {/* Mobile menu */}
         {mobileMenuOpen && (
-          <div className="md:hidden border-t border-border bg-card">
+          <div className="md:hidden border-t border-border bg-card absolute top-full left-0 right-0 shadow-lg z-30">
             <nav className="p-4 space-y-2">
               {menuItems.map((item) => (
                 <Button
@@ -144,8 +149,16 @@ export const Layout = ({ children }: LayoutProps) => {
         )}
       </header>
 
+      {/* Mobile menu backdrop */}
+      {mobileMenuOpen && (
+        <div
+          className="fixed inset-0 bg-black/20 z-20 md:hidden"
+          onClick={() => setMobileMenuOpen(false)}
+        />
+      )}
+
       {/* Bottom navigation for mobile */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-card border-t border-border z-50">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-card border-t border-border z-40">
         <div className="grid grid-cols-5 gap-1 p-2">
           {menuItems.slice(0, 5).map((item) => (
             <Button
@@ -185,7 +198,7 @@ export const Layout = ({ children }: LayoutProps) => {
         </aside>
 
         {/* Main content */}
-        <main className="flex-1 p-4 md:p-6 pb-20 md:pb-6">
+        <main className="flex-1 p-4 md:p-6 pb-24 md:pb-6">
           {children}
         </main>
       </div>

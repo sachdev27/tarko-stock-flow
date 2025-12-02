@@ -346,21 +346,62 @@ export const ProductionHistoryTab = () => {
               <p>No production batches found</p>
             </div>
           ) : (
-            <div className="border rounded-lg">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Batch Code</TableHead>
-                    <TableHead>Product</TableHead>
-                    <TableHead>Production Date</TableHead>
-                    <TableHead>Quantity</TableHead>
-                    <TableHead>Weight</TableHead>
-                    <TableHead>Items</TableHead>
-                    <TableHead>Created By</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredBatches.map((batch) => (
+            <>
+              {/* Mobile Card View */}
+              <div className="md:hidden space-y-3">
+                {filteredBatches.map((batch) => (
+                  <Card
+                    key={batch.id}
+                    className="cursor-pointer hover:shadow-md transition-shadow"
+                    onClick={() => fetchBatchDetails(batch.id)}
+                  >
+                    <CardContent className="p-4 space-y-2">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <div className="font-semibold text-sm">{batch.batch_code}</div>
+                          <div className="text-xs text-muted-foreground">#{batch.batch_no}</div>
+                        </div>
+                        <Badge variant="outline" className="text-xs">
+                          {batch.initial_quantity} {batch.piece_length ? 'pcs' : 'm'}
+                        </Badge>
+                      </div>
+                      <div>
+                        <div className="font-medium text-sm">{batch.product_type_name}</div>
+                        <div className="text-xs text-muted-foreground">{batch.brand_name}</div>
+                      </div>
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>{formatDate(batch.production_date)}</span>
+                        <span>{batch.total_items} items</span>
+                      </div>
+                      {batch.total_weight && (
+                        <div className="text-xs text-muted-foreground">
+                          Weight: {batch.total_weight.toFixed(2)} kg
+                        </div>
+                      )}
+                      <div className="text-xs text-muted-foreground">
+                        By: {batch.created_by_email}
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+
+              {/* Desktop Table View */}
+              <div className="hidden md:block border rounded-lg">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Batch Code</TableHead>
+                      <TableHead>Product</TableHead>
+                      <TableHead>Production Date</TableHead>
+                      <TableHead>Quantity</TableHead>
+                      <TableHead>Weight</TableHead>
+                      <TableHead>Items</TableHead>
+                      <TableHead>Created By</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredBatches.map((batch) => (
                     <TableRow
                       key={batch.id}
                       className="cursor-pointer hover:bg-muted/50"
@@ -423,7 +464,7 @@ export const ProductionHistoryTab = () => {
 
       {/* Details Dialog */}
       <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
-        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Factory className="h-5 w-5" />

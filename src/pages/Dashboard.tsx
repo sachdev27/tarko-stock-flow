@@ -142,13 +142,13 @@ const Dashboard = () => {
 
         {/* Main Stats */}
         {loading ? (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {[1, 2, 3, 4].map((i) => (
               <div key={i} className="h-32 bg-muted animate-pulse rounded-lg"></div>
             ))}
           </div>
         ) : (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {mainStatCards.map((card) => (
               <StatsCard key={card.title} {...card} />
             ))}
@@ -156,13 +156,13 @@ const Dashboard = () => {
         )}
 
         {/* Quick Actions and Inventory */}
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <QuickActions />
           <InventoryByType data={statsData.inventoryByType} />
         </div>
 
         {/* Low Stock Alerts and Recent Activity */}
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <LowStockAlerts items={statsData.lowStockItems} />
           <RecentActivity activities={statsData.recentActivity} />
         </div>

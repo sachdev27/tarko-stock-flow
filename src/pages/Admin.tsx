@@ -124,7 +124,7 @@ const Admin = () => {
         </div>
 
         <Tabs defaultValue="brands" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-8">
+          <TabsList className="w-full flex-nowrap sm:inline-flex">
             <TabsTrigger value="brands">Brands</TabsTrigger>
             <TabsTrigger value="products">Products</TabsTrigger>
             <TabsTrigger value="users">Users</TabsTrigger>
@@ -174,7 +174,7 @@ const Admin = () => {
           <TabsContent value="backups">
             <div className="space-y-6">
               <Tabs defaultValue="credentials" className="space-y-6">
-                <TabsList className="grid w-full grid-cols-5">
+                <TabsList className="w-full flex-wrap sm:inline-flex">
                   <TabsTrigger value="credentials">Cloud Credentials</TabsTrigger>
                   <TabsTrigger value="retention">Retention Policies</TabsTrigger>
                   <TabsTrigger value="archive">Archive Management</TabsTrigger>
