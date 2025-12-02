@@ -311,20 +311,60 @@ const ReturnHistory = () => {
               {searchQuery ? 'No returns found matching your search' : 'No returns yet'}
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Return #</TableHead>
-                    <TableHead>Date & Time</TableHead>
-                    <TableHead>Customer</TableHead>
-                    <TableHead>Items</TableHead>
-                    <TableHead>Quantity</TableHead>
-                    <TableHead>Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredReturns.map((ret) => (
+            <>
+              {/* Mobile Card View */}
+              <div className="md:hidden space-y-3">
+                {filteredReturns.map((ret) => (
+                  <Card
+                    key={ret.id}
+                    className="cursor-pointer hover:shadow-md transition-shadow"
+                    onClick={() => handleViewDetails(ret.id)}
+                  >
+                    <CardContent className="p-4 space-y-2">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <div className="font-semibold text-sm">{ret.return_number}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {format(new Date(ret.return_date), 'dd MMM yyyy, HH:mm')}
+                          </div>
+                        </div>
+                        <Badge
+                          variant={ret.status === 'completed' ? 'default' : 'outline'}
+                          className="text-xs"
+                        >
+                          {ret.status}
+                        </Badge>
+                      </div>
+                      <div>
+                        <div className="font-medium text-sm">{ret.customer_name}</div>
+                        {ret.customer_city && (
+                          <div className="text-xs text-muted-foreground">{ret.customer_city}</div>
+                        )}
+                      </div>
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>{ret.item_count} items</span>
+                        <span>Qty: {ret.total_quantity}</span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+
+              {/* Desktop Table View */}
+              <div className="hidden md:block overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Return #</TableHead>
+                      <TableHead>Date & Time</TableHead>
+                      <TableHead>Customer</TableHead>
+                      <TableHead>Items</TableHead>
+                      <TableHead>Quantity</TableHead>
+                      <TableHead>Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredReturns.map((ret) => (
                     <TableRow
                       key={ret.id}
                       className="cursor-pointer hover:bg-muted/50"
@@ -363,13 +403,14 @@ const ReturnHistory = () => {
                 </TableBody>
               </Table>
             </div>
-          )}
+          </>
+        )}
         </CardContent>
       </Card>
 
       {/* Return Details Dialog */}
       <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
-        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl">
           <DialogHeader>
             <DialogTitle>Return Details</DialogTitle>
             <DialogDescription>

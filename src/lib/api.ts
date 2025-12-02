@@ -421,4 +421,79 @@ export const scrap = {
     api.post(`/scraps/${scrapId}/revert`),
 };
 
+// Backup Configuration endpoints
+export const backupConfig = {
+  // Cloud Credentials
+  getCloudCredentials: () =>
+    api.get('/backup-config/cloud-credentials'),
+
+  addCloudCredential: (data: {
+    provider: string;
+    account_id: string;
+    access_key_id: string;
+    secret_access_key: string;
+    bucket_name: string;
+    region?: string;
+    endpoint_url?: string;
+  }) =>
+    api.post('/backup-config/cloud-credentials', data),
+
+  updateCloudCredential: (id: string, data: any) =>
+    api.put(`/backup-config/cloud-credentials/${id}`, data),
+
+  deleteCloudCredential: (id: string) =>
+    api.delete(`/backup-config/cloud-credentials/${id}`),
+
+  decryptCredential: (id: string) =>
+    api.post(`/backup-config/cloud-credentials/${id}/decrypt`),
+
+  testCloudCredential: (id: string) =>
+    api.post(`/backup-config/cloud-credentials/${id}/test`),
+
+  // Retention Policies
+  getRetentionPolicies: () =>
+    api.get('/backup-config/retention-policies'),
+
+  addRetentionPolicy: (data: {
+    policy_name: string;
+    backup_type: string;
+    retention_days: number;
+    auto_delete_enabled: boolean;
+    keep_weekly?: boolean;
+    keep_monthly?: boolean;
+    max_backups?: number;
+  }) =>
+    api.post('/backup-config/retention-policies', data),
+
+  updateRetentionPolicy: (id: string, data: any) =>
+    api.put(`/backup-config/retention-policies/${id}`, data),
+
+  // Archive Buckets
+  getArchiveBuckets: () =>
+    api.get('/backup-config/archive-buckets'),
+
+  addArchiveBucket: (data: {
+    bucket_name: string;
+    credentials_id: string;
+    description?: string;
+  }) =>
+    api.post('/backup-config/archive-buckets', data),
+
+  archiveBackup: (bucketId: string, data: {
+    backup_id: string;
+    backup_type: string;
+    tags?: string[];
+    notes?: string;
+  }) =>
+    api.post(`/backup-config/archive-buckets/${bucketId}/archive`, data),
+
+  // Archived Backups
+  getArchivedBackups: (backupType?: string) =>
+    api.get('/backup-config/archived-backups', { params: { backup_type: backupType } }),
+
+  // Deletion Log
+  getDeletionLog: (limit = 100, backupType?: string) =>
+    api.get('/backup-config/deletion-log', { params: { limit, backup_type: backupType } }),
+};
+
 export default api;

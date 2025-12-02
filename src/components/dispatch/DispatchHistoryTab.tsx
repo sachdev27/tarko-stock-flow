@@ -352,20 +352,67 @@ export const DispatchHistoryTab = () => {
               <p>No dispatches found</p>
             </div>
           ) : (
-            <div className="border rounded-lg">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Dispatch #</TableHead>
-                    <TableHead>Date & Time</TableHead>
-                    <TableHead>Customer</TableHead>
-                    <TableHead>Transport/Driver</TableHead>
-                    <TableHead>Items</TableHead>
-                    <TableHead>Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredDispatches.map((dispatch) => (
+            <>
+              {/* Mobile Card View */}
+              <div className="md:hidden space-y-3">
+                {filteredDispatches.map((dispatch) => (
+                  <Card
+                    key={dispatch.id}
+                    className="cursor-pointer hover:shadow-md transition-shadow"
+                    onClick={() => fetchDispatchDetails(dispatch.id)}
+                  >
+                    <CardContent className="p-4 space-y-2">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <div className="font-semibold text-sm">{dispatch.dispatch_number}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {formatDate(dispatch.dispatch_date)}
+                            {' '}{format(new Date(dispatch.created_at), 'HH:mm')}
+                          </div>
+                        </div>
+                        <Badge className={getStatusColor(dispatch.status)}>
+                          {dispatch.status}
+                        </Badge>
+                      </div>
+                      <div>
+                        <div className="font-medium text-sm">{dispatch.customer_name}</div>
+                        {dispatch.customer_city && (
+                          <div className="text-xs text-muted-foreground">{dispatch.customer_city}</div>
+                        )}
+                      </div>
+                      {dispatch.transport_name && (
+                        <div className="text-xs text-muted-foreground">
+                          Transport: {dispatch.transport_name}
+                        </div>
+                      )}
+                      {dispatch.vehicle_driver && (
+                        <div className="text-xs text-muted-foreground">
+                          Driver: {dispatch.vehicle_driver}
+                        </div>
+                      )}
+                      <div className="text-xs text-muted-foreground">
+                        Qty: {dispatch.total_quantity}
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+
+              {/* Desktop Table View */}
+              <div className="hidden md:block border rounded-lg">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Dispatch #</TableHead>
+                      <TableHead>Date & Time</TableHead>
+                      <TableHead>Customer</TableHead>
+                      <TableHead>Transport/Driver</TableHead>
+                      <TableHead>Items</TableHead>
+                      <TableHead>Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredDispatches.map((dispatch) => (
                     <TableRow
                       key={dispatch.id}
                       className="cursor-pointer hover:bg-muted/50"
@@ -415,7 +462,8 @@ export const DispatchHistoryTab = () => {
                 </TableBody>
               </Table>
             </div>
-          )}
+          </>
+        )}
         </CardContent>
       </Card>
 

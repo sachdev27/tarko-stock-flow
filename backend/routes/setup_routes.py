@@ -1,161 +1,115 @@
+"""
+Setup routes for initial admin creation
+One-time setup page to create the first admin user
+"""
 from flask import Blueprint, request, jsonify
 from database import get_db_connection
-import bcrypt
 from psycopg2.extras import RealDictCursor
-import re
+import bcrypt
 
-setup_bp = Blueprint('setup', __name__)
-
-def is_valid_email(email):
-    """Validate email format"""
-    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-    return re.match(pattern, email) is not None
-
-def check_system_initialized():
-    """Check if system has any admin users (excluding soft-deleted users)"""
-    with get_db_connection() as conn:
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        try:
-            cursor.execute("""
-                SELECT COUNT(*) as admin_count
-                FROM users u
-                JOIN user_roles ur ON u.id = ur.user_id
-                WHERE ur.role = 'admin' AND u.deleted_at IS NULL
-            """)
-            result = cursor.fetchone()
-            return result['admin_count'] > 0
-        finally:
-            cursor.close()
+setup_bp = Blueprint('setup', __name__, url_prefix='/api/setup')
 
 @setup_bp.route('/check', methods=['GET'])
-def check_setup():
-    """Check if initial setup is required"""
+def check_admin_exists():
+    """Check if any admin user exists (excluding soft-deleted)"""
     try:
-        is_initialized = check_system_initialized()
-        return jsonify({
-            'setup_required': not is_initialized,
-            'message': 'System is ready' if is_initialized else 'Initial setup required'
-        })
+        with get_db_connection() as conn:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor.execute("""
+                SELECT COUNT(*) as admin_count
+                FROM users
+                WHERE role = 'admin'
+                AND deleted_at IS NULL
+            """)
+            result = cursor.fetchone()
+
+            admin_exists = result['admin_count'] > 0
+
+            return jsonify({
+                'admin_exists': admin_exists,
+                'setup_required': not admin_exists
+            }), 200
+
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 @setup_bp.route('/admin', methods=['POST'])
 def create_admin():
-    """Create the first admin user (only works if no admin exists)"""
+    """Create the first admin user - one-time setup"""
     try:
-        # Check if system is already initialized
-        if check_system_initialized():
-            return jsonify({'error': 'System already initialized. Admin user already exists.'}), 403
-
-        data = request.get_json()
-
-        # Validate required fields
-        email = data.get('email', '').strip()
-        password = data.get('password', '')
-        full_name = data.get('full_name', '').strip()
-        username = data.get('username', '').strip()
-
-        if not email or not password or not full_name or not username:
-            return jsonify({'error': 'Email, password, full name, and username are required'}), 400
-
-        # Validate username (alphanumeric, underscore, hyphen, 3-30 chars)
-        if not re.match(r'^[a-zA-Z0-9_-]{3,30}$', username):
-            return jsonify({'error': 'Username must be 3-30 characters and contain only letters, numbers, underscores, or hyphens'}), 400
-
-        # Validate email format
-        if not is_valid_email(email):
-            return jsonify({'error': 'Invalid email format'}), 400
-
-        # Validate password strength
-        if len(password) < 8:
-            return jsonify({'error': 'Password must be at least 8 characters long'}), 400
-
-        # Hash password
-        password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-
+        # Check if admin already exists
         with get_db_connection() as conn:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor.execute("""
+                SELECT COUNT(*) as admin_count
+                FROM users
+                WHERE role = 'admin'
+                AND deleted_at IS NULL
+            """)
+            result = cursor.fetchone()
 
-            try:
-                # Check if email already exists (excluding soft-deleted)
-                cursor.execute(
-                    "SELECT id, deleted_at FROM users WHERE email = %s",
-                    (email,)
-                )
-                existing_user = cursor.fetchone()
+            if result['admin_count'] > 0:
+                return jsonify({'error': 'Admin user already exists'}), 400
 
-                if existing_user:
-                    # If user exists and is soft-deleted, restore and update
-                    if existing_user['deleted_at'] is not None:
-                        cursor.execute("""
-                            UPDATE users
-                            SET password_hash = %s,
-                                deleted_at = NULL,
-                                username = %s,
-                                full_name = %s,
-                                updated_at = now()
-                            WHERE id = %s
-                            RETURNING id, email, username, created_at
-                        """, (password_hash, username, full_name, existing_user['id']))
-                        user = cursor.fetchone()
-                        user_id = user['id']
+            # Get admin details from request
+            data = request.get_json()
+            username = data.get('username')
+            email = data.get('email')
+            password = data.get('password')
+            full_name = data.get('full_name', 'Administrator')
 
-                        # Check if admin role exists, if not add it
-                        cursor.execute(
-                            "SELECT id FROM user_roles WHERE user_id = %s AND role = 'admin'",
-                            (user_id,)
-                        )
-                        if not cursor.fetchone():
-                            cursor.execute("""
-                                INSERT INTO user_roles (user_id, role)
-                                VALUES (%s, 'admin')
-                            """, (user_id,))
-                    else:
-                        return jsonify({'error': 'Email already exists'}), 409
+            if not username or not email or not password:
+                return jsonify({'error': 'Username, email, and password are required'}), 400
+
+            # Check if user exists but is soft-deleted
+            cursor.execute("""
+                SELECT id, deleted_at
+                FROM users
+                WHERE email = %s OR username = %s
+            """, (email, username))
+            existing_user = cursor.fetchone()
+
+            if existing_user:
+                if existing_user['deleted_at'] is not None:
+                    # Restore soft-deleted user as admin
+                    password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
+                    cursor.execute("""
+                        UPDATE users
+                        SET deleted_at = NULL,
+                            is_active = true,
+                            role = 'admin',
+                            password_hash = %s,
+                            full_name = %s
+                        WHERE id = %s
+                        RETURNING id, username, email, full_name, role
+                    """, (password_hash, full_name, existing_user['id']))
+
+                    admin = cursor.fetchone()
+
+                    return jsonify({
+                        'message': 'Admin user restored and updated successfully',
+                        'user': dict(admin)
+                    }), 200
                 else:
-                    # Check if username already exists (excluding soft-deleted)
-                    cursor.execute(
-                        "SELECT id FROM users WHERE username = %s AND deleted_at IS NULL",
-                        (username,)
-                    )
-                    if cursor.fetchone():
-                        return jsonify({'error': 'Username already exists'}), 409
+                    return jsonify({'error': 'User already exists'}), 400
 
-                    # Create new user
-                    cursor.execute("""
-                        INSERT INTO users (email, password_hash, username, full_name)
-                        VALUES (%s, %s, %s, %s)
-                        RETURNING id, email, username, created_at
-                    """, (email, password_hash, username, full_name))
-                    user = cursor.fetchone()
-                    user_id = user['id']
+            # Hash password
+            password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
-                    # Assign admin role
-                    cursor.execute("""
-                        INSERT INTO user_roles (user_id, role)
-                        VALUES (%s, 'admin')
-                    """, (user_id,))
+            # Create admin user
+            cursor.execute("""
+                INSERT INTO users (username, email, password_hash, full_name, role, is_active)
+                VALUES (%s, %s, %s, %s, 'admin', true)
+                RETURNING id, username, email, full_name, role
+            """, (username, email, password_hash, full_name))
 
-                # Commit is handled by context manager
+            admin = cursor.fetchone()
 
-                return jsonify({
-                    'success': True,
-                    'message': 'Admin account created successfully',
-                    'user': {
-                        'id': user['id'],
-                        'email': user['email'],
-                        'username': user.get('username'),
-                        'role': 'admin',
-                        'created_at': user['created_at'].isoformat() if user['created_at'] else None
-                    }
-                }), 201
-
-            except Exception as e:
-                # Rollback is handled by context manager
-                raise e
-            finally:
-                cursor.close()
+            return jsonify({
+                'message': 'Admin user created successfully',
+                'user': dict(admin)
+            }), 201
 
     except Exception as e:
-        print(f"Error creating admin: {str(e)}")
-        return jsonify({'error': f'Failed to create admin account: {str(e)}'}), 500
+        return jsonify({'error': str(e)}), 500

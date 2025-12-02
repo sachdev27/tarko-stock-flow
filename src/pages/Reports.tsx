@@ -148,7 +148,7 @@ const Reports = () => {
 
         {/* Tabs for different analytics views */}
         <Tabs defaultValue="products" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="w-full flex-wrap sm:inline-flex">
             <TabsTrigger value="products">
               <Package className="h-4 w-4 mr-2" />
               Products

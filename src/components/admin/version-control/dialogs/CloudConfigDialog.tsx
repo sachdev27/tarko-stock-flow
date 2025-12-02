@@ -3,8 +3,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Cloud } from 'lucide-react';
 import { useState, useEffect } from 'react';
+import { useCloudCredentials } from '@/hooks/useBackupConfig';
+import { backupConfig } from '@/lib/api';
 
 interface CloudConfigDialogProps {
   open: boolean;
@@ -35,6 +38,7 @@ export const CloudConfigDialog = ({
     s3_bucket_name: 'tarko-inventory-backups',
   });
   const [currentBucket, setCurrentBucket] = useState('');
+  const [selectedCredentialId, setSelectedCredentialId] = useState('');
 
   // Load existing config when dialog opens
   useEffect(() => {
@@ -66,7 +70,12 @@ export const CloudConfigDialog = ({
   const handleSave = async () => {
     setLoading(true);
     try {
-      await onSave({ provider, ...config });
+      // Include credential_id if using saved credentials
+      const payload = selectedCredentialId
+        ? { provider, credential_id: selectedCredentialId }
+        : { provider, ...config };
+
+      await onSave(payload);
       onOpenChange(false);
     } finally {
       setLoading(false);
@@ -74,6 +83,12 @@ export const CloudConfigDialog = ({
   };
 
   const isFormValid = () => {
+    // If using saved credentials, always valid
+    if (selectedCredentialId) {
+      return true;
+    }
+
+    // Otherwise check manual entry fields
     if (provider === 'r2') {
       return config.r2_account_id && config.r2_access_key_id && config.r2_secret_access_key;
     } else {
@@ -81,9 +96,83 @@ export const CloudConfigDialog = ({
     }
   };
 
+  // Component to load from existing credentials
+  const UseExistingCredentials = ({ provider, config, setConfig }: any) => {
+    const { data: credentials } = useCloudCredentials();
+    const relevantCredentials = credentials?.filter((c: any) => c.provider === provider && c.is_active) || [];
+
+    if (relevantCredentials.length === 0) {
+      return null;
+    }
+
+    const handleLoadCredentials = async (credId: string) => {
+      const cred = relevantCredentials.find((c: any) => c.id === credId);
+      if (!cred) return;
+
+      // Save credential ID to use on save
+      setSelectedCredentialId(credId);
+
+      // Get decrypted credentials from API for display purposes only
+      try {
+        const response = await backupConfig.decryptCredential(credId);
+        const data = response.data;
+
+        if (provider === 'r2') {
+          setConfig((prev) => ({
+            ...prev,
+            r2_account_id: cred.account_id || '',
+            r2_access_key_id: data.access_key_id || '',
+            r2_secret_access_key: '••••••••', // Mask the secret
+            r2_bucket_name: cred.bucket_name || '',
+          }));
+        } else if (provider === 's3') {
+          setConfig((prev) => ({
+            ...prev,
+            aws_access_key_id: data.access_key_id || '',
+            aws_secret_access_key: '••••••••', // Mask the secret
+            aws_region: cred.region || 'us-east-1',
+            s3_bucket_name: cred.bucket_name || '',
+          }));
+        }
+      } catch (error) {
+        console.error('Failed to load credentials:', error);
+      }
+    };
+
+    const selectedCred = relevantCredentials.find((c: any) => c.id === selectedCredentialId);
+
+    return (
+      <div className={`p-3 rounded-lg border ${
+        selectedCredentialId
+          ? 'bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-800'
+          : 'bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800'
+      }`}>
+        <Label className="text-sm font-medium mb-2 block">Use Saved Credentials</Label>
+        <Select value={selectedCredentialId} onValueChange={handleLoadCredentials}>
+          <SelectTrigger>
+            <SelectValue placeholder="Select from saved credentials" />
+          </SelectTrigger>
+          <SelectContent>
+            {relevantCredentials.map((cred: any) => (
+              <SelectItem key={cred.id} value={cred.id}>
+                {cred.provider.toUpperCase()} - {cred.bucket_name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {selectedCredentialId && selectedCred && (
+          <p className="text-xs text-green-700 dark:text-green-300 mt-2 font-medium">
+            ✓ Using saved credential: {selectedCred.bucket_name}
+          </p>
+        )}
+        <p className="text-xs text-muted-foreground mt-2">Or enter credentials manually below</p>
+      </div>
+    );
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>{cloudStatus?.enabled ? 'Edit Cloud Configuration' : 'Configure Cloud Backup'}</DialogTitle>
           <DialogDescription>
@@ -114,12 +203,20 @@ export const CloudConfigDialog = ({
             </TabsList>
 
             <TabsContent value="r2" className="space-y-3 mt-4">
+              <UseExistingCredentials
+                provider="r2"
+                config={config}
+                setConfig={setConfig}
+              />
               <div className="space-y-2">
                 <Label htmlFor="r2_account_id">Account ID *</Label>
                 <Input
                   id="r2_account_id"
                   value={config.r2_account_id}
-                  onChange={(e) => setConfig({ ...config, r2_account_id: e.target.value })}
+                  onChange={(e) => {
+                    setSelectedCredentialId('');
+                    setConfig({ ...config, r2_account_id: e.target.value });
+                  }}
                   placeholder="Enter R2 Account ID"
                 />
               </div>
@@ -128,7 +225,10 @@ export const CloudConfigDialog = ({
                 <Input
                   id="r2_access_key"
                   value={config.r2_access_key_id}
-                  onChange={(e) => setConfig({ ...config, r2_access_key_id: e.target.value })}
+                  onChange={(e) => {
+                    setSelectedCredentialId('');
+                    setConfig({ ...config, r2_access_key_id: e.target.value });
+                  }}
                   placeholder="Enter R2 Access Key"
                 />
               </div>
@@ -138,7 +238,10 @@ export const CloudConfigDialog = ({
                   id="r2_secret_key"
                   type="password"
                   value={config.r2_secret_access_key}
-                  onChange={(e) => setConfig({ ...config, r2_secret_access_key: e.target.value })}
+                  onChange={(e) => {
+                    setSelectedCredentialId('');
+                    setConfig({ ...config, r2_secret_access_key: e.target.value });
+                  }}
                   placeholder="Enter R2 Secret Key"
                 />
               </div>
@@ -147,7 +250,10 @@ export const CloudConfigDialog = ({
                 <Input
                   id="r2_bucket"
                   value={config.r2_bucket_name}
-                  onChange={(e) => setConfig({ ...config, r2_bucket_name: e.target.value })}
+                  onChange={(e) => {
+                    setSelectedCredentialId('');
+                    setConfig({ ...config, r2_bucket_name: e.target.value });
+                  }}
                   placeholder="tarko-inventory-backups"
                 />
               </div>
@@ -170,12 +276,20 @@ export const CloudConfigDialog = ({
             </TabsContent>
 
             <TabsContent value="s3" className="space-y-3 mt-4">
+              <UseExistingCredentials
+                provider="s3"
+                config={config}
+                setConfig={setConfig}
+              />
               <div className="space-y-2">
                 <Label htmlFor="aws_access_key">Access Key ID *</Label>
                 <Input
                   id="aws_access_key"
                   value={config.aws_access_key_id}
-                  onChange={(e) => setConfig({ ...config, aws_access_key_id: e.target.value })}
+                  onChange={(e) => {
+                    setSelectedCredentialId('');
+                    setConfig({ ...config, aws_access_key_id: e.target.value });
+                  }}
                   placeholder="Enter AWS Access Key"
                 />
               </div>
@@ -185,7 +299,10 @@ export const CloudConfigDialog = ({
                   id="aws_secret_key"
                   type="password"
                   value={config.aws_secret_access_key}
-                  onChange={(e) => setConfig({ ...config, aws_secret_access_key: e.target.value })}
+                  onChange={(e) => {
+                    setSelectedCredentialId('');
+                    setConfig({ ...config, aws_secret_access_key: e.target.value });
+                  }}
                   placeholder="Enter AWS Secret Key"
                 />
               </div>
@@ -194,7 +311,10 @@ export const CloudConfigDialog = ({
                 <Input
                   id="aws_region"
                   value={config.aws_region}
-                  onChange={(e) => setConfig({ ...config, aws_region: e.target.value })}
+                  onChange={(e) => {
+                    setSelectedCredentialId('');
+                    setConfig({ ...config, aws_region: e.target.value });
+                  }}
                   placeholder="us-east-1"
                 />
               </div>
@@ -203,7 +323,10 @@ export const CloudConfigDialog = ({
                 <Input
                   id="s3_bucket"
                   value={config.s3_bucket_name}
-                  onChange={(e) => setConfig({ ...config, s3_bucket_name: e.target.value })}
+                  onChange={(e) => {
+                    setSelectedCredentialId('');
+                    setConfig({ ...config, s3_bucket_name: e.target.value });
+                  }}
                   placeholder="tarko-inventory-backups"
                 />
               </div>

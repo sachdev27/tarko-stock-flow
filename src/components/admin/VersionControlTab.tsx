@@ -373,9 +373,10 @@ export const VersionControlTab = ({ snapshots, rollbackHistory, onDataChange }: 
     try {
       const response = await versionControl.configureCloud(config);
       toast.success('Cloud backup enabled successfully! 🎉');
-      // Refresh cloud status immediately
+      // Refresh cloud status and snapshots immediately
+      await fetchCloudStatus();
       setTimeout(() => {
-        fetchCloudStatus();
+        fetchCloudSnapshots();
       }, 500);
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Failed to save cloud configuration');

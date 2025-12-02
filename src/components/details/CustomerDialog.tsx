@@ -26,7 +26,7 @@ interface CustomerDialogProps {
 export const CustomerDialog = ({ open, onOpenChange, form, onFormChange, onSave, loading, isEditing }: CustomerDialogProps) => {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>{isEditing ? 'Edit Customer' : 'Add Customer'}</DialogTitle>
         </DialogHeader>

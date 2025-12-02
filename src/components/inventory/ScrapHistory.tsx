@@ -433,20 +433,59 @@ const ScrapHistory = ({ embedded = false }: ScrapHistoryProps) => {
         ) : (
           <Card>
             <CardContent className="p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Scrap Number</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Reason</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Quantity</TableHead>
-                    <TableHead>Items</TableHead>
-                    <TableHead>Created By</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredScraps.map((scrap) => (
+              {/* Mobile Card View */}
+              <div className="md:hidden p-4 space-y-3">
+                {filteredScraps.map((scrap) => (
+                  <Card
+                    key={scrap.id}
+                    className="cursor-pointer hover:shadow-md transition-shadow"
+                    onClick={() => fetchScrapDetails(scrap.id)}
+                  >
+                    <CardContent className="p-4 space-y-2">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <div className="font-semibold text-sm">{scrap.scrap_number}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {formatDate(scrap.scrap_date)}
+                            {' '}{format(new Date(scrap.created_at), 'HH:mm')}
+                          </div>
+                        </div>
+                        <Badge className={getStatusColor(scrap.status)}>
+                          {scrap.status}
+                        </Badge>
+                      </div>
+                      <div className="text-sm">
+                        <div className="font-medium">Reason:</div>
+                        <div className="text-muted-foreground truncate">{scrap.reason}</div>
+                      </div>
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>{scrap.total_items} items ({scrap.total_batches} batches)</span>
+                        <span className="font-medium">Qty: {scrap.total_quantity}</span>
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        By: {scrap.created_by_email}
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+
+              {/* Desktop Table View */}
+              <div className="hidden md:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Scrap Number</TableHead>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Reason</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Quantity</TableHead>
+                      <TableHead>Items</TableHead>
+                      <TableHead>Created By</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredScraps.map((scrap) => (
                     <TableRow
                       key={scrap.id}
                       className="cursor-pointer hover:bg-muted/50"
@@ -483,6 +522,7 @@ const ScrapHistory = ({ embedded = false }: ScrapHistoryProps) => {
                   ))}
                 </TableBody>
               </Table>
+            </div>
             </CardContent>
           </Card>
         )}

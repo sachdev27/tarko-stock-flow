@@ -26,8 +26,11 @@ class CloudStorage:
 
     def __init__(self):
         """Initialize cloud storage client based on configuration"""
-        self.provider = os.getenv('CLOUD_STORAGE_PROVIDER', 'r2').lower()  # 'r2' or 's3'
-        self.enabled = os.getenv('ENABLE_CLOUD_BACKUP', 'false').lower() == 'true'
+        # Try to get config from database first, fallback to environment variables
+        config = self._get_cloud_config()
+
+        self.provider = config.get('provider', 'r2').lower()
+        self.enabled = config.get('enabled', False)
 
         if not self.enabled:
             logger.info("Cloud backup is disabled")
@@ -35,9 +38,9 @@ class CloudStorage:
 
         try:
             if self.provider == 'r2':
-                self._init_r2()
+                self._init_r2(config)
             elif self.provider == 's3':
-                self._init_s3()
+                self._init_s3(config)
             else:
                 raise ValueError(f"Unsupported provider: {self.provider}")
 
@@ -47,18 +50,67 @@ class CloudStorage:
             logger.error(f"Failed to initialize cloud storage: {e}")
             self.enabled = False
 
-    def _init_r2(self):
+    def _get_cloud_config(self):
+        """Get cloud configuration from database, fallback to environment"""
+        try:
+            from database import get_db_connection
+            from psycopg2.extras import RealDictCursor
+            from services.encryption_service import get_encryption_service
+
+            with get_db_connection() as conn:
+                cursor = conn.cursor(cursor_factory=RealDictCursor)
+                cursor.execute("""
+                    SELECT provider, account_id, access_key_id, secret_access_key,
+                           bucket_name, region, endpoint_url, is_enabled
+                    FROM cloud_backup_config
+                    WHERE is_active = TRUE
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                """)
+
+                db_config = cursor.fetchone()
+
+                if db_config and db_config['is_enabled']:
+                    encryption_service = get_encryption_service()
+                    logger.info(f"✅ Loading cloud config from database: {db_config['provider']} - {db_config['bucket_name']}")
+                    return {
+                        'enabled': True,
+                        'provider': db_config['provider'],
+                        'account_id': db_config['account_id'],
+                        'access_key_id': db_config['access_key_id'],
+                        'secret_access_key': encryption_service.decrypt(db_config['secret_access_key']),
+                        'bucket_name': db_config['bucket_name'],
+                        'region': db_config['region'],
+                        'endpoint_url': db_config['endpoint_url']
+                    }
+        except Exception as e:
+            logger.warning(f"Could not load cloud config from database: {e}")
+            logger.info("Falling back to environment variables...")
+
+        # Fallback to environment variables
+        return {
+            'enabled': os.getenv('ENABLE_CLOUD_BACKUP', 'false').lower() == 'true',
+            'provider': os.getenv('CLOUD_STORAGE_PROVIDER', 'r2').lower(),
+            'account_id': os.getenv('R2_ACCOUNT_ID') or None,
+            'access_key_id': os.getenv('R2_ACCESS_KEY_ID') or os.getenv('AWS_ACCESS_KEY_ID'),
+            'secret_access_key': os.getenv('R2_SECRET_ACCESS_KEY') or os.getenv('AWS_SECRET_ACCESS_KEY'),
+            'bucket_name': os.getenv('R2_BUCKET_NAME') or os.getenv('S3_BUCKET_NAME', 'tarko-inventory-backups'),
+            'region': os.getenv('AWS_REGION', 'us-east-1'),
+            'endpoint_url': None
+        }
+
+    def _init_r2(self, config):
         """Initialize Cloudflare R2 client"""
-        account_id = os.getenv('R2_ACCOUNT_ID')
-        access_key = os.getenv('R2_ACCESS_KEY_ID')
-        secret_key = os.getenv('R2_SECRET_ACCESS_KEY')
-        self.bucket_name = os.getenv('R2_BUCKET_NAME', 'tarko-inventory-backups')
+        account_id = config.get('account_id')
+        access_key = config.get('access_key_id')
+        secret_key = config.get('secret_access_key')
+        self.bucket_name = config.get('bucket_name', 'tarko-inventory-backups')
 
         if not all([account_id, access_key, secret_key]):
-            raise ValueError("Missing R2 credentials (R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY)")
+            raise ValueError("Missing R2 credentials (account_id, access_key_id, secret_access_key)")
 
         # R2 endpoint format: https://<account_id>.r2.cloudflarestorage.com
-        endpoint_url = f"https://{account_id}.r2.cloudflarestorage.com"
+        endpoint_url = config.get('endpoint_url') or f"https://{account_id}.r2.cloudflarestorage.com"
 
         self.s3_client = boto3.client(
             's3',
@@ -72,15 +124,15 @@ class CloudStorage:
         # Create bucket if it doesn't exist
         self._ensure_bucket_exists()
 
-    def _init_s3(self):
+    def _init_s3(self, config):
         """Initialize AWS S3 client"""
-        access_key = os.getenv('AWS_ACCESS_KEY_ID')
-        secret_key = os.getenv('AWS_SECRET_ACCESS_KEY')
-        region = os.getenv('AWS_REGION', 'us-east-1')
-        self.bucket_name = os.getenv('S3_BUCKET_NAME', 'tarko-inventory-backups')
+        access_key = config.get('access_key_id')
+        secret_key = config.get('secret_access_key')
+        region = config.get('region', 'us-east-1')
+        self.bucket_name = config.get('bucket_name', 'tarko-inventory-backups')
 
         if not all([access_key, secret_key]):
-            raise ValueError("Missing AWS credentials (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)")
+            raise ValueError("Missing AWS credentials (access_key_id, secret_access_key)")
 
         self.s3_client = boto3.client(
             's3',
@@ -96,7 +148,7 @@ class CloudStorage:
         """Create bucket if it doesn't exist"""
         try:
             self.s3_client.head_bucket(Bucket=self.bucket_name)
-            logger.info(f"Bucket exists: {self.bucket_name}")
+            logger.info(f"✅ Bucket accessible: {self.bucket_name}")
         except ClientError as e:
             error_code = e.response['Error']['Code']
             if error_code == '404':
@@ -107,11 +159,17 @@ class CloudStorage:
                     else:
                         # R2 doesn't need location constraint
                         self.s3_client.create_bucket(Bucket=self.bucket_name)
+                    logger.info(f"✅ Bucket created: {self.bucket_name}")
                 except ClientError as create_error:
-                    logger.error(f"Failed to create bucket: {create_error}")
+                    logger.error(f"❌ Failed to create bucket: {create_error}")
                     raise
+            elif error_code == '403':
+                logger.error(f"❌ Access denied to bucket '{self.bucket_name}'. Check credentials and permissions.")
+                logger.error(f"   Provider: {self.provider}")
+                logger.error(f"   Make sure the access key has read/write permissions for this bucket.")
+                raise
             else:
-                logger.error(f"Error checking bucket: {e}")
+                logger.error(f"❌ Error checking bucket: {e}")
                 raise
 
     def upload_snapshot(self, snapshot_id: str, local_path: Path, encrypt: bool = True) -> bool:
