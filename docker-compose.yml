@@ -57,6 +57,18 @@ services:
       retries: 3
       start_period: 40s
 
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: tarko-cloudflared
+    restart: unless-stopped
+    command: tunnel run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN}
+    depends_on:
+      - backend
+    networks:
+      - tarko-network
+
 volumes:
   postgres_data:
     driver: local
