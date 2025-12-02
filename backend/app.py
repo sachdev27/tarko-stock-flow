@@ -45,7 +45,6 @@ CORS(app,
 jwt = JWTManager(app)
 
 # Register blueprints
-app.register_blueprint(setup_bp, url_prefix='/api/setup')
 app.register_blueprint(auth_bp)
 app.register_blueprint(inventory_bp)
 app.register_blueprint(production_bp)
@@ -60,9 +59,9 @@ app.register_blueprint(version_control_bp)
 app.register_blueprint(return_bp)
 app.register_blueprint(scrap_bp)
 app.register_blueprint(backup_config_bp)
+app.register_blueprint(setup_bp)
 app.register_blueprint(password_reset_bp)
 app.register_blueprint(smtp_config_bp)
-app.register_blueprint(setup_bp)
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
@@ -84,10 +83,4 @@ if __name__ == '__main__':
     # Register cleanup
     atexit.register(close_connection_pool)
 
-<<<<<<< HEAD
-    logger.info("Tarko Inventory API starting...")
-    logger.info("If this is a fresh installation, navigate to /setup to create an admin account")
-
-=======
->>>>>>> sachdevs/bugs_and_features
     app.run(debug=True, host='0.0.0.0', port=5500)
