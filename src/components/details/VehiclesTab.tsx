@@ -163,7 +163,44 @@ export const VehiclesTab = ({ vehicles, onEdit, onDelete, onAdd, onRefresh, isAd
         </div>
       </CardHeader>
       <CardContent>
-        <div className="overflow-x-auto">
+        {/* Mobile Card View */}
+        <div className="md:hidden space-y-3">
+          {filteredVehicles.length === 0 ? (
+            <div className="text-center p-8 text-muted-foreground">
+              {searchTerm ? 'No vehicles found matching your search' : 'No vehicles available'}
+            </div>
+          ) : (
+            filteredVehicles.map((vehicle) => (
+              <Card key={vehicle.id} className="hover:shadow-md transition-shadow">
+                <CardContent className="p-4 space-y-2">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <div className="font-semibold text-sm">{vehicle.vehicle_number || '-'}</div>
+                      <div className="text-xs text-muted-foreground">{vehicle.vehicle_type || '-'}</div>
+                    </div>
+                    <div className="flex gap-1">
+                      <Button size="sm" variant="outline" onClick={() => onEdit(vehicle)}>
+                        <Edit className="h-3 w-3" />
+                      </Button>
+                      <Button size="sm" variant="destructive" onClick={() => onDelete(vehicle.id)}>
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                  {vehicle.driver_name && (
+                    <div className="text-xs"><span className="font-medium">Driver:</span> {vehicle.driver_name}</div>
+                  )}
+                  {vehicle.driver_phone && (
+                    <div className="text-xs"><span className="font-medium">Phone:</span> {vehicle.driver_phone}</div>
+                  )}
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </div>
+
+        {/* Desktop Table View */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="border-b">

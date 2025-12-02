@@ -167,7 +167,45 @@ export const BillToTab = ({ billToList, onEdit, onDelete, onAdd, onRefresh, isAd
         </div>
       </CardHeader>
       <CardContent>
-        <div className="overflow-x-auto">
+        {/* Mobile Card View */}
+        <div className="md:hidden space-y-3">
+          {filteredBillTo.length === 0 ? (
+            <div className="text-center p-8 text-muted-foreground">
+              {searchTerm ? 'No bill-to entities found matching your search' : 'No bill-to entities available'}
+            </div>
+          ) : (
+            filteredBillTo.map((billTo) => (
+              <Card key={billTo.id} className="hover:shadow-md transition-shadow">
+                <CardContent className="p-4 space-y-2">
+                  <div className="flex justify-between items-start">
+                    <div className="font-semibold text-sm">{billTo.name}</div>
+                    <div className="flex gap-1">
+                      <Button size="sm" variant="outline" onClick={() => onEdit(billTo)}>
+                        <Edit className="h-3 w-3" />
+                      </Button>
+                      <Button size="sm" variant="destructive" onClick={() => onDelete(billTo.id)}>
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                  {billTo.city && <div className="text-xs text-muted-foreground">{billTo.city}</div>}
+                  {billTo.gstin && (
+                    <div className="text-xs font-mono"><span className="font-medium">GSTIN:</span> {billTo.gstin}</div>
+                  )}
+                  {billTo.contact_person && (
+                    <div className="text-xs"><span className="font-medium">Contact:</span> {billTo.contact_person}</div>
+                  )}
+                  {billTo.phone && (
+                    <div className="text-xs"><span className="font-medium">Phone:</span> {billTo.phone}</div>
+                  )}
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </div>
+
+        {/* Desktop Table View */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="border-b">

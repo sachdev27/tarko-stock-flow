@@ -458,7 +458,8 @@ export const ProductionHistoryTab = () => {
                 </TableBody>
               </Table>
             </div>
-          )}
+          </>
+        )}
         </CardContent>
       </Card>
 

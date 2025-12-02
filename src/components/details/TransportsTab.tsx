@@ -161,7 +161,41 @@ export const TransportsTab = ({ transports, onEdit, onDelete, onAdd, onRefresh, 
         </div>
       </CardHeader>
       <CardContent>
-        <div className="overflow-x-auto">
+        {/* Mobile Card View */}
+        <div className="md:hidden space-y-3">
+          {filteredTransports.length === 0 ? (
+            <div className="text-center p-8 text-muted-foreground">
+              {searchTerm ? 'No transports found matching your search' : 'No transports available'}
+            </div>
+          ) : (
+            filteredTransports.map((transport) => (
+              <Card key={transport.id} className="hover:shadow-md transition-shadow">
+                <CardContent className="p-4 space-y-2">
+                  <div className="flex justify-between items-start">
+                    <div className="font-semibold text-sm">{transport.name}</div>
+                    <div className="flex gap-1">
+                      <Button size="sm" variant="outline" onClick={() => onEdit(transport)}>
+                        <Edit className="h-3 w-3" />
+                      </Button>
+                      <Button size="sm" variant="destructive" onClick={() => onDelete(transport.id)}>
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                  {transport.contact_person && (
+                    <div className="text-xs"><span className="font-medium">Contact:</span> {transport.contact_person}</div>
+                  )}
+                  {transport.phone && (
+                    <div className="text-xs"><span className="font-medium">Phone:</span> {transport.phone}</div>
+                  )}
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </div>
+
+        {/* Desktop Table View */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="border-b">
