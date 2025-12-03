@@ -1125,16 +1125,45 @@ def auto_snapshot_settings():
 def get_cloud_status():
     """Get cloud storage status and statistics"""
     try:
-        stats = cloud_storage.get_storage_stats()
+        from psycopg2.extras import RealDictCursor
 
-        # Get bucket name from cloud_storage instance (reads from DB or env)
-        bucket_name = None
-        if cloud_storage.enabled:
-            bucket_name = cloud_storage.bucket_name
+        # Always read fresh config from database first
+        with get_db_connection() as conn:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor.execute("""
+                SELECT provider, bucket_name, is_enabled
+                FROM cloud_backup_config
+                WHERE is_active = TRUE
+                ORDER BY created_at DESC
+                LIMIT 1
+            """)
+
+            db_config = cursor.fetchone()
+
+        # If database config exists and is enabled, use it
+        if db_config and db_config['is_enabled']:
+            enabled = True
+            provider = db_config['provider']
+            bucket_name = db_config['bucket_name']
+        else:
+            # Fallback to checking environment variables
+            import os
+            enabled = os.getenv('ENABLE_CLOUD_BACKUP', 'false').lower() == 'true'
+            provider = os.getenv('CLOUD_STORAGE_PROVIDER', 'r2').lower() if enabled else None
+            bucket_name = (os.getenv('R2_BUCKET_NAME') or os.getenv('S3_BUCKET_NAME')) if enabled else None
+
+        # Try to get stats from cloud_storage object if available
+        stats = None
+        try:
+            from storage.cloud_storage import cloud_storage
+            if cloud_storage and cloud_storage.enabled:
+                stats = cloud_storage.get_storage_stats()
+        except Exception as stats_error:
+            current_app.logger.warning(f"Could not get cloud storage stats: {stats_error}")
 
         return jsonify({
-            'enabled': cloud_storage.enabled,
-            'provider': cloud_storage.provider if cloud_storage.enabled else None,
+            'enabled': enabled,
+            'provider': provider,
             'bucket_name': bucket_name,
             'stats': stats
         }), 200
