@@ -21,6 +21,13 @@ version_control_bp = Blueprint('version_control', __name__, url_prefix='/api/ver
 # Tables to include in snapshots (excluding sensitive auth data)
 # Order matters for rollback - parent tables first to avoid FK violations
 SNAPSHOT_TABLES = [
+    # System configuration (no FK dependencies)
+    'smtp_config',
+    'cloud_credentials',
+    'backup_retention_policies',
+    'archive_buckets',
+    'cloud_backup_config',
+
     # Core configuration (no FK dependencies on operational tables)
     'brands',
     'locations',
@@ -79,9 +86,14 @@ SNAPSHOT_TABLES = [
     # Lifecycle events (depend on inventory_transactions)
     'piece_lifecycle_events',
 
-    # Audit logs (system tracking)
-    'audit_logs'
-]# Tables that have soft delete (deleted_at column)
+    # System tracking and logs
+    'archived_backups',  # depends on archive_buckets
+    'backup_deletion_log',  # depends on backup_retention_policies
+    'password_reset_tokens',  # system security tracking
+    'audit_logs'  # general system tracking
+]
+
+# Tables that have soft delete (deleted_at column)
 SOFT_DELETE_TABLES = [
     'batches',
     'inventory_stock',

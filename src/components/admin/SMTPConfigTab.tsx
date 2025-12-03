@@ -49,7 +49,8 @@ export function SMTPConfigTab() {
   const loadConfig = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:5500/api/admin/smtp-config', {
+      const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5500/api';
+      const response = await fetch(`${API_BASE_URL}/admin/smtp-config`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -80,7 +81,8 @@ export function SMTPConfigTab() {
 
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:5500/api/admin/smtp-config', {
+      const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5500/api';
+      const response = await fetch(`${API_BASE_URL}/admin/smtp-config`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -121,7 +123,8 @@ export function SMTPConfigTab() {
 
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:5500/api/admin/smtp-config/test', {
+      const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5500/api';
+      const response = await fetch(`${API_BASE_URL}/admin/smtp-config/test`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,

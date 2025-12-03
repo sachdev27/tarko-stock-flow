@@ -35,7 +35,7 @@ def record_failed_login(user_id):
     query = """
         UPDATE users
         SET failed_login_attempts = COALESCE(failed_login_attempts, 0) + 1,
-            last_failed_login = NOW()
+            last_failed_login_at = NOW()
         WHERE id = %s
         RETURNING failed_login_attempts
     """
@@ -59,7 +59,7 @@ def reset_failed_login_attempts(user_id):
         UPDATE users
         SET failed_login_attempts = 0,
             locked_until = NULL,
-            last_failed_login = NULL
+            last_failed_login_at = NULL
         WHERE id = %s
     """
     execute_query(query, (user_id,), fetch_all=False)

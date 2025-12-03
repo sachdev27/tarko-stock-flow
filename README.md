@@ -27,12 +27,14 @@ A **mobile-first, production-grade inventory management web application** for Ta
 
 ## 🚀 Quick Start
 
-### Prerequisites
-- Node.js 18+
+### Development Setup
+
+#### Prerequisites
+- Node.js 20+
 - Python 3.9+
 - PostgreSQL 14+
 
-### Installation
+#### Installation
 
 ```bash
 # Clone repository
@@ -61,7 +63,7 @@ cp .env.local.example .env.local
 # Set VITE_API_URL=http://localhost:5500/api
 ```
 
-### Running the Application
+#### Running the Application
 
 ```bash
 # Terminal 1: Start backend
@@ -74,6 +76,34 @@ npm run dev
 ```
 
 Visit `http://localhost:8080` to access the application.
+
+### Production Deployment
+
+#### Prerequisites
+- Docker & Docker Compose (for backend)
+- Firebase CLI (for frontend hosting)
+- Node.js 20+ (for building)
+
+#### Quick Production Setup
+
+```bash
+# 1. Run interactive setup
+./setup-production.sh
+
+# 2. Deploy backend (on your server)
+./deploy-backend.sh
+
+# 3. Deploy frontend to Firebase
+VITE_API_URL=https://your-api-url.com ./deploy-firebase.sh
+```
+
+**📚 See complete guides:**
+- [DEPLOYMENT.md](./DEPLOYMENT.md) - Complete deployment guide
+- [PRODUCTION_CHECKLIST.md](./PRODUCTION_CHECKLIST.md) - Step-by-step checklist
+- [DEPLOYMENT_SUMMARY.md](./DEPLOYMENT_SUMMARY.md) - Quick reference
+
+**Frontend**: Firebase Hosting (global CDN)
+**Backend**: Docker containers (PostgreSQL + Flask API)
 
 ## 📚 Documentation
 

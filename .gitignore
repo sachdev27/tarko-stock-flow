@@ -42,6 +42,7 @@ backend/*.egg-info/
 *.sqlite
 *.sqlite3
 backend/database.db
+postgres_data/*
 
 # Editor directories and files
 .vscode/*
@@ -86,6 +87,10 @@ backend/temp_exports/
 # Temporary files
 overview.json
 *.log
+
+# Firebase
+.firebase/
+.firebaserc.backup
 
 # Images and pdf
 *.png
