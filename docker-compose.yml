@@ -11,7 +11,7 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme123}
       PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - ./postgres_data:/var/lib/postgresql/data
       - ./backend/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
       - ./backups:/backups
     ports:
@@ -68,10 +68,6 @@ services:
       - backend
     networks:
       - tarko-network
-
-volumes:
-  postgres_data:
-    driver: local
 
 networks:
   tarko-network:
