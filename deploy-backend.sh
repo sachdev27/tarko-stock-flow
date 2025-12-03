@@ -106,5 +106,5 @@ echo "   1. Verify Cloudflare Tunnel: https://backend.tarko.dpdns.org/api/health
 echo "   2. Deploy frontend to Firebase: ./deploy-firebase.sh"
 echo "   3. Update CORS_ORIGINS in .env with Firebase URL"
 echo "   4. Navigate to /setup to create admin account"
-echo ""  3. Navigate to /setup to create admin account"
+echo "   5. Navigate to /setup to create admin account"
 echo ""
