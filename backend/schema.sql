@@ -17,7 +17,7 @@ SET client_min_messages = warning;
 SET row_security = off;
 
 --
--- Name: app_role; Type: TYPE; Schema: public; Owner: sachdevs
+-- Name: app_role; Type: TYPE; Schema: public; Owner: -
 --
 
 CREATE TYPE public.app_role AS ENUM (
@@ -27,10 +27,8 @@ CREATE TYPE public.app_role AS ENUM (
 );
 
 
-ALTER TYPE public.app_role OWNER TO sachdevs;
-
 --
--- Name: transaction_type; Type: TYPE; Schema: public; Owner: sachdevs
+-- Name: transaction_type; Type: TYPE; Schema: public; Owner: -
 --
 
 CREATE TYPE public.transaction_type AS ENUM (
@@ -48,17 +46,15 @@ CREATE TYPE public.transaction_type AS ENUM (
 );
 
 
-ALTER TYPE public.transaction_type OWNER TO sachdevs;
-
 --
--- Name: TYPE transaction_type; Type: COMMENT; Schema: public; Owner: sachdevs
+-- Name: TYPE transaction_type; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON TYPE public.transaction_type IS 'Transaction types: PRODUCTION (new batch), SALE (dispatch), CUT_ROLL (cut HDPE roll), CUT_BUNDLE (cut bundle into spare pieces), COMBINE_BUNDLE (combine spare pieces into bundle), ADJUSTMENT, RETURN, TRANSFER_OUT, TRANSFER_IN, INTERNAL_USE';
 
 
 --
--- Name: auto_update_stock_quantity(); Type: FUNCTION; Schema: public; Owner: sachdevs
+-- Name: auto_update_stock_quantity(); Type: FUNCTION; Schema: public; Owner: -
 --
 
 CREATE FUNCTION public.auto_update_stock_quantity() RETURNS trigger
@@ -110,10 +106,8 @@ END;
 $$;
 
 
-ALTER FUNCTION public.auto_update_stock_quantity() OWNER TO sachdevs;
-
 --
--- Name: cleanup_old_lifecycle_events(integer); Type: FUNCTION; Schema: public; Owner: sachdevs
+-- Name: cleanup_old_lifecycle_events(integer); Type: FUNCTION; Schema: public; Owner: -
 --
 
 CREATE FUNCTION public.cleanup_old_lifecycle_events(days_to_keep integer DEFAULT 180) RETURNS integer
@@ -134,17 +128,15 @@ END;
 $$;
 
 
-ALTER FUNCTION public.cleanup_old_lifecycle_events(days_to_keep integer) OWNER TO sachdevs;
-
 --
--- Name: FUNCTION cleanup_old_lifecycle_events(days_to_keep integer); Type: COMMENT; Schema: public; Owner: sachdevs
+-- Name: FUNCTION cleanup_old_lifecycle_events(days_to_keep integer); Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON FUNCTION public.cleanup_old_lifecycle_events(days_to_keep integer) IS 'Cleanup old piece lifecycle events (except CREATED events). Run monthly via cron job.';
 
 
 --
--- Name: log_piece_lifecycle_event(); Type: FUNCTION; Schema: public; Owner: sachdevs
+-- Name: log_piece_lifecycle_event(); Type: FUNCTION; Schema: public; Owner: -
 --
 
 CREATE FUNCTION public.log_piece_lifecycle_event() RETURNS trigger
@@ -239,10 +231,8 @@ CREATE FUNCTION public.log_piece_lifecycle_event() RETURNS trigger
         $$;
 
 
-ALTER FUNCTION public.log_piece_lifecycle_event() OWNER TO sachdevs;
-
 --
--- Name: populate_transaction_metadata(); Type: FUNCTION; Schema: public; Owner: sachdevs
+-- Name: populate_transaction_metadata(); Type: FUNCTION; Schema: public; Owner: -
 --
 
 CREATE FUNCTION public.populate_transaction_metadata() RETURNS trigger
@@ -274,10 +264,8 @@ END;
 $$;
 
 
-ALTER FUNCTION public.populate_transaction_metadata() OWNER TO sachdevs;
-
 --
--- Name: prevent_transaction_id_mutation(); Type: FUNCTION; Schema: public; Owner: sachdevs
+-- Name: prevent_transaction_id_mutation(); Type: FUNCTION; Schema: public; Owner: -
 --
 
 CREATE FUNCTION public.prevent_transaction_id_mutation() RETURNS trigger
@@ -307,10 +295,8 @@ END;
 $$;
 
 
-ALTER FUNCTION public.prevent_transaction_id_mutation() OWNER TO sachdevs;
-
 --
--- Name: refresh_piece_state_view(); Type: FUNCTION; Schema: public; Owner: sachdevs
+-- Name: refresh_piece_state_view(); Type: FUNCTION; Schema: public; Owner: -
 --
 
 CREATE FUNCTION public.refresh_piece_state_view() RETURNS void
@@ -322,10 +308,8 @@ END;
 $$;
 
 
-ALTER FUNCTION public.refresh_piece_state_view() OWNER TO sachdevs;
-
 --
--- Name: refresh_product_variant_details(); Type: FUNCTION; Schema: public; Owner: sachdevs
+-- Name: refresh_product_variant_details(); Type: FUNCTION; Schema: public; Owner: -
 --
 
 CREATE FUNCTION public.refresh_product_variant_details() RETURNS void
@@ -337,10 +321,8 @@ END;
 $$;
 
 
-ALTER FUNCTION public.refresh_product_variant_details() OWNER TO sachdevs;
-
 --
--- Name: update_backup_config_timestamp(); Type: FUNCTION; Schema: public; Owner: postgres
+-- Name: update_backup_config_timestamp(); Type: FUNCTION; Schema: public; Owner: -
 --
 
 CREATE FUNCTION public.update_backup_config_timestamp() RETURNS trigger
@@ -353,10 +335,8 @@ END;
 $$;
 
 
-ALTER FUNCTION public.update_backup_config_timestamp() OWNER TO postgres;
-
 --
--- Name: update_updated_at_column(); Type: FUNCTION; Schema: public; Owner: sachdevs
+-- Name: update_updated_at_column(); Type: FUNCTION; Schema: public; Owner: -
 --
 
 CREATE FUNCTION public.update_updated_at_column() RETURNS trigger
@@ -369,10 +349,8 @@ END;
 $$;
 
 
-ALTER FUNCTION public.update_updated_at_column() OWNER TO sachdevs;
-
 --
--- Name: validate_spare_stock_quantity(); Type: FUNCTION; Schema: public; Owner: sachdevs
+-- Name: validate_spare_stock_quantity(); Type: FUNCTION; Schema: public; Owner: -
 --
 
 CREATE FUNCTION public.validate_spare_stock_quantity() RETURNS trigger
@@ -404,14 +382,12 @@ END;
 $$;
 
 
-ALTER FUNCTION public.validate_spare_stock_quantity() OWNER TO sachdevs;
-
 SET default_tablespace = '';
 
 SET default_table_access_method = heap;
 
 --
--- Name: archive_buckets; Type: TABLE; Schema: public; Owner: postgres
+-- Name: archive_buckets; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.archive_buckets (
@@ -426,10 +402,8 @@ CREATE TABLE public.archive_buckets (
 );
 
 
-ALTER TABLE public.archive_buckets OWNER TO postgres;
-
 --
--- Name: archived_backups; Type: TABLE; Schema: public; Owner: postgres
+-- Name: archived_backups; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.archived_backups (
@@ -446,10 +420,8 @@ CREATE TABLE public.archived_backups (
 );
 
 
-ALTER TABLE public.archived_backups OWNER TO postgres;
-
 --
--- Name: audit_logs; Type: TABLE; Schema: public; Owner: sachdevs
+-- Name: audit_logs; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.audit_logs (
@@ -468,10 +440,8 @@ CREATE TABLE public.audit_logs (
 );
 
 
-ALTER TABLE public.audit_logs OWNER TO sachdevs;
-
 --
--- Name: users; Type: TABLE; Schema: public; Owner: sachdevs
+-- Name: users; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.users (
@@ -495,59 +465,57 @@ CREATE TABLE public.users (
 );
 
 
-ALTER TABLE public.users OWNER TO sachdevs;
-
 --
--- Name: COLUMN users.username; Type: COMMENT; Schema: public; Owner: sachdevs
+-- Name: COLUMN users.username; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON COLUMN public.users.username IS 'Username for login (alternative to email)';
 
 
 --
--- Name: COLUMN users.full_name; Type: COMMENT; Schema: public; Owner: sachdevs
+-- Name: COLUMN users.full_name; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON COLUMN public.users.full_name IS 'User full display name';
 
 
 --
--- Name: COLUMN users.is_active; Type: COMMENT; Schema: public; Owner: sachdevs
+-- Name: COLUMN users.is_active; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON COLUMN public.users.is_active IS 'Whether user account is active';
 
 
 --
--- Name: COLUMN users.created_by_user_id; Type: COMMENT; Schema: public; Owner: sachdevs
+-- Name: COLUMN users.created_by_user_id; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON COLUMN public.users.created_by_user_id IS 'Admin who created this user account';
 
 
 --
--- Name: COLUMN users.failed_login_attempts; Type: COMMENT; Schema: public; Owner: sachdevs
+-- Name: COLUMN users.failed_login_attempts; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON COLUMN public.users.failed_login_attempts IS 'Number of consecutive failed login attempts';
 
 
 --
--- Name: COLUMN users.locked_until; Type: COMMENT; Schema: public; Owner: sachdevs
+-- Name: COLUMN users.locked_until; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON COLUMN public.users.locked_until IS 'Account is locked until this timestamp';
 
 
 --
--- Name: COLUMN users.last_failed_login; Type: COMMENT; Schema: public; Owner: sachdevs
+-- Name: COLUMN users.last_failed_login; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON COLUMN public.users.last_failed_login IS 'Timestamp of last failed login attempt';
 
 
 --
--- Name: audit_logs_detailed; Type: VIEW; Schema: public; Owner: sachdevs
+-- Name: audit_logs_detailed; Type: VIEW; Schema: public; Owner: -
 --
 
 CREATE VIEW public.audit_logs_detailed AS
@@ -571,10 +539,8 @@ CREATE VIEW public.audit_logs_detailed AS
   ORDER BY al.created_at DESC;
 
 
-ALTER TABLE public.audit_logs_detailed OWNER TO sachdevs;
-
 --
--- Name: backup_deletion_log; Type: TABLE; Schema: public; Owner: postgres
+-- Name: backup_deletion_log; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.backup_deletion_log (
@@ -589,10 +555,8 @@ CREATE TABLE public.backup_deletion_log (
 );
 
 
-ALTER TABLE public.backup_deletion_log OWNER TO postgres;
-
 --
--- Name: backup_retention_policies; Type: TABLE; Schema: public; Owner: postgres
+-- Name: backup_retention_policies; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.backup_retention_policies (
@@ -611,10 +575,8 @@ CREATE TABLE public.backup_retention_policies (
 );
 
 
-ALTER TABLE public.backup_retention_policies OWNER TO postgres;
-
 --
--- Name: batches; Type: TABLE; Schema: public; Owner: sachdevs
+-- Name: batches; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.batches (
@@ -640,38 +602,36 @@ CREATE TABLE public.batches (
 );
 
 
-ALTER TABLE public.batches OWNER TO sachdevs;
-
 --
--- Name: COLUMN batches.weight_per_meter; Type: COMMENT; Schema: public; Owner: sachdevs
+-- Name: COLUMN batches.weight_per_meter; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON COLUMN public.batches.weight_per_meter IS 'Weight in kilograms per meter (kg/m)';
 
 
 --
--- Name: COLUMN batches.total_weight; Type: COMMENT; Schema: public; Owner: sachdevs
+-- Name: COLUMN batches.total_weight; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON COLUMN public.batches.total_weight IS 'Total weight of the batch in kilograms (kg)';
 
 
 --
--- Name: COLUMN batches.piece_length; Type: COMMENT; Schema: public; Owner: sachdevs
+-- Name: COLUMN batches.piece_length; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON COLUMN public.batches.piece_length IS 'Length of each individual piece in meters (for quantity-based products like Sprinkler Pipe)';
 
 
 --
--- Name: COLUMN batches.weight_per_piece; Type: COMMENT; Schema: public; Owner: sachdevs
+-- Name: COLUMN batches.weight_per_piece; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON COLUMN public.batches.weight_per_piece IS 'Weight of each individual piece in grams (for quantity-based products like Sprinkler Pipe)';
 
 
 --
--- Name: bill_to; Type: TABLE; Schema: public; Owner: sachdevs
+-- Name: bill_to; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.bill_to (
@@ -689,10 +649,8 @@ CREATE TABLE public.bill_to (
 );
 
 
-ALTER TABLE public.bill_to OWNER TO sachdevs;
-
 --
--- Name: brands; Type: TABLE; Schema: public; Owner: sachdevs
+-- Name: brands; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.brands (
@@ -705,10 +663,8 @@ CREATE TABLE public.brands (
 );
 
 
-ALTER TABLE public.brands OWNER TO sachdevs;
-
 --
--- Name: cloud_backup_config; Type: TABLE; Schema: public; Owner: sachdevs
+-- Name: cloud_backup_config; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.cloud_backup_config (
@@ -729,31 +685,29 @@ CREATE TABLE public.cloud_backup_config (
 );
 
 
-ALTER TABLE public.cloud_backup_config OWNER TO sachdevs;
-
 --
--- Name: TABLE cloud_backup_config; Type: COMMENT; Schema: public; Owner: sachdevs
+-- Name: TABLE cloud_backup_config; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON TABLE public.cloud_backup_config IS 'Stores encrypted cloud storage credentials for R2/S3 backups';
 
 
 --
--- Name: COLUMN cloud_backup_config.secret_access_key; Type: COMMENT; Schema: public; Owner: sachdevs
+-- Name: COLUMN cloud_backup_config.secret_access_key; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON COLUMN public.cloud_backup_config.secret_access_key IS 'Encrypted using Fernet encryption';
 
 
 --
--- Name: COLUMN cloud_backup_config.is_active; Type: COMMENT; Schema: public; Owner: sachdevs
+-- Name: COLUMN cloud_backup_config.is_active; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON COLUMN public.cloud_backup_config.is_active IS 'Only one config can be active at a time';
 
 
 --
--- Name: cloud_credentials; Type: TABLE; Schema: public; Owner: postgres
+-- Name: cloud_credentials; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.cloud_credentials (
@@ -773,10 +727,8 @@ CREATE TABLE public.cloud_credentials (
 );
 
 
-ALTER TABLE public.cloud_credentials OWNER TO postgres;
-
 --
--- Name: customers; Type: TABLE; Schema: public; Owner: sachdevs
+-- Name: customers; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.customers (
@@ -797,10 +749,8 @@ CREATE TABLE public.customers (
 );
 
 
-ALTER TABLE public.customers OWNER TO sachdevs;
-
 --
--- Name: database_snapshots; Type: TABLE; Schema: public; Owner: sachdevs
+-- Name: database_snapshots; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.database_snapshots (
@@ -818,24 +768,22 @@ CREATE TABLE public.database_snapshots (
 );
 
 
-ALTER TABLE public.database_snapshots OWNER TO sachdevs;
-
 --
--- Name: TABLE database_snapshots; Type: COMMENT; Schema: public; Owner: sachdevs
+-- Name: TABLE database_snapshots; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON TABLE public.database_snapshots IS 'Stores complete database snapshots for version control and rollback';
 
 
 --
--- Name: COLUMN database_snapshots.storage_path; Type: COMMENT; Schema: public; Owner: sachdevs
+-- Name: COLUMN database_snapshots.storage_path; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON COLUMN public.database_snapshots.storage_path IS 'Absolute path where snapshot files are stored on disk';
 
 
 --
--- Name: dispatch_items; Type: TABLE; Schema: public; Owner: sachdevs
+-- Name: dispatch_items; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.dispatch_items (
@@ -861,10 +809,8 @@ CREATE TABLE public.dispatch_items (
 );
 
 
-ALTER TABLE public.dispatch_items OWNER TO sachdevs;
-
 --
--- Name: dispatches; Type: TABLE; Schema: public; Owner: sachdevs
+-- Name: dispatches; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.dispatches (
@@ -889,31 +835,29 @@ CREATE TABLE public.dispatches (
 );
 
 
-ALTER TABLE public.dispatches OWNER TO sachdevs;
-
 --
--- Name: COLUMN dispatches.reverted_at; Type: COMMENT; Schema: public; Owner: sachdevs
+-- Name: COLUMN dispatches.reverted_at; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON COLUMN public.dispatches.reverted_at IS 'Timestamp when this dispatch was reverted. NULL means not reverted.';
 
 
 --
--- Name: COLUMN dispatches.reverted_by; Type: COMMENT; Schema: public; Owner: sachdevs
+-- Name: COLUMN dispatches.reverted_by; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON COLUMN public.dispatches.reverted_by IS 'User who reverted this dispatch. NULL means not reverted.';
 
 
 --
--- Name: CONSTRAINT dispatches_status_check ON dispatches; Type: COMMENT; Schema: public; Owner: sachdevs
+-- Name: CONSTRAINT dispatches_status_check ON dispatches; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON CONSTRAINT dispatches_status_check ON public.dispatches IS 'Valid dispatch statuses: PENDING, DISPATCHED, DELIVERED, CANCELLED, REVERTED';
 
 
 --
--- Name: inventory_stock; Type: TABLE; Schema: public; Owner: postgres
+-- Name: inventory_stock; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.inventory_stock (
@@ -942,24 +886,22 @@ CREATE TABLE public.inventory_stock (
 );
 
 
-ALTER TABLE public.inventory_stock OWNER TO postgres;
-
 --
--- Name: COLUMN inventory_stock.deleted_by_transaction_id; Type: COMMENT; Schema: public; Owner: postgres
+-- Name: COLUMN inventory_stock.deleted_by_transaction_id; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON COLUMN public.inventory_stock.deleted_by_transaction_id IS 'Transaction that soft-deleted this stock record. Used for precise revert matching instead of time windows.';
 
 
 --
--- Name: COLUMN inventory_stock.version; Type: COMMENT; Schema: public; Owner: postgres
+-- Name: COLUMN inventory_stock.version; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON COLUMN public.inventory_stock.version IS 'Row version for optimistic locking. Incremented on each update.';
 
 
 --
--- Name: product_types; Type: TABLE; Schema: public; Owner: sachdevs
+-- Name: product_types; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.product_types (
@@ -976,17 +918,15 @@ CREATE TABLE public.product_types (
 );
 
 
-ALTER TABLE public.product_types OWNER TO sachdevs;
-
 --
--- Name: COLUMN product_types.roll_configuration; Type: COMMENT; Schema: public; Owner: sachdevs
+-- Name: COLUMN product_types.roll_configuration; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON COLUMN public.product_types.roll_configuration IS 'JSON config for roll types: standard_rolls, bundles, spare_pipes, cut_rolls';
 
 
 --
--- Name: product_variants; Type: TABLE; Schema: public; Owner: sachdevs
+-- Name: product_variants; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.product_variants (
@@ -1001,10 +941,8 @@ CREATE TABLE public.product_variants (
 );
 
 
-ALTER TABLE public.product_variants OWNER TO sachdevs;
-
 --
--- Name: dispatch_items_detailed; Type: VIEW; Schema: public; Owner: sachdevs
+-- Name: dispatch_items_detailed; Type: VIEW; Schema: public; Owner: -
 --
 
 CREATE VIEW public.dispatch_items_detailed AS
@@ -1036,10 +974,8 @@ CREATE VIEW public.dispatch_items_detailed AS
   WHERE (d.deleted_at IS NULL);
 
 
-ALTER TABLE public.dispatch_items_detailed OWNER TO sachdevs;
-
 --
--- Name: transports; Type: TABLE; Schema: public; Owner: sachdevs
+-- Name: transports; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.transports (
@@ -1053,10 +989,8 @@ CREATE TABLE public.transports (
 );
 
 
-ALTER TABLE public.transports OWNER TO sachdevs;
-
 --
--- Name: vehicles; Type: TABLE; Schema: public; Owner: sachdevs
+-- Name: vehicles; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.vehicles (
@@ -1071,10 +1005,8 @@ CREATE TABLE public.vehicles (
 );
 
 
-ALTER TABLE public.vehicles OWNER TO sachdevs;
-
 --
--- Name: dispatch_summary; Type: VIEW; Schema: public; Owner: sachdevs
+-- Name: dispatch_summary; Type: VIEW; Schema: public; Owner: -
 --
 
 CREATE VIEW public.dispatch_summary AS
@@ -1107,10 +1039,8 @@ CREATE VIEW public.dispatch_summary AS
   ORDER BY d.dispatch_date DESC, d.created_at DESC;
 
 
-ALTER TABLE public.dispatch_summary OWNER TO sachdevs;
-
 --
--- Name: hdpe_cut_pieces; Type: TABLE; Schema: public; Owner: postgres
+-- Name: hdpe_cut_pieces; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.hdpe_cut_pieces (
@@ -1140,59 +1070,57 @@ CREATE TABLE public.hdpe_cut_pieces (
 );
 
 
-ALTER TABLE public.hdpe_cut_pieces OWNER TO postgres;
-
 --
--- Name: COLUMN hdpe_cut_pieces.transaction_id; Type: COMMENT; Schema: public; Owner: postgres
+-- Name: COLUMN hdpe_cut_pieces.transaction_id; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON COLUMN public.hdpe_cut_pieces.transaction_id IS 'DEPRECATED: Use created_by_transaction_id instead. Will be removed in future version.';
 
 
 --
--- Name: COLUMN hdpe_cut_pieces.created_by_transaction_id; Type: COMMENT; Schema: public; Owner: postgres
+-- Name: COLUMN hdpe_cut_pieces.created_by_transaction_id; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON COLUMN public.hdpe_cut_pieces.created_by_transaction_id IS 'IMMUTABLE: Transaction that created this piece. Never updated after creation.';
 
 
 --
--- Name: COLUMN hdpe_cut_pieces.original_stock_id; Type: COMMENT; Schema: public; Owner: postgres
+-- Name: COLUMN hdpe_cut_pieces.original_stock_id; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON COLUMN public.hdpe_cut_pieces.original_stock_id IS 'IMMUTABLE: Original stock_id when piece was created. Preserved even if piece moves to different stock.';
 
 
 --
--- Name: COLUMN hdpe_cut_pieces.version; Type: COMMENT; Schema: public; Owner: postgres
+-- Name: COLUMN hdpe_cut_pieces.version; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON COLUMN public.hdpe_cut_pieces.version IS 'Row version for optimistic locking. Incremented on each update. Compare before update to detect concurrent modifications.';
 
 
 --
--- Name: COLUMN hdpe_cut_pieces.deleted_at; Type: COMMENT; Schema: public; Owner: postgres
+-- Name: COLUMN hdpe_cut_pieces.deleted_at; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON COLUMN public.hdpe_cut_pieces.deleted_at IS 'Soft delete timestamp. NULL means active, non-NULL means deleted. Never hard delete pieces - preserves audit trail.';
 
 
 --
--- Name: COLUMN hdpe_cut_pieces.deleted_by_transaction_id; Type: COMMENT; Schema: public; Owner: postgres
+-- Name: COLUMN hdpe_cut_pieces.deleted_by_transaction_id; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON COLUMN public.hdpe_cut_pieces.deleted_by_transaction_id IS 'Transaction that soft-deleted this piece. Used for precise revert operations.';
 
 
 --
--- Name: COLUMN hdpe_cut_pieces.last_modified_by_transaction_id; Type: COMMENT; Schema: public; Owner: postgres
+-- Name: COLUMN hdpe_cut_pieces.last_modified_by_transaction_id; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON COLUMN public.hdpe_cut_pieces.last_modified_by_transaction_id IS 'MUTABLE: Last transaction that modified this piece. Can be updated.';
 
 
 --
--- Name: hdpe_stock_details; Type: VIEW; Schema: public; Owner: postgres
+-- Name: hdpe_stock_details; Type: VIEW; Schema: public; Owner: -
 --
 
 CREATE VIEW public.hdpe_stock_details AS
@@ -1232,10 +1160,8 @@ CREATE VIEW public.hdpe_stock_details AS
   WHERE ((s.deleted_at IS NULL) AND (s.status = 'IN_STOCK'::text) AND (pt.name = 'HDPE Pipe'::text));
 
 
-ALTER TABLE public.hdpe_stock_details OWNER TO postgres;
-
 --
--- Name: inventory_transactions; Type: TABLE; Schema: public; Owner: postgres
+-- Name: inventory_transactions; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.inventory_transactions (
@@ -1262,24 +1188,22 @@ CREATE TABLE public.inventory_transactions (
 );
 
 
-ALTER TABLE public.inventory_transactions OWNER TO postgres;
-
 --
--- Name: COLUMN inventory_transactions.reverted_at; Type: COMMENT; Schema: public; Owner: postgres
+-- Name: COLUMN inventory_transactions.reverted_at; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON COLUMN public.inventory_transactions.reverted_at IS 'Timestamp when the transaction was reverted';
 
 
 --
--- Name: COLUMN inventory_transactions.reverted_by; Type: COMMENT; Schema: public; Owner: postgres
+-- Name: COLUMN inventory_transactions.reverted_by; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON COLUMN public.inventory_transactions.reverted_by IS 'User who reverted the transaction';
 
 
 --
--- Name: sprinkler_spare_pieces; Type: TABLE; Schema: public; Owner: postgres
+-- Name: sprinkler_spare_pieces; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.sprinkler_spare_pieces (
@@ -1308,73 +1232,71 @@ CREATE TABLE public.sprinkler_spare_pieces (
 );
 
 
-ALTER TABLE public.sprinkler_spare_pieces OWNER TO postgres;
-
 --
--- Name: COLUMN sprinkler_spare_pieces.transaction_id; Type: COMMENT; Schema: public; Owner: postgres
+-- Name: COLUMN sprinkler_spare_pieces.transaction_id; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON COLUMN public.sprinkler_spare_pieces.transaction_id IS 'DEPRECATED: Use created_by_transaction_id instead. Will be removed in future version.';
 
 
 --
--- Name: COLUMN sprinkler_spare_pieces.created_by_transaction_id; Type: COMMENT; Schema: public; Owner: postgres
+-- Name: COLUMN sprinkler_spare_pieces.created_by_transaction_id; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON COLUMN public.sprinkler_spare_pieces.created_by_transaction_id IS 'IMMUTABLE: Transaction that created this piece. Never updated after creation.';
 
 
 --
--- Name: COLUMN sprinkler_spare_pieces.original_stock_id; Type: COMMENT; Schema: public; Owner: postgres
+-- Name: COLUMN sprinkler_spare_pieces.original_stock_id; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON COLUMN public.sprinkler_spare_pieces.original_stock_id IS 'IMMUTABLE: Original stock_id when piece was created. Preserved even if piece moves to different stock.';
 
 
 --
--- Name: COLUMN sprinkler_spare_pieces.version; Type: COMMENT; Schema: public; Owner: postgres
+-- Name: COLUMN sprinkler_spare_pieces.version; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON COLUMN public.sprinkler_spare_pieces.version IS 'Row version for optimistic locking. Incremented on each update. Compare before update to detect concurrent modifications.';
 
 
 --
--- Name: COLUMN sprinkler_spare_pieces.deleted_at; Type: COMMENT; Schema: public; Owner: postgres
+-- Name: COLUMN sprinkler_spare_pieces.deleted_at; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON COLUMN public.sprinkler_spare_pieces.deleted_at IS 'Soft delete timestamp. NULL means active, non-NULL means deleted. Never hard delete pieces - preserves audit trail.';
 
 
 --
--- Name: COLUMN sprinkler_spare_pieces.deleted_by_transaction_id; Type: COMMENT; Schema: public; Owner: postgres
+-- Name: COLUMN sprinkler_spare_pieces.deleted_by_transaction_id; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON COLUMN public.sprinkler_spare_pieces.deleted_by_transaction_id IS 'Transaction that soft-deleted this piece. Used for precise revert operations.';
 
 
 --
--- Name: COLUMN sprinkler_spare_pieces.reserved_by_transaction_id; Type: COMMENT; Schema: public; Owner: postgres
+-- Name: COLUMN sprinkler_spare_pieces.reserved_by_transaction_id; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON COLUMN public.sprinkler_spare_pieces.reserved_by_transaction_id IS 'Transaction that has reserved this piece for pending operation. Provides pessimistic locking.';
 
 
 --
--- Name: COLUMN sprinkler_spare_pieces.reserved_at; Type: COMMENT; Schema: public; Owner: postgres
+-- Name: COLUMN sprinkler_spare_pieces.reserved_at; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON COLUMN public.sprinkler_spare_pieces.reserved_at IS 'Timestamp when piece was reserved. Used to detect and release stale reservations.';
 
 
 --
--- Name: COLUMN sprinkler_spare_pieces.last_modified_by_transaction_id; Type: COMMENT; Schema: public; Owner: postgres
+-- Name: COLUMN sprinkler_spare_pieces.last_modified_by_transaction_id; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON COLUMN public.sprinkler_spare_pieces.last_modified_by_transaction_id IS 'MUTABLE: Last transaction that modified this piece (e.g., COMBINE_SPARES). Can be updated.';
 
 
 --
--- Name: inventory_unified; Type: VIEW; Schema: public; Owner: postgres
+-- Name: inventory_unified; Type: VIEW; Schema: public; Owner: -
 --
 
 CREATE VIEW public.inventory_unified AS
@@ -1420,10 +1342,8 @@ CREATE VIEW public.inventory_unified AS
   WHERE (s.deleted_at IS NULL);
 
 
-ALTER TABLE public.inventory_unified OWNER TO postgres;
-
 --
--- Name: locations; Type: TABLE; Schema: public; Owner: sachdevs
+-- Name: locations; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.locations (
@@ -1437,10 +1357,8 @@ CREATE TABLE public.locations (
 );
 
 
-ALTER TABLE public.locations OWNER TO sachdevs;
-
 --
--- Name: mv_piece_current_state; Type: MATERIALIZED VIEW; Schema: public; Owner: sachdevs
+-- Name: mv_piece_current_state; Type: MATERIALIZED VIEW; Schema: public; Owner: -
 --
 
 CREATE MATERIALIZED VIEW public.mv_piece_current_state AS
@@ -1484,10 +1402,8 @@ UNION ALL
   WITH NO DATA;
 
 
-ALTER TABLE public.mv_piece_current_state OWNER TO sachdevs;
-
 --
--- Name: mv_product_variant_details; Type: MATERIALIZED VIEW; Schema: public; Owner: sachdevs
+-- Name: mv_product_variant_details; Type: MATERIALIZED VIEW; Schema: public; Owner: -
 --
 
 CREATE MATERIALIZED VIEW public.mv_product_variant_details AS
@@ -1505,10 +1421,8 @@ CREATE MATERIALIZED VIEW public.mv_product_variant_details AS
   WITH NO DATA;
 
 
-ALTER TABLE public.mv_product_variant_details OWNER TO sachdevs;
-
 --
--- Name: parameter_options; Type: TABLE; Schema: public; Owner: sachdevs
+-- Name: parameter_options; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.parameter_options (
@@ -1520,10 +1434,8 @@ CREATE TABLE public.parameter_options (
 );
 
 
-ALTER TABLE public.parameter_options OWNER TO sachdevs;
-
 --
--- Name: parameter_options_id_seq; Type: SEQUENCE; Schema: public; Owner: sachdevs
+-- Name: parameter_options_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
 CREATE SEQUENCE public.parameter_options_id_seq
@@ -1535,17 +1447,15 @@ CREATE SEQUENCE public.parameter_options_id_seq
     CACHE 1;
 
 
-ALTER TABLE public.parameter_options_id_seq OWNER TO sachdevs;
-
 --
--- Name: parameter_options_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: sachdevs
+-- Name: parameter_options_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
 --
 
 ALTER SEQUENCE public.parameter_options_id_seq OWNED BY public.parameter_options.id;
 
 
 --
--- Name: password_reset_tokens; Type: TABLE; Schema: public; Owner: sachdevs
+-- Name: password_reset_tokens; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.password_reset_tokens (
@@ -1561,38 +1471,36 @@ CREATE TABLE public.password_reset_tokens (
 );
 
 
-ALTER TABLE public.password_reset_tokens OWNER TO sachdevs;
-
 --
--- Name: TABLE password_reset_tokens; Type: COMMENT; Schema: public; Owner: sachdevs
+-- Name: TABLE password_reset_tokens; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON TABLE public.password_reset_tokens IS 'Stores password reset tokens with expiration';
 
 
 --
--- Name: COLUMN password_reset_tokens.token; Type: COMMENT; Schema: public; Owner: sachdevs
+-- Name: COLUMN password_reset_tokens.token; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON COLUMN public.password_reset_tokens.token IS 'Unique token sent to user email';
 
 
 --
--- Name: COLUMN password_reset_tokens.expires_at; Type: COMMENT; Schema: public; Owner: sachdevs
+-- Name: COLUMN password_reset_tokens.expires_at; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON COLUMN public.password_reset_tokens.expires_at IS 'Token expiration time (1 hour from creation)';
 
 
 --
--- Name: COLUMN password_reset_tokens.used; Type: COMMENT; Schema: public; Owner: sachdevs
+-- Name: COLUMN password_reset_tokens.used; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON COLUMN public.password_reset_tokens.used IS 'Whether token has been used';
 
 
 --
--- Name: piece_lifecycle_events; Type: TABLE; Schema: public; Owner: sachdevs
+-- Name: piece_lifecycle_events; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.piece_lifecycle_events (
@@ -1611,17 +1519,15 @@ CREATE TABLE public.piece_lifecycle_events (
 );
 
 
-ALTER TABLE public.piece_lifecycle_events OWNER TO sachdevs;
-
 --
--- Name: TABLE piece_lifecycle_events; Type: COMMENT; Schema: public; Owner: sachdevs
+-- Name: TABLE piece_lifecycle_events; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON TABLE public.piece_lifecycle_events IS 'Immutable event log of all piece state changes. Enables full audit trail and precise rollback.';
 
 
 --
--- Name: piece_tracking_audit; Type: VIEW; Schema: public; Owner: sachdevs
+-- Name: piece_tracking_audit; Type: VIEW; Schema: public; Owner: -
 --
 
 CREATE VIEW public.piece_tracking_audit AS
@@ -1658,17 +1564,15 @@ UNION ALL
      LEFT JOIN public.inventory_transactions it_modified ON ((hcp.last_modified_by_transaction_id = it_modified.id)));
 
 
-ALTER TABLE public.piece_tracking_audit OWNER TO sachdevs;
-
 --
--- Name: VIEW piece_tracking_audit; Type: COMMENT; Schema: public; Owner: sachdevs
+-- Name: VIEW piece_tracking_audit; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON VIEW public.piece_tracking_audit IS 'Unified view of all pieces with their creation and modification tracking. Use this for debugging transaction history.';
 
 
 --
--- Name: product_aliases; Type: TABLE; Schema: public; Owner: sachdevs
+-- Name: product_aliases; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.product_aliases (
@@ -1679,10 +1583,8 @@ CREATE TABLE public.product_aliases (
 );
 
 
-ALTER TABLE public.product_aliases OWNER TO sachdevs;
-
 --
--- Name: return_bundles; Type: TABLE; Schema: public; Owner: sachdevs
+-- Name: return_bundles; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.return_bundles (
@@ -1698,10 +1600,8 @@ CREATE TABLE public.return_bundles (
 );
 
 
-ALTER TABLE public.return_bundles OWNER TO sachdevs;
-
 --
--- Name: return_items; Type: TABLE; Schema: public; Owner: sachdevs
+-- Name: return_items; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.return_items (
@@ -1723,10 +1623,8 @@ CREATE TABLE public.return_items (
 );
 
 
-ALTER TABLE public.return_items OWNER TO sachdevs;
-
 --
--- Name: returns; Type: TABLE; Schema: public; Owner: sachdevs
+-- Name: returns; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.returns (
@@ -1747,24 +1645,22 @@ CREATE TABLE public.returns (
 );
 
 
-ALTER TABLE public.returns OWNER TO sachdevs;
-
 --
--- Name: COLUMN returns.reverted_at; Type: COMMENT; Schema: public; Owner: sachdevs
+-- Name: COLUMN returns.reverted_at; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON COLUMN public.returns.reverted_at IS 'Timestamp when the return was reverted (undone), soft-delete for returns that were entered incorrectly';
 
 
 --
--- Name: COLUMN returns.reverted_by; Type: COMMENT; Schema: public; Owner: sachdevs
+-- Name: COLUMN returns.reverted_by; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON COLUMN public.returns.reverted_by IS 'User who reverted this return';
 
 
 --
--- Name: return_items_detailed; Type: VIEW; Schema: public; Owner: sachdevs
+-- Name: return_items_detailed; Type: VIEW; Schema: public; Owner: -
 --
 
 CREATE VIEW public.return_items_detailed AS
@@ -1797,10 +1693,8 @@ CREATE VIEW public.return_items_detailed AS
   ORDER BY r.return_date DESC, ri.created_at;
 
 
-ALTER TABLE public.return_items_detailed OWNER TO sachdevs;
-
 --
--- Name: return_rolls; Type: TABLE; Schema: public; Owner: sachdevs
+-- Name: return_rolls; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.return_rolls (
@@ -1814,10 +1708,8 @@ CREATE TABLE public.return_rolls (
 );
 
 
-ALTER TABLE public.return_rolls OWNER TO sachdevs;
-
 --
--- Name: return_summary; Type: VIEW; Schema: public; Owner: sachdevs
+-- Name: return_summary; Type: VIEW; Schema: public; Owner: -
 --
 
 CREATE VIEW public.return_summary AS
@@ -1844,10 +1736,8 @@ CREATE VIEW public.return_summary AS
   ORDER BY r.return_date DESC, r.created_at DESC;
 
 
-ALTER TABLE public.return_summary OWNER TO sachdevs;
-
 --
--- Name: rollback_history; Type: TABLE; Schema: public; Owner: sachdevs
+-- Name: rollback_history; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.rollback_history (
@@ -1863,17 +1753,15 @@ CREATE TABLE public.rollback_history (
 );
 
 
-ALTER TABLE public.rollback_history OWNER TO sachdevs;
-
 --
--- Name: TABLE rollback_history; Type: COMMENT; Schema: public; Owner: sachdevs
+-- Name: TABLE rollback_history; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON TABLE public.rollback_history IS 'Tracks all rollback operations performed on the system';
 
 
 --
--- Name: scrap_items; Type: TABLE; Schema: public; Owner: sachdevs
+-- Name: scrap_items; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.scrap_items (
@@ -1897,10 +1785,8 @@ CREATE TABLE public.scrap_items (
 );
 
 
-ALTER TABLE public.scrap_items OWNER TO sachdevs;
-
 --
--- Name: scraps; Type: TABLE; Schema: public; Owner: sachdevs
+-- Name: scraps; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.scraps (
@@ -1920,10 +1806,8 @@ CREATE TABLE public.scraps (
 );
 
 
-ALTER TABLE public.scraps OWNER TO sachdevs;
-
 --
--- Name: scrap_items_detailed; Type: VIEW; Schema: public; Owner: sachdevs
+-- Name: scrap_items_detailed; Type: VIEW; Schema: public; Owner: -
 --
 
 CREATE VIEW public.scrap_items_detailed AS
@@ -1958,10 +1842,8 @@ CREATE VIEW public.scrap_items_detailed AS
   ORDER BY s.scrap_date DESC, si.created_at;
 
 
-ALTER TABLE public.scrap_items_detailed OWNER TO sachdevs;
-
 --
--- Name: scrap_pieces; Type: TABLE; Schema: public; Owner: sachdevs
+-- Name: scrap_pieces; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.scrap_pieces (
@@ -1978,10 +1860,8 @@ CREATE TABLE public.scrap_pieces (
 );
 
 
-ALTER TABLE public.scrap_pieces OWNER TO sachdevs;
-
 --
--- Name: scrap_summary; Type: VIEW; Schema: public; Owner: sachdevs
+-- Name: scrap_summary; Type: VIEW; Schema: public; Owner: -
 --
 
 CREATE VIEW public.scrap_summary AS
@@ -2006,10 +1886,8 @@ CREATE VIEW public.scrap_summary AS
   ORDER BY s.scrap_date DESC, s.created_at DESC;
 
 
-ALTER TABLE public.scrap_summary OWNER TO sachdevs;
-
 --
--- Name: smtp_config; Type: TABLE; Schema: public; Owner: sachdevs
+-- Name: smtp_config; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.smtp_config (
@@ -2032,38 +1910,36 @@ CREATE TABLE public.smtp_config (
 );
 
 
-ALTER TABLE public.smtp_config OWNER TO sachdevs;
-
 --
--- Name: TABLE smtp_config; Type: COMMENT; Schema: public; Owner: sachdevs
+-- Name: TABLE smtp_config; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON TABLE public.smtp_config IS 'Stores encrypted SMTP server configuration for email sending';
 
 
 --
--- Name: COLUMN smtp_config.smtp_password_encrypted; Type: COMMENT; Schema: public; Owner: sachdevs
+-- Name: COLUMN smtp_config.smtp_password_encrypted; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON COLUMN public.smtp_config.smtp_password_encrypted IS 'Fernet encrypted SMTP password';
 
 
 --
--- Name: COLUMN smtp_config.is_active; Type: COMMENT; Schema: public; Owner: sachdevs
+-- Name: COLUMN smtp_config.is_active; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON COLUMN public.smtp_config.is_active IS 'Only one configuration should be active at a time';
 
 
 --
--- Name: COLUMN smtp_config.test_email_status; Type: COMMENT; Schema: public; Owner: sachdevs
+-- Name: COLUMN smtp_config.test_email_status; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON COLUMN public.smtp_config.test_email_status IS 'Status of last test email: success, failed, pending';
 
 
 --
--- Name: sprinkler_stock_details; Type: VIEW; Schema: public; Owner: postgres
+-- Name: sprinkler_stock_details; Type: VIEW; Schema: public; Owner: -
 --
 
 CREATE VIEW public.sprinkler_stock_details AS
@@ -2105,10 +1981,8 @@ CREATE VIEW public.sprinkler_stock_details AS
   WHERE ((s.deleted_at IS NULL) AND (s.status = 'IN_STOCK'::text) AND (pt.name = 'Sprinkler Pipe'::text));
 
 
-ALTER TABLE public.sprinkler_stock_details OWNER TO postgres;
-
 --
--- Name: system_settings; Type: TABLE; Schema: public; Owner: sachdevs
+-- Name: system_settings; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.system_settings (
@@ -2119,10 +1993,8 @@ CREATE TABLE public.system_settings (
 );
 
 
-ALTER TABLE public.system_settings OWNER TO sachdevs;
-
 --
--- Name: system_settings_id_seq; Type: SEQUENCE; Schema: public; Owner: sachdevs
+-- Name: system_settings_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
 CREATE SEQUENCE public.system_settings_id_seq
@@ -2134,17 +2006,15 @@ CREATE SEQUENCE public.system_settings_id_seq
     CACHE 1;
 
 
-ALTER TABLE public.system_settings_id_seq OWNER TO sachdevs;
-
 --
--- Name: system_settings_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: sachdevs
+-- Name: system_settings_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
 --
 
 ALTER SEQUENCE public.system_settings_id_seq OWNED BY public.system_settings.id;
 
 
 --
--- Name: transactions; Type: TABLE; Schema: public; Owner: sachdevs
+-- Name: transactions; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.transactions (
@@ -2173,31 +2043,29 @@ CREATE TABLE public.transactions (
 );
 
 
-ALTER TABLE public.transactions OWNER TO sachdevs;
-
 --
--- Name: COLUMN transactions.roll_id; Type: COMMENT; Schema: public; Owner: sachdevs
+-- Name: COLUMN transactions.roll_id; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON COLUMN public.transactions.roll_id IS 'Reference to specific roll - enables roll-level transaction tracking';
 
 
 --
--- Name: COLUMN transactions.product_variant_id; Type: COMMENT; Schema: public; Owner: sachdevs
+-- Name: COLUMN transactions.product_variant_id; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON COLUMN public.transactions.product_variant_id IS 'Direct reference to product variant - ensures exact matching in transaction history queries';
 
 
 --
--- Name: COLUMN transactions.roll_weight; Type: COMMENT; Schema: public; Owner: sachdevs
+-- Name: COLUMN transactions.roll_weight; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON COLUMN public.transactions.roll_weight IS 'Computed weight of the roll at transaction time (length * weight_per_meter)';
 
 
 --
--- Name: units; Type: TABLE; Schema: public; Owner: sachdevs
+-- Name: units; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.units (
@@ -2209,10 +2077,8 @@ CREATE TABLE public.units (
 );
 
 
-ALTER TABLE public.units OWNER TO sachdevs;
-
 --
--- Name: user_roles; Type: TABLE; Schema: public; Owner: sachdevs
+-- Name: user_roles; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.user_roles (
@@ -2224,10 +2090,8 @@ CREATE TABLE public.user_roles (
 );
 
 
-ALTER TABLE public.user_roles OWNER TO sachdevs;
-
 --
--- Name: v_available_pieces; Type: VIEW; Schema: public; Owner: sachdevs
+-- Name: v_available_pieces; Type: VIEW; Schema: public; Owner: -
 --
 
 CREATE VIEW public.v_available_pieces AS
@@ -2264,10 +2128,8 @@ UNION ALL
   WHERE ((ssp.status = 'IN_STOCK'::text) AND (ssp.deleted_at IS NULL) AND (ist.deleted_at IS NULL) AND (ssp.reserved_by_transaction_id IS NULL));
 
 
-ALTER TABLE public.v_available_pieces OWNER TO sachdevs;
-
 --
--- Name: v_piece_audit_trail; Type: VIEW; Schema: public; Owner: sachdevs
+-- Name: v_piece_audit_trail; Type: VIEW; Schema: public; Owner: -
 --
 
 CREATE VIEW public.v_piece_audit_trail AS
@@ -2290,10 +2152,8 @@ CREATE VIEW public.v_piece_audit_trail AS
   ORDER BY ple.created_at DESC;
 
 
-ALTER TABLE public.v_piece_audit_trail OWNER TO sachdevs;
-
 --
--- Name: v_stock_quantity_validation; Type: VIEW; Schema: public; Owner: sachdevs
+-- Name: v_stock_quantity_validation; Type: VIEW; Schema: public; Owner: -
 --
 
 CREATE VIEW public.v_stock_quantity_validation AS
@@ -2324,24 +2184,22 @@ CREATE VIEW public.v_stock_quantity_validation AS
   WHERE ((ist.deleted_at IS NULL) AND (ist.stock_type = ANY (ARRAY['SPARE'::text, 'CUT_ROLL'::text])));
 
 
-ALTER TABLE public.v_stock_quantity_validation OWNER TO sachdevs;
-
 --
--- Name: parameter_options id; Type: DEFAULT; Schema: public; Owner: sachdevs
+-- Name: parameter_options id; Type: DEFAULT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.parameter_options ALTER COLUMN id SET DEFAULT nextval('public.parameter_options_id_seq'::regclass);
 
 
 --
--- Name: system_settings id; Type: DEFAULT; Schema: public; Owner: sachdevs
+-- Name: system_settings id; Type: DEFAULT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.system_settings ALTER COLUMN id SET DEFAULT nextval('public.system_settings_id_seq'::regclass);
 
 
 --
--- Name: archive_buckets archive_buckets_bucket_name_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+-- Name: archive_buckets archive_buckets_bucket_name_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.archive_buckets
@@ -2349,7 +2207,7 @@ ALTER TABLE ONLY public.archive_buckets
 
 
 --
--- Name: archive_buckets archive_buckets_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+-- Name: archive_buckets archive_buckets_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.archive_buckets
@@ -2357,7 +2215,7 @@ ALTER TABLE ONLY public.archive_buckets
 
 
 --
--- Name: archived_backups archived_backups_original_backup_id_archive_bucket_id_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+-- Name: archived_backups archived_backups_original_backup_id_archive_bucket_id_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.archived_backups
@@ -2365,7 +2223,7 @@ ALTER TABLE ONLY public.archived_backups
 
 
 --
--- Name: archived_backups archived_backups_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+-- Name: archived_backups archived_backups_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.archived_backups
@@ -2373,7 +2231,7 @@ ALTER TABLE ONLY public.archived_backups
 
 
 --
--- Name: audit_logs audit_logs_pkey; Type: CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: audit_logs audit_logs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.audit_logs
@@ -2381,7 +2239,7 @@ ALTER TABLE ONLY public.audit_logs
 
 
 --
--- Name: backup_deletion_log backup_deletion_log_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+-- Name: backup_deletion_log backup_deletion_log_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.backup_deletion_log
@@ -2389,7 +2247,7 @@ ALTER TABLE ONLY public.backup_deletion_log
 
 
 --
--- Name: backup_retention_policies backup_retention_policies_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+-- Name: backup_retention_policies backup_retention_policies_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.backup_retention_policies
@@ -2397,7 +2255,7 @@ ALTER TABLE ONLY public.backup_retention_policies
 
 
 --
--- Name: backup_retention_policies backup_retention_policies_policy_name_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+-- Name: backup_retention_policies backup_retention_policies_policy_name_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.backup_retention_policies
@@ -2405,7 +2263,7 @@ ALTER TABLE ONLY public.backup_retention_policies
 
 
 --
--- Name: batches batches_batch_code_key; Type: CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: batches batches_batch_code_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.batches
@@ -2413,7 +2271,7 @@ ALTER TABLE ONLY public.batches
 
 
 --
--- Name: batches batches_batch_no_key; Type: CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: batches batches_batch_no_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.batches
@@ -2421,7 +2279,7 @@ ALTER TABLE ONLY public.batches
 
 
 --
--- Name: batches batches_pkey; Type: CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: batches batches_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.batches
@@ -2429,7 +2287,7 @@ ALTER TABLE ONLY public.batches
 
 
 --
--- Name: bill_to bill_to_pkey; Type: CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: bill_to bill_to_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.bill_to
@@ -2437,7 +2295,7 @@ ALTER TABLE ONLY public.bill_to
 
 
 --
--- Name: brands brands_name_key; Type: CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: brands brands_name_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.brands
@@ -2445,7 +2303,7 @@ ALTER TABLE ONLY public.brands
 
 
 --
--- Name: brands brands_pkey; Type: CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: brands brands_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.brands
@@ -2453,7 +2311,7 @@ ALTER TABLE ONLY public.brands
 
 
 --
--- Name: cloud_backup_config cloud_backup_config_pkey; Type: CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: cloud_backup_config cloud_backup_config_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.cloud_backup_config
@@ -2461,7 +2319,7 @@ ALTER TABLE ONLY public.cloud_backup_config
 
 
 --
--- Name: cloud_credentials cloud_credentials_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+-- Name: cloud_credentials cloud_credentials_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.cloud_credentials
@@ -2469,7 +2327,7 @@ ALTER TABLE ONLY public.cloud_credentials
 
 
 --
--- Name: cloud_credentials cloud_credentials_provider_bucket_name_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+-- Name: cloud_credentials cloud_credentials_provider_bucket_name_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.cloud_credentials
@@ -2477,7 +2335,7 @@ ALTER TABLE ONLY public.cloud_credentials
 
 
 --
--- Name: customers customers_pkey; Type: CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: customers customers_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.customers
@@ -2485,7 +2343,7 @@ ALTER TABLE ONLY public.customers
 
 
 --
--- Name: database_snapshots database_snapshots_pkey; Type: CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: database_snapshots database_snapshots_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.database_snapshots
@@ -2493,7 +2351,7 @@ ALTER TABLE ONLY public.database_snapshots
 
 
 --
--- Name: dispatch_items dispatch_items_pkey; Type: CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: dispatch_items dispatch_items_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.dispatch_items
@@ -2501,7 +2359,7 @@ ALTER TABLE ONLY public.dispatch_items
 
 
 --
--- Name: dispatches dispatches_dispatch_number_key; Type: CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: dispatches dispatches_dispatch_number_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.dispatches
@@ -2509,7 +2367,7 @@ ALTER TABLE ONLY public.dispatches
 
 
 --
--- Name: dispatches dispatches_pkey; Type: CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: dispatches dispatches_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.dispatches
@@ -2517,7 +2375,7 @@ ALTER TABLE ONLY public.dispatches
 
 
 --
--- Name: hdpe_cut_pieces hdpe_cut_pieces_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+-- Name: hdpe_cut_pieces hdpe_cut_pieces_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.hdpe_cut_pieces
@@ -2525,7 +2383,7 @@ ALTER TABLE ONLY public.hdpe_cut_pieces
 
 
 --
--- Name: inventory_stock inventory_stock_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+-- Name: inventory_stock inventory_stock_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.inventory_stock
@@ -2533,7 +2391,7 @@ ALTER TABLE ONLY public.inventory_stock
 
 
 --
--- Name: inventory_transactions inventory_transactions_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+-- Name: inventory_transactions inventory_transactions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.inventory_transactions
@@ -2541,7 +2399,7 @@ ALTER TABLE ONLY public.inventory_transactions
 
 
 --
--- Name: locations locations_pkey; Type: CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: locations locations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.locations
@@ -2549,7 +2407,7 @@ ALTER TABLE ONLY public.locations
 
 
 --
--- Name: parameter_options parameter_options_parameter_name_option_value_key; Type: CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: parameter_options parameter_options_parameter_name_option_value_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.parameter_options
@@ -2557,7 +2415,7 @@ ALTER TABLE ONLY public.parameter_options
 
 
 --
--- Name: parameter_options parameter_options_pkey; Type: CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: parameter_options parameter_options_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.parameter_options
@@ -2565,7 +2423,7 @@ ALTER TABLE ONLY public.parameter_options
 
 
 --
--- Name: password_reset_tokens password_reset_tokens_pkey; Type: CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: password_reset_tokens password_reset_tokens_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.password_reset_tokens
@@ -2573,7 +2431,7 @@ ALTER TABLE ONLY public.password_reset_tokens
 
 
 --
--- Name: password_reset_tokens password_reset_tokens_token_key; Type: CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: password_reset_tokens password_reset_tokens_token_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.password_reset_tokens
@@ -2581,7 +2439,7 @@ ALTER TABLE ONLY public.password_reset_tokens
 
 
 --
--- Name: piece_lifecycle_events piece_lifecycle_events_pkey; Type: CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: piece_lifecycle_events piece_lifecycle_events_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.piece_lifecycle_events
@@ -2589,7 +2447,7 @@ ALTER TABLE ONLY public.piece_lifecycle_events
 
 
 --
--- Name: product_aliases product_aliases_pkey; Type: CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: product_aliases product_aliases_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.product_aliases
@@ -2597,7 +2455,7 @@ ALTER TABLE ONLY public.product_aliases
 
 
 --
--- Name: product_aliases product_aliases_product_variant_id_alias_key; Type: CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: product_aliases product_aliases_product_variant_id_alias_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.product_aliases
@@ -2605,7 +2463,7 @@ ALTER TABLE ONLY public.product_aliases
 
 
 --
--- Name: product_types product_types_pkey; Type: CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: product_types product_types_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.product_types
@@ -2613,7 +2471,7 @@ ALTER TABLE ONLY public.product_types
 
 
 --
--- Name: product_variants product_variants_pkey; Type: CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: product_variants product_variants_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.product_variants
@@ -2621,7 +2479,7 @@ ALTER TABLE ONLY public.product_variants
 
 
 --
--- Name: return_bundles return_bundles_pkey; Type: CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: return_bundles return_bundles_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.return_bundles
@@ -2629,7 +2487,7 @@ ALTER TABLE ONLY public.return_bundles
 
 
 --
--- Name: return_items return_items_pkey; Type: CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: return_items return_items_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.return_items
@@ -2637,7 +2495,7 @@ ALTER TABLE ONLY public.return_items
 
 
 --
--- Name: return_rolls return_rolls_pkey; Type: CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: return_rolls return_rolls_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.return_rolls
@@ -2645,7 +2503,7 @@ ALTER TABLE ONLY public.return_rolls
 
 
 --
--- Name: returns returns_pkey; Type: CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: returns returns_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.returns
@@ -2653,7 +2511,7 @@ ALTER TABLE ONLY public.returns
 
 
 --
--- Name: returns returns_return_number_key; Type: CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: returns returns_return_number_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.returns
@@ -2661,7 +2519,7 @@ ALTER TABLE ONLY public.returns
 
 
 --
--- Name: rollback_history rollback_history_pkey; Type: CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: rollback_history rollback_history_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.rollback_history
@@ -2669,7 +2527,7 @@ ALTER TABLE ONLY public.rollback_history
 
 
 --
--- Name: scrap_items scrap_items_pkey; Type: CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: scrap_items scrap_items_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.scrap_items
@@ -2677,7 +2535,7 @@ ALTER TABLE ONLY public.scrap_items
 
 
 --
--- Name: scrap_pieces scrap_pieces_pkey; Type: CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: scrap_pieces scrap_pieces_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.scrap_pieces
@@ -2685,7 +2543,7 @@ ALTER TABLE ONLY public.scrap_pieces
 
 
 --
--- Name: scraps scraps_pkey; Type: CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: scraps scraps_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.scraps
@@ -2693,7 +2551,7 @@ ALTER TABLE ONLY public.scraps
 
 
 --
--- Name: scraps scraps_scrap_number_key; Type: CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: scraps scraps_scrap_number_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.scraps
@@ -2701,7 +2559,7 @@ ALTER TABLE ONLY public.scraps
 
 
 --
--- Name: smtp_config smtp_config_pkey; Type: CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: smtp_config smtp_config_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.smtp_config
@@ -2709,7 +2567,7 @@ ALTER TABLE ONLY public.smtp_config
 
 
 --
--- Name: sprinkler_spare_pieces sprinkler_spare_pieces_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+-- Name: sprinkler_spare_pieces sprinkler_spare_pieces_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.sprinkler_spare_pieces
@@ -2717,7 +2575,7 @@ ALTER TABLE ONLY public.sprinkler_spare_pieces
 
 
 --
--- Name: system_settings system_settings_pkey; Type: CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: system_settings system_settings_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.system_settings
@@ -2725,7 +2583,7 @@ ALTER TABLE ONLY public.system_settings
 
 
 --
--- Name: system_settings system_settings_setting_key_key; Type: CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: system_settings system_settings_setting_key_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.system_settings
@@ -2733,7 +2591,7 @@ ALTER TABLE ONLY public.system_settings
 
 
 --
--- Name: transactions transactions_pkey; Type: CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: transactions transactions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.transactions
@@ -2741,7 +2599,7 @@ ALTER TABLE ONLY public.transactions
 
 
 --
--- Name: transports transports_name_key; Type: CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: transports transports_name_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.transports
@@ -2749,7 +2607,7 @@ ALTER TABLE ONLY public.transports
 
 
 --
--- Name: transports transports_pkey; Type: CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: transports transports_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.transports
@@ -2757,7 +2615,7 @@ ALTER TABLE ONLY public.transports
 
 
 --
--- Name: units units_name_key; Type: CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: units units_name_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.units
@@ -2765,7 +2623,7 @@ ALTER TABLE ONLY public.units
 
 
 --
--- Name: units units_pkey; Type: CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: units units_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.units
@@ -2773,7 +2631,7 @@ ALTER TABLE ONLY public.units
 
 
 --
--- Name: user_roles user_roles_pkey; Type: CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: user_roles user_roles_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.user_roles
@@ -2781,7 +2639,7 @@ ALTER TABLE ONLY public.user_roles
 
 
 --
--- Name: user_roles user_roles_user_id_role_key; Type: CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: user_roles user_roles_user_id_role_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.user_roles
@@ -2789,7 +2647,7 @@ ALTER TABLE ONLY public.user_roles
 
 
 --
--- Name: users users_email_key; Type: CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: users users_email_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.users
@@ -2797,7 +2655,7 @@ ALTER TABLE ONLY public.users
 
 
 --
--- Name: users users_pkey; Type: CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: users users_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.users
@@ -2805,7 +2663,7 @@ ALTER TABLE ONLY public.users
 
 
 --
--- Name: users users_username_key; Type: CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: users users_username_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.users
@@ -2813,7 +2671,7 @@ ALTER TABLE ONLY public.users
 
 
 --
--- Name: vehicles vehicles_pkey; Type: CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: vehicles vehicles_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.vehicles
@@ -2821,7 +2679,7 @@ ALTER TABLE ONLY public.vehicles
 
 
 --
--- Name: vehicles vehicles_vehicle_number_key; Type: CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: vehicles vehicles_vehicle_number_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.vehicles
@@ -2829,931 +2687,931 @@ ALTER TABLE ONLY public.vehicles
 
 
 --
--- Name: idx_archived_backups_bucket; Type: INDEX; Schema: public; Owner: postgres
+-- Name: idx_archived_backups_bucket; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_archived_backups_bucket ON public.archived_backups USING btree (archive_bucket_id);
 
 
 --
--- Name: idx_archived_backups_type; Type: INDEX; Schema: public; Owner: postgres
+-- Name: idx_archived_backups_type; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_archived_backups_type ON public.archived_backups USING btree (backup_type);
 
 
 --
--- Name: idx_audit_logs_created; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_audit_logs_created; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_audit_logs_created ON public.audit_logs USING btree (created_at);
 
 
 --
--- Name: idx_audit_logs_entity; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_audit_logs_entity; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_audit_logs_entity ON public.audit_logs USING btree (entity_type, entity_id);
 
 
 --
--- Name: idx_audit_logs_user; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_audit_logs_user; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_audit_logs_user ON public.audit_logs USING btree (user_id);
 
 
 --
--- Name: idx_audit_logs_user_time; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_audit_logs_user_time; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_audit_logs_user_time ON public.audit_logs USING btree (user_id, created_at DESC);
 
 
 --
--- Name: idx_backup_policies_active; Type: INDEX; Schema: public; Owner: postgres
+-- Name: idx_backup_policies_active; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_backup_policies_active ON public.backup_retention_policies USING btree (is_active, backup_type);
 
 
 --
--- Name: idx_batches_batch_code; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_batches_batch_code; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_batches_batch_code ON public.batches USING btree (batch_code) WHERE (deleted_at IS NULL);
 
 
 --
--- Name: idx_bill_to_name; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_bill_to_name; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_bill_to_name ON public.bill_to USING btree (name) WHERE (deleted_at IS NULL);
 
 
 --
--- Name: idx_cloud_backup_config_active; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_cloud_backup_config_active; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_cloud_backup_config_active ON public.cloud_backup_config USING btree (is_active) WHERE (is_active = true);
 
 
 --
--- Name: idx_cloud_backup_config_provider; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_cloud_backup_config_provider; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_cloud_backup_config_provider ON public.cloud_backup_config USING btree (provider);
 
 
 --
--- Name: idx_cloud_credentials_active; Type: INDEX; Schema: public; Owner: postgres
+-- Name: idx_cloud_credentials_active; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_cloud_credentials_active ON public.cloud_credentials USING btree (is_active);
 
 
 --
--- Name: idx_cloud_credentials_provider; Type: INDEX; Schema: public; Owner: postgres
+-- Name: idx_cloud_credentials_provider; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_cloud_credentials_provider ON public.cloud_credentials USING btree (provider);
 
 
 --
--- Name: idx_deletion_log_date; Type: INDEX; Schema: public; Owner: postgres
+-- Name: idx_deletion_log_date; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_deletion_log_date ON public.backup_deletion_log USING btree (deleted_at);
 
 
 --
--- Name: idx_deletion_log_type; Type: INDEX; Schema: public; Owner: postgres
+-- Name: idx_deletion_log_type; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_deletion_log_type ON public.backup_deletion_log USING btree (backup_type);
 
 
 --
--- Name: idx_dispatch_items_dispatch; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_dispatch_items_dispatch; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_dispatch_items_dispatch ON public.dispatch_items USING btree (dispatch_id);
 
 
 --
--- Name: idx_dispatch_items_stock; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_dispatch_items_stock; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_dispatch_items_stock ON public.dispatch_items USING btree (stock_id);
 
 
 --
--- Name: idx_dispatch_items_type; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_dispatch_items_type; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_dispatch_items_type ON public.dispatch_items USING btree (item_type);
 
 
 --
--- Name: idx_dispatch_items_variant; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_dispatch_items_variant; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_dispatch_items_variant ON public.dispatch_items USING btree (product_variant_id);
 
 
 --
--- Name: idx_dispatches_customer; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_dispatches_customer; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_dispatches_customer ON public.dispatches USING btree (customer_id) WHERE (deleted_at IS NULL);
 
 
 --
--- Name: idx_dispatches_date; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_dispatches_date; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_dispatches_date ON public.dispatches USING btree (dispatch_date DESC) WHERE (deleted_at IS NULL);
 
 
 --
--- Name: idx_dispatches_number; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_dispatches_number; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_dispatches_number ON public.dispatches USING btree (dispatch_number) WHERE (deleted_at IS NULL);
 
 
 --
--- Name: idx_dispatches_reverted_at; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_dispatches_reverted_at; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_dispatches_reverted_at ON public.dispatches USING btree (reverted_at) WHERE (reverted_at IS NOT NULL);
 
 
 --
--- Name: idx_dispatches_status; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_dispatches_status; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_dispatches_status ON public.dispatches USING btree (status) WHERE (deleted_at IS NULL);
 
 
 --
--- Name: idx_hdpe_cut_pieces_created_by_transaction; Type: INDEX; Schema: public; Owner: postgres
+-- Name: idx_hdpe_cut_pieces_created_by_transaction; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_hdpe_cut_pieces_created_by_transaction ON public.hdpe_cut_pieces USING btree (created_by_transaction_id) WHERE ((created_by_transaction_id IS NOT NULL) AND (deleted_at IS NULL));
 
 
 --
--- Name: idx_hdpe_cut_pieces_last_modified_by_transaction; Type: INDEX; Schema: public; Owner: postgres
+-- Name: idx_hdpe_cut_pieces_last_modified_by_transaction; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_hdpe_cut_pieces_last_modified_by_transaction ON public.hdpe_cut_pieces USING btree (last_modified_by_transaction_id) WHERE (last_modified_by_transaction_id IS NOT NULL);
 
 
 --
--- Name: idx_hdpe_cut_pieces_scrapped; Type: INDEX; Schema: public; Owner: postgres
+-- Name: idx_hdpe_cut_pieces_scrapped; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_hdpe_cut_pieces_scrapped ON public.hdpe_cut_pieces USING btree (status) WHERE (status = 'SCRAPPED'::text);
 
 
 --
--- Name: idx_hdpe_cut_pieces_status; Type: INDEX; Schema: public; Owner: postgres
+-- Name: idx_hdpe_cut_pieces_status; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_hdpe_cut_pieces_status ON public.hdpe_cut_pieces USING btree (status);
 
 
 --
--- Name: idx_hdpe_cut_pieces_status_active; Type: INDEX; Schema: public; Owner: postgres
+-- Name: idx_hdpe_cut_pieces_status_active; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_hdpe_cut_pieces_status_active ON public.hdpe_cut_pieces USING btree (status, stock_id) WHERE ((status = 'IN_STOCK'::text) AND (deleted_at IS NULL));
 
 
 --
--- Name: idx_hdpe_cut_pieces_stock; Type: INDEX; Schema: public; Owner: postgres
+-- Name: idx_hdpe_cut_pieces_stock; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_hdpe_cut_pieces_stock ON public.hdpe_cut_pieces USING btree (stock_id);
 
 
 --
--- Name: idx_hdpe_cut_pieces_transaction_id; Type: INDEX; Schema: public; Owner: postgres
+-- Name: idx_hdpe_cut_pieces_transaction_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_hdpe_cut_pieces_transaction_id ON public.hdpe_cut_pieces USING btree (transaction_id);
 
 
 --
--- Name: idx_hdpe_reserved_by_transaction; Type: INDEX; Schema: public; Owner: postgres
+-- Name: idx_hdpe_reserved_by_transaction; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_hdpe_reserved_by_transaction ON public.hdpe_cut_pieces USING btree (reserved_by_transaction_id) WHERE (reserved_by_transaction_id IS NOT NULL);
 
 
 --
--- Name: idx_inventory_stock_batch; Type: INDEX; Schema: public; Owner: postgres
+-- Name: idx_inventory_stock_batch; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_inventory_stock_batch ON public.inventory_stock USING btree (batch_id) WHERE (deleted_at IS NULL);
 
 
 --
--- Name: idx_inventory_stock_deleted_by_transaction; Type: INDEX; Schema: public; Owner: postgres
+-- Name: idx_inventory_stock_deleted_by_transaction; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_inventory_stock_deleted_by_transaction ON public.inventory_stock USING btree (deleted_by_transaction_id) WHERE (deleted_by_transaction_id IS NOT NULL);
 
 
 --
--- Name: idx_inventory_stock_status; Type: INDEX; Schema: public; Owner: postgres
+-- Name: idx_inventory_stock_status; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_inventory_stock_status ON public.inventory_stock USING btree (status) WHERE (deleted_at IS NULL);
 
 
 --
--- Name: idx_inventory_stock_type; Type: INDEX; Schema: public; Owner: postgres
+-- Name: idx_inventory_stock_type; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_inventory_stock_type ON public.inventory_stock USING btree (stock_type) WHERE (deleted_at IS NULL);
 
 
 --
--- Name: idx_inventory_stock_variant; Type: INDEX; Schema: public; Owner: postgres
+-- Name: idx_inventory_stock_variant; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_inventory_stock_variant ON public.inventory_stock USING btree (product_variant_id) WHERE (deleted_at IS NULL);
 
 
 --
--- Name: idx_inventory_transactions_dispatch_item; Type: INDEX; Schema: public; Owner: postgres
+-- Name: idx_inventory_transactions_dispatch_item; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_inventory_transactions_dispatch_item ON public.inventory_transactions USING btree (dispatch_item_id) WHERE (dispatch_item_id IS NOT NULL);
 
 
 --
--- Name: idx_inventory_transactions_from; Type: INDEX; Schema: public; Owner: postgres
+-- Name: idx_inventory_transactions_from; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_inventory_transactions_from ON public.inventory_transactions USING btree (from_stock_id) WHERE (from_stock_id IS NOT NULL);
 
 
 --
--- Name: idx_inventory_transactions_reverted; Type: INDEX; Schema: public; Owner: postgres
+-- Name: idx_inventory_transactions_reverted; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_inventory_transactions_reverted ON public.inventory_transactions USING btree (reverted_at) WHERE (reverted_at IS NOT NULL);
 
 
 --
--- Name: idx_inventory_transactions_to; Type: INDEX; Schema: public; Owner: postgres
+-- Name: idx_inventory_transactions_to; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_inventory_transactions_to ON public.inventory_transactions USING btree (to_stock_id) WHERE (to_stock_id IS NOT NULL);
 
 
 --
--- Name: idx_inventory_transactions_type; Type: INDEX; Schema: public; Owner: postgres
+-- Name: idx_inventory_transactions_type; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_inventory_transactions_type ON public.inventory_transactions USING btree (transaction_type);
 
 
 --
--- Name: idx_mv_piece_current_state_batch; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_mv_piece_current_state_batch; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_mv_piece_current_state_batch ON public.mv_piece_current_state USING btree (batch_id);
 
 
 --
--- Name: idx_mv_piece_current_state_piece; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_mv_piece_current_state_piece; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_mv_piece_current_state_piece ON public.mv_piece_current_state USING btree (piece_id);
 
 
 --
--- Name: idx_mv_piece_current_state_status; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_mv_piece_current_state_status; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_mv_piece_current_state_status ON public.mv_piece_current_state USING btree (status) WHERE (status = 'IN_STOCK'::text);
 
 
 --
--- Name: idx_mv_piece_current_state_stock; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_mv_piece_current_state_stock; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_mv_piece_current_state_stock ON public.mv_piece_current_state USING btree (stock_id);
 
 
 --
--- Name: idx_mv_product_variant_details_variant_id; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_mv_product_variant_details_variant_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE UNIQUE INDEX idx_mv_product_variant_details_variant_id ON public.mv_product_variant_details USING btree (variant_id);
 
 
 --
--- Name: idx_piece_lifecycle_events_created_at; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_piece_lifecycle_events_created_at; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_piece_lifecycle_events_created_at ON public.piece_lifecycle_events USING btree (created_at DESC);
 
 
 --
--- Name: idx_piece_lifecycle_events_event_type; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_piece_lifecycle_events_event_type; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_piece_lifecycle_events_event_type ON public.piece_lifecycle_events USING btree (event_type);
 
 
 --
--- Name: idx_piece_lifecycle_events_piece; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_piece_lifecycle_events_piece; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_piece_lifecycle_events_piece ON public.piece_lifecycle_events USING btree (piece_id, piece_type);
 
 
 --
--- Name: idx_piece_lifecycle_events_transaction; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_piece_lifecycle_events_transaction; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_piece_lifecycle_events_transaction ON public.piece_lifecycle_events USING btree (transaction_id);
 
 
 --
--- Name: idx_product_aliases_alias; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_product_aliases_alias; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_product_aliases_alias ON public.product_aliases USING btree (alias);
 
 
 --
--- Name: idx_product_aliases_variant; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_product_aliases_variant; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_product_aliases_variant ON public.product_aliases USING btree (product_variant_id);
 
 
 --
--- Name: idx_reset_tokens_expires; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_reset_tokens_expires; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_reset_tokens_expires ON public.password_reset_tokens USING btree (expires_at);
 
 
 --
--- Name: idx_reset_tokens_token; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_reset_tokens_token; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_reset_tokens_token ON public.password_reset_tokens USING btree (token);
 
 
 --
--- Name: idx_reset_tokens_user; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_reset_tokens_user; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_reset_tokens_user ON public.password_reset_tokens USING btree (user_id);
 
 
 --
--- Name: idx_return_bundles_return_item; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_return_bundles_return_item; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_return_bundles_return_item ON public.return_bundles USING btree (return_item_id);
 
 
 --
--- Name: idx_return_bundles_stock; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_return_bundles_stock; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_return_bundles_stock ON public.return_bundles USING btree (stock_id) WHERE (stock_id IS NOT NULL);
 
 
 --
--- Name: idx_return_items_return; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_return_items_return; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_return_items_return ON public.return_items USING btree (return_id);
 
 
 --
--- Name: idx_return_items_type; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_return_items_type; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_return_items_type ON public.return_items USING btree (item_type);
 
 
 --
--- Name: idx_return_items_variant; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_return_items_variant; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_return_items_variant ON public.return_items USING btree (product_variant_id);
 
 
 --
--- Name: idx_return_rolls_return_item; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_return_rolls_return_item; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_return_rolls_return_item ON public.return_rolls USING btree (return_item_id);
 
 
 --
--- Name: idx_return_rolls_stock; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_return_rolls_stock; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_return_rolls_stock ON public.return_rolls USING btree (stock_id) WHERE (stock_id IS NOT NULL);
 
 
 --
--- Name: idx_returns_customer; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_returns_customer; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_returns_customer ON public.returns USING btree (customer_id) WHERE (deleted_at IS NULL);
 
 
 --
--- Name: idx_returns_date; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_returns_date; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_returns_date ON public.returns USING btree (return_date DESC) WHERE (deleted_at IS NULL);
 
 
 --
--- Name: idx_returns_number; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_returns_number; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_returns_number ON public.returns USING btree (return_number) WHERE (deleted_at IS NULL);
 
 
 --
--- Name: idx_returns_reverted_at; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_returns_reverted_at; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_returns_reverted_at ON public.returns USING btree (reverted_at) WHERE (deleted_at IS NULL);
 
 
 --
--- Name: idx_returns_status; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_returns_status; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_returns_status ON public.returns USING btree (status) WHERE (deleted_at IS NULL);
 
 
 --
--- Name: idx_rollback_history_rolled_back_at; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_rollback_history_rolled_back_at; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_rollback_history_rolled_back_at ON public.rollback_history USING btree (rolled_back_at DESC);
 
 
 --
--- Name: idx_rollback_history_snapshot; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_rollback_history_snapshot; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_rollback_history_snapshot ON public.rollback_history USING btree (snapshot_id);
 
 
 --
--- Name: idx_scrap_items_batch; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_scrap_items_batch; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_scrap_items_batch ON public.scrap_items USING btree (batch_id);
 
 
 --
--- Name: idx_scrap_items_scrap; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_scrap_items_scrap; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_scrap_items_scrap ON public.scrap_items USING btree (scrap_id);
 
 
 --
--- Name: idx_scrap_items_stock; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_scrap_items_stock; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_scrap_items_stock ON public.scrap_items USING btree (stock_id);
 
 
 --
--- Name: idx_scrap_items_type; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_scrap_items_type; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_scrap_items_type ON public.scrap_items USING btree (stock_type);
 
 
 --
--- Name: idx_scrap_items_variant; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_scrap_items_variant; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_scrap_items_variant ON public.scrap_items USING btree (product_variant_id);
 
 
 --
--- Name: idx_scrap_pieces_original; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_scrap_pieces_original; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_scrap_pieces_original ON public.scrap_pieces USING btree (original_piece_id) WHERE (original_piece_id IS NOT NULL);
 
 
 --
--- Name: idx_scrap_pieces_scrap_item; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_scrap_pieces_scrap_item; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_scrap_pieces_scrap_item ON public.scrap_pieces USING btree (scrap_item_id);
 
 
 --
--- Name: idx_scraps_date; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_scraps_date; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_scraps_date ON public.scraps USING btree (scrap_date DESC) WHERE (deleted_at IS NULL);
 
 
 --
--- Name: idx_scraps_number; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_scraps_number; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_scraps_number ON public.scraps USING btree (scrap_number) WHERE (deleted_at IS NULL);
 
 
 --
--- Name: idx_scraps_reason; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_scraps_reason; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_scraps_reason ON public.scraps USING btree (reason) WHERE (deleted_at IS NULL);
 
 
 --
--- Name: idx_scraps_status; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_scraps_status; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_scraps_status ON public.scraps USING btree (status) WHERE (deleted_at IS NULL);
 
 
 --
--- Name: idx_smtp_config_active; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_smtp_config_active; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_smtp_config_active ON public.smtp_config USING btree (is_active);
 
 
 --
--- Name: idx_snapshots_created_at; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_snapshots_created_at; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_snapshots_created_at ON public.database_snapshots USING btree (created_at DESC);
 
 
 --
--- Name: idx_snapshots_created_by; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_snapshots_created_by; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_snapshots_created_by ON public.database_snapshots USING btree (created_by);
 
 
 --
--- Name: idx_spare_pieces_scrapped; Type: INDEX; Schema: public; Owner: postgres
+-- Name: idx_spare_pieces_scrapped; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_spare_pieces_scrapped ON public.sprinkler_spare_pieces USING btree (status) WHERE (status = 'SCRAPPED'::text);
 
 
 --
--- Name: idx_sprinkler_spare_pieces_created_by_transaction; Type: INDEX; Schema: public; Owner: postgres
+-- Name: idx_sprinkler_spare_pieces_created_by_transaction; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_sprinkler_spare_pieces_created_by_transaction ON public.sprinkler_spare_pieces USING btree (created_by_transaction_id) WHERE ((created_by_transaction_id IS NOT NULL) AND (deleted_at IS NULL));
 
 
 --
--- Name: idx_sprinkler_spare_pieces_last_modified_by_transaction; Type: INDEX; Schema: public; Owner: postgres
+-- Name: idx_sprinkler_spare_pieces_last_modified_by_transaction; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_sprinkler_spare_pieces_last_modified_by_transaction ON public.sprinkler_spare_pieces USING btree (last_modified_by_transaction_id) WHERE (last_modified_by_transaction_id IS NOT NULL);
 
 
 --
--- Name: idx_sprinkler_spare_pieces_reserved; Type: INDEX; Schema: public; Owner: postgres
+-- Name: idx_sprinkler_spare_pieces_reserved; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_sprinkler_spare_pieces_reserved ON public.sprinkler_spare_pieces USING btree (reserved_by_transaction_id) WHERE (reserved_by_transaction_id IS NOT NULL);
 
 
 --
--- Name: idx_sprinkler_spare_pieces_status; Type: INDEX; Schema: public; Owner: postgres
+-- Name: idx_sprinkler_spare_pieces_status; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_sprinkler_spare_pieces_status ON public.sprinkler_spare_pieces USING btree (status);
 
 
 --
--- Name: idx_sprinkler_spare_pieces_status_active; Type: INDEX; Schema: public; Owner: postgres
+-- Name: idx_sprinkler_spare_pieces_status_active; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_sprinkler_spare_pieces_status_active ON public.sprinkler_spare_pieces USING btree (status, stock_id) WHERE ((status = 'IN_STOCK'::text) AND (deleted_at IS NULL));
 
 
 --
--- Name: idx_sprinkler_spare_pieces_stock; Type: INDEX; Schema: public; Owner: postgres
+-- Name: idx_sprinkler_spare_pieces_stock; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_sprinkler_spare_pieces_stock ON public.sprinkler_spare_pieces USING btree (stock_id);
 
 
 --
--- Name: idx_sprinkler_spare_pieces_stock_status; Type: INDEX; Schema: public; Owner: postgres
+-- Name: idx_sprinkler_spare_pieces_stock_status; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_sprinkler_spare_pieces_stock_status ON public.sprinkler_spare_pieces USING btree (stock_id, status, deleted_at) WHERE (deleted_at IS NULL);
 
 
 --
--- Name: idx_sprinkler_spare_pieces_transaction_id; Type: INDEX; Schema: public; Owner: postgres
+-- Name: idx_sprinkler_spare_pieces_transaction_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_sprinkler_spare_pieces_transaction_id ON public.sprinkler_spare_pieces USING btree (transaction_id);
 
 
 --
--- Name: idx_transactions_batch; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_transactions_batch; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_transactions_batch ON public.transactions USING btree (batch_id) WHERE (deleted_at IS NULL);
 
 
 --
--- Name: idx_transactions_date; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_transactions_date; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_transactions_date ON public.transactions USING btree (transaction_date) WHERE (deleted_at IS NULL);
 
 
 --
--- Name: idx_transactions_dispatch; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_transactions_dispatch; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_transactions_dispatch ON public.transactions USING btree (dispatch_id) WHERE ((deleted_at IS NULL) AND (dispatch_id IS NOT NULL));
 
 
 --
--- Name: idx_transactions_product_variant; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_transactions_product_variant; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_transactions_product_variant ON public.transactions USING btree (product_variant_id) WHERE (deleted_at IS NULL);
 
 
 --
--- Name: INDEX idx_transactions_product_variant; Type: COMMENT; Schema: public; Owner: sachdevs
+-- Name: INDEX idx_transactions_product_variant; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON INDEX public.idx_transactions_product_variant IS 'Fast filtering of transactions by product variant for history queries';
 
 
 --
--- Name: idx_transports_name; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_transports_name; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_transports_name ON public.transports USING btree (name) WHERE (deleted_at IS NULL);
 
 
 --
--- Name: idx_users_email; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_users_email; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_users_email ON public.users USING btree (email) WHERE (deleted_at IS NULL);
 
 
 --
--- Name: idx_users_is_active; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_users_is_active; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_users_is_active ON public.users USING btree (is_active) WHERE (deleted_at IS NULL);
 
 
 --
--- Name: idx_users_locked_until; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_users_locked_until; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_users_locked_until ON public.users USING btree (locked_until) WHERE (locked_until IS NOT NULL);
 
 
 --
--- Name: idx_users_username; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_users_username; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_users_username ON public.users USING btree (username) WHERE (deleted_at IS NULL);
 
 
 --
--- Name: idx_vehicles_number; Type: INDEX; Schema: public; Owner: sachdevs
+-- Name: idx_vehicles_number; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_vehicles_number ON public.vehicles USING btree (vehicle_number) WHERE (deleted_at IS NULL);
 
 
 --
--- Name: hdpe_cut_pieces auto_update_stock_from_hdpe_pieces; Type: TRIGGER; Schema: public; Owner: postgres
+-- Name: hdpe_cut_pieces auto_update_stock_from_hdpe_pieces; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER auto_update_stock_from_hdpe_pieces AFTER INSERT OR DELETE OR UPDATE ON public.hdpe_cut_pieces FOR EACH ROW EXECUTE FUNCTION public.auto_update_stock_quantity();
 
 
 --
--- Name: sprinkler_spare_pieces auto_update_stock_from_sprinkler_pieces; Type: TRIGGER; Schema: public; Owner: postgres
+-- Name: sprinkler_spare_pieces auto_update_stock_from_sprinkler_pieces; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER auto_update_stock_from_sprinkler_pieces AFTER INSERT OR DELETE OR UPDATE ON public.sprinkler_spare_pieces FOR EACH ROW EXECUTE FUNCTION public.auto_update_stock_quantity();
 
 
 --
--- Name: hdpe_cut_pieces log_hdpe_piece_lifecycle; Type: TRIGGER; Schema: public; Owner: postgres
+-- Name: hdpe_cut_pieces log_hdpe_piece_lifecycle; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER log_hdpe_piece_lifecycle AFTER INSERT OR DELETE OR UPDATE ON public.hdpe_cut_pieces FOR EACH ROW EXECUTE FUNCTION public.log_piece_lifecycle_event();
 
 
 --
--- Name: sprinkler_spare_pieces log_sprinkler_piece_lifecycle; Type: TRIGGER; Schema: public; Owner: postgres
+-- Name: sprinkler_spare_pieces log_sprinkler_piece_lifecycle; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER log_sprinkler_piece_lifecycle AFTER INSERT OR DELETE OR UPDATE ON public.sprinkler_spare_pieces FOR EACH ROW EXECUTE FUNCTION public.log_piece_lifecycle_event();
 
 
 --
--- Name: transactions populate_transaction_metadata_trigger; Type: TRIGGER; Schema: public; Owner: sachdevs
+-- Name: transactions populate_transaction_metadata_trigger; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER populate_transaction_metadata_trigger BEFORE INSERT OR UPDATE ON public.transactions FOR EACH ROW EXECUTE FUNCTION public.populate_transaction_metadata();
 
 
 --
--- Name: hdpe_cut_pieces prevent_hdpe_transaction_id_mutation; Type: TRIGGER; Schema: public; Owner: postgres
+-- Name: hdpe_cut_pieces prevent_hdpe_transaction_id_mutation; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER prevent_hdpe_transaction_id_mutation BEFORE UPDATE ON public.hdpe_cut_pieces FOR EACH ROW EXECUTE FUNCTION public.prevent_transaction_id_mutation();
 
 
 --
--- Name: sprinkler_spare_pieces prevent_sprinkler_transaction_id_mutation; Type: TRIGGER; Schema: public; Owner: postgres
+-- Name: sprinkler_spare_pieces prevent_sprinkler_transaction_id_mutation; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER prevent_sprinkler_transaction_id_mutation BEFORE UPDATE ON public.sprinkler_spare_pieces FOR EACH ROW EXECUTE FUNCTION public.prevent_transaction_id_mutation();
 
 
 --
--- Name: backup_retention_policies update_backup_retention_policies_timestamp; Type: TRIGGER; Schema: public; Owner: postgres
+-- Name: backup_retention_policies update_backup_retention_policies_timestamp; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER update_backup_retention_policies_timestamp BEFORE UPDATE ON public.backup_retention_policies FOR EACH ROW EXECUTE FUNCTION public.update_backup_config_timestamp();
 
 
 --
--- Name: batches update_batches_updated_at; Type: TRIGGER; Schema: public; Owner: sachdevs
+-- Name: batches update_batches_updated_at; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER update_batches_updated_at BEFORE UPDATE ON public.batches FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
 
 --
--- Name: bill_to update_bill_to_updated_at; Type: TRIGGER; Schema: public; Owner: sachdevs
+-- Name: bill_to update_bill_to_updated_at; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER update_bill_to_updated_at BEFORE UPDATE ON public.bill_to FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
 
 --
--- Name: brands update_brands_updated_at; Type: TRIGGER; Schema: public; Owner: sachdevs
+-- Name: brands update_brands_updated_at; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER update_brands_updated_at BEFORE UPDATE ON public.brands FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
 
 --
--- Name: cloud_credentials update_cloud_credentials_timestamp; Type: TRIGGER; Schema: public; Owner: postgres
+-- Name: cloud_credentials update_cloud_credentials_timestamp; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER update_cloud_credentials_timestamp BEFORE UPDATE ON public.cloud_credentials FOR EACH ROW EXECUTE FUNCTION public.update_backup_config_timestamp();
 
 
 --
--- Name: customers update_customers_updated_at; Type: TRIGGER; Schema: public; Owner: sachdevs
+-- Name: customers update_customers_updated_at; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER update_customers_updated_at BEFORE UPDATE ON public.customers FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
 
 --
--- Name: dispatches update_dispatches_updated_at; Type: TRIGGER; Schema: public; Owner: sachdevs
+-- Name: dispatches update_dispatches_updated_at; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER update_dispatches_updated_at BEFORE UPDATE ON public.dispatches FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
 
 --
--- Name: hdpe_cut_pieces update_hdpe_cut_pieces_updated_at; Type: TRIGGER; Schema: public; Owner: postgres
+-- Name: hdpe_cut_pieces update_hdpe_cut_pieces_updated_at; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER update_hdpe_cut_pieces_updated_at BEFORE UPDATE ON public.hdpe_cut_pieces FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
 
 --
--- Name: inventory_stock update_inventory_stock_updated_at; Type: TRIGGER; Schema: public; Owner: postgres
+-- Name: inventory_stock update_inventory_stock_updated_at; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER update_inventory_stock_updated_at BEFORE UPDATE ON public.inventory_stock FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
 
 --
--- Name: locations update_locations_updated_at; Type: TRIGGER; Schema: public; Owner: sachdevs
+-- Name: locations update_locations_updated_at; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER update_locations_updated_at BEFORE UPDATE ON public.locations FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
 
 --
--- Name: product_types update_product_types_updated_at; Type: TRIGGER; Schema: public; Owner: sachdevs
+-- Name: product_types update_product_types_updated_at; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER update_product_types_updated_at BEFORE UPDATE ON public.product_types FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
 
 --
--- Name: product_variants update_product_variants_updated_at; Type: TRIGGER; Schema: public; Owner: sachdevs
+-- Name: product_variants update_product_variants_updated_at; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER update_product_variants_updated_at BEFORE UPDATE ON public.product_variants FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
 
 --
--- Name: returns update_returns_updated_at; Type: TRIGGER; Schema: public; Owner: sachdevs
+-- Name: returns update_returns_updated_at; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER update_returns_updated_at BEFORE UPDATE ON public.returns FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
 
 --
--- Name: scraps update_scraps_updated_at; Type: TRIGGER; Schema: public; Owner: sachdevs
+-- Name: scraps update_scraps_updated_at; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER update_scraps_updated_at BEFORE UPDATE ON public.scraps FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
 
 --
--- Name: sprinkler_spare_pieces update_sprinkler_spare_pieces_updated_at; Type: TRIGGER; Schema: public; Owner: postgres
+-- Name: sprinkler_spare_pieces update_sprinkler_spare_pieces_updated_at; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER update_sprinkler_spare_pieces_updated_at BEFORE UPDATE ON public.sprinkler_spare_pieces FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
 
 --
--- Name: transports update_transports_updated_at; Type: TRIGGER; Schema: public; Owner: sachdevs
+-- Name: transports update_transports_updated_at; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER update_transports_updated_at BEFORE UPDATE ON public.transports FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
 
 --
--- Name: units update_units_updated_at; Type: TRIGGER; Schema: public; Owner: sachdevs
+-- Name: units update_units_updated_at; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER update_units_updated_at BEFORE UPDATE ON public.units FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
 
 --
--- Name: user_roles update_user_roles_updated_at; Type: TRIGGER; Schema: public; Owner: sachdevs
+-- Name: user_roles update_user_roles_updated_at; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER update_user_roles_updated_at BEFORE UPDATE ON public.user_roles FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
 
 --
--- Name: users update_users_updated_at; Type: TRIGGER; Schema: public; Owner: sachdevs
+-- Name: users update_users_updated_at; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON public.users FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
 
 --
--- Name: vehicles update_vehicles_updated_at; Type: TRIGGER; Schema: public; Owner: sachdevs
+-- Name: vehicles update_vehicles_updated_at; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER update_vehicles_updated_at BEFORE UPDATE ON public.vehicles FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
 
 --
--- Name: inventory_stock validate_spare_stock_quantity_trigger; Type: TRIGGER; Schema: public; Owner: postgres
+-- Name: inventory_stock validate_spare_stock_quantity_trigger; Type: TRIGGER; Schema: public; Owner: -
 --
 
 CREATE TRIGGER validate_spare_stock_quantity_trigger BEFORE UPDATE ON public.inventory_stock FOR EACH ROW WHEN ((new.stock_type = 'SPARE'::text)) EXECUTE FUNCTION public.validate_spare_stock_quantity();
 
 
 --
--- Name: archive_buckets archive_buckets_created_by_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+-- Name: archive_buckets archive_buckets_created_by_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.archive_buckets
@@ -3761,7 +3619,7 @@ ALTER TABLE ONLY public.archive_buckets
 
 
 --
--- Name: archive_buckets archive_buckets_credentials_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+-- Name: archive_buckets archive_buckets_credentials_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.archive_buckets
@@ -3769,7 +3627,7 @@ ALTER TABLE ONLY public.archive_buckets
 
 
 --
--- Name: archived_backups archived_backups_archive_bucket_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+-- Name: archived_backups archived_backups_archive_bucket_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.archived_backups
@@ -3777,7 +3635,7 @@ ALTER TABLE ONLY public.archived_backups
 
 
 --
--- Name: archived_backups archived_backups_archived_by_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+-- Name: archived_backups archived_backups_archived_by_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.archived_backups
@@ -3785,7 +3643,7 @@ ALTER TABLE ONLY public.archived_backups
 
 
 --
--- Name: audit_logs audit_logs_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: audit_logs audit_logs_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.audit_logs
@@ -3793,7 +3651,7 @@ ALTER TABLE ONLY public.audit_logs
 
 
 --
--- Name: backup_deletion_log backup_deletion_log_deleted_by_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+-- Name: backup_deletion_log backup_deletion_log_deleted_by_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.backup_deletion_log
@@ -3801,7 +3659,7 @@ ALTER TABLE ONLY public.backup_deletion_log
 
 
 --
--- Name: backup_deletion_log backup_deletion_log_policy_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+-- Name: backup_deletion_log backup_deletion_log_policy_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.backup_deletion_log
@@ -3809,7 +3667,7 @@ ALTER TABLE ONLY public.backup_deletion_log
 
 
 --
--- Name: backup_retention_policies backup_retention_policies_created_by_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+-- Name: backup_retention_policies backup_retention_policies_created_by_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.backup_retention_policies
@@ -3817,7 +3675,7 @@ ALTER TABLE ONLY public.backup_retention_policies
 
 
 --
--- Name: batches batches_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: batches batches_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.batches
@@ -3825,7 +3683,7 @@ ALTER TABLE ONLY public.batches
 
 
 --
--- Name: batches batches_product_variant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: batches batches_product_variant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.batches
@@ -3833,7 +3691,7 @@ ALTER TABLE ONLY public.batches
 
 
 --
--- Name: brands brands_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: brands brands_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.brands
@@ -3841,7 +3699,7 @@ ALTER TABLE ONLY public.brands
 
 
 --
--- Name: cloud_backup_config cloud_backup_config_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: cloud_backup_config cloud_backup_config_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.cloud_backup_config
@@ -3849,7 +3707,7 @@ ALTER TABLE ONLY public.cloud_backup_config
 
 
 --
--- Name: cloud_credentials cloud_credentials_created_by_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+-- Name: cloud_credentials cloud_credentials_created_by_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.cloud_credentials
@@ -3857,7 +3715,7 @@ ALTER TABLE ONLY public.cloud_credentials
 
 
 --
--- Name: customers customers_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: customers customers_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.customers
@@ -3865,7 +3723,7 @@ ALTER TABLE ONLY public.customers
 
 
 --
--- Name: database_snapshots database_snapshots_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: database_snapshots database_snapshots_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.database_snapshots
@@ -3873,7 +3731,7 @@ ALTER TABLE ONLY public.database_snapshots
 
 
 --
--- Name: dispatch_items dispatch_items_cut_piece_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: dispatch_items dispatch_items_cut_piece_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.dispatch_items
@@ -3881,7 +3739,7 @@ ALTER TABLE ONLY public.dispatch_items
 
 
 --
--- Name: dispatch_items dispatch_items_dispatch_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: dispatch_items dispatch_items_dispatch_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.dispatch_items
@@ -3889,7 +3747,7 @@ ALTER TABLE ONLY public.dispatch_items
 
 
 --
--- Name: dispatch_items dispatch_items_product_variant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: dispatch_items dispatch_items_product_variant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.dispatch_items
@@ -3897,7 +3755,7 @@ ALTER TABLE ONLY public.dispatch_items
 
 
 --
--- Name: dispatch_items dispatch_items_stock_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: dispatch_items dispatch_items_stock_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.dispatch_items
@@ -3905,7 +3763,7 @@ ALTER TABLE ONLY public.dispatch_items
 
 
 --
--- Name: dispatches dispatches_bill_to_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: dispatches dispatches_bill_to_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.dispatches
@@ -3913,7 +3771,7 @@ ALTER TABLE ONLY public.dispatches
 
 
 --
--- Name: dispatches dispatches_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: dispatches dispatches_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.dispatches
@@ -3921,7 +3779,7 @@ ALTER TABLE ONLY public.dispatches
 
 
 --
--- Name: dispatches dispatches_customer_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: dispatches dispatches_customer_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.dispatches
@@ -3929,7 +3787,7 @@ ALTER TABLE ONLY public.dispatches
 
 
 --
--- Name: dispatches dispatches_reverted_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: dispatches dispatches_reverted_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.dispatches
@@ -3937,7 +3795,7 @@ ALTER TABLE ONLY public.dispatches
 
 
 --
--- Name: dispatches dispatches_transport_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: dispatches dispatches_transport_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.dispatches
@@ -3945,7 +3803,7 @@ ALTER TABLE ONLY public.dispatches
 
 
 --
--- Name: dispatches dispatches_vehicle_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: dispatches dispatches_vehicle_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.dispatches
@@ -3953,7 +3811,7 @@ ALTER TABLE ONLY public.dispatches
 
 
 --
--- Name: hdpe_cut_pieces fk_hdpe_cut_pieces_created_by_transaction; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+-- Name: hdpe_cut_pieces fk_hdpe_cut_pieces_created_by_transaction; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.hdpe_cut_pieces
@@ -3961,7 +3819,7 @@ ALTER TABLE ONLY public.hdpe_cut_pieces
 
 
 --
--- Name: hdpe_cut_pieces fk_hdpe_cut_pieces_last_modified_by_transaction; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+-- Name: hdpe_cut_pieces fk_hdpe_cut_pieces_last_modified_by_transaction; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.hdpe_cut_pieces
@@ -3969,7 +3827,7 @@ ALTER TABLE ONLY public.hdpe_cut_pieces
 
 
 --
--- Name: hdpe_cut_pieces fk_hdpe_cut_pieces_transaction; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+-- Name: hdpe_cut_pieces fk_hdpe_cut_pieces_transaction; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.hdpe_cut_pieces
@@ -3977,7 +3835,7 @@ ALTER TABLE ONLY public.hdpe_cut_pieces
 
 
 --
--- Name: inventory_stock fk_inventory_stock_deleted_by_transaction; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+-- Name: inventory_stock fk_inventory_stock_deleted_by_transaction; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.inventory_stock
@@ -3985,7 +3843,7 @@ ALTER TABLE ONLY public.inventory_stock
 
 
 --
--- Name: sprinkler_spare_pieces fk_sprinkler_spare_pieces_created_by_transaction; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+-- Name: sprinkler_spare_pieces fk_sprinkler_spare_pieces_created_by_transaction; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.sprinkler_spare_pieces
@@ -3993,7 +3851,7 @@ ALTER TABLE ONLY public.sprinkler_spare_pieces
 
 
 --
--- Name: sprinkler_spare_pieces fk_sprinkler_spare_pieces_last_modified_by_transaction; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+-- Name: sprinkler_spare_pieces fk_sprinkler_spare_pieces_last_modified_by_transaction; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.sprinkler_spare_pieces
@@ -4001,7 +3859,7 @@ ALTER TABLE ONLY public.sprinkler_spare_pieces
 
 
 --
--- Name: sprinkler_spare_pieces fk_sprinkler_spare_pieces_transaction; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+-- Name: sprinkler_spare_pieces fk_sprinkler_spare_pieces_transaction; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.sprinkler_spare_pieces
@@ -4009,7 +3867,7 @@ ALTER TABLE ONLY public.sprinkler_spare_pieces
 
 
 --
--- Name: hdpe_cut_pieces hdpe_cut_pieces_created_by_transaction_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+-- Name: hdpe_cut_pieces hdpe_cut_pieces_created_by_transaction_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.hdpe_cut_pieces
@@ -4017,7 +3875,7 @@ ALTER TABLE ONLY public.hdpe_cut_pieces
 
 
 --
--- Name: hdpe_cut_pieces hdpe_cut_pieces_deleted_by_transaction_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+-- Name: hdpe_cut_pieces hdpe_cut_pieces_deleted_by_transaction_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.hdpe_cut_pieces
@@ -4025,7 +3883,7 @@ ALTER TABLE ONLY public.hdpe_cut_pieces
 
 
 --
--- Name: hdpe_cut_pieces hdpe_cut_pieces_original_stock_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+-- Name: hdpe_cut_pieces hdpe_cut_pieces_original_stock_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.hdpe_cut_pieces
@@ -4033,7 +3891,7 @@ ALTER TABLE ONLY public.hdpe_cut_pieces
 
 
 --
--- Name: hdpe_cut_pieces hdpe_cut_pieces_reserved_by_transaction_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+-- Name: hdpe_cut_pieces hdpe_cut_pieces_reserved_by_transaction_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.hdpe_cut_pieces
@@ -4041,7 +3899,7 @@ ALTER TABLE ONLY public.hdpe_cut_pieces
 
 
 --
--- Name: hdpe_cut_pieces hdpe_cut_pieces_stock_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+-- Name: hdpe_cut_pieces hdpe_cut_pieces_stock_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.hdpe_cut_pieces
@@ -4049,7 +3907,7 @@ ALTER TABLE ONLY public.hdpe_cut_pieces
 
 
 --
--- Name: inventory_stock inventory_stock_batch_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+-- Name: inventory_stock inventory_stock_batch_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.inventory_stock
@@ -4057,7 +3915,7 @@ ALTER TABLE ONLY public.inventory_stock
 
 
 --
--- Name: inventory_stock inventory_stock_deleted_by_transaction_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+-- Name: inventory_stock inventory_stock_deleted_by_transaction_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.inventory_stock
@@ -4065,7 +3923,7 @@ ALTER TABLE ONLY public.inventory_stock
 
 
 --
--- Name: inventory_stock inventory_stock_parent_stock_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+-- Name: inventory_stock inventory_stock_parent_stock_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.inventory_stock
@@ -4073,7 +3931,7 @@ ALTER TABLE ONLY public.inventory_stock
 
 
 --
--- Name: inventory_stock inventory_stock_product_variant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+-- Name: inventory_stock inventory_stock_product_variant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.inventory_stock
@@ -4081,7 +3939,7 @@ ALTER TABLE ONLY public.inventory_stock
 
 
 --
--- Name: inventory_transactions inventory_transactions_batch_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+-- Name: inventory_transactions inventory_transactions_batch_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.inventory_transactions
@@ -4089,7 +3947,7 @@ ALTER TABLE ONLY public.inventory_transactions
 
 
 --
--- Name: inventory_transactions inventory_transactions_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+-- Name: inventory_transactions inventory_transactions_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.inventory_transactions
@@ -4097,7 +3955,7 @@ ALTER TABLE ONLY public.inventory_transactions
 
 
 --
--- Name: inventory_transactions inventory_transactions_dispatch_item_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+-- Name: inventory_transactions inventory_transactions_dispatch_item_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.inventory_transactions
@@ -4105,7 +3963,7 @@ ALTER TABLE ONLY public.inventory_transactions
 
 
 --
--- Name: inventory_transactions inventory_transactions_from_stock_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+-- Name: inventory_transactions inventory_transactions_from_stock_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.inventory_transactions
@@ -4113,7 +3971,7 @@ ALTER TABLE ONLY public.inventory_transactions
 
 
 --
--- Name: inventory_transactions inventory_transactions_reverted_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+-- Name: inventory_transactions inventory_transactions_reverted_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.inventory_transactions
@@ -4121,7 +3979,7 @@ ALTER TABLE ONLY public.inventory_transactions
 
 
 --
--- Name: inventory_transactions inventory_transactions_to_stock_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+-- Name: inventory_transactions inventory_transactions_to_stock_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.inventory_transactions
@@ -4129,7 +3987,7 @@ ALTER TABLE ONLY public.inventory_transactions
 
 
 --
--- Name: locations locations_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: locations locations_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.locations
@@ -4137,7 +3995,7 @@ ALTER TABLE ONLY public.locations
 
 
 --
--- Name: parameter_options parameter_options_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: parameter_options parameter_options_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.parameter_options
@@ -4145,7 +4003,7 @@ ALTER TABLE ONLY public.parameter_options
 
 
 --
--- Name: password_reset_tokens password_reset_tokens_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: password_reset_tokens password_reset_tokens_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.password_reset_tokens
@@ -4153,7 +4011,7 @@ ALTER TABLE ONLY public.password_reset_tokens
 
 
 --
--- Name: piece_lifecycle_events piece_lifecycle_events_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: piece_lifecycle_events piece_lifecycle_events_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.piece_lifecycle_events
@@ -4161,7 +4019,7 @@ ALTER TABLE ONLY public.piece_lifecycle_events
 
 
 --
--- Name: piece_lifecycle_events piece_lifecycle_events_transaction_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: piece_lifecycle_events piece_lifecycle_events_transaction_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.piece_lifecycle_events
@@ -4169,7 +4027,7 @@ ALTER TABLE ONLY public.piece_lifecycle_events
 
 
 --
--- Name: product_aliases product_aliases_product_variant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: product_aliases product_aliases_product_variant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.product_aliases
@@ -4177,7 +4035,7 @@ ALTER TABLE ONLY public.product_aliases
 
 
 --
--- Name: product_types product_types_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: product_types product_types_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.product_types
@@ -4185,7 +4043,7 @@ ALTER TABLE ONLY public.product_types
 
 
 --
--- Name: product_types product_types_unit_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: product_types product_types_unit_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.product_types
@@ -4193,7 +4051,7 @@ ALTER TABLE ONLY public.product_types
 
 
 --
--- Name: product_variants product_variants_brand_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: product_variants product_variants_brand_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.product_variants
@@ -4201,7 +4059,7 @@ ALTER TABLE ONLY public.product_variants
 
 
 --
--- Name: product_variants product_variants_product_type_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: product_variants product_variants_product_type_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.product_variants
@@ -4209,7 +4067,7 @@ ALTER TABLE ONLY public.product_variants
 
 
 --
--- Name: return_bundles return_bundles_return_item_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: return_bundles return_bundles_return_item_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.return_bundles
@@ -4217,7 +4075,7 @@ ALTER TABLE ONLY public.return_bundles
 
 
 --
--- Name: return_bundles return_bundles_stock_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: return_bundles return_bundles_stock_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.return_bundles
@@ -4225,7 +4083,7 @@ ALTER TABLE ONLY public.return_bundles
 
 
 --
--- Name: return_items return_items_product_variant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: return_items return_items_product_variant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.return_items
@@ -4233,7 +4091,7 @@ ALTER TABLE ONLY public.return_items
 
 
 --
--- Name: return_items return_items_return_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: return_items return_items_return_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.return_items
@@ -4241,7 +4099,7 @@ ALTER TABLE ONLY public.return_items
 
 
 --
--- Name: return_rolls return_rolls_return_item_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: return_rolls return_rolls_return_item_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.return_rolls
@@ -4249,7 +4107,7 @@ ALTER TABLE ONLY public.return_rolls
 
 
 --
--- Name: return_rolls return_rolls_stock_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: return_rolls return_rolls_stock_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.return_rolls
@@ -4257,7 +4115,7 @@ ALTER TABLE ONLY public.return_rolls
 
 
 --
--- Name: returns returns_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: returns returns_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.returns
@@ -4265,7 +4123,7 @@ ALTER TABLE ONLY public.returns
 
 
 --
--- Name: returns returns_customer_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: returns returns_customer_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.returns
@@ -4273,7 +4131,7 @@ ALTER TABLE ONLY public.returns
 
 
 --
--- Name: returns returns_reverted_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: returns returns_reverted_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.returns
@@ -4281,7 +4139,7 @@ ALTER TABLE ONLY public.returns
 
 
 --
--- Name: rollback_history rollback_history_rolled_back_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: rollback_history rollback_history_rolled_back_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.rollback_history
@@ -4289,7 +4147,7 @@ ALTER TABLE ONLY public.rollback_history
 
 
 --
--- Name: rollback_history rollback_history_snapshot_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: rollback_history rollback_history_snapshot_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.rollback_history
@@ -4297,7 +4155,7 @@ ALTER TABLE ONLY public.rollback_history
 
 
 --
--- Name: scrap_items scrap_items_batch_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: scrap_items scrap_items_batch_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.scrap_items
@@ -4305,7 +4163,7 @@ ALTER TABLE ONLY public.scrap_items
 
 
 --
--- Name: scrap_items scrap_items_product_variant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: scrap_items scrap_items_product_variant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.scrap_items
@@ -4313,7 +4171,7 @@ ALTER TABLE ONLY public.scrap_items
 
 
 --
--- Name: scrap_items scrap_items_scrap_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: scrap_items scrap_items_scrap_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.scrap_items
@@ -4321,7 +4179,7 @@ ALTER TABLE ONLY public.scrap_items
 
 
 --
--- Name: scrap_items scrap_items_stock_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: scrap_items scrap_items_stock_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.scrap_items
@@ -4329,7 +4187,7 @@ ALTER TABLE ONLY public.scrap_items
 
 
 --
--- Name: scrap_pieces scrap_pieces_scrap_item_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: scrap_pieces scrap_pieces_scrap_item_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.scrap_pieces
@@ -4337,7 +4195,7 @@ ALTER TABLE ONLY public.scrap_pieces
 
 
 --
--- Name: scraps scraps_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: scraps scraps_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.scraps
@@ -4345,7 +4203,7 @@ ALTER TABLE ONLY public.scraps
 
 
 --
--- Name: smtp_config smtp_config_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: smtp_config smtp_config_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.smtp_config
@@ -4353,7 +4211,7 @@ ALTER TABLE ONLY public.smtp_config
 
 
 --
--- Name: smtp_config smtp_config_updated_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: smtp_config smtp_config_updated_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.smtp_config
@@ -4361,7 +4219,7 @@ ALTER TABLE ONLY public.smtp_config
 
 
 --
--- Name: sprinkler_spare_pieces sprinkler_spare_pieces_created_by_transaction_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+-- Name: sprinkler_spare_pieces sprinkler_spare_pieces_created_by_transaction_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.sprinkler_spare_pieces
@@ -4369,7 +4227,7 @@ ALTER TABLE ONLY public.sprinkler_spare_pieces
 
 
 --
--- Name: sprinkler_spare_pieces sprinkler_spare_pieces_deleted_by_transaction_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+-- Name: sprinkler_spare_pieces sprinkler_spare_pieces_deleted_by_transaction_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.sprinkler_spare_pieces
@@ -4377,7 +4235,7 @@ ALTER TABLE ONLY public.sprinkler_spare_pieces
 
 
 --
--- Name: sprinkler_spare_pieces sprinkler_spare_pieces_original_stock_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+-- Name: sprinkler_spare_pieces sprinkler_spare_pieces_original_stock_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.sprinkler_spare_pieces
@@ -4385,7 +4243,7 @@ ALTER TABLE ONLY public.sprinkler_spare_pieces
 
 
 --
--- Name: sprinkler_spare_pieces sprinkler_spare_pieces_reserved_by_transaction_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+-- Name: sprinkler_spare_pieces sprinkler_spare_pieces_reserved_by_transaction_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.sprinkler_spare_pieces
@@ -4393,7 +4251,7 @@ ALTER TABLE ONLY public.sprinkler_spare_pieces
 
 
 --
--- Name: sprinkler_spare_pieces sprinkler_spare_pieces_stock_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+-- Name: sprinkler_spare_pieces sprinkler_spare_pieces_stock_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.sprinkler_spare_pieces
@@ -4401,7 +4259,7 @@ ALTER TABLE ONLY public.sprinkler_spare_pieces
 
 
 --
--- Name: transactions transactions_batch_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: transactions transactions_batch_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.transactions
@@ -4409,7 +4267,7 @@ ALTER TABLE ONLY public.transactions
 
 
 --
--- Name: transactions transactions_bill_to_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: transactions transactions_bill_to_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.transactions
@@ -4417,7 +4275,7 @@ ALTER TABLE ONLY public.transactions
 
 
 --
--- Name: transactions transactions_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: transactions transactions_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.transactions
@@ -4425,7 +4283,7 @@ ALTER TABLE ONLY public.transactions
 
 
 --
--- Name: transactions transactions_customer_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: transactions transactions_customer_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.transactions
@@ -4433,7 +4291,7 @@ ALTER TABLE ONLY public.transactions
 
 
 --
--- Name: transactions transactions_from_location_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: transactions transactions_from_location_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.transactions
@@ -4441,7 +4299,7 @@ ALTER TABLE ONLY public.transactions
 
 
 --
--- Name: transactions transactions_product_variant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: transactions transactions_product_variant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.transactions
@@ -4449,7 +4307,7 @@ ALTER TABLE ONLY public.transactions
 
 
 --
--- Name: transactions transactions_to_location_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: transactions transactions_to_location_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.transactions
@@ -4457,7 +4315,7 @@ ALTER TABLE ONLY public.transactions
 
 
 --
--- Name: transactions transactions_transport_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: transactions transactions_transport_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.transactions
@@ -4465,7 +4323,7 @@ ALTER TABLE ONLY public.transactions
 
 
 --
--- Name: transactions transactions_vehicle_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: transactions transactions_vehicle_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.transactions
@@ -4473,7 +4331,7 @@ ALTER TABLE ONLY public.transactions
 
 
 --
--- Name: user_roles user_roles_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: user_roles user_roles_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.user_roles
@@ -4481,7 +4339,7 @@ ALTER TABLE ONLY public.user_roles
 
 
 --
--- Name: users users_created_by_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sachdevs
+-- Name: users users_created_by_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.users
