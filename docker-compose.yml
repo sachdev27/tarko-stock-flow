@@ -39,6 +39,7 @@ services:
       UPLOAD_STORAGE_PATH: /app/uploads
       BACKUP_RETENTION_DAYS: 30
       CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      APP_URL: ${APP_URL:-https://tarko-inv.web.app}
     volumes:
       - ./backend/uploads:/app/uploads
       - ./snapshots:/app/snapshots
