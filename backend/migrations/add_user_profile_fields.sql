@@ -18,6 +18,10 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_login_attempts INTEGER NOT NUL
 ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS last_failed_login_at TIMESTAMPTZ;
 
+-- Add password reset tracking columns
+ALTER TABLE users ADD COLUMN IF NOT EXISTS last_password_reset_request TIMESTAMPTZ;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS password_changed_at TIMESTAMPTZ;
+
 -- Create index on username
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username) WHERE username IS NOT NULL AND deleted_at IS NULL;
 

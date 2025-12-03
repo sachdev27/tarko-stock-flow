@@ -57,6 +57,8 @@ def create_admin():
             data = request.get_json()
             email = data.get('email')
             password = data.get('password')
+            username = data.get('username')
+            full_name = data.get('full_name') or data.get('fullName')
 
             if not email or not password:
                 return jsonify({'error': 'Email and password are required'}), 400
@@ -83,19 +85,21 @@ def create_admin():
                     UPDATE users
                     SET deleted_at = NULL,
                         password_hash = %s,
+                        username = %s,
+                        full_name = %s,
                         updated_at = now()
                     WHERE id = %s
-                    RETURNING id, email
-                """, (password_hash, existing_user['id']))
+                    RETURNING id, email, username, full_name
+                """, (password_hash, username, full_name, existing_user['id']))
                 user = cursor.fetchone()
                 user_id = user['id']
             else:
                 # Create new user
                 cursor.execute("""
-                    INSERT INTO users (email, password_hash)
-                    VALUES (%s, %s)
-                    RETURNING id, email
-                """, (email, password_hash))
+                    INSERT INTO users (email, password_hash, username, full_name)
+                    VALUES (%s, %s, %s, %s)
+                    RETURNING id, email, username, full_name
+                """, (email, password_hash, username, full_name))
                 user = cursor.fetchone()
                 user_id = user['id']
 

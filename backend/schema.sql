@@ -20,6 +20,8 @@ CREATE TABLE users (
   failed_login_attempts INTEGER NOT NULL DEFAULT 0,
   locked_until TIMESTAMPTZ,
   last_failed_login_at TIMESTAMPTZ,
+  last_password_reset_request TIMESTAMPTZ,
+  password_changed_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   deleted_at TIMESTAMPTZ
@@ -38,6 +40,23 @@ CREATE TABLE user_roles (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE(user_id, role)
 );
+
+-- Password reset tokens table
+CREATE TABLE password_reset_tokens (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token VARCHAR(255) NOT NULL UNIQUE,
+  expires_at TIMESTAMPTZ NOT NULL,
+  used BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  used_at TIMESTAMPTZ,
+  ip_address VARCHAR(45),
+  user_agent TEXT
+);
+
+CREATE INDEX idx_reset_tokens_token ON password_reset_tokens(token);
+CREATE INDEX idx_reset_tokens_user ON password_reset_tokens(user_id);
+CREATE INDEX idx_reset_tokens_expires ON password_reset_tokens(expires_at);
 
 -- Locations table
 CREATE TABLE locations (
