@@ -24,13 +24,33 @@ echo "✅ PostgreSQL is ready!"
 echo "✅ Database initialization handled by PostgreSQL container"
 
 # Run any pending migrations
-echo "🔄 Checking for migrations..."
+echo "🔄 Running database migrations..."
 if [ -d "migrations" ]; then
+    # Extract password from DATABASE_URL
+    DB_PASSWORD=$(echo $DATABASE_URL | sed -E 's/.*:([^@]+)@.*/\1/')
+    DB_NAME=$(echo $DATABASE_URL | sed -E 's/.*\/([^?]+).*/\1/')
+
+    export PGPASSWORD="$DB_PASSWORD"
+
     for migration in migrations/*.sql; do
         if [ -f "$migration" ]; then
-            echo "📝 Found migration: $(basename $migration)"
+            migration_name=$(basename "$migration")
+            echo "📝 Applying migration: $migration_name"
+
+            # Run migration and capture output
+            if psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -f "$migration" > /tmp/migration.log 2>&1; then
+                echo "✅ Successfully applied: $migration_name"
+            else
+                echo "⚠️  Migration $migration_name may have already been applied or encountered an error"
+                cat /tmp/migration.log
+            fi
         fi
     done
+
+    unset PGPASSWORD
+    echo "✅ Migrations complete!"
+else
+    echo "⚠️  No migrations directory found"
 fi
 
 # Start the Flask application
