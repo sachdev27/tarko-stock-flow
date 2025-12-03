@@ -42,6 +42,7 @@ backend/*.egg-info/
 *.sqlite
 *.sqlite3
 backend/database.db
+postgres_data/*
 
 # Editor directories and files
 .vscode/*
