@@ -12,13 +12,22 @@ CREATE TYPE transaction_type AS ENUM (
 CREATE TABLE users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   email VARCHAR(255) NOT NULL UNIQUE,
+  username VARCHAR(100) UNIQUE,
   password_hash VARCHAR(255) NOT NULL,
+  full_name VARCHAR(255),
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  last_login_at TIMESTAMPTZ,
+  failed_login_attempts INTEGER NOT NULL DEFAULT 0,
+  locked_until TIMESTAMPTZ,
+  last_failed_login_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   deleted_at TIMESTAMPTZ
 );
 
 CREATE INDEX idx_users_email ON users(email) WHERE deleted_at IS NULL;
+CREATE INDEX idx_users_username ON users(username) WHERE username IS NOT NULL AND deleted_at IS NULL;
+CREATE INDEX idx_users_is_active ON users(is_active) WHERE deleted_at IS NULL;
 
 -- User roles table
 CREATE TABLE user_roles (
