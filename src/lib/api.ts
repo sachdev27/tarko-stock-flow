@@ -22,17 +22,32 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Handle 401 errors globally
+// Handle 401 and 403 errors globally
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     console.error('API Error:', error.response?.status, error.response?.data || error.message);
+
     if (error.response?.status === 401) {
       // Token is invalid or expired
+      console.warn('401 Unauthorized - Token expired or invalid, clearing and redirecting to login');
       localStorage.removeItem('token');
       // Only redirect if not already on auth page
       if (!window.location.pathname.includes('/auth')) {
         window.location.href = '/auth';
+      }
+    } else if (error.response?.status === 403) {
+      // Forbidden - authenticated but not authorized (role issue or token expired silently)
+      console.warn('403 Forbidden - May indicate expired token or insufficient permissions');
+
+      // Check if error message indicates token expiry
+      const errorMsg = error.response?.data?.error || error.response?.data?.msg || '';
+      if (errorMsg.toLowerCase().includes('token') || errorMsg.toLowerCase().includes('expired')) {
+        console.warn('Token-related 403 error, clearing token and redirecting to login');
+        localStorage.removeItem('token');
+        if (!window.location.pathname.includes('/auth')) {
+          window.location.href = '/auth';
+        }
       }
     }
     return Promise.reject(error);
