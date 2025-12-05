@@ -26,7 +26,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Search, Eye, TruckIcon, Package, Filter, X } from 'lucide-react';
+import { Search, Eye, TruckIcon, Package, Filter, X, Download } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { DispatchAPI } from '@/components/dispatch/dispatchAPI';
 import { format } from 'date-fns';
@@ -229,6 +229,58 @@ export const DispatchHistoryTab = () => {
     });
   };
 
+  const exportToCSV = () => {
+    const headers = [
+      'Dispatch #',
+      'Date',
+      'Customer',
+      'City',
+      'Bill To',
+      'Transport',
+      'Driver',
+      'Vehicle',
+      'Invoice #',
+      'Items',
+      'Quantity',
+      'Status',
+      'Notes',
+      'Created By',
+      'Created At'
+    ];
+
+    const rows = filteredDispatches.map(d => [
+      d.dispatch_number,
+      formatDate(d.dispatch_date),
+      d.customer_name,
+      d.customer_city || '',
+      d.bill_to_name || '',
+      d.transport_name || '',
+      d.vehicle_driver || '',
+      d.vehicle_number || '',
+      d.invoice_number || '',
+      d.total_items,
+      d.total_quantity,
+      d.status,
+      d.notes || '',
+      d.created_by_email,
+      format(new Date(d.created_at), 'MMM dd, yyyy HH:mm')
+    ]);
+
+    const csv = [
+      headers.join(','),
+      ...rows.map(row =>
+        row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')
+      ),
+    ].join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `dispatches_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    toast.success('Dispatch data exported to CSV');
+  };
+
   return (
     <>
       <Card>
@@ -238,9 +290,21 @@ export const DispatchHistoryTab = () => {
               <TruckIcon className="h-6 w-6" />
               Dispatch History
             </div>
-            <Button onClick={fetchDispatches} disabled={loading} size="sm">
-              Refresh
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={exportToCSV}
+                disabled={loading || filteredDispatches.length === 0}
+                size="sm"
+                className="flex items-center gap-2"
+              >
+                <Download className="h-4 w-4" />
+                <span className="hidden sm:inline">Export CSV</span>
+              </Button>
+              <Button onClick={fetchDispatches} disabled={loading} size="sm">
+                Refresh
+              </Button>
+            </div>
           </CardTitle>
         </CardHeader>
 

@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { PackageX, Search, Filter, X } from 'lucide-react';
+import { PackageX, Search, Filter, X, Download } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import api from '@/lib/api';
 import { format } from 'date-fns';
@@ -219,11 +219,62 @@ const ReturnHistory = () => {
     return type.replace('_', ' ');
   };
 
+  const exportToCSV = () => {
+    const headers = [
+      'Return #',
+      'Date',
+      'Customer',
+      'City',
+      'Items',
+      'Quantity',
+      'Status',
+      'Notes',
+      'Created At'
+    ];
+
+    const rows = filteredReturns.map(r => [
+      r.return_number,
+      format(new Date(r.return_date), 'MMM dd, yyyy'),
+      r.customer_name,
+      r.customer_city || '',
+      r.item_count,
+      r.total_quantity,
+      r.status,
+      r.notes || '',
+      format(new Date(r.created_at), 'MMM dd, yyyy HH:mm')
+    ]);
+
+    const csv = [
+      headers.join(','),
+      ...rows.map(row =>
+        row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')
+      ),
+    ].join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `returns_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    toast.success('Return data exported to CSV');
+  };
+
   return (
     <div className="w-full">
-      <div className="flex items-center gap-3 mb-6">
-        <PackageX className="h-8 w-8 text-orange-600" />
-        <h1 className="text-3xl font-bold">Return History</h1>
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <PackageX className="h-8 w-8 text-orange-600" />
+          <h1 className="text-3xl font-bold">Return History</h1>
+        </div>
+        <Button
+          variant="outline"
+          onClick={exportToCSV}
+          disabled={loading || filteredReturns.length === 0}
+          className="flex items-center gap-2"
+        >
+          <Download className="h-4 w-4" />
+          <span className="hidden sm:inline">Export CSV</span>
+        </Button>
       </div>
 
       {/* Search and Filter Bar */}

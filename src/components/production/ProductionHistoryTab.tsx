@@ -26,7 +26,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Search, Factory, Package, Filter, X, Paperclip, ExternalLink } from 'lucide-react';
+import { Search, Factory, Package, Filter, X, Paperclip, ExternalLink, Download } from 'lucide-react';
 import { production } from '@/lib/api';
 import { format } from 'date-fns';
 
@@ -218,6 +218,56 @@ export const ProductionHistoryTab = () => {
     }
   };
 
+  const exportToCSV = () => {
+    const headers = [
+      'Batch #',
+      'Batch Code',
+      'Production Date',
+      'Product Type',
+      'Brand',
+      'Parameters',
+      'Quantity',
+      'Piece Length',
+      'Weight/Meter',
+      'Total Weight',
+      'Items',
+      'Notes',
+      'Created By',
+      'Created At'
+    ];
+
+    const rows = filteredBatches.map(b => [
+      b.batch_no,
+      b.batch_code,
+      formatDate(b.production_date),
+      b.product_type_name,
+      b.brand_name,
+      Object.entries(b.parameters).map(([k, v]) => `${k}:${v}`).join('; '),
+      b.initial_quantity,
+      b.piece_length || '',
+      b.weight_per_meter || '',
+      b.total_weight || '',
+      b.total_items,
+      b.notes || '',
+      b.created_by_email,
+      format(new Date(b.created_at), 'MMM dd, yyyy HH:mm')
+    ]);
+
+    const csv = [
+      headers.join(','),
+      ...rows.map(row =>
+        row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')
+      ),
+    ].join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `production_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    toast.success('Production data exported to CSV');
+  };
+
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString('en-US', {
       year: 'numeric',
@@ -235,9 +285,21 @@ export const ProductionHistoryTab = () => {
               <Factory className="h-6 w-6" />
               Production History
             </div>
-            <Button onClick={fetchBatches} disabled={loading} size="sm">
-              Refresh
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={exportToCSV}
+                disabled={loading || filteredBatches.length === 0}
+                size="sm"
+                className="flex items-center gap-2"
+              >
+                <Download className="h-4 w-4" />
+                <span className="hidden sm:inline">Export CSV</span>
+              </Button>
+              <Button onClick={fetchBatches} disabled={loading} size="sm">
+                Refresh
+              </Button>
+            </div>
           </CardTitle>
         </CardHeader>
 

@@ -35,7 +35,7 @@ def get_parameter_options():
             """)
             options = cursor.fetchall()
 
-            # Group by parameter_name
+            # Group by parameter_name and sort appropriately
             grouped = {}
             for opt in options:
                 param_name = opt['parameter_name']
@@ -46,6 +46,15 @@ def get_parameter_options():
                     'value': opt['option_value'],
                     'created_at': opt['created_at'].isoformat() if opt['created_at'] else None
                 })
+
+            # Sort each parameter's options: numerically if all numeric, else alphabetically
+            for param_name, opts in grouped.items():
+                try:
+                    # Try to sort numerically
+                    grouped[param_name] = sorted(opts, key=lambda x: float(x['value']))
+                except (ValueError, TypeError):
+                    # If not all numeric, sort alphabetically
+                    grouped[param_name] = sorted(opts, key=lambda x: x['value'])
 
             return jsonify(grouped), 200
     except Exception as e:return jsonify({'error': str(e)}), 500
@@ -64,11 +73,19 @@ def get_parameter_options_by_name(parameter_name):
             """, (parameter_name,))
             options = cursor.fetchall()
 
-            return jsonify([{
+            result = [{
                 'id': opt['id'],
                 'value': opt['option_value'],
                 'created_at': opt['created_at'].isoformat() if opt['created_at'] else None
-            } for opt in options]), 200
+            } for opt in options]
+
+            # Sort numerically if all values are numeric, else alphabetically
+            try:
+                result = sorted(result, key=lambda x: float(x['value']))
+            except (ValueError, TypeError):
+                result = sorted(result, key=lambda x: x['value'])
+
+            return jsonify(result), 200
     except Exception as e:return jsonify({'error': str(e)}), 500
 
 @parameter_bp.route('/options', methods=['POST'])

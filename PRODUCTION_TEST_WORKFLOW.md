@@ -25,17 +25,21 @@ This document provides a comprehensive step-by-step testing workflow to verify a
 
 **Purpose:** Verify new inventory can be created
 
-#### Test Case 1.1: Create HDPE Roll Batch
+#### Test Case 1.1: Create HDPE Pipe Roll Batch
 1. Navigate to **Production → New Batch**
 2. Fill in details:
-   - **Product Type:** HDPE Roll
+   - **Product Type:** HDPE Pipe (System Product Type)
    - **Brand:** Select any brand (e.g., Jindal)
-   - **Variant:** Select variant (e.g., 200 Micron, 4m width)
-   - **Color:** Black
+   - **Parameters:**
+     - PE: 80 or 100
+     - PN: 6, 10, or 16
+     - OD: 20mm, 25mm, 32mm, etc.
    - **Batch Number:** TEST-HDPE-001
+   - **Roll Configuration:** Standard Rolls
+   - **Roll Length:** 500m or 300m
    - **Number of Rolls:** 5
-   - **Weight per Roll:** 100 kg
-   - **Location:** Main Warehouse
+   - **Weight per Meter:** 0.2 kg/m
+   - **Total Weight:** Auto-calculated based on length × weight/m
 3. Click **Create Batch**
 
 **Verify P&C:**
@@ -43,21 +47,26 @@ This document provides a comprehensive step-by-step testing workflow to verify a
 - ✅ Navigate to **Inventory → Stock**
 - ✅ Filter by batch `TEST-HDPE-001`
 - ✅ **Count Check:** Exactly 5 rolls visible
-- ✅ **Weight Check:** Each roll shows 100 kg
-- ✅ **Status Check:** All rolls show "in_stock"
-- ✅ **Total Weight:** 5 rolls × 100 kg = 500 kg total
-
+- ✅ **Stock Type:** Shows "FULL_ROLL" for each roll
+- ✅ **Length Check:** Each roll shows 500m or 300m (length_per_unit)
+- ✅ **Weight per Meter Check:** weight_per_meter = 0.2 kg/m
+- ✅ **Total Roll Weight:** Calculated as 500m × 0.2 kg/m = 100 kg per roll
+- ✅ **Status Check:** All rolls show "IN_STOCK" (uppercase)
 #### Test Case 1.2: Create Sprinkler Pipe Bundle Batch
 1. Navigate to **Production → New Batch**
 2. Fill in details:
-   - **Product Type:** Sprinkler Pipe
+   - **Product Type:** Sprinkler Pipe (System Product Type)
    - **Brand:** Select brand
-   - **Variant:** Select variant (e.g., 12mm diameter)
+   - **Parameters:**
+     - OD: 12mm, 16mm, or 20mm
+     - PN: 4, 6, or 10
+     - Type: Lateral, Sub-main, or Main line
    - **Batch Number:** TEST-SPR-001
+   - **Roll Configuration:** Bundles (quantity-based)
+   - **Piece Length:** 6m (piece_length_meters)
+   - **Weight per Meter:** 0.33 kg/m
    - **Number of Bundles:** 3
-   - **Pieces per Bundle:** 50
-   - **Weight per Piece:** 2 kg
-   - **Location:** Main Warehouse
+   - **Bundle Size:** 20 pieces per bundle
 3. Click **Create Batch**
 
 **Verify P&C:**
@@ -65,10 +74,16 @@ This document provides a comprehensive step-by-step testing workflow to verify a
 - ✅ Navigate to **Inventory → Stock**
 - ✅ Filter by batch `TEST-SPR-001`
 - ✅ **Count Check:** Exactly 3 bundles visible
-- ✅ **Pieces Check:** Each bundle shows 50 pieces
-- ✅ **Weight Check:** Each piece shows 2 kg
-- ✅ **Total Pieces:** 3 bundles × 50 pieces = 150 pieces
-- ✅ **Total Weight:** 150 pieces × 2 kg = 300 kg
+- ✅ **Stock Type:** Shows "BUNDLE" for each bundle
+- ✅ **Pieces Check:** Each bundle shows bundle_size (10 or 20 pieces_per_bundle)
+- ✅ **Piece Length Check:** piece_length_meters shows 6m
+- ✅ **Weight per Meter Check:** weight_per_meter = 0.33 kg/m
+- ✅ **Weight per Piece:** Calculated as 6m × 0.33 kg/m = 2 kg
+- ✅ **Status Check:** All bundles show "IN_STOCK" (uppercase)
+- ✅ **Unit:** Pieces (pcs) - from system unit
+- ✅ **Total Pieces:** 3 bundles × bundle_size ( 20 ) (e.g., 3 × 20 = 60 pieces)
+- ✅ **Total Weight:** 60 pieces × 2 kg = 120 kg
+- ✅ **Parameters Saved:** OD, PN, Type values stored in parameters JSONB column
 
 ---
 
@@ -97,112 +112,143 @@ This document provides a comprehensive step-by-step testing workflow to verify a
 - ✅ **Status Check:** 2 rolls show "DISPATCHED" status in inventory_stock table
 - ✅ **Remaining Stock:** 3 rolls with "IN_STOCK" status
 - ✅ **Weight Check:** Remaining weight = 3 × 100 kg = 300 kg
-- ✅ Navigate to **Dispatch → History**
-- ✅ **Dispatch Record:** Shows 2 rolls dispatched, 200 kg total
-- ✅ **Stock Type Check:** Items show stock_type = 'FULL_ROLL'
-- ✅ **Transaction Created:** Check inventory_transactions for transaction_type = 'DISPATCH'
-
 #### Test Case 2.2: Dispatch Full Bundles (Sprinkler)
 1. Navigate to **Dispatch → Create Dispatch**
-2. Add 1 bundle (50 pieces) from batch `TEST-SPR-001`
+2. Add 1 bundle from batch `TEST-SPR-001`
 3. Complete dispatch
 
 **Verify P&C:**
 - ✅ Dispatch created successfully
 - ✅ **Count Check:** 2 bundles remain (was 3, dispatched 1)
+- ✅ **Stock Type:** Dispatched item shows item_type = 'BUNDLE'
+- ✅ **Pieces Check:** If bundle_size = 20, then:
+  - Dispatched: 1 bundle × 20 pieces = 20 pieces
+  - Remaining: 2 bundles × 20 pieces = 40 pieces
+- ✅ **Weight Check:** Remaining = 40 pieces × 2 kg = 80 kg
+- ✅ Dispatch record shows bundle with correct piece count and weight
+- ✅ **Piece Length:** Shows 6m piece_length_meters in dispatch_items
+- ✅ Dispatch created successfully
+- ✅ **Count Check:** 2 bundles remain (was 3, dispatched 1)
 - ✅ **Pieces Check:** Remaining = 2 bundles × 50 pieces = 100 pieces
-- ✅ **Weight Check:** Remaining = 100 pieces × 2 kg = 200 kg
-- ✅ Dispatch shows 50 pieces, 100 kg total
-
----
-
-### Phase 3: Cut Operations (Create Cut Pieces)
-
-**Purpose:** Verify rolls can be cut into smaller pieces
-
-#### Test Case 3.1: Cut HDPE Roll
+#### Test Case 3.1: Cut HDPE Pipe Roll
 1. Navigate to **Inventory → Stock**
-2. Find one of the remaining rolls from `TEST-HDPE-001`
+2. Find one of the remaining rolls from `TEST-HDPE-001` (should be 500m full roll)
 3. Click **Actions → Cut Roll**
 4. Enter cut details:
-   - **Number of Pieces:** 4
-   - **Length per Piece:** 10 meters
-   - **Weight per Piece:** 20 kg
+   - **Number of Cut Pieces:** 4
+   - **Length per Piece:** 100 meters
+   - System auto-calculates weight: 100m × 0.2 kg/m = 20 kg per piece
 5. Click **Confirm Cut**
 
 **Verify P&C:**
 - ✅ Cut operation successful
-- ✅ **Original Roll:** deleted_at set (soft delete) or status changed
-- ✅ **New Cut Pieces:** 4 new pieces created in `hdpe_cut_pieces` table
+- ✅ **Original Roll:** Status changed or deleted_at set (soft delete)
+- ✅ **Original Stock Type:** Was 'FULL_ROLL', now being replaced
+- ✅ **New Stock Entry:** Created with stock_type = 'CUT_ROLL'
+- ✅ **New Cut Pieces:** 4 pieces created in `hdpe_cut_pieces` table
 - ✅ **Each Piece Shows:**
-  - Length: 10m (length_meters column)
-  - Weight: 20 kg (weight_grams = 20000)
+  - length_meters: 100m
+  - weight_grams: 20000 (20 kg × 1000)
   - Source batch: `TEST-HDPE-001`
-  - Status: "IN_STOCK"
+  - status: "IN_STOCK" (uppercase)
   - created_by_transaction_id: Points to CUT_ROLL transaction
-  - original_stock_id: References original roll
-- ✅ **Total Weight Preserved:** 4 pieces × 20 kg = 80 kg ≤ original roll weight (100 kg)
-- ✅ Navigate to **Inventory → Cut Pieces (HDPE)**
-- ✅ **Cut Pieces Visible:** 4 pieces from TEST-HDPE-001 batch
+  - original_stock_id: References original full roll stock_id
+  - version: 1 (for optimistic locking)
+  - stock_id: Points to new CUT_ROLL stock entry
+- ✅ **Total Length Check:** 4 pieces × 100m = 400m ≤ original roll (500m)
+- ✅ **Total Weight Preserved:** 4 pieces × 20 kg = 80 kg (matches 400m × 0.2 kg/m)
+- ✅ Navigate to **Inventory → Stock** and filter stock_type = 'CUT_ROLL'
+- ✅ **Cut Roll Stock Visible:** Shows quantity = 4 (number of cut pieces)
 - ✅ **Transaction Check:** inventory_transactions shows transaction_type = 'CUT_ROLL'
-
+  - Weight: 20 kg (weight_grams = 20000)
 #### Test Case 3.2: Dispatch Cut Pieces
 1. Navigate to **Dispatch → Create Dispatch**
 2. Add cut pieces:
-   - Select 2 of the 4 cut pieces created above
+   - Select 2 of the 4 cut pieces created above (100m each)
 3. Complete dispatch
 
 **Verify P&C:**
 - ✅ Dispatch includes cut pieces
+- ✅ **Item Type:** Shows item_type = 'CUT_ROLL' or 'CUT_PIECE'
 - ✅ **Remaining Cut Pieces:** 2 pieces (was 4, dispatched 2)
+- ✅ **hdpe_cut_pieces table:** 2 pieces have status = 'DISPATCHED'
+- ✅ **Length Dispatched:** 2 × 100m = 200m
 - ✅ **Weight Dispatched:** 2 × 20 kg = 40 kg
-- ✅ Dispatch record shows cut pieces correctly
-
----
-
-### Phase 4: Split Operations
-
-**Purpose:** Verify bundles can be split into individual pieces
-
-#### Test Case 4.1: Split Sprinkler Bundle
+- ✅ **CUT_ROLL Stock:** quantity reduced from 4 to 2
+- ✅ Dispatch record shows cut pieces with length_meters and weight
+2. Add cut pieces:
+   - Select 2 of the 4 cut pieces created above
+3. Complete dispatch
+#### Test Case 4.1: Split Sprinkler Pipe Bundle
 1. Navigate to **Inventory → Stock**
-2. Find one bundle from `TEST-SPR-001` (should have 50 pieces)
+2. Find one bundle from `TEST-SPR-001` (should have bundle_size = 20 pieces)
 3. Click **Actions → Split Bundle**
 4. Confirm split operation
 
 **Verify P&C:**
 - ✅ Split operation successful
-- ✅ **Original Bundle:** deleted_at set (soft delete)
-- ✅ **Individual Pieces Created:** 50 individual spare pieces in `sprinkler_spare_pieces` table
+- ✅ **Original Bundle:** Status changed or deleted_at set (soft delete)
+- ✅ **Original Stock Type:** Was 'BUNDLE', now being replaced
+- ✅ **New Stock Entry:** Created with stock_type = 'SPARE'
+- ✅ **Individual Pieces Created:** 20 spare pieces in `sprinkler_spare_pieces` table
 - ✅ **Each Spare Piece Shows:**
-  - Weight: 2 kg (weight_grams = 2000)
+  - piece_count: 1 (one record per piece)
+  - piece_length_meters: 6m (from bundle configuration)
+  - weight_grams: 2000 (6m × 0.33 kg/m = 2 kg, stored as 2000 grams)
   - Source batch: `TEST-SPR-001`
-  - Status: "IN_STOCK" (uppercase)
+  - status: "IN_STOCK" (uppercase)
   - created_by_transaction_id: Points to SPLIT_BUNDLE transaction
-  - original_stock_id: References original bundle
-  - version: 0 (initial version for optimistic locking)
-- ✅ Navigate to **Inventory → Spare Pieces (Sprinkler)**
-- ✅ **Spare Pieces Count:** 50 pieces visible from TEST-SPR-001
-- ✅ **Total Weight:** 50 × 2 kg = 100 kg
-- ✅ **Transaction Check:** inventory_transactions shows transaction_type = 'SPLIT_BUNDLE'
-
+  - original_stock_id: References original bundle stock_id
+  - stock_id: Points to new SPARE stock entry
+  - version: 1 (initial version for optimistic locking)
 #### Test Case 4.2: Dispatch Spare Pieces
 1. Navigate to **Dispatch → Create Dispatch**
 2. Add spare pieces:
-   - Select 10 spare pieces from the split bundle
+   - Select 10 spare pieces from the split bundle (out of 20)
 3. Complete dispatch
 
 **Verify P&C:**
 - ✅ Dispatch successful
-- ✅ **Remaining Spare Pieces:** 40 pieces (was 50, dispatched 10)
-- ✅ **Weight Dispatched:** 10 × 2 kg = 20 kg
-- ✅ Dispatch shows 10 spare pieces correctly
+- ✅ **Item Type:** Shows item_type = 'SPARE_PIECES'
+- ✅ **Remaining Spare Pieces:** 10 pieces (was 20, dispatched 10)
+- ✅ **sprinkler_spare_pieces table:** 10 pieces have status = 'DISPATCHED'
+- ✅ **SPARE Stock:** quantity reduced from 20 to 10
+- ✅ **Weight Dispatched:** 10 pieces × 2 kg = 20 kg
+- ✅ **Piece Length:** Shows 6m piece_length_meters in dispatch_items
+- ✅ Dispatch shows 10 spare pieces with correct weight and length
+  - Status: "IN_STOCK" (uppercase)
+  - created_by_transaction_id: Points to SPLIT_BUNDLE transaction
+  - original_stock_id: References original bundle
+#### Test Case 5.1: Combine Spare Pieces into Bundle
+1. Navigate to **Inventory → Stock**
+2. Filter by stock_type = 'SPARE' and batch `TEST-SPR-001`
+3. Click **Actions → Combine Spares** on the SPARE stock
+4. Enter number of pieces to combine (e.g., 10 pieces out of 10 remaining)
+5. Confirm combination
 
----
-
-### Phase 5: Combine Operations
-
-**Purpose:** Verify individual pieces can be combined back into bundles
+**Verify P&C:**
+- ✅ Combine operation successful
+- ✅ **sprinkler_spare_pieces table:** 10 pieces have:
+  - status: 'SOLD_OUT' (indicates combined)
+  - deleted_at: timestamp set (soft delete)
+  - deleted_by_transaction_id: Points to COMBINE_SPARES transaction
+  - last_modified_by_transaction_id: Updated to COMBINE_SPARES transaction
+  - version: Incremented
+- ✅ **SPARE Stock:** quantity reduced from 10 to 0 (all pieces combined)
+- ✅ **New Bundle Created:** 1 bundle in inventory_stock with:
+  - stock_type: 'BUNDLE'
+  - quantity: 1 (one bundle)
+  - pieces_per_bundle: 10 (number of pieces combined)
+  - piece_length_meters: 6m (preserved from spare pieces)
+  - weight_per_meter: 0.33 kg/m (preserved)
+  - weight_per_piece: 2 kg (auto-calculated: 6m × 0.33 kg/m)
+  - Total bundle weight: 10 pieces × 2 kg = 20 kg
+  - Source batch: `TEST-SPR-001`
+  - status: 'IN_STOCK'
+  - parent_stock_id: References the original SPARE stock
+- ✅ Navigate to **Inventory → Stock**
+- ✅ New combined bundle appears with stock_type = 'BUNDLE'
+- ✅ **Transaction Check:** inventory_transactions shows transaction_type = 'COMBINE_SPARES'
 
 #### Test Case 5.1: Combine Spare Pieces into Bundle
 1. Navigate to **Inventory → Spare Pieces (Sprinkler)**
@@ -333,31 +379,32 @@ This document provides a comprehensive step-by-step testing workflow to verify a
 - ✅ **Available Stock:** Excludes scrapped items (WHERE deleted_at IS NULL)
 - ✅ Navigate to **Scrap → History**
 - ✅ **Scrap Record:** Shows all scrapped items with weights
-- ✅ **Scrap Items Table:** Check `scrap_items` has entries with:
-  - stock_type: 'FULL_ROLL' or other type
-  - inventory_stock_id: Reference to original stock
-  - weight_kg: Item weight
-- ✅ **Scrap Pieces Table:** If cut/spare pieces scrapped, check `scrap_pieces` table
-- ✅ **Total Scrap Weight:** Calculated correctly from scrap_items.weight_kg sum
-- ✅ **Transaction Check:** inventory_transactions may show DAMAGE transaction type
+#### Test Case 9.1: End-to-End Workflow (HDPE Pipe)
+1. **Create:** New batch of 10 HDPE Pipe rolls, 500m each (TEST-COMPLEX-001)
+2. **Dispatch:** 5 full rolls to Customer A
+3. **Cut:** 2 of remaining 5 rolls into 4 pieces each (100m per piece)
+4. **Dispatch:** 4 cut pieces (from 1 cut roll) to Customer B
+5. **Return:** Customer A returns 2 full rolls (damaged)
+6. **Scrap:** The 2 damaged returned rolls
+7. **Revert:** Customer B dispatch (wrong order)
+8. **Re-dispatch:** Cut pieces to correct customer
 
-#### Test Case 8.2: Scrap Cut Pieces
-1. Navigate to **Inventory → Cut Pieces (HDPE)**
-2. Select remaining cut pieces from Test Case 3.1
-3. Create scrap record for these pieces
-4. Complete scrap
-
-**Verify P&C:**
-- ✅ Cut pieces scrapped successfully
-- ✅ **Cut Pieces Stock:** Removed from available inventory
-- ✅ **Scrap Details:** Shows piece length, weight, source batch
-- ✅ Scrap record includes cut piece metadata
-
----
-
-### Phase 9: Complex Workflow Test
-
-**Purpose:** Test realistic multi-step scenarios
+**Verify P&C After Each Step:**
+- ✅ After Create: 10 FULL_ROLL, 500m each = 5000m total, weight = 5000m × 0.2 kg/m = 1000 kg
+- ✅ After Dispatch 1: 5 FULL_ROLL in stock, 5 DISPATCHED
+- ✅ After Cut: 3 FULL_ROLL + 2 CUT_ROLL stocks (8 pieces total: 4 pieces each roll)
+- ✅ After Dispatch 2: 1 CUT_ROLL stock has 4 pieces dispatched, 1 CUT_ROLL has 4 pieces in stock
+- ✅ After Return: 2 FULL_ROLL back with status IN_STOCK (if good) or marked for scrap (if damaged)
+- ✅ After Scrap: 2 rolls in scraps table with scrap_items records, removed from available stock
+- ✅ After Revert: 4 cut pieces back to IN_STOCK status in hdpe_cut_pieces
+- ✅ After Re-dispatch: New dispatch created with correct cut pieces
+- ✅ **Final Stock Verification:**
+  - 3 FULL_ROLL in stock (500m each = 1500m)
+  - 1 CUT_ROLL with 4 pieces in stock (400m total)
+  - 2 FULL_ROLL scrapped
+  - 5 FULL_ROLL dispatched - 2 returned + 2 scrapped = 3 net dispatched
+  - 4 cut pieces dispatched to correct customer
+  - **Total Accounting:** 10 original rolls = 3 in stock + 3 dispatched + 2 scrapped + 2 cut (8 pieces, 4 in stock + 4 dispatched)os
 
 #### Test Case 9.1: End-to-End Workflow
 1. **Create:** New batch of 10 HDPE rolls (TEST-COMPLEX-001)

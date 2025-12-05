@@ -485,6 +485,7 @@ def get_production_history():
                 JOIN brands br ON pv.brand_id = br.id
                 LEFT JOIN users u ON b.created_by = u.id
                 LEFT JOIN inventory_stock ist ON b.id = ist.batch_id
+                WHERE b.deleted_at IS NULL
                 GROUP BY b.id, pt.name, br.name, pv.parameters, u.email, b.attachment_url
                 ORDER BY b.created_at DESC
             """)

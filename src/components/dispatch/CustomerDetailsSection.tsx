@@ -107,9 +107,10 @@ export const CustomerDetailsSection = ({
             options={vehicles}
             placeholder="Search or create vehicle"
             onCreateNew={onCreateVehicle}
-            displayFormat={(v) => v.driver_name || v.vehicle_number}
+            displayFormat={(v) => v.driver_name && v.vehicle_number ? `${v.driver_name} - ${v.vehicle_number}` : v.driver_name || v.vehicle_number}
             searchFields={['driver_name', 'vehicle_number']}
           />
+          <p className="text-xs text-gray-500 mt-1">Format: Driver Name - Vehicle Number</p>
         </div>
 
         <div>
