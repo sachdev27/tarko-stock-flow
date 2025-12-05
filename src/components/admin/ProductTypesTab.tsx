@@ -43,6 +43,9 @@ export const ProductTypesTab = ({ productTypes, units, onDataChange }: ProductTy
     type: 'text',
     required: false,
   });
+  const [showUnitForm, setShowUnitForm] = useState(false);
+  const [unitForm, setUnitForm] = useState({ name: '', abbreviation: '' });
+  const [editingUnit, setEditingUnit] = useState<any>(null);
 
   const handleAddProductType = async () => {
     if (!productTypeForm.name || !productTypeForm.unit_id) {
@@ -121,6 +124,53 @@ export const ProductTypesTab = ({ productTypes, units, onDataChange }: ProductTy
     }
   };
 
+  const handleSaveUnit = async () => {
+    if (!unitForm.name || !unitForm.abbreviation) {
+      toast.error('Unit name and abbreviation are required');
+      return;
+    }
+
+    try {
+      if (editingUnit) {
+        await admin.updateUnit(editingUnit.id, unitForm);
+        toast.success('Unit updated successfully');
+      } else {
+        const result = await admin.createUnit(unitForm);
+        toast.success('Unit created successfully');
+        // Auto-select the newly created unit
+        if (result.data && result.data.id) {
+          setProductTypeForm({ ...productTypeForm, unit_id: result.data.id });
+        }
+      }
+      setShowUnitForm(false);
+      setUnitForm({ name: '', abbreviation: '' });
+      setEditingUnit(null);
+      onDataChange();
+    } catch (error) {
+      const err = error as { response?: { data?: { error?: string } } };
+      toast.error(err.response?.data?.error || 'Failed to save unit');
+    }
+  };
+
+  const handleEditUnit = (unit: any) => {
+    setEditingUnit(unit);
+    setUnitForm({ name: unit.name, abbreviation: unit.abbreviation });
+    setShowUnitForm(true);
+  };
+
+  const handleDeleteUnit = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this unit?')) return;
+
+    try {
+      await admin.deleteUnit(id);
+      toast.success('Unit deleted successfully');
+      onDataChange();
+    } catch (error) {
+      const err = error as { response?: { data?: { error?: string } } };
+      toast.error(err.response?.data?.error || 'Failed to delete unit');
+    }
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -177,22 +227,99 @@ export const ProductTypesTab = ({ productTypes, units, onDataChange }: ProductTy
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="ptUnit">Unit *</Label>
-                  <Select
-                    value={productTypeForm.unit_id}
-                    onValueChange={(value) => setProductTypeForm({ ...productTypeForm, unit_id: value })}
-                  >
-                    <SelectTrigger id="ptUnit">
-                      <SelectValue placeholder="Select unit" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {units.map((unit) => (
-                        <SelectItem key={unit.id} value={unit.id}>
-                          {unit.name} ({unit.abbreviation})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="ptUnit">Unit *</Label>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setShowUnitForm(!showUnitForm);
+                        setEditingUnit(null);
+                        setUnitForm({ name: '', abbreviation: '' });
+                      }}
+                    >
+                      <Plus className="h-4 w-4 mr-1" />
+                      {showUnitForm ? 'Cancel' : 'New Unit'}
+                    </Button>
+                  </div>
+
+                  {showUnitForm ? (
+                    <div className="border rounded-lg p-3 space-y-3 bg-secondary/20">
+                      <div className="space-y-2">
+                        <Label htmlFor="unitName" className="text-xs">Unit Name *</Label>
+                        <Input
+                          id="unitName"
+                          value={unitForm.name}
+                          onChange={(e) => setUnitForm({ ...unitForm, name: e.target.value })}
+                          placeholder="e.g., Meters, Kilograms"
+                          className="h-9"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="unitAbbr" className="text-xs">Abbreviation *</Label>
+                        <Input
+                          id="unitAbbr"
+                          value={unitForm.abbreviation}
+                          onChange={(e) => setUnitForm({ ...unitForm, abbreviation: e.target.value })}
+                          placeholder="e.g., m, kg"
+                          className="h-9"
+                        />
+                      </div>
+                      <Button type="button" onClick={handleSaveUnit} size="sm" className="w-full">
+                        {editingUnit ? 'Update' : 'Create'} Unit
+                      </Button>
+                    </div>
+                  ) : (
+                    <Select
+                      value={productTypeForm.unit_id}
+                      onValueChange={(value) => setProductTypeForm({ ...productTypeForm, unit_id: value })}
+                    >
+                      <SelectTrigger id="ptUnit">
+                        <SelectValue placeholder="Select unit" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {units.map((unit) => (
+                          <SelectItem key={unit.id} value={unit.id}>
+                            {unit.name} ({unit.abbreviation})
+                            {unit.is_system && ' • System'}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+
+                  {!showUnitForm && units.length > 0 && (
+                    <div className="text-xs text-muted-foreground mt-2">
+                      <div className="flex flex-wrap gap-2">
+                        {units.map((unit) => (
+                          <div key={unit.id} className="flex items-center gap-1 bg-secondary/30 rounded px-2 py-1">
+                            <span>{unit.name} ({unit.abbreviation})</span>
+                            {unit.is_system ? (
+                              <Badge variant="secondary" className="text-xs ml-1">System</Badge>
+                            ) : (
+                              <div className="flex gap-1 ml-1">
+                                <button
+                                  type="button"
+                                  onClick={() => handleEditUnit(unit)}
+                                  className="text-primary hover:text-primary/80"
+                                >
+                                  <Edit className="h-3 w-3" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteUnit(unit.id)}
+                                  className="text-destructive hover:text-destructive/80"
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-2">
@@ -426,7 +553,7 @@ export const ProductTypesTab = ({ productTypes, units, onDataChange }: ProductTy
                     </div>
                   </div>
                 </div>
-                {!['HDPE', 'Sprinkler'].includes(type.name) && (
+                {!type.is_system && (
                   <div className="flex gap-2">
                     <Button
                       variant="ghost"
@@ -443,6 +570,11 @@ export const ProductTypesTab = ({ productTypes, units, onDataChange }: ProductTy
                       <Trash2 className="h-4 w-4 text-destructive" />
                     </Button>
                   </div>
+                )}
+                {type.is_system && (
+                  <Badge variant="secondary" className="ml-auto">
+                    System
+                  </Badge>
                 )}
               </div>
             </div>

@@ -241,6 +241,12 @@ export const admin = {
   // Units
   getUnits: () =>
     api.get('/admin/units'),
+  createUnit: (data: { name: string; abbreviation: string }) =>
+    api.post('/admin/units', data),
+  updateUnit: (id: string, data: { name: string; abbreviation: string }) =>
+    api.put(`/admin/units/${id}`, data),
+  deleteUnit: (id: string) =>
+    api.delete(`/admin/units/${id}`),
 
   // Audit Logs
   getAuditLogs: () =>
