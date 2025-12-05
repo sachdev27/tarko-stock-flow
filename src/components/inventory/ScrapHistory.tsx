@@ -590,10 +590,95 @@ const ScrapHistory = ({ embedded = false }: ScrapHistoryProps) => {
               <div>
                 <h3 className="font-semibold mb-3 flex items-center gap-2">
                   <Package className="h-4 w-4" />
-                  Scrapped Items ({selectedScrap.items.length})
+                  Scrapped Items ({(() => {
+                    // Group items by stock_type, length/size, and parameters to consolidate display
+                    const grouped = selectedScrap.items.reduce((acc: Record<string, any>, item: ScrapItem) => {
+                      const paramStr = JSON.stringify(item.parameters || {});
+                      const key = `${item.stock_type}-${item.length_per_unit || ''}-${item.pieces_per_bundle || ''}-${item.piece_length_meters || ''}-${paramStr}`;
+
+                      if (!acc[key]) {
+                        acc[key] = {
+                          ...item,
+                          quantity_scrapped: 0,
+                          batch_codes: [],
+                          batch_nos: [],
+                          pieces: [],
+                          estimated_values: []
+                        };
+                      }
+                      acc[key].quantity_scrapped += item.quantity_scrapped || 0;
+
+                      // Collect batch info
+                      if (item.batch_code && !acc[key].batch_codes.includes(item.batch_code)) {
+                        acc[key].batch_codes.push(item.batch_code);
+                      }
+                      if (item.batch_no && !acc[key].batch_nos.includes(item.batch_no)) {
+                        acc[key].batch_nos.push(item.batch_no);
+                      }
+
+                      // Aggregate pieces for CUT_ROLL/SPARE
+                      if (item.pieces && Array.isArray(item.pieces)) {
+                        acc[key].pieces.push(...item.pieces);
+                      }
+
+                      // Sum estimated values
+                      if (item.estimated_value) {
+                        acc[key].estimated_values.push(item.estimated_value);
+                      }
+
+                      return acc;
+                    }, {});
+
+                    return Object.keys(grouped).length;
+                  })()})
                 </h3>
                 <div className="space-y-2">
-                  {selectedScrap.items.map((item, idx) => (
+                  {(() => {
+                    // Group items by stock_type, length/size, and parameters to consolidate display
+                    const grouped = selectedScrap.items.reduce((acc: Record<string, any>, item: ScrapItem) => {
+                      const paramStr = JSON.stringify(item.parameters || {});
+                      const key = `${item.stock_type}-${item.length_per_unit || ''}-${item.pieces_per_bundle || ''}-${item.piece_length_meters || ''}-${paramStr}`;
+
+                      if (!acc[key]) {
+                        acc[key] = {
+                          ...item,
+                          quantity_scrapped: 0,
+                          batch_codes: [],
+                          batch_nos: [],
+                          pieces: [],
+                          estimated_values: []
+                        };
+                      }
+                      acc[key].quantity_scrapped += item.quantity_scrapped || 0;
+
+                      // Collect batch info
+                      if (item.batch_code && !acc[key].batch_codes.includes(item.batch_code)) {
+                        acc[key].batch_codes.push(item.batch_code);
+                      }
+                      if (item.batch_no && !acc[key].batch_nos.includes(item.batch_no)) {
+                        acc[key].batch_nos.push(item.batch_no);
+                      }
+
+                      // Aggregate pieces for CUT_ROLL/SPARE
+                      if (item.pieces && Array.isArray(item.pieces)) {
+                        acc[key].pieces.push(...item.pieces);
+                      }
+
+                      // Sum estimated values
+                      if (item.estimated_value) {
+                        acc[key].estimated_values.push(item.estimated_value);
+                      }
+
+                      return acc;
+                    }, {});
+
+                    return Object.values(grouped).map((item: any, idx: number) => {
+                      // Calculate total estimated value
+                      const totalEstimatedValue = item.estimated_values.length > 0
+                        ? item.estimated_values.reduce((sum: number, val: number) => sum + val, 0)
+                        : null;
+
+                      return (
                     <div key={idx} className="p-3 border rounded-lg">
                       <div className="flex justify-between items-start mb-2">
                         <div className="flex-1">
@@ -604,7 +689,10 @@ const ScrapHistory = ({ embedded = false }: ScrapHistoryProps) => {
                             </span>
                           </div>
                           <div className="text-xs text-gray-500">
-                            Batch: {item.batch_code} (#{item.batch_no})
+                            Batch{item.batch_codes.length > 1 ? 'es' : ''}: {item.batch_codes.map((bc: string, i: number) => {
+                              const batchNo = item.batch_nos[i];
+                              return `${bc} (#${batchNo})`;
+                            }).join(', ')}
                           </div>
                           {item.parameters && Object.keys(item.parameters).length > 0 && (
                             <div className="text-xs text-gray-500">
@@ -614,10 +702,10 @@ const ScrapHistory = ({ embedded = false }: ScrapHistoryProps) => {
                             </div>
                           )}
                         </div>
-                        {item.estimated_value && (
+                        {totalEstimatedValue && (
                           <div className="text-right">
                             <div className="text-sm font-medium text-red-600">
-                              {formatCurrency(item.estimated_value)}
+                              {formatCurrency(totalEstimatedValue)}
                             </div>
                             <div className="text-xs text-gray-500">Est. Value</div>
                           </div>
@@ -657,7 +745,7 @@ const ScrapHistory = ({ embedded = false }: ScrapHistoryProps) => {
                           <div className="mt-2">
                             <div className="font-medium mb-1">Pieces scrapped:</div>
                             <div className="flex flex-wrap gap-1">
-                              {item.pieces.map((piece, i) => (
+                              {item.pieces.map((piece: any, i: number) => (
                                 <Badge key={i} variant="secondary" className="text-xs">
                                   {piece.piece_type === 'CUT_PIECE'
                                     ? `${piece.length_meters}m`
@@ -673,7 +761,9 @@ const ScrapHistory = ({ embedded = false }: ScrapHistoryProps) => {
                         )}
                       </div>
                     </div>
-                  ))}
+                      );
+                    });
+                  })()}
                 </div>
               </div>
             </div>

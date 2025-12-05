@@ -507,8 +507,16 @@ export function TransactionDetailModal({
                               )}
                               {item.length_meters && item.item_type !== 'SPARE_PIECES' && item.item_type !== 'BUNDLE' && (
                                 <div>
-                                  <span className="text-muted-foreground">Length:</span>
-                                  <span className="ml-2 font-medium">{Number(item.length_meters).toFixed(2)}m</span>
+                                  <span className="text-muted-foreground">
+                                    {(item.item_type === 'FULL_ROLL' || item.item_type === 'CUT_ROLL' || item.item_type === 'CUT_PIECE')
+                                      ? 'Length per piece:'
+                                      : 'Length:'}
+                                  </span>
+                                  <span className="ml-2 font-medium">
+                                    {(item.item_type === 'FULL_ROLL' && item.quantity > 1)
+                                      ? (Number(item.length_meters) / item.quantity).toFixed(2)
+                                      : Number(item.length_meters).toFixed(2)}m
+                                  </span>
                                 </div>
                               )}
                             </div>
@@ -572,7 +580,36 @@ export function TransactionDetailModal({
                     <div>
                       <div className="text-sm font-medium mb-3">Items Scrapped</div>
                       <div className="space-y-3">
-                        {transaction.roll_snapshot.item_breakdown.map((item: any, idx: number) => (
+                        {(() => {
+                          // Group items by stock_type, length/size, and parameters to consolidate display
+                          const grouped = transaction.roll_snapshot.item_breakdown.reduce((acc: any, item: any) => {
+                            const paramStr = JSON.stringify(item.parameters || {});
+                            const key = `${item.stock_type}-${item.length_per_unit || ''}-${item.pieces_per_bundle || ''}-${item.piece_length_meters || ''}-${paramStr}`;
+
+                            if (!acc[key]) {
+                              acc[key] = {
+                                ...item,
+                                quantity: 0,
+                                batch_codes: [],
+                                pieces: []
+                              };
+                            }
+                            acc[key].quantity += item.quantity || 0;
+
+                            // Collect batch codes
+                            if (item.batch_code && !acc[key].batch_codes.includes(item.batch_code)) {
+                              acc[key].batch_codes.push(item.batch_code);
+                            }
+
+                            // Aggregate pieces for CUT_ROLL
+                            if (item.pieces && Array.isArray(item.pieces)) {
+                              acc[key].pieces.push(...item.pieces);
+                            }
+
+                            return acc;
+                          }, {});
+
+                          return Object.values(grouped).map((item: any, idx: number) => (
                           <div key={idx} className="border rounded-lg p-4 bg-rose-50/50 dark:bg-rose-950/50">
                             <div className="flex items-center justify-between mb-3">
                               <Badge variant="outline" className="text-base bg-rose-100 text-rose-700 border-rose-300">{item.stock_type?.replace('_', ' ')}</Badge>
@@ -587,15 +624,9 @@ export function TransactionDetailModal({
                                 <span className="text-muted-foreground">Brand:</span>
                                 <span className="ml-2 font-medium">{item.brand}</span>
                               </div>
-                              {item.batch_code && (
-                                <div>
-                                  <span className="text-muted-foreground">Batch:</span>
-                                  <span className="ml-2 font-medium font-mono">{item.batch_code}</span>
-                                </div>
-                              )}
                               {item.length_per_unit && (
                                 <div>
-                                  <span className="text-muted-foreground">Length per unit:</span>
+                                  <span className="text-muted-foreground">Length per {item.stock_type === 'FULL_ROLL' ? 'roll' : 'unit'}:</span>
                                   <span className="ml-2 font-medium">{Number(item.length_per_unit).toFixed(2)}m</span>
                                 </div>
                               )}
@@ -611,23 +642,20 @@ export function TransactionDetailModal({
                                   <span className="ml-2 font-medium">{Number(item.piece_length_meters).toFixed(2)}m</span>
                                 </div>
                               )}
-                              {item.stock_type === 'CUT_ROLL' && !item.length_per_unit && (
+                              {item.stock_type === 'CUT_ROLL' && item.pieces && item.pieces.length > 0 && (
                                 <div className="col-span-2">
                                   <span className="text-muted-foreground">Cut pieces:</span>
-                                  <span className="ml-2 font-medium">{item.quantity} piece{item.quantity !== 1 ? 's' : ''}</span>
-                                  {item.pieces && item.pieces.length > 0 && (
-                                    <div className="mt-2">
-                                      <div className="flex flex-wrap gap-1">
-                                        {item.pieces
-                                          .filter((p: any) => p.piece_type === 'CUT_PIECE')
-                                          .map((piece: any, i: number) => (
-                                            <Badge key={i} variant="secondary" className="text-xs">
-                                              {piece.length_meters}m
-                                            </Badge>
-                                          ))}
-                                      </div>
+                                  <div className="mt-2">
+                                    <div className="flex flex-wrap gap-1">
+                                      {item.pieces
+                                        .filter((p: any) => p.piece_type === 'CUT_PIECE')
+                                        .map((piece: any, i: number) => (
+                                          <Badge key={i} variant="secondary" className="text-xs">
+                                            {piece.length_meters}m
+                                          </Badge>
+                                        ))}
                                     </div>
-                                  )}
+                                  </div>
                                 </div>
                               )}
                               {item.estimated_value && (
@@ -655,7 +683,8 @@ export function TransactionDetailModal({
                               </div>
                             )}
                           </div>
-                        ))}
+                          ));
+                        })()}
                       </div>
                     </div>
                   ) : isDispatch && transaction.roll_snapshot?.item_breakdown && transaction.roll_snapshot.item_breakdown.length > 0 ? (

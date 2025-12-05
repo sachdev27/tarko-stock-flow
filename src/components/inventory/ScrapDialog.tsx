@@ -85,7 +85,8 @@ export const ScrapDialog = ({
   stockEntries,
   onSuccess,
 }: ScrapDialogProps) => {
-  const [scrapQuantities, setScrapQuantities] = useState<ScrapQuantities>({});
+  // Changed: Store quantity per group, not per individual stock entry
+  const [scrapQuantitiesByGroup, setScrapQuantitiesByGroup] = useState<Record<string, number>>({});
   const [reason, setReason] = useState('');
   const [customReason, setCustomReason] = useState('');
   const [notes, setNotes] = useState('');
@@ -103,13 +104,14 @@ export const ScrapDialog = ({
   });
 
   Object.entries(fullRollsByLength).forEach(([length, entries]) => {
+    const totalRolls = entries.reduce((sum, e) => sum + e.quantity, 0);
     groupedStock.push({
       key: `FULL_ROLL-${length}`,
       stock_type: 'FULL_ROLL',
       label: `Full Rolls (${length}m)`,
-      description: `${entries.length} rolls available • ${length}m each`,
+      description: `${totalRolls} rolls available • ${length}m each`,
       entries,
-      total_quantity: entries.length,
+      total_quantity: totalRolls,
       icon: <Box className="h-5 w-5 text-green-600" />
     });
   });
@@ -184,53 +186,22 @@ export const ScrapDialog = ({
   // Reset form when dialog opens/closes
   useEffect(() => {
     if (open) {
-      setScrapQuantities({});
+      setScrapQuantitiesByGroup({});
       setReason('');
       setCustomReason('');
       setNotes('');
     }
   }, [open]);
 
-  const updateQuantity = (groupKey: string, stockId: string, quantity: number) => {
-    setScrapQuantities(prev => ({
+  const updateGroupQuantity = (groupKey: string, quantity: number) => {
+    setScrapQuantitiesByGroup(prev => ({
       ...prev,
-      [groupKey]: {
-        ...prev[groupKey],
-        [stockId]: Math.max(0, quantity)
-      }
+      [groupKey]: Math.max(0, Math.min(quantity, groupedStock.find(g => g.key === groupKey)?.total_quantity || 0))
     }));
-  };
-
-  const selectAll = (group: GroupedStock) => {
-    const newQuantities: Record<string, number> = {};
-    group.entries.forEach(entry => {
-      // For all types including SPARE, quantity field represents the unit count
-      // SPARE: quantity = 1 (one bundle), CUT_ROLL: quantity = piece count, etc.
-      newQuantities[entry.stock_id] = entry.quantity;
-    });
-    setScrapQuantities(prev => ({
-      ...prev,
-      [group.key]: newQuantities
-    }));
-  };
-
-  const clearGroup = (groupKey: string) => {
-    setScrapQuantities(prev => {
-      const updated = { ...prev };
-      delete updated[groupKey];
-      return updated;
-    });
-  };
-
-  const getTotalSelectedForGroup = (group: GroupedStock): number => {
-    const groupQuantities = scrapQuantities[group.key] || {};
-    return Object.values(groupQuantities).reduce((sum, qty) => sum + qty, 0);
   };
 
   const getTotalSelectedItems = (): number => {
-    return Object.values(scrapQuantities).reduce((sum, group) => {
-      return sum + Object.values(group).reduce((gSum, qty) => gSum + qty, 0);
-    }, 0);
+    return Object.values(scrapQuantitiesByGroup).reduce((sum, qty) => sum + qty, 0);
   };
 
   const handleSubmit = async () => {
@@ -257,36 +228,36 @@ export const ScrapDialog = ({
     try {
       const items: ScrapItem[] = [];
 
-      // Build items array from selected quantities
-      Object.entries(scrapQuantities).forEach(([groupKey, stockQuantities]) => {
+      // Build items array from selected quantities per group
+      Object.entries(scrapQuantitiesByGroup).forEach(([groupKey, quantityToScrap]) => {
+        if (quantityToScrap <= 0) return;
+
         const group = groupedStock.find(g => g.key === groupKey);
         if (!group) return;
 
-        Object.entries(stockQuantities).forEach(([stockId, quantity]) => {
-          if (quantity <= 0) return;
+        // Select entries from this group up to the quantity needed
+        let remainingToScrap = quantityToScrap;
 
-          const entry = group.entries.find(e => e.stock_id === stockId);
-          if (!entry) return;
+        for (const entry of group.entries) {
+          if (remainingToScrap <= 0) break;
+
+          const quantityFromThisEntry = Math.min(remainingToScrap, entry.quantity);
 
           const item: ScrapItem = {
-            stock_id: stockId,
-            quantity_to_scrap: quantity,
+            stock_id: entry.stock_id,
+            quantity_to_scrap: quantityFromThisEntry,
           };
 
           // Add piece_ids for CUT_ROLL and SPARE types
-          // CRITICAL: Only include the number of pieces being scrapped, not all pieces
           if (entry.stock_type === 'CUT_ROLL' && entry.piece_ids) {
-            // For cut rolls, slice to get only the quantity being scrapped
-            item.piece_ids = entry.piece_ids.slice(0, quantity);
+            item.piece_ids = entry.piece_ids.slice(0, quantityFromThisEntry);
           } else if (entry.stock_type === 'SPARE' && entry.spare_id) {
-            // For spares, if scrapping partial quantity from this spare_id
-            // Note: This assumes one spare_id per stock entry
-            // If scrapping less than total, backend needs to handle partial scrap
             item.piece_ids = [entry.spare_id];
           }
 
           items.push(item);
-        });
+          remainingToScrap -= quantityFromThisEntry;
+        }
       });
 
       await scrap.create({
@@ -356,91 +327,59 @@ export const ScrapDialog = ({
 
             <div className="space-y-3 max-h-96 overflow-y-auto border rounded-lg p-3">
               {groupedStock.map(group => {
-                const selectedForGroup = getTotalSelectedForGroup(group);
-                const groupQuantities = scrapQuantities[group.key] || {};
+                const selectedForGroup = scrapQuantitiesByGroup[group.key] || 0;
 
                 return (
-                  <div key={group.key} className="border rounded-lg p-4 space-y-3 bg-muted/30">
-                    {/* Group Header */}
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
+                  <div key={group.key} className="border rounded-lg p-4 bg-muted/30">
+                    {/* Group Header with Simple Input */}
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-3 flex-1">
                         {group.icon}
-                        <div>
+                        <div className="flex-1">
                           <div className="font-medium">{group.label}</div>
                           <div className="text-sm text-muted-foreground">{group.description}</div>
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <Badge variant="outline">
-                          {selectedForGroup} / {group.total_quantity} selected
-                        </Badge>
+                        <Label className="text-sm text-muted-foreground whitespace-nowrap">Quantity:</Label>
+                        <Input
+                          type="number"
+                          step="1"
+                          min="0"
+                          max={group.total_quantity}
+                          value={selectedForGroup || ''}
+                          placeholder="0"
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            // Prevent negative, decimal, and non-integer input
+                            if (value.includes('-') || value.includes('.') || value.includes('e')) {
+                              return;
+                            }
+                            const num = parseInt(value) || 0;
+                            updateGroupQuantity(group.key, num);
+                          }}
+                          onKeyDown={(e) => {
+                            // Prevent minus, decimal point, and 'e' keys
+                            if (e.key === '-' || e.key === '.' || e.key === 'e' || e.key === 'E') {
+                              e.preventDefault();
+                            }
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          className="w-24 h-9"
+                        />
                         <Button
                           type="button"
                           variant="outline"
                           size="sm"
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (selectedForGroup === group.total_quantity) {
-                              clearGroup(group.key);
-                            } else {
-                              selectAll(group);
-                            }
+                            updateGroupQuantity(group.key, group.total_quantity);
                           }}
+                          className="h-9"
                         >
-                          {selectedForGroup === group.total_quantity ? 'Clear' : 'All'}
+                          Max
                         </Button>
                       </div>
-                    </div>
-
-                    {/* Individual Stock Entries with Quantity Inputs */}
-                    <div className="space-y-2 pl-8">
-                      {group.entries.map(entry => {
-                        const maxQuantity = entry.quantity; // For SPARE: quantity=1 bundle
-                        const currentQuantity = groupQuantities[entry.stock_id] || 0;
-
-                        return (
-                          <div key={entry.stock_id} className="flex items-center gap-3 p-2 bg-background rounded">
-                            <div className="flex-1 min-w-0">
-                              <div className="text-sm">
-                                {entry.batch_code && (
-                                  <Badge variant="outline" className="font-mono text-xs mr-2">
-                                    {entry.batch_code}
-                                  </Badge>
-                                )}
-                                <span className="text-muted-foreground">
-                                  Max: {maxQuantity} {group.stock_type === 'SPARE' ? `bundle (${entry.piece_count || 0} pcs)` : 'units'}
-                                </span>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Input
-                                type="number"
-                                min="0"
-                                max={maxQuantity}
-                                value={currentQuantity}
-                                onChange={(e) => {
-                                  const val = parseInt(e.target.value) || 0;
-                                  updateQuantity(group.key, entry.stock_id, Math.min(val, maxQuantity));
-                                }}
-                                onClick={(e) => e.stopPropagation()}
-                                className="w-20 h-8"
-                              />
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  updateQuantity(group.key, entry.stock_id, maxQuantity);
-                                }}
-                                className="h-8 px-2"
-                              >
-                                Max
-                              </Button>
-                            </div>
-                          </div>
-                        );
-                      })}
                     </div>
                   </div>
                 );

@@ -7,12 +7,17 @@
 
 **Recent Fixes Applied:**
 - ✅ Product parameters now sort numerically (if all numbers) or alphabetically (if text)
-- ✅ CSV export added to Dispatch History page
-- ✅ CSV export added to Return History page
-- ✅ CSV export added to Production History page
+- ✅ CSV export added to Dispatch History, Return History, and Production History pages
 - ✅ Removed "Coils" test case (only Standard Rolls and Bundles exist in frontend)
-- ✅ Updated Cut Roll test case - frontend uses single cut length input, not number of pieces
+- ✅ Updated Cut Roll test case - frontend uses single cut length input (creates 2 pieces: cut + remaining)
 - ✅ Fixed production history - reverted batches no longer show up (WHERE deleted_at IS NULL filter)
+- ✅ Fixed spare pieces dispatch revert - now properly restocks inventory (removed conditional, added stock_id filter)
+- ✅ Split Bundle Dialog redesigned - now splits entire bundle (no partial split option)
+- ✅ Cut Roll Dialog - added negative number prevention and backdrop click prevention
+- ✅ Combine Spares Dialog - added integer-only validation (no decimals/negatives) and backdrop click prevention
+- ✅ Activity page return details - changed to "Length per piece:" for HDPE rolls (clarity)
+- ✅ Cut pieces now grouped by length (matching full rolls display pattern)
+- ✅ Workflow sections updated: 3.5 (recuts allowed), 6.1-6.4 (removed condition field, clarified return logic), 7.2 (removed invalid section)
 
 ---
 
@@ -170,13 +175,16 @@ docker exec tarko-postgres pg_dump -U tarko_user tarko_inventory > backup_$(date
 **Prerequisites:** Must cut roll first (see 3.1)
 
 **Execute:**
-- Dispatch 2 cut pieces (100m each)
+- Dispatch 1 cut piece (100m) from the 2 available pieces
+- Leave the 400m remaining piece in stock
 
 **P&C:**
-- ✅ 2 pieces in hdpe_cut_pieces: status='DISPATCHED'
+- ✅ 1 piece (100m) in hdpe_cut_pieces: status='DISPATCHED'
+- ✅ 1 piece (400m) remains: status='IN_STOCK'
 - ✅ dispatch_items: item_type='CUT_ROLL' or 'CUT_PIECE'
 - ✅ cut_piece_id references hdpe_cut_pieces.id
-- ✅ Each item: length_meters=100, weight_kg=20
+- ✅ Dispatched item: length_meters=100, weight_kg=20
+- ✅ CUT_ROLL stock quantity updated: 2 → 1 (one piece dispatched)
 
 ### 2.4: Dispatch Spare Pieces (Sprinkler) - See Phase 4 First
 **Prerequisites:** Must split bundle first (see 4.1)
@@ -219,10 +227,11 @@ docker exec tarko-postgres pg_dump -U tarko_user tarko_inventory > backup_$(date
 - Try to dispatch 15 pieces from 20-piece bundle
 
 **P&C:**
-- ✅ Depends on implementation
-- ✅ Should either:
-  - Allow and track partial (complex)
-  - OR require full bundle dispatch (simpler)
+- ✅ System requires full bundle dispatch (not partial)
+- ✅ Frontend should only allow dispatching complete bundles
+- ✅ Cannot dispatch partial bundles (e.g., 15 out of 20 pieces)
+- ✅ To dispatch individual pieces, must first split bundle into spare pieces (see Phase 4.1)
+- ✅ Then dispatch spare pieces individually (see Phase 2.4)
 
 ---
 
@@ -289,12 +298,19 @@ docker exec tarko-postgres pg_dump -U tarko_user tarko_inventory > backup_$(date
 
 ### 3.5: Cut Already Cut Roll (Recut)
 **Execute:**
-- Try to cut a CUT_ROLL again
+- Select a CUT_ROLL piece (e.g., 400m remaining piece)
+- Click Cut Roll
+- Enter cut length: 100m
+- Confirm
 
 **P&C:**
-- ✅ Depends on business logic
-- ✅ May allow or deny
-- ✅ If allowed, need to track cascading cuts
+- ✅ System allows recutting CUT_ROLL pieces
+- ✅ Original 400m piece: status='SOLD_OUT' or deleted_at set
+- ✅ New pieces created: 100m (cut) + 300m (remaining)
+- ✅ Both pieces added to hdpe_cut_pieces table
+- ✅ CUT_ROLL stock quantity updated
+- ✅ Cascading cuts tracked through original_stock_id
+- ✅ Version numbers increment for each cut operation
 
 ---
 
@@ -407,14 +423,13 @@ docker exec tarko-postgres pg_dump -U tarko_user tarko_inventory > backup_$(date
 
 ## Test Phase 6: Return Operations
 
-### 6.1: Full Return - Good Condition
+### 6.1: Full Return
 **Execute:**
 1. Create Return
 2. Select customer from Phase 2.1
 3. Select dispatch (2 HDPE rolls)
 4. Return Quantity: 2 rolls (full)
-5. Condition: Good
-6. Complete return
+5. Complete return
 
 **P&C:**
 - ✅ **returns table:**
@@ -425,7 +440,6 @@ docker exec tarko-postgres pg_dump -U tarko_user tarko_inventory > backup_$(date
   - 2 entries
   - Each: dispatch_item_id links to dispatch_items
   - quantity_returned=1
-  - condition='good'
 - ✅ **return_rolls table (if HDPE):**
   - 2 entries
   - length_meters=500
@@ -438,32 +452,17 @@ docker exec tarko-postgres pg_dump -U tarko_user tarko_inventory > backup_$(date
   - 2 transactions created
 - ✅ **Weight restored:** Total +200kg
 
-### 6.2: Partial Return - Bundles
+### 6.2: Edge Case - Return More Than Dispatched
 **Execute:**
-- Return 1 bundle out of 2 dispatched
+- Try to return 3 rolls when only 2 dispatched to this customer
 
 **P&C:**
-- ✅ 1 bundle back to IN_STOCK
-- ✅ 1 bundle still DISPATCHED
-- ✅ Correct bundle returned (check bundle_id or stock_id)
+- ✅ System allows returns beyond dispatched quantity (not a fresh company)
+- ✅ User can manually add return items even if no matching dispatch exists
+- ✅ Useful for correcting historical data or handling pre-system dispatches
+- ✅ Return creates new stock entries in inventory
 
-### 6.3: Return - Damaged Condition
-**Execute:**
-- Return 1 roll, condition: Damaged
-
-**P&C:**
-- ✅ return_items: condition='damaged'
-- ✅ Stock status might be 'DAMAGED' or needs scrapping
-- ✅ May auto-trigger scrap workflow or require manual scrap
-
-### 6.4: Edge Case - Return More Than Dispatched
-**Execute:**
-- Try to return 3 rolls when only 2 dispatched
-
-**P&C:**
-- ✅ Validation error: "Cannot return more than dispatched"
-
-### 6.5: Edge Case - Return from Different Customer
+### 6.3: Edge Case - Return from Different Customer
 **Execute:**
 - Select dispatch from Customer A
 - Try to return to Customer B
@@ -472,7 +471,7 @@ docker exec tarko-postgres pg_dump -U tarko_user tarko_inventory > backup_$(date
 - ✅ Should fail
 - ✅ Error: "Dispatch does not belong to this customer"
 
-### 6.6: Edge Case - Return Already Returned Items
+### 6.4: Edge Case - Return Already Returned Items
 **Execute:**
 - Try to return same dispatch twice
 
@@ -511,18 +510,7 @@ docker exec tarko-postgres pg_dump -U tarko_user tarko_inventory > backup_$(date
 - ✅ **Stock available:** Items reappear in available stock
 - ✅ **Reports:** Dispatch shown as reverted in history
 
-### 7.2: Revert After Partial Return
-**Execute:**
-1. Dispatch 3 rolls
-2. Return 1 roll
-3. Try to revert dispatch
-
-**P&C:**
-- ✅ Should fail OR only revert non-returned items
-- ✅ Error: "Cannot revert: partial return completed"
-- ✅ OR revert 2 remaining, leave 1 as returned
-
-### 7.3: Edge Case - Revert Already Reverted
+### 7.2: Edge Case - Revert Already Reverted
 **Execute:**
 - Try to revert same dispatch twice
 
