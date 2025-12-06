@@ -44,6 +44,7 @@ const formatDispatchQuantityShort = (transaction: TransactionRecord): string => 
   const parts: string[] = [];
   if (counts['FULL_ROLL']) parts.push(`${counts['FULL_ROLL']}R`);
   if (counts['CUT_PIECE']) parts.push(`${counts['CUT_PIECE']}C`);
+  if (counts['CUT_ROLL']) parts.push(`${counts['CUT_ROLL']}C`);
   if (counts['BUNDLE']) parts.push(`${counts['BUNDLE']}B`);
   if (counts['SPARE_PIECES']) parts.push(`${counts['SPARE_PIECES']}S`);
 

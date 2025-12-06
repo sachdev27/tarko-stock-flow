@@ -27,26 +27,96 @@ export const applyTransactionFilters = (
 
   // Product type filter
   if (filters.productTypeFilter !== 'all') {
-    filtered = filtered.filter(t => t.product_variant_id?.toString() === filters.productTypeFilter || t.product_type_id?.toString() === filters.productTypeFilter);
+    filtered = filtered.filter(t => {
+      // Direct match for single-product transactions
+      if (t.product_variant_id?.toString() === filters.productTypeFilter ||
+          t.product_type_id?.toString() === filters.productTypeFilter) {
+        return true;
+      }
+
+      // For mixed dispatches/returns, check item_breakdown
+      if ((t.product_type === 'Mixed' || t.product_type === 'Mixed Products') &&
+          t.roll_snapshot?.item_breakdown &&
+          Array.isArray(t.roll_snapshot.item_breakdown)) {
+        return t.roll_snapshot.item_breakdown.some((item: any) =>
+          item.product_variant_id?.toString() === filters.productTypeFilter ||
+          item.product_type_id?.toString() === filters.productTypeFilter
+        );
+      }
+
+      return false;
+    });
   }
 
   // Brand filter
   if (filters.brandFilter !== 'all') {
-    filtered = filtered.filter(t => t.brand_id?.toString() === filters.brandFilter);
+    filtered = filtered.filter(t => {
+      // Direct match for single-product transactions
+      if (t.brand_id?.toString() === filters.brandFilter) {
+        return true;
+      }
+
+      // For mixed dispatches/returns, check item_breakdown
+      if ((t.product_type === 'Mixed' || t.product_type === 'Mixed Products') &&
+          t.roll_snapshot?.item_breakdown &&
+          Array.isArray(t.roll_snapshot.item_breakdown)) {
+        return t.roll_snapshot.item_breakdown.some((item: any) =>
+          item.brand_id?.toString() === filters.brandFilter
+        );
+      }
+
+      return false;
+    });
   }
 
   // Parameter filters
   if (filters.odFilter !== 'all') {
-    filtered = filtered.filter(t => t.parameters?.OD === filters.odFilter);
+    filtered = filtered.filter(t => {
+      if (t.parameters?.OD === filters.odFilter) return true;
+      if ((t.product_type === 'Mixed' || t.product_type === 'Mixed Products') &&
+          t.roll_snapshot?.item_breakdown) {
+        return t.roll_snapshot.item_breakdown.some((item: any) =>
+          item.parameters?.OD === filters.odFilter
+        );
+      }
+      return false;
+    });
   }
   if (filters.pnFilter !== 'all') {
-    filtered = filtered.filter(t => t.parameters?.PN === filters.pnFilter);
+    filtered = filtered.filter(t => {
+      if (t.parameters?.PN === filters.pnFilter) return true;
+      if ((t.product_type === 'Mixed' || t.product_type === 'Mixed Products') &&
+          t.roll_snapshot?.item_breakdown) {
+        return t.roll_snapshot.item_breakdown.some((item: any) =>
+          item.parameters?.PN === filters.pnFilter
+        );
+      }
+      return false;
+    });
   }
   if (filters.peFilter !== 'all') {
-    filtered = filtered.filter(t => t.parameters?.PE === filters.peFilter);
+    filtered = filtered.filter(t => {
+      if (t.parameters?.PE === filters.peFilter) return true;
+      if ((t.product_type === 'Mixed' || t.product_type === 'Mixed Products') &&
+          t.roll_snapshot?.item_breakdown) {
+        return t.roll_snapshot.item_breakdown.some((item: any) =>
+          item.parameters?.PE === filters.peFilter
+        );
+      }
+      return false;
+    });
   }
   if (filters.typeParamFilter !== 'all') {
-    filtered = filtered.filter(t => t.parameters?.Type === filters.typeParamFilter);
+    filtered = filtered.filter(t => {
+      if (t.parameters?.Type === filters.typeParamFilter) return true;
+      if ((t.product_type === 'Mixed' || t.product_type === 'Mixed Products') &&
+          t.roll_snapshot?.item_breakdown) {
+        return t.roll_snapshot.item_breakdown.some((item: any) =>
+          item.parameters?.Type === filters.typeParamFilter
+        );
+      }
+      return false;
+    });
   }
 
   // Time filter - either use preset or custom date range
