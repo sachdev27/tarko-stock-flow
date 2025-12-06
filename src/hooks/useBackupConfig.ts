@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { backupConfig } from '@/lib/api';
+import { backupConfig } from '@/lib/api-typed';
+import type * as API from '@/types';
 import { toast } from 'sonner';
 
 // Cloud Credentials

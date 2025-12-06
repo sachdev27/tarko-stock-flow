@@ -674,6 +674,162 @@ export interface AuditLog {
 }
 
 // ============================================================================
+// DISPATCH ENTITIES API TYPES
+// ============================================================================
+
+export interface Vehicle {
+  id: UUID;
+  vehicle_number: string;
+  vehicle_type?: string;
+  capacity?: number;
+  notes?: string;
+  created_at: ISO8601DateTime;
+}
+
+export interface CreateVehicleRequest {
+  vehicle_number: string;
+  vehicle_type?: string;
+  capacity?: number;
+  notes?: string;
+}
+
+export interface Transport {
+  id: UUID;
+  name: string;
+  contact_person?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  notes?: string;
+  created_at: ISO8601DateTime;
+}
+
+export interface CreateTransportRequest {
+  name: string;
+  contact_person?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  notes?: string;
+}
+
+export interface BillTo {
+  id: UUID;
+  name: string;
+  contact_person?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  pincode?: string;
+  gstin?: string;
+  created_at: ISO8601DateTime;
+}
+
+export interface CreateBillToRequest {
+  name: string;
+  contact_person?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  pincode?: string;
+  gstin?: string;
+}
+
+export interface ProductAlias {
+  id: UUID;
+  product_variant_id: UUID;
+  alias_name: string;
+  customer_id?: UUID;
+  notes?: string;
+  created_at: ISO8601DateTime;
+}
+
+export interface CreateProductAliasRequest {
+  product_variant_id: UUID;
+  alias_name: string;
+  customer_id?: UUID;
+  notes?: string;
+}
+
+// ============================================================================
+// PASSWORD RESET API TYPES
+// ============================================================================
+
+export interface ForgotPasswordRequest {
+  email: string;
+}
+
+export interface VerifyResetTokenRequest {
+  token: string;
+}
+
+export interface ResetPasswordRequest {
+  token: string;
+  new_password: string;
+}
+
+export interface ChangePasswordRequest {
+  old_password: string;
+  new_password: string;
+}
+
+// ============================================================================
+// SMTP CONFIG API TYPES
+// ============================================================================
+
+export interface SMTPConfig {
+  id: UUID;
+  config_name: string;
+  smtp_server: string;
+  smtp_port: number;
+  smtp_username: string;
+  smtp_use_tls: boolean;
+  smtp_use_ssl: boolean;
+  from_email: string;
+  from_name?: string;
+  is_active: boolean;
+  created_at: ISO8601DateTime;
+}
+
+export interface CreateSMTPConfigRequest {
+  config_name: string;
+  smtp_server: string;
+  smtp_port: number;
+  smtp_username: string;
+  smtp_password: string;
+  smtp_use_tls?: boolean;
+  smtp_use_ssl?: boolean;
+  from_email: string;
+  from_name?: string;
+  is_active?: boolean;
+}
+
+export interface TestSMTPRequest {
+  test_email: string;
+  config_id?: UUID;
+}
+
+// ============================================================================
+// SETUP API TYPES
+// ============================================================================
+
+export interface SetupCheck {
+  is_setup_complete: boolean;
+  has_admin_user: boolean;
+  database_initialized: boolean;
+}
+
+export interface CreateAdminRequest {
+  email: string;
+  password: string;
+  full_name?: string;
+}
+
+// ============================================================================
 // STATS & REPORTS API TYPES
 // ============================================================================
 

@@ -36,8 +36,9 @@ import {
   useUpdateCloudCredential,
   useDeleteCloudCredential,
 } from '@/hooks/useBackupConfig';
-import { backupConfig } from '@/lib/api';
+import { backupConfig } from '@/lib/api-typed';
 import { toast } from 'sonner';
+import type * as API from '@/types';
 
 interface CloudCredential {
   id: string;

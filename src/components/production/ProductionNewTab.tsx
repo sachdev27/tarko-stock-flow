@@ -4,7 +4,8 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { Plus } from 'lucide-react';
-import { inventory, production, parameters } from '@/lib/api';
+import { inventory, production, parameters } from '@/lib/api-typed';
+import type * as API from '@/types';
 import { toISTDateTimeLocal } from '@/lib/utils';
 import { ProductSelectionForm } from './ProductSelectionForm';
 import { QuantityConfigForm } from './QuantityConfigForm';
@@ -158,9 +159,9 @@ export const ProductionNewTab = () => {
         parameters.getOptions()
       ]);
 
-      setProductTypes(ptRes.data);
-      setBrands(brandRes.data);
-      setParameterOptions(paramsRes.data);
+      setProductTypes(ptRes);
+      setBrands(brandRes);
+      setParameterOptions(paramsRes);
     } catch (error) {
       toast.error('Failed to load master data');
     }
@@ -251,9 +252,9 @@ export const ProductionNewTab = () => {
         formDataToSend.append('attachment', attachmentFile);
       }
 
-      const { data } = await production.createBatch(formDataToSend);
+      const data = await production.createBatch(formDataToSend);
 
-      toast.success(`Production batch ${data.batch_code} created successfully!`);
+      toast.success(`Production batch ${data.batch_id} created successfully!`);
 
       // Reset form
       setFormData({

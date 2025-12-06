@@ -7,7 +7,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { Plus, Trash2, Edit, Sliders } from 'lucide-react';
-import { parameters } from '@/lib/api';
+import { parameters } from '@/lib/api-typed';
+import type * as API from '@/types';
 
 interface ParametersTabProps {
   parameterOptions: Record<string, any[]>;

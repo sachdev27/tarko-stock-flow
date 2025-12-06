@@ -4,7 +4,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { TrendingUp, Users, Package, MapPin, BarChart3 } from 'lucide-react';
-import { reports } from '@/lib/api';
+import { reports } from '@/lib/api-typed';
+import type * as API from '@/types';
 import {
   SummaryCards,
   TopProducts,
@@ -92,8 +93,9 @@ const Reports = () => {
         reports.getCustomerRegions(parseInt(dateRange))
       ]);
 
-      setAnalyticsData(overview.data);
-      setRegionalData(regions.data);
+      // api-typed already unwraps responses
+      setAnalyticsData(overview);
+      setRegionalData(regions);
     } catch (error) {
       console.error('Error fetching analytics:', error);
       toast.error('Failed to load analytics data');

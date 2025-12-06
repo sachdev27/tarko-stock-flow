@@ -7,8 +7,9 @@ import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { Cloud, CloudDownload, RotateCcw, Trash2, Settings, RefreshCw, CloudUpload, CheckCircle2, XCircle, Clock, Loader2 } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
-import { versionControl } from '@/lib/api';
+import { versionControl } from '@/lib/api-typed';
 import { toast } from 'sonner';
+import type * as API from '@/types';
 
 interface CloudBackupTabProps {
   cloudStatus: any;

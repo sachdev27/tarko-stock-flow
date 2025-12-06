@@ -7,7 +7,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { Plus, Trash2, Edit, Ruler } from 'lucide-react';
-import { admin } from '@/lib/api';
+import { admin } from '@/lib/api-typed';
+import type * as API from '@/types';
 
 interface Unit {
   id: string;

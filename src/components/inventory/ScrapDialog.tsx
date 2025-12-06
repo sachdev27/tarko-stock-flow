@@ -18,8 +18,9 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Trash2, AlertCircle, Box, Scissors, Package } from 'lucide-react';
-import { scrap } from '@/lib/api';
+import { scrap } from '@/lib/api-typed';
 import { toast } from 'sonner';
+import type * as API from '@/types';
 
 interface StockEntry {
   stock_id: string;

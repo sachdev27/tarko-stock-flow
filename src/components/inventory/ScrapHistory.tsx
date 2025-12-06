@@ -28,8 +28,9 @@ import {
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { Search, Trash2, Package, Filter, X } from 'lucide-react';
-import { scrap as scrapAPI } from '@/lib/api';
+import { scrap as scrapAPI } from '@/lib/api-typed';
 import { format } from 'date-fns';
+import type * as API from '@/types';
 
 interface Scrap {
   id: string;
@@ -191,9 +192,11 @@ const ScrapHistory = ({ embedded = false }: ScrapHistoryProps) => {
       if (reasonFilter) params.reason = reasonFilter;
       if (statusFilter && statusFilter !== 'all') params.status = statusFilter;
 
-      const { data } = await scrapAPI.getHistory(params);
-      setScraps(data.scraps || []);
-      setFilteredScraps(data.scraps || []);
+      const data = await scrapAPI.getHistory(params);
+      // api-typed already unwraps the response - data is array directly
+      const scrapsArray = Array.isArray(data) ? data : [];
+      setScraps(scrapsArray);
+      setFilteredScraps(scrapsArray);
     } catch (error: unknown) {
       const err = error as { response?: { data?: { error?: string } } };
       toast.error(err.response?.data?.error || 'Failed to fetch scrap history');
@@ -204,7 +207,7 @@ const ScrapHistory = ({ embedded = false }: ScrapHistoryProps) => {
 
   const fetchScrapDetails = async (scrapId: string) => {
     try {
-      const { data } = await scrapAPI.getDetails(scrapId);
+      const data = await scrapAPI.getDetails(scrapId);
       setSelectedScrap(data);
       setDetailsOpen(true);
     } catch (error: unknown) {

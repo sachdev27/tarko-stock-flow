@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Package, TrendingUp, AlertTriangle, Activity } from 'lucide-react';
 import { Layout } from '@/components/Layout';
-import { stats } from '@/lib/api';
+import { stats } from '@/lib/api-typed';
+import type * as API from '@/types';
 import { toast } from 'sonner';
 import {
   StatsCard,
@@ -75,7 +76,8 @@ const Dashboard = () => {
   const fetchStats = async () => {
     try {
       const response = await stats.getDashboard();
-      setStatsData(response.data);
+      // Cast API response to component's DashboardStats interface
+      setStatsData(response as any);
     } catch (error) {
       console.error('Error fetching stats:', error);
       toast.error('Failed to load dashboard stats');

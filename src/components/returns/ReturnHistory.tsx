@@ -7,8 +7,9 @@ import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { PackageX, Search, Filter, X, Download } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import api from '@/lib/api';
+import { returns as returnsAPI } from '@/lib/api-typed';
 import { format } from 'date-fns';
+import type * as API from '@/types';
 import {
   Select,
   SelectContent,
@@ -181,8 +182,11 @@ const ReturnHistory = () => {
   const fetchReturns = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/returns/history');
-      setReturns(response.data.returns || []);
+      const response = await returnsAPI.getHistory();
+      // Backend returns { returns: [...] } structure
+      // Handle both wrapped and unwrapped responses
+      const returnsData = (response as any)?.returns || (Array.isArray(response) ? response : []);
+      setReturns(returnsData);
     } catch (error) {
       toast.error('Failed to fetch returns');
     } finally {
@@ -192,8 +196,8 @@ const ReturnHistory = () => {
 
   const fetchReturnDetails = async (returnId: string) => {
     try {
-      const response = await api.get(`/returns/${returnId}`);
-      setSelectedReturn(response.data);
+      const response = await returnsAPI.getDetails(returnId);
+      setSelectedReturn(response);
       setDetailsOpen(true);
     } catch (error) {
       toast.error('Failed to fetch return details');

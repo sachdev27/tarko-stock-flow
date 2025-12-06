@@ -107,16 +107,14 @@ def get_current_user():
         role = get_user_role(user_id)
 
         return jsonify({
-            'user': {
-                'id': user['id'],
-                'email': user['email'],
-                'username': user.get('username'),
-                'full_name': user.get('full_name'),
-                'role': role,
-                'is_active': user.get('is_active', True),
-                'created_at': user['created_at'].isoformat() if user.get('created_at') else None,
-                'last_login_at': user['last_login_at'].isoformat() if user.get('last_login_at') else None
-            }
+            'id': user['id'],
+            'email': user['email'],
+            'username': user.get('username'),
+            'full_name': user.get('full_name'),
+            'role': role,
+            'is_active': user.get('is_active', True),
+            'created_at': user['created_at'].isoformat() if user.get('created_at') else None,
+            'last_login_at': user['last_login_at'].isoformat() if user.get('last_login_at') else None
         }), 200
     except Exception as e:
         return jsonify({'error': 'Failed to get user info', 'details': str(e)}), 500

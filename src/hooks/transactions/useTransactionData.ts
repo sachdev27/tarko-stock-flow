@@ -1,7 +1,8 @@
 // Custom hook for transaction data management
 import { useState, useEffect } from 'react';
 import { TransactionRecord, ProductType, Brand } from '@/types/transaction';
-import { transactions as transactionsAPI, admin } from '@/lib/api';
+import { transactions as transactionsAPI, admin } from '@/lib/api-typed';
+import type * as API from '@/types';
 import { toast } from 'sonner';
 import { extractParameterOptions } from '@/utils/transactions/filtering';
 import { calculateQuantityBreakdown, calculateTotalMeters } from '@/utils/transactions/quantityFormatters';
@@ -25,15 +26,15 @@ export const useTransactionData = () => {
       const response = await transactionsAPI.getAll();
 
       console.log('[TransactionData] API response received:', {
-        count: response.data?.length,
-        transactions: response.data?.slice(0, 3).map((t: any) => ({
+        count: response?.length,
+        transactions: response?.slice(0, 3).map((t: any) => ({
           id: t.id,
           type: t.transaction_type,
           batch_code: t.batch_code
         }))
       });
 
-      const parsedTransactions = response.data.map((t: TransactionRecord) => {
+      const parsedTransactions = (response || []).map((t: TransactionRecord) => {
         let params = t.parameters;
         if (typeof params === 'string') {
           try {
@@ -178,8 +179,8 @@ export const useTransactionData = () => {
         admin.getProductTypes(),
         admin.getBrands()
       ]);
-      setProductTypes(productTypesRes.data);
-      setBrands(brandsRes.data);
+      setProductTypes(productTypesRes || []);
+      setBrands(brandsRes || []);
     } catch (error) {
       console.error('Error loading master data:', error);
       toast.error('Failed to load filter options');

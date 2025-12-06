@@ -8,8 +8,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { Plus, Trash2, Edit, Users } from 'lucide-react';
-import { admin } from '@/lib/api';
+import { admin } from '@/lib/api-typed';
 import { formatDate } from '@/lib/utils';
+import type * as API from '@/types';
 
 interface UsersTabProps {
   users: any[];

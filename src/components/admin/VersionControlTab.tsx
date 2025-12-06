@@ -1,8 +1,9 @@
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { Database, History, Cloud, Save } from 'lucide-react';
-import { versionControl } from '@/lib/api';
+import { versionControl } from '@/lib/api-typed';
 import { useState, useEffect } from 'react';
+import type * as API from '@/types';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { BackupStorageTab } from './version-control/BackupStorageTab';
 import { CloudBackupTab } from './version-control/CloudBackupTab';

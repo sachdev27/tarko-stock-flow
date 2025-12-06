@@ -9,7 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { Plus, Trash2, Edit, Package } from 'lucide-react';
-import { admin } from '@/lib/api';
+import { admin } from '@/lib/api-typed';
+import type * as API from '@/types';
 
 interface ProductTypesTabProps {
   productTypes: any[];
@@ -138,8 +139,8 @@ export const ProductTypesTab = ({ productTypes, units, onDataChange }: ProductTy
         const result = await admin.createUnit(unitForm);
         toast.success('Unit created successfully');
         // Auto-select the newly created unit
-        if (result.data && result.data.id) {
-          setProductTypeForm({ ...productTypeForm, unit_id: result.data.id });
+        if (result && result.id) {
+          setProductTypeForm({ ...productTypeForm, unit_id: result.id });
         }
       }
       setShowUnitForm(false);

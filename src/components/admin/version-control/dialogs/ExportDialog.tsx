@@ -5,9 +5,10 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Progress } from '@/components/ui/progress';
 import { useState, useEffect } from 'react';
-import { versionControl } from '@/lib/api';
+import { versionControl } from '@/lib/api-typed';
 import { Download, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import type * as API from '@/types';
 
 interface ExportDialogProps {
   open: boolean;

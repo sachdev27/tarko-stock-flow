@@ -1,7 +1,8 @@
 // Custom hook for transaction selection (batch revert)
 import { useState } from 'react';
 import { TransactionRecord } from '@/types/transaction';
-import { transactions as transactionsAPI } from '@/lib/api';
+import { transactions as transactionsAPI } from '@/lib/api-typed';
+import type * as API from '@/types';
 import { toast } from 'sonner';
 
 export const useTransactionSelection = (onRevertComplete?: () => void) => {
@@ -41,7 +42,10 @@ export const useTransactionSelection = (onRevertComplete?: () => void) => {
 
     try {
       setReverting(true);
-      const { data } = await transactionsAPI.revert(Array.from(selectedTransactionIds));
+      // Backend expects { transaction_ids: [] } structure
+      const { data } = await transactionsAPI.revert({
+        transaction_ids: Array.from(selectedTransactionIds)
+      });
 
       console.log('[TransactionSelection] Revert API response:', data);
 

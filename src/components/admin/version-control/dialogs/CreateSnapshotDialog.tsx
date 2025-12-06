@@ -4,7 +4,8 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { useState, useEffect } from 'react';
-import { versionControl } from '@/lib/api';
+import { versionControl } from '@/lib/api-typed';
+import type * as API from '@/types';
 
 interface CreateSnapshotDialogProps {
   open: boolean;

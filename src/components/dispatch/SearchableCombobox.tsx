@@ -52,8 +52,11 @@ export const SearchableCombobox = ({
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const filteredOptions = options.filter(item => filterFn(item, search));
-  const selectedItem = options.find(item => item.id === value);
+  // Ensure options is always an array
+  const optionsList = Array.isArray(options) ? options : [];
+
+  const filteredOptions = optionsList.filter(item => filterFn(item, search));
+  const selectedItem = optionsList.find(item => item.id === value);
 
   // Reset highlighted index when filtered options change
   useEffect(() => {

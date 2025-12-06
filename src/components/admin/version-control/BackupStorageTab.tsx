@@ -8,8 +8,9 @@ import { Switch } from '@/components/ui/switch';
 import { Database, RotateCcw, Trash2, CloudUpload, Upload, Save, HardDrive, FolderOpen, RefreshCw, FileUp, Download, Loader2 } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 import { useState, useEffect, useRef } from 'react';
-import { versionControl } from '@/lib/api';
+import { versionControl } from '@/lib/api-typed';
 import { toast } from 'sonner';
+import type * as API from '@/types';
 
 interface BackupStorageTabProps {
   snapshots: any[];

@@ -79,6 +79,18 @@ export const auth = {
 
   getCurrentUser: (): Promise<API.User> =>
     apiClient.get<API.User>('/auth/me').then(unwrapResponse),
+
+  forgotPassword: (data: API.ForgotPasswordRequest): Promise<{ success: boolean; message: string }> =>
+    apiClient.post('/password-reset/forgot-password', data).then(unwrapResponse),
+
+  verifyResetToken: (data: API.VerifyResetTokenRequest): Promise<{ valid: boolean; email?: string }> =>
+    apiClient.post('/password-reset/verify-reset-token', data).then(unwrapResponse),
+
+  resetPassword: (data: API.ResetPasswordRequest): Promise<{ success: boolean; message: string }> =>
+    apiClient.post('/password-reset/reset-password', data).then(unwrapResponse),
+
+  changePassword: (data: API.ChangePasswordRequest): Promise<{ success: boolean; message: string }> =>
+    apiClient.post('/password-reset/change-password', data).then(unwrapResponse),
 };
 
 // ============================================================================
@@ -86,8 +98,15 @@ export const auth = {
 // ============================================================================
 
 export const production = {
-  createBatch: (data: API.CreateProductionBatchRequest): Promise<API.ProductionBatchResponse> => {
-    // Handle file uploads with FormData
+  createBatch: (data: API.CreateProductionBatchRequest | FormData): Promise<API.ProductionBatchResponse> => {
+    // If already FormData, send directly
+    if (data instanceof FormData) {
+      return apiClient.post<API.ProductionBatchResponse>('/production/batch', data, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      }).then(unwrapResponse);
+    }
+
+    // Handle typed request with file uploads
     if (data.attachments && data.attachments.length > 0) {
       const formData = new FormData();
 
@@ -174,13 +193,114 @@ export const returns = {
     apiClient.get<API.Return[]>('/returns/history', { params }).then(unwrapResponse),
 
   getDetails: (returnId: API.UUID): Promise<API.ReturnDetails> =>
-    apiClient.get<API.ReturnDetails>(`/returns/history/${returnId}`).then(unwrapResponse),
+    apiClient.get<API.ReturnDetails>(`/returns/${returnId}`).then(unwrapResponse),
 
   revert: (returnId: API.UUID): Promise<{ success: boolean; message: string }> =>
     apiClient.post(`/returns/${returnId}/revert`).then(unwrapResponse),
 
   getStats: (): Promise<any> =>
     apiClient.get('/returns/stats').then(unwrapResponse),
+};
+
+// ============================================================================
+// DISPATCH ENTITIES API
+// ============================================================================
+
+export const dispatchEntities = {
+  // Customers
+  getCustomers: (search?: string): Promise<API.Customer[]> =>
+    apiClient.get<API.Customer[]>('/customers', { params: { search } }).then(unwrapResponse),
+
+  createCustomer: (data: API.CreateCustomerRequest): Promise<API.Customer> =>
+    apiClient.post<API.Customer>('/customers', data).then(unwrapResponse),
+
+  updateCustomer: (id: API.UUID, data: Partial<API.CreateCustomerRequest>): Promise<API.Customer> =>
+    apiClient.put<API.Customer>(`/customers/${id}`, data).then(unwrapResponse),
+
+  deleteCustomer: (id: API.UUID): Promise<{ success: boolean; message: string }> =>
+    apiClient.delete(`/customers/${id}`).then(unwrapResponse),
+
+  // Vehicles
+  getVehicles: (): Promise<API.Vehicle[]> =>
+    apiClient.get<API.Vehicle[]>('/vehicles').then(unwrapResponse),
+
+  createVehicle: (data: API.CreateVehicleRequest): Promise<API.Vehicle> =>
+    apiClient.post<API.Vehicle>('/vehicles', data).then(unwrapResponse),
+
+  updateVehicle: (id: API.UUID, data: Partial<API.CreateVehicleRequest>): Promise<API.Vehicle> =>
+    apiClient.put<API.Vehicle>(`/vehicles/${id}`, data).then(unwrapResponse),
+
+  deleteVehicle: (id: API.UUID): Promise<{ success: boolean; message: string }> =>
+    apiClient.delete(`/vehicles/${id}`).then(unwrapResponse),
+
+  // Transports
+  getTransports: (): Promise<API.Transport[]> =>
+    apiClient.get<API.Transport[]>('/transports').then(unwrapResponse),
+
+  createTransport: (data: API.CreateTransportRequest): Promise<API.Transport> =>
+    apiClient.post<API.Transport>('/transports', data).then(unwrapResponse),
+
+  updateTransport: (id: API.UUID, data: Partial<API.CreateTransportRequest>): Promise<API.Transport> =>
+    apiClient.put<API.Transport>(`/transports/${id}`, data).then(unwrapResponse),
+
+  deleteTransport: (id: API.UUID): Promise<{ success: boolean; message: string }> =>
+    apiClient.delete(`/transports/${id}`).then(unwrapResponse),
+
+  // Bill To
+  getBillTo: (): Promise<API.BillTo[]> =>
+    apiClient.get<API.BillTo[]>('/bill-to').then(unwrapResponse),
+
+  createBillTo: (data: API.CreateBillToRequest): Promise<API.BillTo> =>
+    apiClient.post<API.BillTo>('/bill-to', data).then(unwrapResponse),
+
+  updateBillTo: (id: API.UUID, data: Partial<API.CreateBillToRequest>): Promise<API.BillTo> =>
+    apiClient.put<API.BillTo>(`/bill-to/${id}`, data).then(unwrapResponse),
+
+  deleteBillTo: (id: API.UUID): Promise<{ success: boolean; message: string }> =>
+    apiClient.delete(`/bill-to/${id}`).then(unwrapResponse),
+
+  // Product Aliases
+  getProductAliases: (): Promise<API.ProductAlias[]> =>
+    apiClient.get<API.ProductAlias[]>('/product-aliases').then(unwrapResponse),
+
+  createProductAlias: (data: API.CreateProductAliasRequest): Promise<API.ProductAlias> =>
+    apiClient.post<API.ProductAlias>('/product-aliases', data).then(unwrapResponse),
+};
+
+// ============================================================================
+// SMTP CONFIG API
+// ============================================================================
+
+export const smtpConfig = {
+  getConfig: (): Promise<API.SMTPConfig> =>
+    apiClient.get<API.SMTPConfig>('/smtp-config').then(unwrapResponse),
+
+  getAllConfigs: (): Promise<API.SMTPConfig[]> =>
+    apiClient.get<API.SMTPConfig[]>('/smtp-config/all').then(unwrapResponse),
+
+  createConfig: (data: API.CreateSMTPConfigRequest): Promise<API.SMTPConfig> =>
+    apiClient.post<API.SMTPConfig>('/smtp-config', data).then(unwrapResponse),
+
+  updateConfig: (id: API.UUID, data: Partial<API.CreateSMTPConfigRequest>): Promise<API.SMTPConfig> =>
+    apiClient.put<API.SMTPConfig>(`/smtp-config/${id}`, data).then(unwrapResponse),
+
+  deleteConfig: (id: API.UUID): Promise<{ success: boolean; message: string }> =>
+    apiClient.delete(`/smtp-config/${id}`).then(unwrapResponse),
+
+  testConfig: (data: API.TestSMTPRequest): Promise<{ success: boolean; message: string }> =>
+    apiClient.post('/smtp-config/test', data).then(unwrapResponse),
+};
+
+// ============================================================================
+// SETUP API
+// ============================================================================
+
+export const setup = {
+  checkSetup: (): Promise<API.SetupCheck> =>
+    apiClient.get<API.SetupCheck>('/setup/check').then(unwrapResponse),
+
+  createAdmin: (data: API.CreateAdminRequest): Promise<{ success: boolean; message: string; user?: API.User }> =>
+    apiClient.post('/setup/admin', data).then(unwrapResponse),
 };
 
 // ============================================================================

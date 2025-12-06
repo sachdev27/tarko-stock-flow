@@ -27,7 +27,8 @@ import {
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { Search, Factory, Package, Filter, X, Paperclip, ExternalLink, Download } from 'lucide-react';
-import { production } from '@/lib/api';
+import { production } from '@/lib/api-typed';
+import type * as API from '@/types';
 import { format } from 'date-fns';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5500/api';
@@ -176,9 +177,13 @@ export const ProductionHistoryTab = () => {
   const fetchBatches = async () => {
     setLoading(true);
     try {
-      const { data } = await production.getHistory();
-      setBatches(data.batches || []);
-      setFilteredBatches(data.batches || []);
+      const data = await production.getHistory();
+      // api-typed already unwraps the response
+      // Ensure data is always an array
+      const batchesArray = Array.isArray(data) ? data : ((data as any)?.batches || []);
+      // Cast API response to component's Batch interface
+      setBatches(batchesArray as any);
+      setFilteredBatches(batchesArray as any);
     } catch (error: unknown) {
       const err = error as { response?: { data?: { error?: string } } };
       toast.error(err.response?.data?.error || 'Failed to fetch production history');
@@ -189,8 +194,9 @@ export const ProductionHistoryTab = () => {
 
   const fetchBatchDetails = async (batchId: string) => {
     try {
-      const { data } = await production.getDetails(batchId);
-      setSelectedBatch(data);
+      const data = await production.getDetails(batchId);
+      // Cast API response to component's BatchDetails interface
+      setSelectedBatch(data as any);
       setDetailsOpen(true);
     } catch (error: unknown) {
       const err = error as { response?: { data?: { error?: string } } };
@@ -236,7 +242,7 @@ export const ProductionHistoryTab = () => {
       'Created At'
     ];
 
-    const rows = filteredBatches.map(b => [
+    const rows = (filteredBatches || []).map(b => [
       b.batch_no,
       b.batch_code,
       formatDate(b.production_date),
