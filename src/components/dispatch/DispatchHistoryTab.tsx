@@ -673,7 +673,8 @@ export const DispatchHistoryTab = () => {
                   // Group items by product variant, type, and specs (ignoring batch)
                   const grouped = selectedDispatch.items.reduce((acc: any, item: any) => {
                     const paramStr = JSON.stringify(item.parameters || {});
-                    const key = `${item.product_variant_id}-${item.item_type}-${Number(item.length_meters || 0)}-${item.bundle_size || ''}-${item.piece_length_meters || ''}-${paramStr}`;
+                    // Include piece_count to distinguish spare pieces from bundles with same parameters
+                    const key = `${item.product_variant_id}-${item.item_type}-${Number(item.length_meters || 0)}-${item.bundle_size || ''}-${item.piece_count || ''}-${item.piece_length_meters || ''}-${paramStr}`;
 
                     if (!acc[key]) {
                       acc[key] = {
@@ -717,7 +718,14 @@ export const DispatchHistoryTab = () => {
                           <Badge variant="outline">{getItemTypeLabel(item.item_type)}</Badge>
                           <div className="text-sm font-medium mt-1">Qty: {item.quantity}</div>
                           {item.length_meters && (
-                            <div className="text-xs text-gray-500">{item.length_meters}m</div>
+                            item.item_type === 'FULL_ROLL' && item.quantity > 1 ? (
+                              <>
+                                <div className="text-xs text-gray-500">Total: {(item.length_meters * item.quantity).toFixed(1)}m</div>
+                                <div className="text-xs text-gray-500">Per roll: {item.length_meters}m</div>
+                              </>
+                            ) : (
+                              <div className="text-xs text-gray-500">{item.length_meters}m</div>
+                            )
                           )}
                           {item.piece_count && (
                             <div className="text-xs text-gray-500">{item.piece_count} pieces</div>

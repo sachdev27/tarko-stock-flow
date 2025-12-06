@@ -254,7 +254,7 @@ export const ProductionNewTab = () => {
 
       const data = await production.createBatch(formDataToSend);
 
-      toast.success(`Production batch ${data.batch_id} created successfully!`);
+      toast.success(`Production batch ${data.data.batch_code || data.data.id} created successfully!`);
 
       // Reset form
       setFormData({

@@ -24,7 +24,8 @@ export function DispatchItemsDisplay({ items }: DispatchItemsDisplayProps) {
   // Group items by type, length, and parameters to avoid showing duplicates
   const groupedItems = items.reduce((acc: Record<string, GroupedItem>, item: DispatchItem) => {
     const paramStr = JSON.stringify(item.parameters || {});
-    const key = `${item.item_type}-${item.length_meters || ''}-${item.piece_length || ''}-${item.bundle_size || ''}-${paramStr}`;
+    // Include bundle_size and piece_count in the key to distinguish between different bundle/spare configurations
+    const key = `${item.item_type}-${item.product_type}-${item.brand}-${item.length_meters || ''}-${item.piece_length || ''}-${item.bundle_size || ''}-${item.piece_count || ''}-${paramStr}`;
 
     if (!acc[key]) {
       acc[key] = { ...item, quantity: 0 };
@@ -73,14 +74,25 @@ export function DispatchItemsDisplay({ items }: DispatchItemsDisplayProps) {
                 </div>
               )}
               {item.length_meters && item.item_type !== 'SPARE_PIECES' && item.item_type !== 'BUNDLE' && (
-                <div>
-                  <span className="text-muted-foreground">Length:</span>
-                  <span className="ml-2 font-medium">
-                    {item.item_type === 'FULL_ROLL' && item.quantity && item.quantity > 1
-                      ? `${(Number(item.length_meters) / item.quantity).toFixed(2)}m per piece`
-                      : `${Number(item.length_meters).toFixed(2)}m`}
-                  </span>
-                </div>
+                <>
+                  {item.item_type === 'FULL_ROLL' && item.quantity && item.quantity > 1 ? (
+                    <>
+                      <div>
+                        <span className="text-muted-foreground">Total Length:</span>
+                        <span className="ml-2 font-medium">{(Number(item.length_meters) * item.quantity).toFixed(2)}m</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Length per roll:</span>
+                        <span className="ml-2 font-medium">{Number(item.length_meters).toFixed(2)}m</span>
+                      </div>
+                    </>
+                  ) : (
+                    <div>
+                      <span className="text-muted-foreground">Length:</span>
+                      <span className="ml-2 font-medium">{Number(item.length_meters).toFixed(2)}m</span>
+                    </div>
+                  )}
+                </>
               )}
             </div>
             {item.parameters && Object.keys(item.parameters).length > 0 && (
