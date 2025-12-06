@@ -65,15 +65,20 @@ def create_batch():
         if quantity <= 0:
             return jsonify({'error': 'Quantity must be greater than 0'}), 400
 
-        # Handle number_of_rolls safely - can be None for sprinkler imports
-        number_of_rolls_raw = data.get('number_of_rolls') or data.get('roll_length')
-        number_of_rolls = int(number_of_rolls_raw) if number_of_rolls_raw not in (None, '', 'null') else 1
-        cut_rolls = json.loads(data.get('cut_rolls', '[]')) if isinstance(data.get('cut_rolls'), str) else data.get('cut_rolls', [])
-
+        # Get roll_config_type early (needed for number_of_rolls logic)
+        roll_config_type = data.get('roll_config_type', 'standard_rolls')
         length_per_roll_input = float(data.get('length_per_roll') or data.get('lengthPerRoll') or data.get('roll_length') or data.get('piece_length') or 0)
 
+        # Handle number_of_rolls safely - can be None for sprinkler imports
+        number_of_rolls_raw = data.get('number_of_rolls') or data.get('roll_length')
+        # If not provided but roll_config_type is standard_rolls, use quantity as number_of_rolls
+        if number_of_rolls_raw in (None, '', 'null') and roll_config_type == 'standard_rolls':
+            number_of_rolls = int(quantity)  # quantity represents number of rolls
+        else:
+            number_of_rolls = int(number_of_rolls_raw) if number_of_rolls_raw not in (None, '', 'null') else 1
+        cut_rolls = json.loads(data.get('cut_rolls', '[]')) if isinstance(data.get('cut_rolls'), str) else data.get('cut_rolls', [])
+
         # Bundle/spare pipe data
-        roll_config_type = data.get('roll_config_type', 'standard_rolls')
         quantity_based = data.get('quantity_based', 'false').lower() == 'true'
         # Handle number_of_bundles safely - can be None
         number_of_bundles_raw = data.get('number_of_bundles')
@@ -229,19 +234,26 @@ def create_batch():
             if product_category == 'HDPE Pipe' and roll_config_type == 'standard_rolls':
                 # Create standard rolls (aggregate)
                 if number_of_rolls > 0:
-                    # Calculate length for standard rolls only
-                    total_cut_length = sum(float(roll.get('length', 0)) for roll in cut_rolls)
-                    standard_total = quantity - total_cut_length
-                    if standard_total > 0 and number_of_rolls > 0:
-                        length_per_roll = standard_total / number_of_rolls
+                    # If length_per_roll is provided directly, use it (new aggregate model)
+                    # Otherwise calculate from quantity (old behavior)
+                    if length_per_roll_input > 0:
+                        # New model: quantity=number of rolls, length_per_roll=length of each roll
+                        calculated_length = length_per_roll_input
+                    else:
+                        # Old model: quantity=total meters, number_of_rolls=count
+                        total_cut_length = sum(float(roll.get('length', 0)) for roll in cut_rolls)
+                        standard_total = quantity - total_cut_length
+                        calculated_length = standard_total / number_of_rolls if standard_total > 0 else 0
+
+                    if calculated_length > 0:
                         # Create aggregate stock entry for all full rolls
                         InventoryHelper.create_hdpe_stock(
                             cursor,
                             batch_id=batch_id,
                             product_variant_id=variant_id,
                             quantity=number_of_rolls,
-                            length_per_roll=length_per_roll,
-                            notes=f'{number_of_rolls} full rolls of {length_per_roll}m each'
+                            length_per_roll=calculated_length,
+                            notes=f'{number_of_rolls} full rolls of {calculated_length}m each'
                         )
                         total_items += number_of_rolls
 

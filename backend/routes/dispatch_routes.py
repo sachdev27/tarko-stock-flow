@@ -1593,6 +1593,49 @@ def create_dispatch():
 
                     total_items_dispatched += quantity
 
+                # CRITICAL: Update batches.current_quantity for all affected batches
+                # Get unique batch_ids from all dispatched stock items
+                cursor.execute("""
+                    SELECT DISTINCT s.batch_id
+                    FROM dispatch_items di
+                    JOIN inventory_stock s ON di.stock_id = s.id
+                    WHERE di.dispatch_id = %s
+                """, (dispatch_id,))
+
+                affected_batches = cursor.fetchall()
+
+                for batch_row in affected_batches:
+                    batch_id = batch_row['batch_id']
+
+                    # Recalculate batch quantity from all stock in this batch
+                    # Wait for triggers to update inventory_stock.quantity for CUT_ROLL/SPARE
+                    # Unit semantics: HDPE uses roll/piece COUNT, Sprinkler uses piece COUNT
+                    cursor.execute("""
+                        UPDATE batches b
+                        SET current_quantity = (
+                            SELECT COALESCE(
+                                SUM(CASE
+                                    WHEN s.stock_type = 'FULL_ROLL' THEN s.quantity
+                                    WHEN s.stock_type = 'CUT_ROLL' THEN (
+                                        SELECT COALESCE(COUNT(*), 0)
+                                        FROM hdpe_cut_pieces cp
+                                        WHERE cp.stock_id = s.id AND cp.status = 'IN_STOCK'
+                                    )
+                                    WHEN s.stock_type = 'BUNDLE' THEN s.quantity * s.pieces_per_bundle
+                                    WHEN s.stock_type = 'SPARE' THEN (
+                                        SELECT COALESCE(SUM(sp.piece_count), 0)
+                                        FROM sprinkler_spare_pieces sp
+                                        WHERE sp.stock_id = s.id AND sp.status = 'IN_STOCK'
+                                    )
+                                    ELSE 0
+                                END), 0)
+                            FROM inventory_stock s
+                            WHERE s.batch_id = b.id AND s.deleted_at IS NULL
+                        ),
+                        updated_at = NOW()
+                        WHERE id = %s
+                    """, (batch_id,))
+
                 # Record in audit log
                 cursor.execute("""
                     INSERT INTO audit_logs (
