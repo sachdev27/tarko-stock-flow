@@ -1,11 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { PackageX, Search, Filter, X, Download } from 'lucide-react';
+import { PackageX, Search, Filter, X, Download, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { returns as returnsAPI } from '@/lib/api-typed';
 import { format } from 'date-fns';
@@ -91,6 +91,23 @@ const ReturnHistory = () => {
   const [selectedReturn, setSelectedReturn] = useState<ReturnDetail | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
 
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 50;
+
+  const totalPages = Math.ceil((filteredReturns?.length || 0) / itemsPerPage);
+
+  const paginatedReturns = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    return (filteredReturns || []).slice(startIndex, endIndex);
+  }, [filteredReturns, currentPage]);
+
+  const goToFirstPage = () => setCurrentPage(1);
+  const goToLastPage = () => setCurrentPage(totalPages);
+  const goToNextPage = () => setCurrentPage(prev => Math.min(prev + 1, totalPages));
+  const goToPrevPage = () => setCurrentPage(prev => Math.max(prev - 1, 1));
+
   const timePresets = [
     { label: 'All Time', value: 'all' },
     { label: 'Today', value: 'today' },
@@ -135,6 +152,7 @@ const ReturnHistory = () => {
     }
 
     setFilteredReturns(filtered);
+    setCurrentPage(1); // Reset to first page on filter change
   }, [searchQuery, returns, startDate, endDate]);
 
   // Handle time preset changes
@@ -369,7 +387,7 @@ const ReturnHistory = () => {
             <>
               {/* Mobile Card View */}
               <div className="md:hidden space-y-3">
-                {filteredReturns.map((ret) => (
+                {paginatedReturns.map((ret) => (
                   <Card
                     key={ret.id}
                     className="cursor-pointer hover:shadow-md transition-shadow"
@@ -419,7 +437,7 @@ const ReturnHistory = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredReturns.map((ret) => (
+                    {paginatedReturns.map((ret) => (
                     <TableRow
                       key={ret.id}
                       className="cursor-pointer hover:bg-muted/50"
@@ -458,6 +476,58 @@ const ReturnHistory = () => {
                 </TableBody>
               </Table>
             </div>
+
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-center gap-2 mt-6">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={goToFirstPage}
+                  disabled={currentPage === 1}
+                >
+                  <ChevronsLeft className="h-4 w-4" />
+                  <span className="ml-2 hidden sm:inline">First</span>
+                </Button>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={goToPrevPage}
+                  disabled={currentPage === 1}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  <span className="ml-2 hidden sm:inline">Previous</span>
+                </Button>
+
+                <div className="flex items-center gap-2 px-4">
+                  <span className="text-sm">
+                    Page <span className="font-medium">{currentPage}</span> of{' '}
+                    <span className="font-medium">{totalPages}</span>
+                  </span>
+                </div>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={goToNextPage}
+                  disabled={currentPage === totalPages}
+                >
+                  <span className="mr-2 hidden sm:inline">Next</span>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={goToLastPage}
+                  disabled={currentPage === totalPages}
+                >
+                  <span className="mr-2 hidden sm:inline">Last</span>
+                  <ChevronsRight className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
           </>
         )}
         </CardContent>

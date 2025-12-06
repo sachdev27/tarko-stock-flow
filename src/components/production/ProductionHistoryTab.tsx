@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -26,7 +26,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Search, Factory, Package, Filter, X, Paperclip, ExternalLink, Download } from 'lucide-react';
+import { Search, Factory, Package, Filter, X, Paperclip, ExternalLink, Download, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { production } from '@/lib/api-typed';
 import type * as API from '@/types';
 import { format } from 'date-fns';
@@ -87,6 +87,23 @@ export const ProductionHistoryTab = () => {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 50;
+
+  const totalPages = Math.ceil((filteredBatches?.length || 0) / itemsPerPage);
+
+  const paginatedBatches = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    return (filteredBatches || []).slice(startIndex, endIndex);
+  }, [filteredBatches, currentPage]);
+
+  const goToFirstPage = () => setCurrentPage(1);
+  const goToLastPage = () => setCurrentPage(totalPages);
+  const goToNextPage = () => setCurrentPage(prev => Math.min(prev + 1, totalPages));
+  const goToPrevPage = () => setCurrentPage(prev => Math.max(prev - 1, 1));
+
   const timePresets = [
     { label: 'All Time', value: 'all' },
     { label: 'Today', value: 'today' },
@@ -130,6 +147,7 @@ export const ProductionHistoryTab = () => {
     }
 
     setFilteredBatches(filtered);
+    setCurrentPage(1); // Reset to first page on filter change
   }, [searchTerm, batches, startDate, endDate]);
 
   // Handle time preset changes
@@ -178,8 +196,7 @@ export const ProductionHistoryTab = () => {
     setLoading(true);
     try {
       const data = await production.getHistory();
-      // api-typed already unwraps the response
-      // Ensure data is always an array
+      // Backend returns {batches: []} format - extract array
       const batchesArray = Array.isArray(data) ? data : ((data as any)?.batches || []);
       // Cast API response to component's Batch interface
       setBatches(batchesArray as any);
@@ -420,7 +437,7 @@ export const ProductionHistoryTab = () => {
             <>
               {/* Mobile Card View */}
               <div className="md:hidden space-y-3">
-                {filteredBatches.map((batch) => (
+                {paginatedBatches.map((batch) => (
                   <Card
                     key={batch.id}
                     className="cursor-pointer hover:shadow-md transition-shadow"
@@ -473,7 +490,7 @@ export const ProductionHistoryTab = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredBatches.map((batch) => (
+                    {paginatedBatches.map((batch) => (
                     <TableRow
                       key={batch.id}
                       className="cursor-pointer hover:bg-muted/50"
@@ -545,6 +562,58 @@ export const ProductionHistoryTab = () => {
                 </TableBody>
               </Table>
             </div>
+
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-center gap-2 mt-6">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={goToFirstPage}
+                  disabled={currentPage === 1}
+                >
+                  <ChevronsLeft className="h-4 w-4" />
+                  <span className="ml-2 hidden sm:inline">First</span>
+                </Button>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={goToPrevPage}
+                  disabled={currentPage === 1}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  <span className="ml-2 hidden sm:inline">Previous</span>
+                </Button>
+
+                <div className="flex items-center gap-2 px-4">
+                  <span className="text-sm">
+                    Page <span className="font-medium">{currentPage}</span> of{' '}
+                    <span className="font-medium">{totalPages}</span>
+                  </span>
+                </div>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={goToNextPage}
+                  disabled={currentPage === totalPages}
+                >
+                  <span className="mr-2 hidden sm:inline">Next</span>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={goToLastPage}
+                  disabled={currentPage === totalPages}
+                >
+                  <span className="mr-2 hidden sm:inline">Last</span>
+                  <ChevronsRight className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
           </>
         )}
         </CardContent>

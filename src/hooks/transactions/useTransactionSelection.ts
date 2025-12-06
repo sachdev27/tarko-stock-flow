@@ -43,7 +43,8 @@ export const useTransactionSelection = (onRevertComplete?: () => void) => {
     try {
       setReverting(true);
       // Backend expects { transaction_ids: [] } structure
-      const { data } = await transactionsAPI.revert({
+      // API already unwraps response - no need to destructure { data }
+      const data = await transactionsAPI.revert({
         transaction_ids: Array.from(selectedTransactionIds)
       });
 
