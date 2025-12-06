@@ -60,19 +60,18 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.frontend
-      args:
-        VITE_API_URL: ${VITE_API_URL:-http://localhost:5500/api}
-    image: tarko-frontend:latest
     container_name: tarko-frontend
     restart: unless-stopped
+    environment:
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:5500}
     ports:
-      - "3000:80"
+      - "80:80"
     depends_on:
       - backend
     networks:
       - tarko-network
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "80"]
+      test: ["CMD", "curl", "-f", "http://localhost:80"]
       interval: 30s
       timeout: 10s
       retries: 3
