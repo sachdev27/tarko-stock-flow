@@ -1,4 +1,81 @@
 {
+  "auth_routes": {
+    "/api/auth/login": {
+      "method": "POST",
+      "description": "Authenticate user and receive JWT access token",
+      "authentication": "None",
+      "request_body": {
+        "email": {
+          "type": "string",
+          "required": true,
+          "description": "User email address"
+        },
+        "password": {
+          "type": "string",
+          "required": true,
+          "description": "User password"
+        }
+      },
+      "response": {
+        "access_token": "string",
+        "user": {
+          "id": "UUID",
+          "email": "string",
+          "username": "string",
+          "name": "string",
+          "role": "string"
+        }
+      }
+    },
+    "/api/auth/register": {
+      "method": "POST",
+      "description": "Register a new user account",
+      "authentication": "None",
+      "request_body": {
+        "email": {
+          "type": "string",
+          "required": true
+        },
+        "password": {
+          "type": "string",
+          "required": true
+        },
+        "username": {
+          "type": "string",
+          "required": true
+        },
+        "name": {
+          "type": "string",
+          "required": false
+        }
+      },
+      "response": {
+        "message": "string",
+        "user_id": "UUID"
+      }
+    },
+    "/api/auth/me": {
+      "method": "GET",
+      "description": "Get current authenticated user information",
+      "authentication": "JWT Required",
+      "response": {
+        "id": "UUID",
+        "email": "string",
+        "username": "string",
+        "name": "string",
+        "role": "string",
+        "created_at": "datetime"
+      }
+    },
+    "/api/auth/logout": {
+      "method": "POST",
+      "description": "Logout current user",
+      "authentication": "JWT Required",
+      "response": {
+        "message": "string"
+      }
+    }
+  },
   "dispatch_routes": {
     "/api/dispatch/available-rolls": {
       "method": "POST",
