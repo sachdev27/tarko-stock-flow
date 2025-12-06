@@ -16,6 +16,7 @@ import Dispatch from "./pages/Dispatch";
 import Return from "./pages/Return";
 import Reports from "./pages/Reports";
 import Admin from "./pages/Admin";
+import { SyncSettings } from "./pages/SyncSettings";
 import Details from "./pages/Details";
 import NotFound from "./pages/NotFound";
 import ForgotPassword from "./pages/ForgotPassword";
@@ -99,6 +100,14 @@ const App = () => (
               element={
                 <ProtectedRoute requireAdmin>
                   <Admin />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/sync-settings"
+              element={
+                <ProtectedRoute requireAdmin>
+                  <SyncSettings />
                 </ProtectedRoute>
               }
             />

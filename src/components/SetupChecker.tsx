@@ -20,7 +20,7 @@ export const SetupChecker = ({ children }: { children: React.ReactNode }) => {
         const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5500/api';
         const response = await axios.get(`${API_BASE_URL}/setup/check`);
 
-        if (response.data.setup_required) {
+        if (response.data?.setup_required) {
           setSetupRequired(true);
           navigate('/setup');
         }

@@ -47,6 +47,8 @@ export const ProductSelectionSection = ({
   productTypeRef,
   productSearchRef
 }: ProductSelectionProps) => {
+  // Ensure brands is always an array
+  const brandsList = Array.isArray(brands) ? brands : [];
   const [selectedProductType, setSelectedProductType] = useState('');
   const [selectedBrand, setSelectedBrand] = useState('');
   const [itemType, setItemType] = useState<'FULL_ROLL' | 'CUT_ROLL' | 'BUNDLE' | 'SPARE_PIECES' | ''>('');
@@ -219,7 +221,7 @@ export const ProductSelectionSection = ({
       return;
     }
 
-    const brandName = brands.find(b => b.id === selectedBrand)?.name || '';
+    const brandName = brandsList.find(b => b.id === selectedBrand)?.name || '';
 
     const item: ReturnItem = {
       product_type_id: selectedProductType,
@@ -347,7 +349,7 @@ export const ProductSelectionSection = ({
               <SelectValue placeholder="Select type" />
             </SelectTrigger>
             <SelectContent>
-              {productTypes.map((pt) => (
+              {(productTypes || []).map((pt) => (
                 <SelectItem key={pt.id} value={pt.id}>{pt.name}</SelectItem>
               ))}
             </SelectContent>
@@ -362,7 +364,7 @@ export const ProductSelectionSection = ({
               <SelectValue placeholder="Select brand" />
             </SelectTrigger>
             <SelectContent>
-              {brands.map((brand) => (
+              {brandsList.map((brand) => (
                 <SelectItem key={brand.id} value={brand.id}>{brand.name}</SelectItem>
               ))}
             </SelectContent>

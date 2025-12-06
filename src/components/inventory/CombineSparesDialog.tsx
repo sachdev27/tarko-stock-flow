@@ -127,7 +127,10 @@ export const CombineSparesDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[600px]">
+      <DialogContent
+        className="sm:max-w-[600px]"
+        onClick={(e) => e.stopPropagation()}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Package2 className="h-5 w-5" />
@@ -155,7 +158,26 @@ export const CombineSparesDialog = ({
               max={totalAvailablePieces}
               placeholder="e.g., 10"
               value={bundleSize}
-              onChange={(e) => setBundleSize(e.target.value)}
+              onChange={(e) => {
+                const value = e.target.value;
+                // Prevent negative, decimal, and non-integer input
+                if (value.includes('-') || value.includes('.') || value.includes('e')) {
+                  return;
+                }
+                setBundleSize(value);
+              }}
+              onKeyDown={(e) => {
+                // Prevent minus, decimal point, and 'e' keys
+                if (e.key === '-' || e.key === '.' || e.key === 'e' || e.key === 'E') {
+                  e.preventDefault();
+                }
+              }}
+              onBlur={(e) => {
+                const value = parseInt(e.target.value);
+                if (!value || value <= 0) {
+                  setBundleSize('');
+                }
+              }}
             />
           </div>
 
@@ -168,7 +190,26 @@ export const CombineSparesDialog = ({
               min="1"
               placeholder="e.g., 2"
               value={numberOfBundles}
-              onChange={(e) => setNumberOfBundles(e.target.value)}
+              onChange={(e) => {
+                const value = e.target.value;
+                // Prevent negative, decimal, and non-integer input
+                if (value.includes('-') || value.includes('.') || value.includes('e')) {
+                  return;
+                }
+                setNumberOfBundles(value);
+              }}
+              onKeyDown={(e) => {
+                // Prevent minus, decimal point, and 'e' keys
+                if (e.key === '-' || e.key === '.' || e.key === 'e' || e.key === 'E') {
+                  e.preventDefault();
+                }
+              }}
+              onBlur={(e) => {
+                const value = parseInt(e.target.value);
+                if (!value || value <= 0) {
+                  setNumberOfBundles('');
+                }
+              }}
             />
           </div>
 

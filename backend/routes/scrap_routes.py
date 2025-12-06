@@ -298,6 +298,48 @@ def create_scrap():
                 WHERE id = %s
             """, (float(total_quantity), float(total_estimated_loss) if total_estimated_loss > 0 else None, scrap_id))
 
+            # CRITICAL: Update batches.current_quantity for all affected batches
+            # Get unique batch_ids from all scrapped items
+            cursor.execute("""
+                SELECT DISTINCT si.batch_id
+                FROM scrap_items si
+                WHERE si.scrap_id = %s
+            """, (scrap_id,))
+
+            affected_batches = cursor.fetchall()
+
+            for batch_row in affected_batches:
+                batch_id = batch_row['batch_id']
+
+                # Recalculate batch quantity from remaining stock
+                # Wait for triggers to update inventory_stock.quantity for CUT_ROLL/SPARE
+                # Unit semantics: HDPE uses roll/piece COUNT, Sprinkler uses piece COUNT
+                cursor.execute("""
+                    UPDATE batches b
+                    SET current_quantity = (
+                        SELECT COALESCE(
+                            SUM(CASE
+                                WHEN s.stock_type = 'FULL_ROLL' THEN s.quantity
+                                WHEN s.stock_type = 'CUT_ROLL' THEN (
+                                    SELECT COALESCE(COUNT(*), 0)
+                                    FROM hdpe_cut_pieces cp
+                                    WHERE cp.stock_id = s.id AND cp.status = 'IN_STOCK'
+                                )
+                                WHEN s.stock_type = 'BUNDLE' THEN s.quantity * s.pieces_per_bundle
+                                WHEN s.stock_type = 'SPARE' THEN (
+                                    SELECT COALESCE(SUM(sp.piece_count), 0)
+                                    FROM sprinkler_spare_pieces sp
+                                    WHERE sp.stock_id = s.id AND sp.status = 'IN_STOCK'
+                                )
+                                ELSE 0
+                            END), 0)
+                        FROM inventory_stock s
+                        WHERE s.batch_id = b.id AND s.deleted_at IS NULL
+                    ),
+                    updated_at = NOW()
+                    WHERE id = %s
+                """, (batch_id,))
+
             # Create audit log
             cursor.execute("""
                 INSERT INTO audit_logs (
@@ -669,6 +711,48 @@ def revert_scrap(scrap_id):
                 SET status = 'CANCELLED', updated_at = NOW()
                 WHERE id = %s
             """, (scrap_id,))
+
+            # CRITICAL: Update batches.current_quantity for all affected batches after revert
+            # Get unique batch_ids from all restored items
+            cursor.execute("""
+                SELECT DISTINCT si.batch_id
+                FROM scrap_items si
+                WHERE si.scrap_id = %s
+            """, (scrap_id,))
+
+            affected_batches = cursor.fetchall()
+
+            for batch_row in affected_batches:
+                batch_id = batch_row['batch_id']
+
+                # Recalculate batch quantity including restored stock
+                # Wait for triggers to update inventory_stock.quantity for CUT_ROLL/SPARE
+                # Unit semantics: HDPE uses roll/piece COUNT, Sprinkler uses piece COUNT
+                cursor.execute("""
+                    UPDATE batches b
+                    SET current_quantity = (
+                        SELECT COALESCE(
+                            SUM(CASE
+                                WHEN s.stock_type = 'FULL_ROLL' THEN s.quantity
+                                WHEN s.stock_type = 'CUT_ROLL' THEN (
+                                    SELECT COALESCE(COUNT(*), 0)
+                                    FROM hdpe_cut_pieces cp
+                                    WHERE cp.stock_id = s.id AND cp.status = 'IN_STOCK'
+                                )
+                                WHEN s.stock_type = 'BUNDLE' THEN s.quantity * s.pieces_per_bundle
+                                WHEN s.stock_type = 'SPARE' THEN (
+                                    SELECT COALESCE(SUM(sp.piece_count), 0)
+                                    FROM sprinkler_spare_pieces sp
+                                    WHERE sp.stock_id = s.id AND sp.status = 'IN_STOCK'
+                                )
+                                ELSE 0
+                            END), 0)
+                        FROM inventory_stock s
+                        WHERE s.batch_id = b.id AND s.deleted_at IS NULL
+                    ),
+                    updated_at = NOW()
+                    WHERE id = %s
+                """, (batch_id,))
 
             cursor.connection.commit()
 

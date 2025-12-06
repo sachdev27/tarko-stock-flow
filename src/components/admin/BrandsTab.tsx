@@ -6,7 +6,8 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { Plus, Trash2, Tag } from 'lucide-react';
-import { admin } from '@/lib/api';
+import { admin } from '@/lib/api-typed';
+import type * as API from '@/types';
 
 interface BrandsTabProps {
   brands: any[];

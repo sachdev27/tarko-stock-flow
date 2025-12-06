@@ -55,6 +55,16 @@ export const StockEntryList = ({ stockEntries, onUpdate }: StockEntryListProps) 
     return acc;
   }, {} as Record<number, StockEntry[]>);
 
+  // Group cut rolls by length (same pattern as full rolls)
+  const cutRollsByLength = cutRolls.reduce((acc, entry) => {
+    const length = Number(entry.length_per_unit || 0);
+    if (!acc[length]) {
+      acc[length] = [];
+    }
+    acc[length].push(entry);
+    return acc;
+  }, {} as Record<number, StockEntry[]>);
+
   // Group bundles by size AND piece length (normalize length to number)
   const bundlesBySize = bundles.reduce((acc, entry) => {
     const size = entry.pieces_per_bundle || 0;
@@ -158,49 +168,59 @@ export const StockEntryList = ({ stockEntries, onUpdate }: StockEntryListProps) 
         })
       }
 
-      {/* Cut Rolls - Grouped by length with count */}
-      {cutRolls.map(entry => (
-        <div key={entry.piece_ids ? entry.piece_ids.join(',') : entry.stock_id} className="flex items-center justify-between p-3 bg-orange-50 rounded-lg border border-orange-200">
-          <div className="flex items-center gap-3">
-            <Scissors className="h-5 w-5 text-orange-600" />
-            <div>
-              <div className="font-medium">{entry.quantity} Cut {entry.quantity === 1 ? 'Piece' : 'Pieces'}</div>
-              <div className="text-sm font-mono font-semibold">
-                {entry.length_per_unit}m each
+      {/* Cut Rolls - Grouped by length */}
+      {Object.entries(cutRollsByLength)
+        .sort(([a], [b]) => Number(b) - Number(a)) // Sort by length descending
+        .map(([lengthKey, cutGroup]) => {
+          const length = Number(lengthKey);
+          const totalQuantity = cutGroup.reduce((sum, c) => sum + c.quantity, 0);
+          const totalMeters = cutGroup.reduce((sum, c) => sum + (c.quantity * (c.length_per_unit || 0)), 0);
+          const firstCut = cutGroup[0];
+
+          return (
+            <div key={`cut-${length}`} className="flex items-center justify-between p-3 bg-orange-50 rounded-lg border border-orange-200">
+              <div className="flex items-center gap-3">
+                <Scissors className="h-5 w-5 text-orange-600" />
+                <div>
+                  <div className="font-medium">{totalQuantity} Cut {totalQuantity === 1 ? 'Piece' : 'Pieces'}</div>
+                  <div className="text-sm font-mono font-semibold">
+                    {length}m each • {totalMeters.toFixed(2)}m total
+                  </div>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                {isAdmin && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedStock(cutGroup);
+                      setScrapDialogOpen(true);
+                    }}
+                    className="gap-1 text-destructive hover:text-destructive hover:bg-destructive/10"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Scrap
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleCutRoll(firstCut);
+                  }}
+                  className="gap-1"
+                >
+                  <Scissors className="h-4 w-4" />
+                  Cut Further
+                </Button>
               </div>
             </div>
-          </div>
-          <div className="flex gap-2">
-            {isAdmin && (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setSelectedStock([entry]);
-                  setScrapDialogOpen(true);
-                }}
-                className="gap-1 text-destructive hover:text-destructive hover:bg-destructive/10"
-              >
-                <Trash2 className="h-4 w-4" />
-                Scrap
-              </Button>
-            )}
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleCutRoll(entry);
-              }}
-              className="gap-1"
-            >
-              <Scissors className="h-4 w-4" />
-              Cut Further
-            </Button>
-          </div>
-        </div>
-      ))}
+          );
+        })
+      }
 
       {/* Bundles - Grouped by size and piece length */}
       {Object.entries(bundlesBySize)

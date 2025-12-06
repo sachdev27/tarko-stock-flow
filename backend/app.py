@@ -24,6 +24,8 @@ from routes.backup_config_routes import backup_config_bp
 from routes.setup_routes import setup_bp
 from routes.password_reset_routes import password_reset_bp
 from routes.smtp_config_routes import smtp_config_bp
+from routes.sync_routes import sync_bp
+from routes.swagger_routes import swagger_bp
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -44,6 +46,28 @@ CORS(app,
 # Setup JWT
 jwt = JWTManager(app)
 
+# JWT error handlers
+@jwt.expired_token_loader
+def expired_token_callback(jwt_header, jwt_payload):
+    return jsonify({
+        'error': 'Token has expired',
+        'msg': 'The token has expired. Please login again.'
+    }), 401
+
+@jwt.invalid_token_loader
+def invalid_token_callback(error):
+    return jsonify({
+        'error': 'Invalid token',
+        'msg': 'Signature verification failed or token is malformed.'
+    }), 401
+
+@jwt.unauthorized_loader
+def unauthorized_callback(error):
+    return jsonify({
+        'error': 'Missing authorization',
+        'msg': 'Request does not contain an access token.'
+    }), 401
+
 # Register blueprints
 app.register_blueprint(auth_bp)
 app.register_blueprint(inventory_bp)
@@ -62,6 +86,8 @@ app.register_blueprint(backup_config_bp)
 app.register_blueprint(setup_bp)
 app.register_blueprint(password_reset_bp)
 app.register_blueprint(smtp_config_bp)
+app.register_blueprint(sync_bp)
+app.register_blueprint(swagger_bp)
 
 @app.route('/api/health', methods=['GET'])
 def health_check():

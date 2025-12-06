@@ -102,7 +102,10 @@ export const CutRollDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent
+        className="sm:max-w-[500px]"
+        onClick={(e) => e.stopPropagation()}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Scissors className="h-5 w-5" />
@@ -133,11 +136,30 @@ export const CutRollDialog = ({
             <Input
               type="number"
               step="0.01"
-              min="0"
-              max={availableLength}
+              min="0.01"
               placeholder="Enter length in meters"
               value={cutLength}
-              onChange={(e) => setCutLength(e.target.value)}
+              onChange={(e) => {
+                const value = e.target.value;
+                // Prevent negative sign from being entered
+                if (value.includes('-')) {
+                  return;
+                }
+                setCutLength(value);
+              }}
+              onKeyDown={(e) => {
+                // Prevent minus key
+                if (e.key === '-' || e.key === 'Minus') {
+                  e.preventDefault();
+                }
+              }}
+              onBlur={(e) => {
+                // Ensure positive value on blur
+                const value = parseFloat(e.target.value);
+                if (!value || value <= 0) {
+                  setCutLength('');
+                }
+              }}
             />
           </div>
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Layout } from '@/components/Layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -27,9 +27,10 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Search, Trash2, Package, Filter, X } from 'lucide-react';
-import { scrap as scrapAPI } from '@/lib/api';
+import { Search, Trash2, Package, Filter, X, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { scrap as scrapAPI } from '@/lib/api-typed';
 import { format } from 'date-fns';
+import type * as API from '@/types';
 
 interface Scrap {
   id: string;
@@ -96,6 +97,23 @@ const ScrapHistory = ({ embedded = false }: ScrapHistoryProps) => {
   const [endDate, setEndDate] = useState('');
   const [reasonFilter, setReasonFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 50;
+
+  const totalPages = Math.ceil((filteredScraps?.length || 0) / itemsPerPage);
+
+  const paginatedScraps = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    return (filteredScraps || []).slice(startIndex, endIndex);
+  }, [filteredScraps, currentPage]);
+
+  const goToFirstPage = () => setCurrentPage(1);
+  const goToLastPage = () => setCurrentPage(totalPages);
+  const goToNextPage = () => setCurrentPage(prev => Math.min(prev + 1, totalPages));
+  const goToPrevPage = () => setCurrentPage(prev => Math.max(prev - 1, 1));
 
   const timePresets = [
     { label: 'All Time', value: 'all' },
@@ -180,6 +198,7 @@ const ScrapHistory = ({ embedded = false }: ScrapHistoryProps) => {
     }
 
     setFilteredScraps(filtered);
+    setCurrentPage(1); // Reset to first page on filter change
   };
 
   const fetchScraps = async () => {
@@ -191,9 +210,11 @@ const ScrapHistory = ({ embedded = false }: ScrapHistoryProps) => {
       if (reasonFilter) params.reason = reasonFilter;
       if (statusFilter && statusFilter !== 'all') params.status = statusFilter;
 
-      const { data } = await scrapAPI.getHistory(params);
-      setScraps(data.scraps || []);
-      setFilteredScraps(data.scraps || []);
+      const data = await scrapAPI.getHistory(params);
+      // Backend returns {scraps: []} format - extract array
+      const scrapsArray = Array.isArray(data) ? data : (data?.scraps || []);
+      setScraps(scrapsArray);
+      setFilteredScraps(scrapsArray);
     } catch (error: unknown) {
       const err = error as { response?: { data?: { error?: string } } };
       toast.error(err.response?.data?.error || 'Failed to fetch scrap history');
@@ -204,7 +225,7 @@ const ScrapHistory = ({ embedded = false }: ScrapHistoryProps) => {
 
   const fetchScrapDetails = async (scrapId: string) => {
     try {
-      const { data } = await scrapAPI.getDetails(scrapId);
+      const data = await scrapAPI.getDetails(scrapId);
       setSelectedScrap(data);
       setDetailsOpen(true);
     } catch (error: unknown) {
@@ -434,8 +455,8 @@ const ScrapHistory = ({ embedded = false }: ScrapHistoryProps) => {
           <Card>
             <CardContent className="p-0">
               {/* Mobile Card View */}
-              <div className="md:hidden p-4 space-y-3">
-                {filteredScraps.map((scrap) => (
+              <div className="md:hidden space-y-3">
+                {paginatedScraps.map((scrap) => (
                   <Card
                     key={scrap.id}
                     className="cursor-pointer hover:shadow-md transition-shadow"
@@ -485,7 +506,7 @@ const ScrapHistory = ({ embedded = false }: ScrapHistoryProps) => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredScraps.map((scrap) => (
+                    {paginatedScraps.map((scrap) => (
                     <TableRow
                       key={scrap.id}
                       className="cursor-pointer hover:bg-muted/50"
@@ -523,6 +544,58 @@ const ScrapHistory = ({ embedded = false }: ScrapHistoryProps) => {
                 </TableBody>
               </Table>
             </div>
+
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-center gap-2 mt-6">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={goToFirstPage}
+                  disabled={currentPage === 1}
+                >
+                  <ChevronsLeft className="h-4 w-4" />
+                  <span className="ml-2 hidden sm:inline">First</span>
+                </Button>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={goToPrevPage}
+                  disabled={currentPage === 1}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  <span className="ml-2 hidden sm:inline">Previous</span>
+                </Button>
+
+                <div className="flex items-center gap-2 px-4">
+                  <span className="text-sm">
+                    Page <span className="font-medium">{currentPage}</span> of{' '}
+                    <span className="font-medium">{totalPages}</span>
+                  </span>
+                </div>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={goToNextPage}
+                  disabled={currentPage === totalPages}
+                >
+                  <span className="mr-2 hidden sm:inline">Next</span>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={goToLastPage}
+                  disabled={currentPage === totalPages}
+                >
+                  <span className="mr-2 hidden sm:inline">Last</span>
+                  <ChevronsRight className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
             </CardContent>
           </Card>
         )}
@@ -590,10 +663,95 @@ const ScrapHistory = ({ embedded = false }: ScrapHistoryProps) => {
               <div>
                 <h3 className="font-semibold mb-3 flex items-center gap-2">
                   <Package className="h-4 w-4" />
-                  Scrapped Items ({selectedScrap.items.length})
+                  Scrapped Items ({(() => {
+                    // Group items by stock_type, length/size, and parameters to consolidate display
+                    const grouped = selectedScrap.items.reduce((acc: Record<string, any>, item: ScrapItem) => {
+                      const paramStr = JSON.stringify(item.parameters || {});
+                      const key = `${item.stock_type}-${item.length_per_unit || ''}-${item.pieces_per_bundle || ''}-${item.piece_length_meters || ''}-${paramStr}`;
+
+                      if (!acc[key]) {
+                        acc[key] = {
+                          ...item,
+                          quantity_scrapped: 0,
+                          batch_codes: [],
+                          batch_nos: [],
+                          pieces: [],
+                          estimated_values: []
+                        };
+                      }
+                      acc[key].quantity_scrapped += item.quantity_scrapped || 0;
+
+                      // Collect batch info
+                      if (item.batch_code && !acc[key].batch_codes.includes(item.batch_code)) {
+                        acc[key].batch_codes.push(item.batch_code);
+                      }
+                      if (item.batch_no && !acc[key].batch_nos.includes(item.batch_no)) {
+                        acc[key].batch_nos.push(item.batch_no);
+                      }
+
+                      // Aggregate pieces for CUT_ROLL/SPARE
+                      if (item.pieces && Array.isArray(item.pieces)) {
+                        acc[key].pieces.push(...item.pieces);
+                      }
+
+                      // Sum estimated values
+                      if (item.estimated_value) {
+                        acc[key].estimated_values.push(item.estimated_value);
+                      }
+
+                      return acc;
+                    }, {});
+
+                    return Object.keys(grouped).length;
+                  })()})
                 </h3>
                 <div className="space-y-2">
-                  {selectedScrap.items.map((item, idx) => (
+                  {(() => {
+                    // Group items by stock_type, length/size, and parameters to consolidate display
+                    const grouped = selectedScrap.items.reduce((acc: Record<string, any>, item: ScrapItem) => {
+                      const paramStr = JSON.stringify(item.parameters || {});
+                      const key = `${item.stock_type}-${item.length_per_unit || ''}-${item.pieces_per_bundle || ''}-${item.piece_length_meters || ''}-${paramStr}`;
+
+                      if (!acc[key]) {
+                        acc[key] = {
+                          ...item,
+                          quantity_scrapped: 0,
+                          batch_codes: [],
+                          batch_nos: [],
+                          pieces: [],
+                          estimated_values: []
+                        };
+                      }
+                      acc[key].quantity_scrapped += item.quantity_scrapped || 0;
+
+                      // Collect batch info
+                      if (item.batch_code && !acc[key].batch_codes.includes(item.batch_code)) {
+                        acc[key].batch_codes.push(item.batch_code);
+                      }
+                      if (item.batch_no && !acc[key].batch_nos.includes(item.batch_no)) {
+                        acc[key].batch_nos.push(item.batch_no);
+                      }
+
+                      // Aggregate pieces for CUT_ROLL/SPARE
+                      if (item.pieces && Array.isArray(item.pieces)) {
+                        acc[key].pieces.push(...item.pieces);
+                      }
+
+                      // Sum estimated values
+                      if (item.estimated_value) {
+                        acc[key].estimated_values.push(item.estimated_value);
+                      }
+
+                      return acc;
+                    }, {});
+
+                    return Object.values(grouped).map((item: any, idx: number) => {
+                      // Calculate total estimated value
+                      const totalEstimatedValue = item.estimated_values.length > 0
+                        ? item.estimated_values.reduce((sum: number, val: number) => sum + val, 0)
+                        : null;
+
+                      return (
                     <div key={idx} className="p-3 border rounded-lg">
                       <div className="flex justify-between items-start mb-2">
                         <div className="flex-1">
@@ -604,7 +762,10 @@ const ScrapHistory = ({ embedded = false }: ScrapHistoryProps) => {
                             </span>
                           </div>
                           <div className="text-xs text-gray-500">
-                            Batch: {item.batch_code} (#{item.batch_no})
+                            Batch{item.batch_codes.length > 1 ? 'es' : ''}: {item.batch_codes.map((bc: string, i: number) => {
+                              const batchNo = item.batch_nos[i];
+                              return `${bc} (#${batchNo})`;
+                            }).join(', ')}
                           </div>
                           {item.parameters && Object.keys(item.parameters).length > 0 && (
                             <div className="text-xs text-gray-500">
@@ -614,10 +775,10 @@ const ScrapHistory = ({ embedded = false }: ScrapHistoryProps) => {
                             </div>
                           )}
                         </div>
-                        {item.estimated_value && (
+                        {totalEstimatedValue && (
                           <div className="text-right">
                             <div className="text-sm font-medium text-red-600">
-                              {formatCurrency(item.estimated_value)}
+                              {formatCurrency(totalEstimatedValue)}
                             </div>
                             <div className="text-xs text-gray-500">Est. Value</div>
                           </div>
@@ -657,7 +818,7 @@ const ScrapHistory = ({ embedded = false }: ScrapHistoryProps) => {
                           <div className="mt-2">
                             <div className="font-medium mb-1">Pieces scrapped:</div>
                             <div className="flex flex-wrap gap-1">
-                              {item.pieces.map((piece, i) => (
+                              {item.pieces.map((piece: any, i: number) => (
                                 <Badge key={i} variant="secondary" className="text-xs">
                                   {piece.piece_type === 'CUT_PIECE'
                                     ? `${piece.length_meters}m`
@@ -673,7 +834,9 @@ const ScrapHistory = ({ embedded = false }: ScrapHistoryProps) => {
                         )}
                       </div>
                     </div>
-                  ))}
+                      );
+                    });
+                  })()}
                 </div>
               </div>
             </div>

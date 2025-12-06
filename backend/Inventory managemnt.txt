@@ -1,0 +1,654 @@
+===========================================
+TARKO INVENTORY MANAGEMENT SYSTEM
+Complete Architecture & Business Logic Documentation
+===========================================
+
+SYSTEM OVERVIEW
+---------------
+The Tarko inventory management system provides comprehensive tracking and control of HDPE Pipe and Sprinkler Pipe inventory through production, returns, dispatches, and scrap operations. The system uses a hybrid aggregate model combining batch-level quantity tracking with piece-level traceability.
+
+===========================================
+CORE CONCEPTS
+===========================================
+
+1. BATCH SYSTEM
+--------------
+- Every inventory entry (production or return) creates a BATCH
+- Each batch has:
+  * batch_no: Unique identifier
+  * batch_code: Generated code
+  * product_variant_id: Links to specific product variant
+  * initial_quantity: Original amount when batch created (NEVER changes)
+  * current_quantity: Current available amount (DECREASES with dispatch/scrap, NEVER increases)
+  * production_date: When batch was created
+
+- Batches are the AGGREGATE SOURCE OF TRUTH for total available inventory
+- Frontend displays inventory at batch level with stock-level detail
+
+2. STOCK RECORDS (inventory_stock)
+----------------------------------
+- Each batch contains one or more STOCK records
+- Stock types:
+  * FULL_ROLL: Intact, uncut rolls
+  * CUT_ROLL: Rolls that have been cut into pieces
+  * BUNDLE: Groups of pipes bundled together
+  * SPARE: Individual loose pipes
+
+- Stock quantity semantics:
+  * FULL_ROLL: quantity = NUMBER of rolls (e.g., 5 rolls)
+  * BUNDLE: quantity = NUMBER of bundles (e.g., 3 bundles)
+  * CUT_ROLL: quantity = AUTO-UPDATED by database trigger (COUNT of pieces)
+  * SPARE: quantity = AUTO-UPDATED by database trigger (COUNT of pieces)
+
+3. PIECE TRACKING
+-----------------
+- Individual pieces tracked in separate tables:
+  * hdpe_cut_pieces: Each cut piece of HDPE pipe (length_meters, status)
+  * sprinkler_spare_pieces: Each spare sprinkler pipe (piece_count=1, status)
+
+- Piece statuses: IN_STOCK, DISPATCHED, SOLD_OUT, SCRAPPED
+- Database triggers automatically maintain inventory_stock.quantity for CUT_ROLL and SPARE types
+- Routes manually update batches.current_quantity for all operations
+
+4. PRODUCT CATEGORIES
+--------------------
+A. HDPE Pipe
+   Product Variant = OD + PN + PE + Brand
+   Examples: OD=110mm, PN=8, PE=63, Brand=Tarko
+
+B. Sprinkler Pipe
+   Product Variant = OD + PN + Type + Brand
+   Examples: OD=20mm, PN=6, Type=L, Brand=Tarko
+
+===========================================
+OPERATIONS DETAILED SPECIFICATION
+===========================================
+
+1. PRODUCTION
+-------------
+PURPOSE: Create new inventory from manufacturing
+
+CREATES:
+- One BATCH with initial_quantity = current_quantity = total produced
+- One or more STOCK records based on items produced
+- Individual PIECE records for cut rolls or spares
+
+HDPE PIPE PRODUCTION:
+A. Full Rolls
+   - Input: Number of rolls + Length per roll (e.g., 5 rolls × 500m)
+   - Creates:
+     * Batch with current_quantity = 2500m
+     * inventory_stock: FULL_ROLL, quantity=5, length_per_unit=500
+   - Frontend shows: "5 Full Rolls (500m each) = 2,500m"
+
+B. Cut Rolls
+   - Input: Multiple pieces with specific lengths (e.g., 3 pieces: 200m, 150m, 150m)
+   - Creates:
+     * Batch with current_quantity = 500m
+     * inventory_stock: CUT_ROLL, quantity=3 (auto-updated by trigger)
+     * hdpe_cut_pieces: 3 records [200m, 150m, 150m]
+   - Frontend shows: "3 Cut Pieces (200m, 150m, 150m) = 500m"
+
+SPRINKLER PIPE PRODUCTION:
+A. Bundles
+   - Input: Number of bundles + Pieces per bundle (e.g., 3 bundles × 50 pieces)
+   - Creates:
+     * Batch with current_quantity = 150 pieces
+     * inventory_stock: BUNDLE, quantity=3, pieces_per_bundle=50
+   - Frontend shows: "3 Bundles (50 pieces each) = 150 pieces"
+
+B. Spares
+   - Input: Number of spare pieces (e.g., 25 spare pieces)
+   - Creates:
+     * Batch with current_quantity = 25 pieces
+     * inventory_stock: SPARE, quantity=25 (auto-updated by trigger)
+     * sprinkler_spare_pieces: 25 records (each with piece_count=1)
+   - Frontend shows: "25 Spare Pieces = 25 pieces"
+
+BUSINESS RULES:
+✅ CAN: Create multiple batches for same product variant (separate production entries)
+✅ CAN: Mix full rolls and cut rolls in ONE production batch (multiple stock records created)
+✅ CAN: Mix bundles and spares in ONE production batch (multiple stock records created)
+✅ CAN: Create cut rolls directly without first creating full rolls
+❌ CANNOT: Modify batch after creation (use cut/split operations instead)
+❌ CANNOT: Change initial_quantity after batch created
+❌ CANNOT: Create multiple batches in one production entry (one entry = one batch)
+
+NOTE: One production API call creates ONE batch, which can contain multiple stock types (e.g., FULL_ROLL + CUT_ROLL or BUNDLE + SPARE). The batch aggregates all items from that production entry.
+
+BATCH QUANTITY BEHAVIOR:
+- initial_quantity = NEVER changes (audit trail of what was produced)
+- current_quantity = Starts equal to initial_quantity, decreases with dispatch/scrap
+
+---
+
+2. RETURN
+---------
+PURPOSE: Add customer-returned items back to inventory
+
+CREATES:
+- NEW BATCH (independent of original production batch)
+- Batch has initial_quantity = current_quantity = returned amount
+- Stock records for returned items
+- Individual piece records for cut rolls or spares
+
+CHARACTERISTICS:
+- Returns are INDEPENDENT of production batches (no tracing to original)
+- Creates new batch with unique batch number
+- Multiple return items of different types/variants can be in ONE return transaction
+- All items of SAME variant go into ONE batch (with multiple stock records)
+
+EXAMPLE - Multi-Item Return:
+Return includes:
+- 2 full rolls of HDPE (OD=110, PN=8, PE=63) × 500m = 1000m
+- 3 cut pieces of HDPE (OD=110, PN=8, PE=63): 200m, 150m, 150m = 500m
+- 1 bundle of Sprinkler (OD=20, PN=6, Type=L) = 50 pieces
+- 5 spare pieces of Sprinkler (OD=20, PN=6, Type=L) = 5 pieces
+
+Creates TWO batches:
+Batch #1 (HDPE OD=110/PN=8/PE=63):
+  - current_quantity = 1500m
+  - Stock #1: FULL_ROLL, quantity=2, length_per_unit=500m
+  - Stock #2: CUT_ROLL, quantity=3 (auto-updated)
+  - hdpe_cut_pieces: [200m, 150m, 150m]
+
+Batch #2 (Sprinkler OD=20/PN=6/Type=L):
+  - current_quantity = 55 pieces
+  - Stock #1: BUNDLE, quantity=1, pieces_per_bundle=50
+  - Stock #2: SPARE, quantity=5 (auto-updated)
+  - sprinkler_spare_pieces: 5 records
+
+DIFFERENT ROLL LENGTHS:
+If return includes rolls of different lengths (e.g., 2×500m + 3×300m):
+- Creates ONE batch for the variant
+- Separate stock records: Stock #1 (2×500m), Stock #2 (3×300m)
+- Frontend shows both groups under same batch
+
+BUSINESS RULES:
+✅ CAN: Return items without knowing original batch
+✅ CAN: Return multiple product variants in one return transaction
+✅ CAN: Return mixed types (full rolls + cut pieces + bundles + spares)
+✅ CAN: Return before any production exists (creates first batch for variant)
+❌ CANNOT: Return to original production batch (always creates new batch)
+❌ CANNOT: Partial return revert (revert is all-or-nothing)
+
+QUANTITY IMPACT:
+- Increases total available inventory for that product variant
+- get_total_inventory_quantity(variant) = SUM of ALL batches (production + returns)
+- batches.current_quantity increases inventory available for dispatch
+
+---
+
+3. CUT ROLL OPERATION
+---------------------
+PURPOSE: Split a full roll or existing cut roll into smaller pieces
+
+APPLIES TO: HDPE Pipe only (both FULL_ROLL and CUT_ROLL can be cut)
+
+PROCESS:
+1. Select source: Can be FULL_ROLL or existing CUT_ROLL
+2. Specify cut: One cut creates TWO pieces (e.g., 500m → 200m + 300m)
+3. For 3+ pieces: Perform multiple cut operations sequentially
+
+EXAMPLE - Cut Full Roll:
+Before:
+- Batch #123: current_quantity = 2500m
+  - Stock #1: FULL_ROLL, quantity=5, length_per_unit=500m
+
+Cut Roll #3 (500m) into [200m + 300m]:
+
+After:
+- Batch #123: current_quantity = 2500m (NO CHANGE ✅)
+  - Stock #1: FULL_ROLL, quantity=4, length_per_unit=500m (reduced by 1)
+  - Stock #2: CUT_ROLL, quantity=2 (auto-updated by trigger)
+  - hdpe_cut_pieces: [200m, 300m]
+
+EXAMPLE - Cut Existing Cut Piece:
+Before:
+- Batch #123: current_quantity = 2500m
+  - Stock #2: CUT_ROLL, quantity=2
+  - hdpe_cut_pieces: [200m, 300m]
+
+Cut 300m piece into [150m + 150m]:
+
+After:
+- Batch #123: current_quantity = 2500m (NO CHANGE ✅)
+  - Stock #2: CUT_ROLL, quantity=3 (auto-updated: 200m, 150m, 150m)
+  - hdpe_cut_pieces: [200m, 150m, 150m]
+
+BUSINESS RULES:
+✅ CAN: Cut full rolls into pieces
+✅ CAN: Cut existing cut pieces further (recursive cutting)
+✅ CAN: Create 3+ pieces by performing multiple sequential cuts
+✅ CAN: Cut from any batch (production or return batch)
+❌ CANNOT: Cut in one operation into 3+ pieces (must do multiple operations)
+❌ CANNOT: Undo cut operation (pieces remain separate)
+
+BATCH QUANTITY BEHAVIOR:
+- current_quantity DOES NOT CHANGE during cut (total length preserved)
+- Only when pieces are dispatched does current_quantity decrease
+- Cut operation is TRANSFORMATION, not CONSUMPTION
+
+DATABASE BEHAVIOR:
+- Creates new inventory_stock record of type CUT_ROLL
+- Creates hdpe_cut_pieces records
+- Reduces quantity of source stock (FULL_ROLL or CUT_ROLL)
+- Trigger auto-updates CUT_ROLL stock quantity based on piece count
+
+---
+
+4. SPLIT BUNDLE OPERATION
+-------------------------
+PURPOSE: Break a bundle into individual spare pieces
+
+APPLIES TO: Sprinkler Pipe BUNDLE only
+
+EXAMPLE:
+Before:
+- Batch #456: current_quantity = 150 pieces
+  - Stock #1: BUNDLE, quantity=3, pieces_per_bundle=50
+
+Split Bundle #2 (50 pieces):
+
+After:
+- Batch #456: current_quantity = 150 pieces (NO CHANGE ✅)
+  - Stock #1: BUNDLE, quantity=2, pieces_per_bundle=50 (reduced by 1)
+  - Stock #2: SPARE, quantity=50 (auto-updated by trigger)
+  - sprinkler_spare_pieces: 50 records
+
+BUSINESS RULES:
+✅ CAN: Split entire bundle into all spare pieces
+✅ CAN: Split multiple bundles sequentially
+❌ CANNOT: Split partial bundle (must split entire bundle)
+❌ CANNOT: Recombine spares back into original bundle format
+
+BATCH QUANTITY BEHAVIOR:
+- current_quantity DOES NOT CHANGE during split (total pieces preserved)
+- Only when spares are dispatched does current_quantity decrease
+
+---
+
+5. COMBINE SPARES OPERATION
+---------------------------
+PURPOSE: Combine individual spare pieces into a new bundle
+
+APPLIES TO: Sprinkler Pipe SPARE only
+
+EXAMPLE:
+Before:
+- Batch #456: current_quantity = 150 pieces
+  - Stock #2: SPARE, quantity=75 (auto-updated)
+  - sprinkler_spare_pieces: 75 records
+
+Combine 50 spares into bundle:
+
+After:
+- Batch #456: current_quantity = 150 pieces (NO CHANGE ✅)
+  - Stock #2: SPARE, quantity=25 (auto-updated: 75-50=25)
+  - Stock #3: BUNDLE, quantity=1, pieces_per_bundle=50
+  - sprinkler_spare_pieces: 25 remaining records (50 marked as combined)
+
+BUSINESS RULES:
+✅ CAN: Combine any number of spare pieces (must specify bundle size)
+✅ CAN: Create custom bundle sizes (not limited to original bundle size)
+❌ CANNOT: Combine pieces from different batches
+❌ CANNOT: Combine pieces from different product variants
+
+BATCH QUANTITY BEHAVIOR:
+- current_quantity DOES NOT CHANGE during combine (total pieces preserved)
+- Transformation from SPARE to BUNDLE representation
+
+---
+
+6. DISPATCH
+-----------
+PURPOSE: Send inventory items to customers (removes from inventory)
+
+PROCESS:
+1. Create dispatch record (customer, date, invoice, etc.)
+2. Add dispatch items (select specific stock records)
+3. System validates availability
+4. System updates inventory quantities
+5. Items marked as DISPATCHED
+
+STOCK SELECTION:
+- User selects specific inventory_stock records
+- Can select multiple stocks from different batches
+- Can mix types: full rolls + cut pieces + bundles + spares
+
+VALIDATION (Per Stock):
+- Check inventory_stock.quantity >= requested quantity
+- Check batches.current_quantity >= total dispatched from batch
+- Optimistic locking using version column (prevents race conditions)
+
+EXAMPLE - Complex Dispatch:
+Dispatch includes:
+- 2 full rolls from Batch #123 (Stock #1: FULL_ROLL, quantity=5)
+- 1 cut piece (200m) from Batch #123 (Stock #2: CUT_ROLL, has 200m piece)
+- 1 bundle from Batch #456 (Stock #1: BUNDLE, quantity=3)
+
+Processing:
+1. Validate Stock #1 (FULL_ROLL): quantity=5 >= 2 ✅
+2. Validate Stock #2 (CUT_ROLL): has 200m piece ✅
+3. Validate Stock #1 (BUNDLE): quantity=3 >= 1 ✅
+4. Update Batch #123: current_quantity = 2500 - 1200 = 1300m
+5. Update Batch #456: current_quantity = 150 - 50 = 100 pieces
+6. Update Stock #1: quantity = 5 - 2 = 3 (FULL_ROLL)
+7. Mark 200m cut piece: status = DISPATCHED
+8. Update Stock #1: quantity = 3 - 1 = 2 (BUNDLE)
+
+BUSINESS RULES:
+✅ CAN: Dispatch partial quantities from batch
+✅ CAN: Dispatch from multiple batches in one dispatch
+✅ CAN: Dispatch mixed types (full rolls + cut pieces + bundles)
+✅ CAN: Dispatch from both production and return batches
+❌ CANNOT: Dispatch more than available in stock
+❌ CANNOT: Dispatch without specifying specific stock records
+❌ CANNOT: Dispatch scrapped items (status must be IN_STOCK)
+
+BATCH QUANTITY BEHAVIOR:
+- current_quantity DECREASES by dispatched amount
+- initial_quantity NEVER changes (audit trail)
+- Items permanently leave inventory (unless reverted)
+
+CONCURRENCY PROTECTION:
+- Optimistic locking using version column
+- If two users try to dispatch simultaneously:
+  * First user succeeds
+  * Second user gets conflict error: "Batch was modified, please retry"
+  * Prevents negative inventory
+
+---
+
+7. SCRAP
+--------
+PURPOSE: Mark damaged/unusable items (removes from available inventory)
+
+APPLIES TO: All stock types (full rolls, cut pieces, bundles, spares)
+
+PROCESS:
+1. Select specific items to scrap
+2. Specify scrap reason
+3. System marks items as SCRAPPED (status change)
+4. System reduces batches.current_quantity
+
+EXAMPLE - Scrap Individual Items:
+Before:
+- Batch #789: current_quantity = 1000 pieces
+  - Stock #1: SPARE, quantity=1000
+  - sprinkler_spare_pieces: 1000 records (status=IN_STOCK)
+
+Scrap 100 pieces:
+
+After:
+- Batch #789: current_quantity = 900 pieces
+  - Stock #1: SPARE, quantity=900 (auto-updated by trigger)
+  - sprinkler_spare_pieces:
+    * 900 records (status=IN_STOCK)
+    * 100 records (status=SCRAPPED)
+
+BUSINESS RULES:
+✅ CAN: Scrap partial quantities from batch
+✅ CAN: Scrap individual pieces (cut rolls, spares)
+✅ CAN: Scrap full rolls, bundles
+✅ CAN: Revert scrap (user mistake recovery)
+❌ CANNOT: Dispatch scrapped items
+❌ CANNOT: Scrap already dispatched items
+
+BATCH QUANTITY BEHAVIOR:
+- current_quantity DECREASES by scrapped amount
+- Scrapped items excluded from available inventory
+- Status=SCRAPPED prevents dispatch/use
+
+SCRAP REVERT:
+- Changes item status from SCRAPPED back to IN_STOCK
+- Increases batches.current_quantity
+- Items become available for dispatch again
+- Full revert only (all scrapped items from that scrap entry)
+
+---
+
+8. REVERT OPERATIONS
+--------------------
+PURPOSE: Undo/reverse previous operations
+
+A. REVERT DISPATCH
+------------------
+MEANING: Customer physically returns dispatched items
+
+CREATES: NEW RETURN BATCH
+- Does NOT restore to original batch
+- Behaves exactly like regular Return operation
+- Creates new batch with initial_quantity = current_quantity = returned amount
+
+Example:
+T0: Dispatch 200m from Batch #123 (current_quantity: 2500 → 2300)
+T1: Customer returns those 200m
+T2: Revert dispatch → Creates NEW Batch #999 with 200m
+Result: Batch #123 stays at 2300m, Batch #999 has 200m
+
+BUSINESS RULES:
+✅ CAN: Revert any dispatch (even old ones)
+✅ CAN: Partial revert (only some items returned)
+❌ CANNOT: Restore to original batch
+❌ CANNOT: Revert if items already resold
+
+B. REVERT SCRAP
+---------------
+MEANING: Undo accidental scrap operation (user mistake)
+
+RESTORES: Items in SAME BATCH
+- Changes item status from SCRAPPED → IN_STOCK
+- Increases batches.current_quantity
+- Items become available again
+
+Example:
+T0: Scrap 100 pieces from Batch #789 (current_quantity: 1000 → 900)
+T1: User realizes mistake
+T2: Revert scrap → Batch #789 back to 1000 pieces
+Result: Same batch, items restored, status=IN_STOCK
+
+BUSINESS RULES:
+✅ CAN: Revert any scrap operation
+✅ CAN: Revert multiple times
+❌ CANNOT: Partial revert (all-or-nothing for scrap)
+❌ CANNOT: Revert if items were re-scrapped
+
+C. REVERT RETURN
+----------------
+MEANING: Undo return entry (return was entered by mistake)
+
+REMOVES: Return batch from inventory
+- Decreases batches.current_quantity to zero
+- Marks return as REVERTED
+- Items no longer available
+
+Example:
+T0: Return creates Batch #888 with 500m
+T1: User realizes return was entered wrong
+T2: Revert return → Batch #888 marked REVERTED, current_quantity=0
+Result: Inventory reduced, return cancelled
+
+BUSINESS RULES:
+✅ CAN: Revert entire return entry
+❌ CANNOT: Partial revert (all return items reverted together)
+❌ CANNOT: Revert if return items already dispatched
+
+===========================================
+DATA MODEL ARCHITECTURE
+===========================================
+
+1. QUANTITY TRACKING HIERARCHY
+------------------------------
+Level 1 - BATCH (Aggregate):
+  - batches.current_quantity = TOTAL available for this batch
+  - Source of truth for "How much do we have?"
+  - Updated by routes (dispatch, scrap, return)
+
+Level 2 - STOCK (Grouping):
+  - inventory_stock.quantity = Count of units in this stock record
+  - For FULL_ROLL: Manual (number of rolls)
+  - For BUNDLE: Manual (number of bundles)
+  - For CUT_ROLL: Auto-updated by trigger (count of pieces)
+  - For SPARE: Auto-updated by trigger (count of pieces)
+
+Level 3 - PIECES (Individual):
+  - hdpe_cut_pieces.length_meters = Exact length of each cut piece
+  - sprinkler_spare_pieces.piece_count = Always 1 (one record per piece)
+  - Status: IN_STOCK, DISPATCHED, SCRAPPED
+
+2. CALCULATION FORMULAS
+-----------------------
+Total Inventory for Product Variant:
+  SUM(batches.current_quantity) WHERE product_variant_id = X AND current_quantity > 0
+
+Batch Total:
+  FULL_ROLL: quantity × length_per_unit
+  CUT_ROLL: SUM(hdpe_cut_pieces.length_meters WHERE status=IN_STOCK)
+  BUNDLE: quantity × pieces_per_bundle
+  SPARE: COUNT(sprinkler_spare_pieces WHERE status=IN_STOCK)
+
+3. DATABASE TRIGGERS
+-------------------
+auto_update_stock_quantity():
+  - Fires on INSERT/UPDATE/DELETE of hdpe_cut_pieces or sprinkler_spare_pieces
+  - Updates inventory_stock.quantity for CUT_ROLL and SPARE types only
+  - Does NOT update batches.current_quantity (routes handle that)
+
+4. CONCURRENCY CONTROL
+---------------------
+- Optimistic locking using version column
+- Each update checks: WHERE version = old_version
+- If version mismatch: ConflictError, user must retry
+- Prevents negative inventory from simultaneous dispatches
+
+===========================================
+WHAT THE SYSTEM CAN DO
+===========================================
+
+✅ Track inventory at batch level with piece-level detail
+✅ Handle partial dispatches from any batch
+✅ Cut rolls recursively (cut pieces can be cut again)
+✅ Split bundles into spares, combine spares into bundles
+✅ Accept returns independent of original batch
+✅ Mix different stock types in one batch (returns)
+✅ Revert scraps (restore items)
+✅ Create dispatches with items from multiple batches
+✅ Maintain audit trail (initial_quantity never changes)
+✅ Prevent negative inventory with optimistic locking
+✅ Auto-maintain piece counts with database triggers
+✅ Support multiple product variants and categories
+
+===========================================
+WHAT THE SYSTEM CANNOT DO
+===========================================
+
+❌ Trace returns back to original production batch
+❌ Cut one roll into 3+ pieces in single operation (must do sequentially)
+❌ Partially revert scrap operations (all-or-nothing)
+❌ Dispatch items with status SCRAPPED or DISPATCHED
+❌ Recombine cut pieces back into full roll
+❌ Modify batch after creation (use operations instead)
+❌ Change initial_quantity after batch created
+❌ Partially split bundles (must split entire bundle)
+❌ Dispatch without specifying specific stock records
+❌ Create return that adds to existing batch (always creates new)
+
+===========================================
+FRONTEND DISPLAY REQUIREMENTS
+===========================================
+
+Inventory List View (Batch Level):
+- Show batch number, product variant, current_quantity
+- Group by product type/variant
+- Filter by status, date range
+- Display total available per variant
+
+Inventory Detail View (Stock Level):
+Example:
+  Batch #123 (HDPE OD=110, PN=8, PE=63) - Created: 2025-12-01
+  Initial Quantity: 2,500m | Current Quantity: 2,300m
+
+  Stock Records:
+  - 4 Full Rolls (500m each) = 2,000m
+  - 2 Cut Pieces (150m, 150m) = 300m
+
+  Total Available: 2,300m
+
+Dispatch Selection:
+- List all available stock records
+- Allow selection of specific stocks
+- Show quantity available for each stock
+- Validate selection before creating dispatch
+
+===========================================
+API BEHAVIOR CONTRACTS
+===========================================
+
+Production API:
+  Input: Product variant + roll details / bundle details
+  Creates: Batch + Stock records + Piece records (if applicable)
+  Returns: batch_id, current_quantity
+  Updates: batches.current_quantity = initial_quantity
+
+Return API:
+  Input: Return items (can be mixed types/variants)
+  Creates: One batch per variant + Stock records + Piece records
+  Returns: Array of batch_ids created
+  Updates: batches.current_quantity = total returned
+
+Cut Operation API:
+  Input: stock_id + cut specification (piece1_length, piece2_length)
+  Updates: Original stock quantity - 1, Creates new CUT_ROLL stock + pieces
+  Returns: new_stock_id, piece_ids
+  NO CHANGE: batches.current_quantity (stays same)
+
+Dispatch API:
+  Input: Customer info + array of {stock_id, quantity/piece_ids}
+  Validates: Stock availability + batch quantity + version check
+  Updates: batches.current_quantity -= dispatched, inventory_stock.quantity, piece status
+  Returns: dispatch_id, dispatch_number
+  Locks: Optimistic (version check)
+
+Scrap API:
+  Input: Array of {stock_id, quantity} or {piece_ids}
+  Updates: batches.current_quantity -= scrapped, piece status=SCRAPPED
+  Returns: scrap_id
+  Allows: Revert operation
+
+Revert Scrap API:
+  Input: scrap_id
+  Updates: batches.current_quantity += scrapped amount, piece status=IN_STOCK
+  Returns: success message
+
+Revert Dispatch API:
+  Input: dispatch_id
+  Creates: NEW return batch (same as Return API)
+  Returns: new_batch_id
+
+===========================================
+BUSINESS LOGIC SUMMARY
+===========================================
+
+QUANTITY FLOW:
+Production → Adds inventory (new batch)
+Return → Adds inventory (new batch)
+Cut/Split/Combine → Transforms inventory (NO quantity change)
+Dispatch → Removes inventory (reduces current_quantity)
+Scrap → Removes inventory (reduces current_quantity)
+Revert Scrap → Restores inventory (increases current_quantity)
+Revert Dispatch → Adds inventory (new return batch)
+
+IMMUTABLE FIELDS:
+- batches.initial_quantity (audit trail)
+- batches.batch_no (unique identifier)
+- piece created_by_transaction_id (traceability)
+
+MUTABLE FIELDS:
+- batches.current_quantity (decreases with dispatch/scrap)
+- inventory_stock.quantity (manual for FULL_ROLL/BUNDLE, auto for CUT_ROLL/SPARE)
+- piece status (IN_STOCK → DISPATCHED/SCRAPPED)
+
+===========================================
+END OF DOCUMENTATION
+===========================================

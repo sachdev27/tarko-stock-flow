@@ -254,7 +254,9 @@ def create_snapshot():
                 logging.warning(f"Failed to save snapshot {snapshot_id} to local storage")
 
             # Sync to cloud storage in background (non-blocking)
-            if cloud_storage.enabled and storage_success:
+            from storage.cloud_storage import get_cloud_storage
+            cloud_storage_instance = get_cloud_storage()
+            if cloud_storage_instance.enabled and storage_success:
                 def sync_to_cloud():
                     try:
                         # Use custom path if provided, otherwise use default
@@ -262,7 +264,7 @@ def create_snapshot():
                             local_path = Path(storage_path) / snapshot_id
                         else:
                             local_path = Path(snapshot_storage.storage_path) / snapshot_id
-                        cloud_storage.upload_snapshot(snapshot_id, local_path, encrypt=True)
+                        cloud_storage_instance.upload_snapshot(snapshot_id, local_path, encrypt=True)
                     except Exception as e:
                         import logging
                         logging.error(f"Failed to sync snapshot {snapshot_id} to cloud: {e}")
@@ -1125,16 +1127,46 @@ def auto_snapshot_settings():
 def get_cloud_status():
     """Get cloud storage status and statistics"""
     try:
-        stats = cloud_storage.get_storage_stats()
+        from psycopg2.extras import RealDictCursor
 
-        # Get bucket name from cloud_storage instance (reads from DB or env)
-        bucket_name = None
-        if cloud_storage.enabled:
-            bucket_name = cloud_storage.bucket_name
+        # Always read fresh config from database first
+        with get_db_connection() as conn:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor.execute("""
+                SELECT provider, bucket_name, is_enabled
+                FROM cloud_backup_config
+                WHERE is_active = TRUE
+                ORDER BY created_at DESC
+                LIMIT 1
+            """)
+
+            db_config = cursor.fetchone()
+
+        # If database config exists and is enabled, use it
+        if db_config and db_config['is_enabled']:
+            enabled = True
+            provider = db_config['provider']
+            bucket_name = db_config['bucket_name']
+        else:
+            # Fallback to checking environment variables
+            import os
+            enabled = os.getenv('ENABLE_CLOUD_BACKUP', 'false').lower() == 'true'
+            provider = os.getenv('CLOUD_STORAGE_PROVIDER', 'r2').lower() if enabled else None
+            bucket_name = (os.getenv('R2_BUCKET_NAME') or os.getenv('S3_BUCKET_NAME')) if enabled else None
+
+        # Try to get stats from cloud_storage object if available
+        stats = None
+        try:
+            from storage.cloud_storage import get_cloud_storage
+            cloud_storage = get_cloud_storage()
+            if cloud_storage and cloud_storage.enabled:
+                stats = cloud_storage.get_storage_stats()
+        except Exception as stats_error:
+            current_app.logger.warning(f"Could not get cloud storage stats: {stats_error}")
 
         return jsonify({
-            'enabled': cloud_storage.enabled,
-            'provider': cloud_storage.provider if cloud_storage.enabled else None,
+            'enabled': enabled,
+            'provider': provider,
             'bucket_name': bucket_name,
             'stats': stats
         }), 200
@@ -1215,13 +1247,13 @@ def configure_cloud_storage():
 
             conn.commit()
 
-        # Reinitialize cloud storage with new credentials from database
-        import storage.cloud_storage as cloud_storage_module
-        cloud_storage_module.cloud_storage = cloud_storage_module.CloudStorage()
+        # Invalidate cache so next request gets fresh config
+        from storage.cloud_storage import CloudStorageManager
+        CloudStorageManager.invalidate_cache()
 
         return jsonify({
             'success': True,
-            'message': 'Cloud configuration saved to database and applied immediately!',
+            'message': 'Cloud configuration saved and ready to use!',
             'restart_required': False
         }), 200
     except Exception as e:
@@ -1233,6 +1265,8 @@ def configure_cloud_storage():
 def list_cloud_snapshots():
     """List all snapshots available in cloud storage"""
     try:
+        from storage.cloud_storage import get_cloud_storage
+        cloud_storage = get_cloud_storage()
         if not cloud_storage.enabled:
             return jsonify({'error': 'Cloud backup is not enabled'}), 400
 
@@ -1249,6 +1283,8 @@ def download_cloud_snapshot(snapshot_id):
     user_id = get_jwt_identity()
 
     try:
+        from storage.cloud_storage import get_cloud_storage
+        cloud_storage = get_cloud_storage()
         current_app.logger.info(f"Starting cloud download for snapshot: {snapshot_id}")
 
         if not cloud_storage.enabled:
@@ -1343,6 +1379,8 @@ def restore_from_cloud(snapshot_id):
     user_id = get_jwt_identity()
 
     try:
+        from storage.cloud_storage import get_cloud_storage
+        cloud_storage = get_cloud_storage()
         current_app.logger.info(f"Starting cloud restore for snapshot: {snapshot_id}")
 
         if not cloud_storage.enabled:
@@ -1457,6 +1495,8 @@ def restore_from_cloud(snapshot_id):
 def upload_to_cloud(snapshot_id):
     """Manually upload local snapshot to cloud"""
     try:
+        from storage.cloud_storage import get_cloud_storage
+        cloud_storage = get_cloud_storage()
         if not cloud_storage.enabled:
             return jsonify({'error': 'Cloud backup is not enabled'}), 400
 
@@ -1484,6 +1524,8 @@ def upload_to_cloud(snapshot_id):
 def delete_cloud_snapshot(snapshot_id):
     """Delete snapshot from cloud storage"""
     try:
+        from storage.cloud_storage import get_cloud_storage
+        cloud_storage = get_cloud_storage()
         if not cloud_storage.enabled:
             return jsonify({'error': 'Cloud backup is not enabled'}), 400
 
@@ -1512,6 +1554,8 @@ def bulk_delete_cloud_snapshots():
         return jsonify({'error': 'No snapshot IDs provided'}), 400
 
     try:
+        from storage.cloud_storage import get_cloud_storage
+        cloud_storage = get_cloud_storage()
         if not cloud_storage.enabled:
             return jsonify({'error': 'Cloud backup is not enabled'}), 400
 
@@ -1551,6 +1595,8 @@ def cleanup_old_cloud_snapshots():
     days = data.get('days', 7)  # Default to 7 days
 
     try:
+        from storage.cloud_storage import get_cloud_storage
+        cloud_storage = get_cloud_storage()
         if not cloud_storage.enabled:
             return jsonify({'error': 'Cloud backup is not enabled'}), 400
 

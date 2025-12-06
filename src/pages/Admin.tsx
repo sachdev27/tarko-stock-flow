@@ -5,7 +5,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { Settings, Shield, Database, HardDrive } from 'lucide-react';
-import { admin, parameters, versionControl } from '@/lib/api';
+import { admin, parameters, versionControl } from '@/lib/api-typed';
+import type * as API from '@/types';
 import { BrandsTab } from '@/components/admin/BrandsTab';
 import { ProductTypesTab } from '@/components/admin/ProductTypesTab';
 import { UsersTab } from '@/components/admin/UsersTab';
@@ -50,12 +51,12 @@ const Admin = () => {
         admin.getUsers(),
       ]);
 
-      setBrands(brandsRes.data || []);
-      setProductTypes(typesRes.data || []);
-      setUnits(unitsRes.data || []);
-      setAuditLogs(logsRes.data || []);
-      setParameterOptions(paramsRes.data || {});
-      setUsers(usersRes.data || []);
+      setBrands(brandsRes || []);
+      setProductTypes(typesRes || []);
+      setUnits(unitsRes || []);
+      setAuditLogs(logsRes || []);
+      setParameterOptions(paramsRes || {});
+      setUsers(usersRes || []);
 
       // Fetch version control data
       fetchSnapshots();
@@ -72,7 +73,7 @@ const Admin = () => {
   const fetchSnapshots = async () => {
     try {
       const response = await versionControl.getSnapshots();
-      setSnapshots(response.data || []);
+      setSnapshots(response || []);
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Failed to load snapshots');
     }
@@ -81,7 +82,7 @@ const Admin = () => {
   const fetchRollbackHistory = async () => {
     try {
       const response = await versionControl.getRollbackHistory();
-      setRollbackHistory(response.data || []);
+      setRollbackHistory(response || []);
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Failed to load rollback history');
     }

@@ -1,14 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { PackageX, Search, Filter, X } from 'lucide-react';
+import { PackageX, Search, Filter, X, Download, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import api from '@/lib/api';
+import { returns as returnsAPI } from '@/lib/api-typed';
 import { format } from 'date-fns';
+import type * as API from '@/types';
 import {
   Select,
   SelectContent,
@@ -90,6 +91,23 @@ const ReturnHistory = () => {
   const [selectedReturn, setSelectedReturn] = useState<ReturnDetail | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
 
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 50;
+
+  const totalPages = Math.ceil((filteredReturns?.length || 0) / itemsPerPage);
+
+  const paginatedReturns = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    return (filteredReturns || []).slice(startIndex, endIndex);
+  }, [filteredReturns, currentPage]);
+
+  const goToFirstPage = () => setCurrentPage(1);
+  const goToLastPage = () => setCurrentPage(totalPages);
+  const goToNextPage = () => setCurrentPage(prev => Math.min(prev + 1, totalPages));
+  const goToPrevPage = () => setCurrentPage(prev => Math.max(prev - 1, 1));
+
   const timePresets = [
     { label: 'All Time', value: 'all' },
     { label: 'Today', value: 'today' },
@@ -134,6 +152,7 @@ const ReturnHistory = () => {
     }
 
     setFilteredReturns(filtered);
+    setCurrentPage(1); // Reset to first page on filter change
   }, [searchQuery, returns, startDate, endDate]);
 
   // Handle time preset changes
@@ -181,8 +200,11 @@ const ReturnHistory = () => {
   const fetchReturns = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/returns/history');
-      setReturns(response.data.returns || []);
+      const response = await returnsAPI.getHistory();
+      // Backend returns { returns: [...] } structure
+      // Handle both wrapped and unwrapped responses
+      const returnsData = (response as any)?.returns || (Array.isArray(response) ? response : []);
+      setReturns(returnsData);
     } catch (error) {
       toast.error('Failed to fetch returns');
     } finally {
@@ -192,8 +214,8 @@ const ReturnHistory = () => {
 
   const fetchReturnDetails = async (returnId: string) => {
     try {
-      const response = await api.get(`/returns/${returnId}`);
-      setSelectedReturn(response.data);
+      const response = await returnsAPI.getDetails(returnId);
+      setSelectedReturn(response);
       setDetailsOpen(true);
     } catch (error) {
       toast.error('Failed to fetch return details');
@@ -219,11 +241,62 @@ const ReturnHistory = () => {
     return type.replace('_', ' ');
   };
 
+  const exportToCSV = () => {
+    const headers = [
+      'Return #',
+      'Date',
+      'Customer',
+      'City',
+      'Items',
+      'Quantity',
+      'Status',
+      'Notes',
+      'Created At'
+    ];
+
+    const rows = filteredReturns.map(r => [
+      r.return_number,
+      format(new Date(r.return_date), 'MMM dd, yyyy'),
+      r.customer_name,
+      r.customer_city || '',
+      r.item_count,
+      r.total_quantity,
+      r.status,
+      r.notes || '',
+      format(new Date(r.created_at), 'MMM dd, yyyy HH:mm')
+    ]);
+
+    const csv = [
+      headers.join(','),
+      ...rows.map(row =>
+        row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')
+      ),
+    ].join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `returns_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    toast.success('Return data exported to CSV');
+  };
+
   return (
     <div className="w-full">
-      <div className="flex items-center gap-3 mb-6">
-        <PackageX className="h-8 w-8 text-orange-600" />
-        <h1 className="text-3xl font-bold">Return History</h1>
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <PackageX className="h-8 w-8 text-orange-600" />
+          <h1 className="text-3xl font-bold">Return History</h1>
+        </div>
+        <Button
+          variant="outline"
+          onClick={exportToCSV}
+          disabled={loading || filteredReturns.length === 0}
+          className="flex items-center gap-2"
+        >
+          <Download className="h-4 w-4" />
+          <span className="hidden sm:inline">Export CSV</span>
+        </Button>
       </div>
 
       {/* Search and Filter Bar */}
@@ -314,7 +387,7 @@ const ReturnHistory = () => {
             <>
               {/* Mobile Card View */}
               <div className="md:hidden space-y-3">
-                {filteredReturns.map((ret) => (
+                {paginatedReturns.map((ret) => (
                   <Card
                     key={ret.id}
                     className="cursor-pointer hover:shadow-md transition-shadow"
@@ -364,7 +437,7 @@ const ReturnHistory = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredReturns.map((ret) => (
+                    {paginatedReturns.map((ret) => (
                     <TableRow
                       key={ret.id}
                       className="cursor-pointer hover:bg-muted/50"
@@ -403,6 +476,58 @@ const ReturnHistory = () => {
                 </TableBody>
               </Table>
             </div>
+
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-center gap-2 mt-6">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={goToFirstPage}
+                  disabled={currentPage === 1}
+                >
+                  <ChevronsLeft className="h-4 w-4" />
+                  <span className="ml-2 hidden sm:inline">First</span>
+                </Button>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={goToPrevPage}
+                  disabled={currentPage === 1}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  <span className="ml-2 hidden sm:inline">Previous</span>
+                </Button>
+
+                <div className="flex items-center gap-2 px-4">
+                  <span className="text-sm">
+                    Page <span className="font-medium">{currentPage}</span> of{' '}
+                    <span className="font-medium">{totalPages}</span>
+                  </span>
+                </div>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={goToNextPage}
+                  disabled={currentPage === totalPages}
+                >
+                  <span className="mr-2 hidden sm:inline">Next</span>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={goToLastPage}
+                  disabled={currentPage === totalPages}
+                >
+                  <span className="mr-2 hidden sm:inline">Last</span>
+                  <ChevronsRight className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
           </>
         )}
         </CardContent>

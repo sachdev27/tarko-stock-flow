@@ -8,7 +8,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
 import { Package, Search, Box, Scissors, Layers, MessageCircle, Upload, Download, FileText, Keyboard } from 'lucide-react';
-import { inventory as inventoryAPI } from '@/lib/api';
+import { inventory as inventoryAPI } from '@/lib/api-typed';
+import type * as API from '@/types';
 import { ProductVariantCard } from '@/components/inventory/ProductVariantCard';
 import { StockSummary } from '@/components/inventory/StockSummary';
 import { WhatsAppShareDialog } from '@/components/inventory/WhatsAppShareDialog';
@@ -80,7 +81,7 @@ const InventoryNew = () => {
     }
 
     // Filter by product type
-    if (selectedProduct !== 'all') {
+    if (selectedProduct !== 'all' && selectedProduct !== '') {
       filtered = filtered.filter(batch =>
         batch.product_type_name === productTypes.find(pt => pt.id === selectedProduct)?.name
       );
@@ -315,7 +316,7 @@ const InventoryNew = () => {
 
   const fetchProductTypes = async () => {
     try {
-      const { data } = await inventoryAPI.getProductTypes();
+      const data = await inventoryAPI.getProductTypes();
       setProductTypes(data || []);
       // Set HDPE as default if available
       if (selectedProduct === '' && data && data.length > 0) {
@@ -329,7 +330,7 @@ const InventoryNew = () => {
 
   const fetchBrands = async () => {
     try {
-      const { data } = await inventoryAPI.getBrands();
+      const data = await inventoryAPI.getBrands();
       setBrands(data || []);
     } catch (error) {
       console.error('Error fetching brands:', error);
@@ -342,8 +343,8 @@ const InventoryNew = () => {
       setLoading(true);
       const response = await inventoryAPI.getBatches();
       console.log('[InventoryNew] API response received:', {
-        batchCount: response.data?.length,
-        batches: response.data?.map((b: any) => ({
+        batchCount: response?.length,
+        batches: response?.map((b: any) => ({
           batch_code: b.batch_code,
           full_rolls: b.full_roll_count,
           bundles: b.bundle_count,
@@ -351,8 +352,8 @@ const InventoryNew = () => {
           spare_pieces: b.spare_piece_count
         }))
       });
-      setBatches(response.data);
-      console.log('[InventoryNew] State updated with', response.data?.length, 'batches');
+      setBatches(response || []);
+      console.log('[InventoryNew] State updated with', response?.length, 'batches');
     } catch (error) {
       const err = error as { response?: { data?: { details?: string } }; message: string };
       console.error('[InventoryNew] Error fetching batches:', err);
@@ -365,7 +366,7 @@ const InventoryNew = () => {
   };
 
   // Calculate summary stats
-  const groupedProducts = batches.reduce((acc, batch) => {
+  const groupedProducts = (batches || []).reduce((acc, batch) => {
     const key = `${batch.product_type_name}_${batch.brand_name}_${JSON.stringify(batch.parameters)}`;
     if (!acc[key]) {
       acc[key] = {
@@ -380,30 +381,30 @@ const InventoryNew = () => {
   const stats = {
     hdpeProducts: Object.values(groupedProducts).filter(p => p.productTypeName === 'HDPE Pipe').length,
     sprinklerProducts: Object.values(groupedProducts).filter(p => p.productTypeName === 'Sprinkler Pipe').length,
-    totalFullRolls: batches.reduce((sum, b) =>
-      sum + b.stock_entries.filter(e => e.stock_type === 'FULL_ROLL' && e.quantity > 0).reduce((s, e) => s + e.quantity, 0), 0
+    totalFullRolls: (batches || []).reduce((sum, b) =>
+      sum + (b.stock_entries || []).filter(e => e.stock_type === 'FULL_ROLL' && e.quantity > 0).reduce((s, e) => s + e.quantity, 0), 0
     ),
-    totalCutRolls: batches.reduce((sum, b) =>
-      sum + b.stock_entries.filter(e => e.stock_type === 'CUT_ROLL' && e.quantity > 0).reduce((s, e) => s + e.quantity, 0), 0
+    totalCutRolls: (batches || []).reduce((sum, b) =>
+      sum + (b.stock_entries || []).filter(e => e.stock_type === 'CUT_ROLL' && e.quantity > 0).reduce((s, e) => s + e.quantity, 0), 0
     ),
-    totalBundles: batches.reduce((sum, b) =>
-      sum + b.stock_entries.filter(e => e.stock_type === 'BUNDLE' && e.quantity > 0).reduce((s, e) => s + e.quantity, 0), 0
+    totalBundles: (batches || []).reduce((sum, b) =>
+      sum + (b.stock_entries || []).filter(e => e.stock_type === 'BUNDLE' && e.quantity > 0).reduce((s, e) => s + e.quantity, 0), 0
     ),
-    totalSpares: batches.reduce((sum, b) =>
-      sum + b.stock_entries.filter(e => e.stock_type === 'SPARE' && (e.piece_count || e.total_available || 0) > 0).reduce((s, e) => s + (e.piece_count || e.total_available || 0), 0), 0
+    totalSpares: (batches || []).reduce((sum, b) =>
+      sum + (b.stock_entries || []).filter(e => e.stock_type === 'SPARE' && (e.piece_count || e.total_available || 0) > 0).reduce((s, e) => s + (e.piece_count || e.total_available || 0), 0), 0
     )
   };
 
   // Get available parameters from batches
   const availableParameters = Array.from(
     new Set(
-      batches.flatMap(b => Object.keys(b.parameters as Record<string, unknown>))
+      (batches || []).flatMap(b => Object.keys(b.parameters as Record<string, unknown>))
     )
   ).sort();
 
   // Get available values for each parameter from current filtered batches (before parameter filter)
   const availableParameterValues: Record<string, string[]> = {};
-  const batchesForParamValues = batches.filter(batch => {
+  const batchesForParamValues = (batches || []).filter(batch => {
     // Apply product type and brand filters only
     if (selectedProduct !== 'all' && batch.product_type_name !== productTypes.find(pt => pt.id === selectedProduct)?.name) {
       return false;
@@ -468,7 +469,7 @@ const InventoryNew = () => {
   };
 
   // Group batches by product variant (product type + brand + parameters)
-  const groupedByProductVariant = filteredBatches.reduce((acc, batch) => {
+  const groupedByProductVariant = (filteredBatches || []).reduce((acc, batch) => {
     const key = `${batch.product_type_name}_${batch.brand_name}_${JSON.stringify(batch.parameters)}`;
     if (!acc[key]) {
       acc[key] = {

@@ -14,8 +14,9 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { AlertTriangle, RotateCcw, RefreshCw } from 'lucide-react';
-import { admin } from '@/lib/api';
+import { admin } from '@/lib/api-typed';
 import { toast } from 'sonner';
+import type * as API from '@/types';
 
 const DatabaseTab: React.FC = () => {
   const [resetOptions, setResetOptions] = useState<any[]>([]);
@@ -32,8 +33,9 @@ const DatabaseTab: React.FC = () => {
 
   const fetchResetOptions = async () => {
     try {
-      const { data } = await admin.getResetOptions();
-      setResetOptions(data.options);
+      const data = await admin.getResetOptions();
+      // api-typed already unwraps the response
+      setResetOptions(Array.isArray(data) ? data : (data?.options || []));
     } catch (error) {
       console.error('Error fetching reset options:', error);
       toast.error('Failed to load reset options');
@@ -42,8 +44,9 @@ const DatabaseTab: React.FC = () => {
 
   const fetchDatabaseStats = async () => {
     try {
-      const { data } = await admin.getDatabaseStats();
-      setDatabaseStats(data.stats);
+      const data = await admin.getDatabaseStats();
+      // api-typed already unwraps the response
+      setDatabaseStats(data?.stats || {});
     } catch (error) {
       console.error('Error fetching database stats:', error);
       toast.error('Failed to load database statistics');
@@ -64,8 +67,9 @@ const DatabaseTab: React.FC = () => {
 
     setLoading(true);
     try {
-      const { data } = await admin.resetDatabase(selectedResetLevel, 'CONFIRM_RESET');
-      toast.success(data.message);
+      const data = await admin.resetDatabase(selectedResetLevel, 'CONFIRM_RESET');
+      // api-typed already unwraps the response
+      toast.success(data?.message || 'Database reset successful');
       setShowConfirmDialog(false);
       setConfirmationText('');
       setSelectedResetLevel('');

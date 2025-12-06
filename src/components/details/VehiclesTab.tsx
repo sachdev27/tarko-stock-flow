@@ -3,8 +3,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Plus, Edit, Trash2, Search, Download, Upload, FileText } from 'lucide-react';
-import { admin } from '@/lib/api';
+import { admin } from '@/lib/api-typed';
 import { toast } from 'sonner';
+import type * as API from '@/types';
 
 interface Vehicle {
   id: string;

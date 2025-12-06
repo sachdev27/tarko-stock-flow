@@ -7,7 +7,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Cloud } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useCloudCredentials } from '@/hooks/useBackupConfig';
-import { backupConfig } from '@/lib/api';
+import { backupConfig } from '@/lib/api-typed';
+import type * as API from '@/types';
 
 interface CloudConfigDialogProps {
   open: boolean;

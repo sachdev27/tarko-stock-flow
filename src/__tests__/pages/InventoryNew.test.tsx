@@ -3,10 +3,10 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import InventoryNew from '@/pages/InventoryNew';
 import { renderWithoutRouter } from '@/test/test-utils';
-import * as api from '@/lib/api';
+import * as api from '@/lib/api-typed';
 
 // Mock API
-vi.mock('@/lib/api', () => ({
+vi.mock('@/lib/api-typed', () => ({
   inventory: {
     get: vi.fn(),
     getProductTypes: vi.fn(),

@@ -1,11 +1,11 @@
 // Custom hook for transaction pagination
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { TransactionRecord } from '@/types/transaction';
 
 export const useTransactionPagination = (transactions: TransactionRecord[], itemsPerPage: number = 50) => {
   const [currentPage, setCurrentPage] = useState(1);
 
-  const totalPages = Math.ceil(transactions.length / itemsPerPage);
+  const totalPages = Math.max(1, Math.ceil(transactions.length / itemsPerPage));
 
   const paginatedTransactions = useMemo(() => {
     const startIndex = (currentPage - 1) * itemsPerPage;
@@ -14,13 +14,35 @@ export const useTransactionPagination = (transactions: TransactionRecord[], item
   }, [transactions, currentPage, itemsPerPage]);
 
   const goToPage = (page: number) => {
-    setCurrentPage(Math.max(1, Math.min(page, totalPages)));
+    const validPage = Math.max(1, Math.min(page, totalPages));
+    setCurrentPage(validPage);
   };
 
   const goToFirstPage = () => setCurrentPage(1);
   const goToLastPage = () => setCurrentPage(totalPages);
-  const goToNextPage = () => setCurrentPage(prev => Math.min(prev + 1, totalPages));
-  const goToPrevPage = () => setCurrentPage(prev => Math.max(prev - 1, 1));
+  const goToNextPage = () => {
+    setCurrentPage(prev => {
+      const nextPage = prev + 1;
+      return nextPage <= totalPages ? nextPage : prev;
+    });
+  };
+  const goToPrevPage = () => {
+    setCurrentPage(prev => {
+      const prevPage = prev - 1;
+      return prevPage >= 1 ? prevPage : prev;
+    });
+  };
+
+  const resetPagination = useCallback(() => {
+    setCurrentPage(1);
+  }, []);
+
+  // Auto-adjust current page if it exceeds total pages
+  useEffect(() => {
+    if (currentPage > totalPages && totalPages > 0) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
   return {
     currentPage,
@@ -31,6 +53,6 @@ export const useTransactionPagination = (transactions: TransactionRecord[], item
     goToLastPage,
     goToNextPage,
     goToPrevPage,
-    resetPagination: () => setCurrentPage(1),
+    resetPagination,
   };
 };

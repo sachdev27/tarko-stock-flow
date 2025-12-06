@@ -26,7 +26,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Search, Eye, TruckIcon, Package, Filter, X } from 'lucide-react';
+import { Search, Eye, TruckIcon, Package, Filter, X, Download, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { DispatchAPI } from '@/components/dispatch/dispatchAPI';
 import { format } from 'date-fns';
@@ -85,6 +85,23 @@ export const DispatchHistoryTab = () => {
   const [timePreset, setTimePreset] = useState('all');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 50;
+
+  const totalPages = Math.ceil((filteredDispatches?.length || 0) / itemsPerPage);
+
+  const paginatedDispatches = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    return (filteredDispatches || []).slice(startIndex, endIndex);
+  }, [filteredDispatches, currentPage]);
+
+  const goToFirstPage = () => setCurrentPage(1);
+  const goToLastPage = () => setCurrentPage(totalPages);
+  const goToNextPage = () => setCurrentPage(prev => Math.min(prev + 1, totalPages));
+  const goToPrevPage = () => setCurrentPage(prev => Math.max(prev - 1, 1));
 
   const timePresets = [
     { label: 'All Time', value: 'all' },
@@ -146,6 +163,7 @@ export const DispatchHistoryTab = () => {
     }
 
     setFilteredDispatches(filtered);
+    setCurrentPage(1); // Reset to first page on filter change
   }, [searchTerm, dispatches, startDate, endDate]);
 
   // Handle time preset changes
@@ -229,6 +247,58 @@ export const DispatchHistoryTab = () => {
     });
   };
 
+  const exportToCSV = () => {
+    const headers = [
+      'Dispatch #',
+      'Date',
+      'Customer',
+      'City',
+      'Bill To',
+      'Transport',
+      'Driver',
+      'Vehicle',
+      'Invoice #',
+      'Items',
+      'Quantity',
+      'Status',
+      'Notes',
+      'Created By',
+      'Created At'
+    ];
+
+    const rows = filteredDispatches.map(d => [
+      d.dispatch_number,
+      formatDate(d.dispatch_date),
+      d.customer_name,
+      d.customer_city || '',
+      d.bill_to_name || '',
+      d.transport_name || '',
+      d.vehicle_driver || '',
+      d.vehicle_number || '',
+      d.invoice_number || '',
+      d.total_items,
+      d.total_quantity,
+      d.status,
+      d.notes || '',
+      d.created_by_email,
+      format(new Date(d.created_at), 'MMM dd, yyyy HH:mm')
+    ]);
+
+    const csv = [
+      headers.join(','),
+      ...rows.map(row =>
+        row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')
+      ),
+    ].join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `dispatches_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    toast.success('Dispatch data exported to CSV');
+  };
+
   return (
     <>
       <Card>
@@ -238,9 +308,21 @@ export const DispatchHistoryTab = () => {
               <TruckIcon className="h-6 w-6" />
               Dispatch History
             </div>
-            <Button onClick={fetchDispatches} disabled={loading} size="sm">
-              Refresh
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={exportToCSV}
+                disabled={loading || filteredDispatches.length === 0}
+                size="sm"
+                className="flex items-center gap-2"
+              >
+                <Download className="h-4 w-4" />
+                <span className="hidden sm:inline">Export CSV</span>
+              </Button>
+              <Button onClick={fetchDispatches} disabled={loading} size="sm">
+                Refresh
+              </Button>
+            </div>
           </CardTitle>
         </CardHeader>
 
@@ -355,7 +437,7 @@ export const DispatchHistoryTab = () => {
             <>
               {/* Mobile Card View */}
               <div className="md:hidden space-y-3">
-                {filteredDispatches.map((dispatch) => (
+                {paginatedDispatches.map((dispatch) => (
                   <Card
                     key={dispatch.id}
                     className="cursor-pointer hover:shadow-md transition-shadow"
@@ -412,7 +494,7 @@ export const DispatchHistoryTab = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredDispatches.map((dispatch) => (
+                    {paginatedDispatches.map((dispatch) => (
                     <TableRow
                       key={dispatch.id}
                       className="cursor-pointer hover:bg-muted/50"
@@ -462,6 +544,58 @@ export const DispatchHistoryTab = () => {
                 </TableBody>
               </Table>
             </div>
+
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-center gap-2 mt-6">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={goToFirstPage}
+                  disabled={currentPage === 1}
+                >
+                  <ChevronsLeft className="h-4 w-4" />
+                  <span className="ml-2 hidden sm:inline">First</span>
+                </Button>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={goToPrevPage}
+                  disabled={currentPage === 1}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  <span className="ml-2 hidden sm:inline">Previous</span>
+                </Button>
+
+                <div className="flex items-center gap-2 px-4">
+                  <span className="text-sm">
+                    Page <span className="font-medium">{currentPage}</span> of{' '}
+                    <span className="font-medium">{totalPages}</span>
+                  </span>
+                </div>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={goToNextPage}
+                  disabled={currentPage === totalPages}
+                >
+                  <span className="mr-2 hidden sm:inline">Next</span>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={goToLastPage}
+                  disabled={currentPage === totalPages}
+                >
+                  <span className="mr-2 hidden sm:inline">Last</span>
+                  <ChevronsRight className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
           </>
         )}
         </CardContent>

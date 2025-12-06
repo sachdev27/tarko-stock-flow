@@ -5,7 +5,8 @@ import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { Save, Loader2, PackageX } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import api from '@/lib/api';
+import { inventory, returns, admin } from '@/lib/api-typed';
+import type * as API from '@/types';
 import { ReturnDetailsSection } from './ReturnDetailsSection';
 import { ProductSelectionSection } from './ProductSelectionSection';
 import { ReturnCartSection } from './ReturnCartSection';
@@ -76,8 +77,8 @@ const ReturnNewModular = () => {
 
   const fetchCustomers = async () => {
     try {
-      const response = await api.get('/inventory/customers');
-      setCustomers(response.data || []);
+      const response = await inventory.getCustomers();
+      setCustomers(Array.isArray(response) ? response : []);
     } catch (error) {
       console.error('Failed to fetch customers:', error);
       toast.error('Failed to fetch customers');
@@ -86,8 +87,8 @@ const ReturnNewModular = () => {
 
   const fetchProductTypes = async () => {
     try {
-      const response = await api.get('/parameters/product-types');
-      setProductTypes(response.data || []);
+      const response = await inventory.getProductTypes();
+      setProductTypes(Array.isArray(response) ? response : []);
     } catch (error) {
       console.error('Failed to fetch product types:', error);
       toast.error('Failed to fetch product types');
@@ -96,8 +97,8 @@ const ReturnNewModular = () => {
 
   const fetchBrands = async () => {
     try {
-      const response = await api.get('/parameters/brands');
-      setBrands(response.data || []);
+      const response = await inventory.getBrands();
+      setBrands(Array.isArray(response) ? response : []);
     } catch (error) {
       console.error('Failed to fetch brands:', error);
       toast.error('Failed to fetch brands');
@@ -106,8 +107,7 @@ const ReturnNewModular = () => {
 
   const handleCreateCustomer = async (name: string): Promise<Customer | void> => {
     try {
-      const response = await api.post('/inventory/customers', { name });
-      const newCustomer = response.data;
+      const newCustomer = await admin.createCustomer({ name });
       setCustomers(prev => [...prev, newCustomer]);
       setCustomerId(newCustomer.id);
       toast.success('Customer created successfully');
@@ -244,7 +244,7 @@ const ReturnNewModular = () => {
         }))
       };
 
-      await api.post('/returns/create', returnData);
+      await returns.create(returnData);
       toast.success('Return created successfully!');
 
       // Reset form

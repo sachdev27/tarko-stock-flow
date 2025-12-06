@@ -6,11 +6,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@/test/test-utils';
 import userEvent from '@testing-library/user-event';
 import Dashboard from '../../pages/Dashboard';
-import { stats } from '@/lib/api';
+import { stats } from '@/lib/api-typed';
 import { toast } from 'sonner';
 
 // Mock dependencies
-vi.mock('@/lib/api', () => ({
+vi.mock('@/lib/api-typed', () => ({
   stats: {
     getDashboard: vi.fn()
   }

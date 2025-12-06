@@ -1000,16 +1000,19 @@ def revert_transactions():
 
                         elif item_type == 'SPARE_PIECES':
                             # Restore spare pieces BEFORE updating stock quantity
-                            if item.get('spare_piece_ids'):
-                                # Mark dispatched spare pieces as IN_STOCK and clear dispatch_id
-                                cursor.execute("""
-                                    UPDATE sprinkler_spare_pieces
-                                    SET status = 'IN_STOCK', dispatch_id = NULL, updated_at = NOW()
-                                    WHERE dispatch_id = %s
-                                """, (clean_id,))
+                            # The dispatch creates spare piece records with dispatch_id set, so we need to:
+                            # 1. Mark all spare pieces with this dispatch_id as IN_STOCK
+                            # 2. Clear the dispatch_id reference
+                            # This works for both full and partial dispatches
+                            cursor.execute("""
+                                UPDATE sprinkler_spare_pieces
+                                SET status = 'IN_STOCK', dispatch_id = NULL, updated_at = NOW()
+                                WHERE dispatch_id = %s AND stock_id = %s
+                            """, (clean_id, stock_id))
 
                             # For SPARE_PIECES, the auto_update_stock_from_sprinkler_pieces trigger
-                            # automatically updates stock quantity, so we only update status
+                            # automatically updates stock quantity by counting IN_STOCK pieces
+                            # We only need to update the status field
                             cursor.execute("""
                                 UPDATE inventory_stock
                                 SET status = 'IN_STOCK',

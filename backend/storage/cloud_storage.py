@@ -499,5 +499,71 @@ class CloudStorage:
             return {'enabled': True, 'error': str(e)}
 
 
-# Global instance
+class CloudStorageManager:
+    """Singleton manager with cache invalidation for cloud storage"""
+    _instance = None
+    _last_config_check = None
+    _cache_duration = 60  # seconds
+
+    @classmethod
+    def get_instance(cls):
+        """Get cached instance or create new one if config changed"""
+        import time
+        from database import get_db_connection
+        from psycopg2.extras import RealDictCursor
+
+        current_time = time.time()
+
+        # Check if we need to refresh (cache expired or config updated)
+        should_refresh = (
+            cls._instance is None or
+            cls._last_config_check is None or
+            (current_time - cls._last_config_check) > cls._cache_duration
+        )
+
+        if should_refresh:
+            try:
+                with get_db_connection() as conn:
+                    cursor = conn.cursor(cursor_factory=RealDictCursor)
+                    cursor.execute("""
+                        SELECT updated_at
+                        FROM cloud_backup_config
+                        WHERE is_active = TRUE
+                        ORDER BY created_at DESC
+                        LIMIT 1
+                    """)
+                    result = cursor.fetchone()
+
+                    # If config exists and was updated after our last check, recreate instance
+                    if result and (cls._instance is None or
+                        cls._last_config_check is None or
+                        result['updated_at'].timestamp() > cls._last_config_check):
+                        logger.info("Cloud config changed, reinitializing storage client")
+                        cls._instance = CloudStorage()
+                    elif cls._instance is None:
+                        # No config but no instance, create one anyway
+                        cls._instance = CloudStorage()
+
+            except Exception as e:
+                logger.warning(f"Could not check cloud config timestamp: {e}")
+                if cls._instance is None:
+                    cls._instance = CloudStorage()
+
+            cls._last_config_check = current_time
+
+        return cls._instance
+
+    @classmethod
+    def invalidate_cache(cls):
+        """Force recreation of cloud storage instance on next access"""
+        cls._last_config_check = None
+        logger.info("Cloud storage cache invalidated")
+
+
+def get_cloud_storage():
+    """Get cached CloudStorage instance (recreates if config changed)"""
+    return CloudStorageManager.get_instance()
+
+
+# Global instance (for backwards compatibility)
 cloud_storage = CloudStorage()

@@ -88,7 +88,7 @@ export default function TransactionsNew() {
   // Reset pagination when filters change
   useEffect(() => {
     resetPagination();
-  }, [filteredTransactions.length, resetPagination]);
+  }, [filteredTransactions.length]);
 
   // Handle row click to open detail modal
   const handleRowClick = (transaction: TransactionRecord) => {
@@ -185,8 +185,8 @@ export default function TransactionsNew() {
         </div>
 
         {/* Summary Cards */}
-        <TransactionSummaryCards 
-          transactions={filteredTransactions} 
+        <TransactionSummaryCards
+          transactions={filteredTransactions}
           onProductionClick={() => {
             updateFilter('typeFilter', 'PRODUCTION');
             setShowFilters(true);

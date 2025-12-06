@@ -77,6 +77,9 @@ pytest tests/ -k "validation" -v
 # Integration tests
 pytest tests/test_integration.py -v
 
+# 🆕 Extreme workflow tests (Phase 9X)
+pytest tests/test_extreme_workflows.py -v
+
 # Production tests only
 pytest tests/test_production.py -v
 
@@ -88,6 +91,37 @@ pytest tests/test_returns.py -v
 
 # Scrap tests only
 pytest tests/test_scrap.py -v
+```
+
+### 🆕 Extreme Workflow Test Phases
+
+```bash
+# Run all extreme workflow tests
+pytest tests/test_extreme_workflows.py -v -s
+
+# Phase 1: Setup inventory (4 batches)
+pytest tests/test_extreme_workflows.py::TestExtremeWorkflowSetup -v
+
+# Phase 2: Cut operations
+pytest tests/test_extreme_workflows.py::TestStep1CutRolls -v
+
+# Phase 3: Split operations
+pytest tests/test_extreme_workflows.py::TestStep2SplitBundles -v
+
+# Phase 4: Mixed dispatch (all 4 types)
+pytest tests/test_extreme_workflows.py::TestStep3MixedDispatch -v
+
+# Phase 5: Mixed return
+pytest tests/test_extreme_workflows.py::TestStep4MixedReturn -v
+
+# Phase 6: Scrap operations + validation
+pytest tests/test_extreme_workflows.py::TestStep5ScrapOperations -v
+
+# Phase 7: Revert dispatch
+pytest tests/test_extreme_workflows.py::TestStep6RevertDispatch -v
+
+# Phase 8: Final reconciliation
+pytest tests/test_extreme_workflows.py::TestFinalStateReconciliation -v
 ```
 
 ### Coverage Reports
@@ -109,16 +143,27 @@ pytest tests/test_production.py --cov=routes.production_routes --cov-report=term
 
 ```
 backend/tests/
-├── __init__.py              # Test package init
-├── conftest.py              # Shared fixtures
-├── test_production.py       # Production module tests
-├── test_dispatch.py         # Dispatch module tests
-├── test_returns.py          # Return module tests
-├── test_scrap.py           # Scrap module tests
-├── test_integration.py     # Complex workflow tests
-├── TEST_PLAN.md            # Comprehensive test documentation
-└── requirements-test.txt   # Test dependencies
+├── __init__.py                    # Test package init
+├── conftest.py                    # Shared fixtures
+├── test_production.py             # Production module tests
+├── test_dispatch.py               # Dispatch module tests
+├── test_returns.py                # Return module tests
+├── test_scrap.py                  # Scrap module tests
+├── test_integration.py            # Complex workflow tests
+├── test_extreme_workflows.py      # 🆕 Extreme multi-step workflows (Phase 9X)
+├── TEST_PLAN.md                   # Comprehensive test documentation
+├── EXTREME_WORKFLOW_TESTS.md      # 🆕 Extreme workflow test documentation
+└── requirements-test.txt          # Test dependencies
 ```
+
+### 🆕 Extreme Workflow Tests
+**New comprehensive test suite** for testing all possible combinations:
+- **Mixed dispatches** with all 4 item types (rolls + cuts + bundles + spares)
+- **Mixed returns** across categories (HDPE + Sprinkler)
+- **Scrap validation** ensuring single category + single type rules
+- **Business rule enforcement** with validation tests
+
+See `EXTREME_WORKFLOW_TESTS.md` for detailed documentation.
 
 ## Writing New Tests
 

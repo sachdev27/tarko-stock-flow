@@ -102,7 +102,7 @@ def get_product_types():
     """Get all product types with units"""
     query = """
         SELECT pt.id, pt.name, pt.unit_id, pt.description,
-               pt.parameter_schema, pt.roll_configuration,
+               pt.parameter_schema, pt.roll_configuration, pt.is_system,
                u.name as unit_name, u.abbreviation as unit_symbol
         FROM product_types pt
         LEFT JOIN units u ON pt.unit_id = u.id
@@ -187,6 +187,22 @@ def update_product_type(product_type_id):
 @jwt_required_with_role('admin')
 def delete_product_type(product_type_id):
     """Soft delete a product type"""
+    # Check if this is a system product type (cannot be deleted)
+    check_query = """
+        SELECT is_system, name FROM product_types WHERE id = %s
+    """
+    with get_db_cursor() as cursor:
+        cursor.execute(check_query, (str(product_type_id),))
+        result = cursor.fetchone()
+
+        if not result:
+            return jsonify({'error': 'Product type not found'}), 404
+
+        if result.get('is_system'):
+            return jsonify({
+                'error': f'Cannot delete system product type "{result.get("name")}". This is a core product type required for the system.'
+            }), 403
+
     query = """
         UPDATE product_types
         SET deleted_at = NOW()
@@ -422,9 +438,117 @@ def import_customers():
 @jwt_required()
 def get_units():
     """Get all units"""
-    query = "SELECT * FROM units ORDER BY name"
+    query = "SELECT id, name, abbreviation, is_system, created_at, updated_at FROM units ORDER BY name"
     units = execute_query(query)
     return jsonify(units), 200
+
+@admin_bp.route('/units', methods=['POST'])
+@jwt_required_with_role('admin')
+def create_unit():
+    """Create a new unit"""
+    from psycopg2.errors import UniqueViolation
+
+    data = request.json
+    name = data.get('name')
+    abbreviation = data.get('abbreviation')
+
+    if not name or not abbreviation:
+        return jsonify({'error': 'Unit name and abbreviation are required'}), 400
+
+    try:
+        query = """
+            INSERT INTO units (name, abbreviation, is_system)
+            VALUES (%s, %s, FALSE)
+            RETURNING id, name, abbreviation, is_system, created_at, updated_at
+        """
+        result = execute_insert(query, (name, abbreviation))
+        return jsonify(result), 201
+    except UniqueViolation:
+        return jsonify({'error': f'Unit "{name}" already exists'}), 409
+    except Exception as e:
+        print(f"Error creating unit: {e}")
+        return jsonify({'error': 'Failed to create unit'}), 500
+
+@admin_bp.route('/units/<uuid:unit_id>', methods=['PUT'])
+@jwt_required_with_role('admin')
+def update_unit(unit_id):
+    """Update a unit"""
+    data = request.json
+    name = data.get('name')
+    abbreviation = data.get('abbreviation')
+
+    if not name or not abbreviation:
+        return jsonify({'error': 'Unit name and abbreviation are required'}), 400
+
+    # Check if this is a system unit (cannot be updated)
+    check_query = """
+        SELECT is_system, name FROM units WHERE id = %s
+    """
+    with get_db_cursor() as cursor:
+        cursor.execute(check_query, (str(unit_id),))
+        result = cursor.fetchone()
+
+        if not result:
+            return jsonify({'error': 'Unit not found'}), 404
+
+        if result.get('is_system'):
+            return jsonify({
+                'error': f'Cannot update system unit "{result.get("name")}". This is a core unit required for the system.'
+            }), 403
+
+    query = """
+        UPDATE units
+        SET name = %s, abbreviation = %s, updated_at = NOW()
+        WHERE id = %s
+        RETURNING id, name, abbreviation, is_system, created_at, updated_at
+    """
+    with get_db_cursor() as cursor:
+        cursor.execute(query, (name, abbreviation, str(unit_id)))
+        result = cursor.fetchone()
+
+    if not result:
+        return jsonify({'error': 'Unit not found'}), 404
+
+    return jsonify(result), 200
+
+@admin_bp.route('/units/<uuid:unit_id>', methods=['DELETE'])
+@jwt_required_with_role('admin')
+def delete_unit(unit_id):
+    """Delete a unit"""
+    # Check if this is a system unit (cannot be deleted)
+    check_query = """
+        SELECT is_system, name FROM units WHERE id = %s
+    """
+    with get_db_cursor() as cursor:
+        cursor.execute(check_query, (str(unit_id),))
+        result = cursor.fetchone()
+
+        if not result:
+            return jsonify({'error': 'Unit not found'}), 404
+
+        if result.get('is_system'):
+            return jsonify({
+                'error': f'Cannot delete system unit "{result.get("name")}". This is a core unit required for the system.'
+            }), 403
+
+    # Check if unit is in use by product types
+    usage_query = """
+        SELECT COUNT(*) as count FROM product_types WHERE unit_id = %s AND deleted_at IS NULL
+    """
+    with get_db_cursor() as cursor:
+        cursor.execute(usage_query, (str(unit_id),))
+        usage = cursor.fetchone()
+
+        if usage and usage.get('count', 0) > 0:
+            return jsonify({
+                'error': f'Cannot delete unit. It is currently in use by {usage.get("count")} product type(s).'
+            }), 409
+
+    query = """
+        DELETE FROM units WHERE id = %s
+    """
+    execute_query(query, (str(unit_id),), fetch_all=False)
+    return jsonify({'message': 'Unit deleted'}), 200
 
 # Audit Logs
 @admin_bp.route('/audit-logs', methods=['GET'])

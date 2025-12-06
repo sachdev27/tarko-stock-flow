@@ -6,7 +6,8 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Upload, Download, FileSpreadsheet } from 'lucide-react';
 import { toast } from 'sonner';
-import { production as productionAPI } from '@/lib/api';
+import { production as productionAPI } from '@/lib/api-typed';
+import type * as API from '@/types';
 
 interface Batch {
   id: string;

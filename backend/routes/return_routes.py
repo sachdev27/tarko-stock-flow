@@ -162,51 +162,35 @@ def create_return():
 
                 # Find or create batch for this product variant
                 if product_variant_id not in variant_batches:
-                    # First, try to find an existing IN_STOCK batch for this variant
+                    # Always create a NEW batch for each return (independent audit trail)
+                    # Calculate quantity for this variant (count actual items being returned)
+                    variant_item_count = sum(1 for i in items
+                        if i.get('product_type_id') == product_type_id
+                        and i.get('brand_id') == brand_id
+                        and json.dumps(i.get('parameters', {}), sort_keys=True) == json.dumps(parameters, sort_keys=True))
+
+                    # Create a unique batch for this variant with sequential batch_code
+                    batch_suffix = len(variant_batches) + 1
+                    batch_code = f"{return_number}-{batch_suffix:02d}"
+
+                    # Create a batch for this product variant
                     cursor.execute("""
-                        SELECT b.id
-                        FROM batches b
-                        WHERE b.product_variant_id = %s
-                          AND b.deleted_at IS NULL
-                        ORDER BY b.created_at DESC
-                        LIMIT 1
-                    """, (product_variant_id,))
+                        INSERT INTO batches (
+                            product_variant_id, production_date, initial_quantity, current_quantity,
+                            batch_no, batch_code, notes, created_by
+                        )
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                        RETURNING id
+                    """, (product_variant_id, return_date, variant_item_count, variant_item_count,
+                          batch_code, batch_code, f"Return batch for {return_number}", user_id))
 
-                    existing_batch = cursor.fetchone()
+                    batch_record = cursor.fetchone()
+                    batch_id = batch_record['id']
 
-                    if existing_batch:
-                        # Reuse existing batch
-                        batch_id = existing_batch['id']
-                    else:
-                        # No existing batch found, create a new one
-                        # Calculate quantity for this variant (count actual items being returned)
-                        variant_item_count = sum(1 for i in items
-                            if i.get('product_type_id') == product_type_id
-                            and i.get('brand_id') == brand_id
-                            and json.dumps(i.get('parameters', {}), sort_keys=True) == json.dumps(parameters, sort_keys=True))
-
-                        # Create a unique batch for this variant with sequential batch_code
-                        batch_suffix = len(variant_batches) + 1
-                        batch_code = f"{return_number}-{batch_suffix:02d}"
-
-                        # Create a batch for this product variant
-                        cursor.execute("""
-                            INSERT INTO batches (
-                                product_variant_id, production_date, initial_quantity, current_quantity,
-                                batch_no, batch_code, notes, created_by
-                            )
-                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                            RETURNING id
-                        """, (product_variant_id, return_date, variant_item_count, variant_item_count,
-                              batch_code, batch_code, f"Return batch for {return_number}", user_id))
-
-                        batch_record = cursor.fetchone()
-                        batch_id = batch_record['id']
-
-                    # Store for reuse if same variant appears again in this return
+                    # Store for reuse if same variant appears again in THIS return only
                     variant_batches[product_variant_id] = batch_id
                 else:
-                    # Reuse existing batch for this variant
+                    # Reuse batch only within the same return (not across different returns)
                     batch_id = variant_batches[product_variant_id]
 
                 # Get product type info for stock type determination
@@ -483,6 +467,38 @@ def create_return():
                                 VALUES (%s, %s, 'IN_STOCK', %s, %s, %s)
                             """, (piece_info['stock_id'], piece_info['piece_length'],
                                   f'Piece {piece_num} from return {return_number}', txn_id, piece_info['stock_id']))
+
+            # CRITICAL FIX: Update batches.current_quantity for all created batches
+            # This ensures returned items are reflected in total inventory
+            for product_variant_id, batch_id in variant_batches.items():
+                # Triggers have updated inventory_stock.quantity for CUT_ROLL/SPARE
+                # Now calculate total and update batch
+                # Unit semantics: HDPE uses roll/piece COUNT, Sprinkler uses piece COUNT
+                cursor.execute("""
+                    UPDATE batches b
+                    SET current_quantity = (
+                        SELECT COALESCE(
+                            SUM(CASE
+                                WHEN s.stock_type = 'FULL_ROLL' THEN s.quantity
+                                WHEN s.stock_type = 'CUT_ROLL' THEN (
+                                    SELECT COALESCE(COUNT(*), 0)
+                                    FROM hdpe_cut_pieces cp
+                                    WHERE cp.stock_id = s.id AND cp.status = 'IN_STOCK' AND cp.deleted_at IS NULL
+                                )
+                                WHEN s.stock_type = 'BUNDLE' THEN s.quantity * s.pieces_per_bundle
+                                WHEN s.stock_type = 'SPARE' THEN (
+                                    SELECT COALESCE(SUM(sp.piece_count), 0)
+                                    FROM sprinkler_spare_pieces sp
+                                    WHERE sp.stock_id = s.id AND sp.status = 'IN_STOCK' AND sp.deleted_at IS NULL
+                                )
+                                ELSE 0
+                            END), 0)
+                        FROM inventory_stock s
+                        WHERE s.batch_id = b.id AND s.deleted_at IS NULL
+                    ),
+                    updated_at = NOW()
+                    WHERE id = %s
+                """, (batch_id,))
 
             # Commit transaction
             cursor.connection.commit()

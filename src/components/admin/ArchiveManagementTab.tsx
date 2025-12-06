@@ -39,7 +39,8 @@ import {
   useDeletionLog,
 } from '@/hooks/useBackupConfig';
 import { useQuery } from '@tanstack/react-query';
-import { versionControl } from '@/lib/api';
+import { versionControl } from '@/lib/api-typed';
+import type * as API from '@/types';
 
 interface CloudCredential {
   id: string;
