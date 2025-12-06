@@ -87,8 +87,6 @@ services:
       - backend
     networks:
       - tarko-network
-    profiles:
-      - with-tunnel
 
 volumes:
   postgres_data:
