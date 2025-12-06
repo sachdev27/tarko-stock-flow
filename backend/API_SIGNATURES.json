@@ -117,67 +117,6 @@
         }
       }
     },
-    "/api/dispatch/cut-roll": {
-      "method": "POST",
-      "description": "Cut a standard roll or cut roll into smaller cut rolls",
-      "authentication": "JWT Required",
-      "request_body": {
-        "stock_id": {
-          "type": "UUID",
-          "required": true,
-          "description": "Inventory stock ID for FULL_ROLL"
-        },
-        "roll_id": {
-          "type": "UUID",
-          "required": false,
-          "description": "Backward compatibility alias for stock_id"
-        },
-        "cuts": {
-          "type": "array",
-          "required": true,
-          "description": "Array of cut specifications",
-          "items": {
-            "length": "float (meters)"
-          }
-        }
-      },
-      "response": {
-        "message": "string",
-        "cut_stock_id": "UUID",
-        "new_cut_pieces": "array of {id: UUID, length_meters: float}",
-        "pieces_created": "integer"
-      }
-    },
-    "/api/dispatch/cut-bundle": {
-      "method": "POST",
-      "description": "Cut a sprinkler bundle into spare pieces",
-      "authentication": "JWT Required",
-      "request_body": {
-        "stock_id": {
-          "type": "UUID",
-          "required": true,
-          "description": "Inventory stock ID for BUNDLE"
-        },
-        "roll_id": {
-          "type": "UUID",
-          "required": false,
-          "description": "Backward compatibility alias for stock_id"
-        },
-        "cuts": {
-          "type": "array",
-          "required": true,
-          "description": "Array of split specifications",
-          "items": {
-            "pieces": "integer (number of pieces to split)"
-          }
-        }
-      },
-      "response": {
-        "message": "string",
-        "new_spare_pieces": "array",
-        "spares_created": "integer"
-      }
-    },
     "/api/dispatch/create": {
       "method": "POST",
       "description": "LEGACY: Create a dispatch/sale transaction (old system)",

@@ -193,8 +193,8 @@ const ScrapHistory = ({ embedded = false }: ScrapHistoryProps) => {
       if (statusFilter && statusFilter !== 'all') params.status = statusFilter;
 
       const data = await scrapAPI.getHistory(params);
-      // api-typed already unwraps the response - data is array directly
-      const scrapsArray = Array.isArray(data) ? data : [];
+      // Backend returns {scraps: []} format - extract array
+      const scrapsArray = Array.isArray(data) ? data : (data?.scraps || []);
       setScraps(scrapsArray);
       setFilteredScraps(scrapsArray);
     } catch (error: unknown) {
