@@ -1,8 +1,6 @@
-version: '3.8'
-
 services:
   postgres:
-    image: postgres:15-alpine
+    image: postgres:15.3-alpine
     container_name: tarko-postgres
     restart: unless-stopped
     environment:
@@ -62,10 +60,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.frontend
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:5500/api}
+    image: tarko-frontend:latest
     container_name: tarko-frontend
     restart: unless-stopped
-    environment:
-      VITE_API_URL: http://localhost:5500/api
     ports:
       - "3000:80"
     depends_on:
@@ -73,13 +72,13 @@ services:
     networks:
       - tarko-network
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80"]
+      test: ["CMD", "nc", "-z", "localhost", "80"]
       interval: 30s
       timeout: 10s
       retries: 3
 
   cloudflared:
-    image: cloudflare/cloudflared:latest
+    image: cloudflare/cloudflared:2023.8.2
     container_name: tarko-cloudflared
     restart: unless-stopped
     command: tunnel run
@@ -89,6 +88,8 @@ services:
       - backend
     networks:
       - tarko-network
+    profiles:
+      - with-tunnel
 
 volumes:
   postgres_data:
