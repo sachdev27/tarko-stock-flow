@@ -694,6 +694,893 @@ docker exec tarko-postgres pg_dump -U tarko_user tarko_inventory > backup_$(date
 
 ---
 
+## Test Phase 9X: EXTREME Multi-Step Workflows for Backend Unit Testing
+
+**Business Rules Validation:**
+- ✅ **Production:** Only 1 product category per batch (HDPE OR Sprinkler)
+- ✅ **Dispatch:** Can mix ANY categories (HDPE + Sprinkler) and types (rolls + bundles + cut + spare)
+- ✅ **Return:** Can mix ANY categories and types (same as dispatch)
+- ✅ **Scrap:** Only 1 product category AND only 1 type per scrap operation
+
+---
+
+### 9X.1: EXTREME Workflow - Mixed Dispatch with All Item Types
+**Scenario:** Test maximum complexity dispatch with all 4 item types from 2 categories
+
+**Setup (Production Phase):**
+```
+BATCH-HDPE-001 (HDPE Pipe PE80, PN10, OD32):
+- Create 20 FULL_ROLL × 500m = 10,000m, 2,000kg (0.2 kg/m)
+
+BATCH-HDPE-002 (HDPE Pipe PE80, PN10, OD32):
+- Create 10 FULL_ROLL × 400m = 4,000m, 800kg
+
+BATCH-SPR-001 (Sprinkler OD16, PN6, Lateral):
+- Create 15 BUNDLE × 30 pcs × 6m = 2,700m, 891kg (0.33 kg/m)
+
+BATCH-SPR-002 (Sprinkler OD16, PN6, Lateral):
+- Create 10 BUNDLE × 25 pcs × 6m = 1,500m, 495kg
+```
+
+**Step 1: Prepare Cut Rolls (HDPE)**
+```
+Action: Cut 5 rolls from BATCH-HDPE-001
+- Cut 1: 500m → [200m cut] + [300m remaining]
+- Cut 2: 500m → [150m cut] + [350m remaining]
+- Cut 3: 500m → [100m cut] + [400m remaining]
+- Cut 4: 500m → [250m cut] + [250m remaining]
+- Cut 5: 500m → [180m cut] + [320m remaining]
+
+Result: 10 CUT_ROLL pieces total
+```
+
+**P&C After Cut:**
+```sql
+-- inventory_stock
+SELECT stock_type, COUNT(*), SUM(quantity) as total_pieces
+FROM inventory_stock
+WHERE batch_code = 'BATCH-HDPE-001' AND deleted_at IS NULL
+GROUP BY stock_type;
+-- Expected:
+-- FULL_ROLL: 15 (20 original - 5 cut)
+-- CUT_ROLL: 5 stocks × 2 pieces each = 10 pieces total
+
+-- hdpe_cut_pieces
+SELECT COUNT(*) FROM hdpe_cut_pieces
+WHERE deleted_at IS NULL AND status = 'IN_STOCK';
+-- Expected: 10 pieces
+
+-- Weight verification
+SELECT SUM(weight_grams)/1000 as total_kg FROM hdpe_cut_pieces
+WHERE deleted_at IS NULL;
+-- Expected: 1,000kg (5 rolls × 500m × 0.2kg/m)
+
+-- inventory_transactions
+SELECT transaction_type, COUNT(*) FROM inventory_transactions
+WHERE batch_code = 'BATCH-HDPE-001' AND transaction_type = 'CUT_ROLL'
+GROUP BY transaction_type;
+-- Expected: CUT_ROLL: 5 transactions
+```
+
+**Step 2: Prepare Spare Pieces (Sprinkler)**
+```
+Action: Split 4 bundles from BATCH-SPR-001
+- Bundle 1: 30 pcs → 30 SPARE pieces
+- Bundle 2: 30 pcs → 30 SPARE pieces
+- Bundle 3: 30 pcs → 30 SPARE pieces
+- Bundle 4: 30 pcs → 30 SPARE pieces
+
+Result: 120 SPARE pieces (4 stocks of 30 pieces each)
+```
+
+**P&C After Split:**
+```sql
+-- inventory_stock
+SELECT stock_type, COUNT(*), SUM(quantity) as total_pieces
+FROM inventory_stock
+WHERE batch_code = 'BATCH-SPR-001' AND deleted_at IS NULL
+GROUP BY stock_type;
+-- Expected:
+-- BUNDLE: 11 bundles (15 - 4 split)
+-- SPARE: 4 stocks × 30 pieces = 120 pieces total
+
+-- sprinkler_spare_pieces
+SELECT COUNT(*) FROM sprinkler_spare_pieces
+WHERE deleted_at IS NULL AND status = 'IN_STOCK';
+-- Expected: 120 pieces
+
+-- Weight verification
+SELECT SUM(weight_grams)/1000 as total_kg FROM sprinkler_spare_pieces
+WHERE deleted_at IS NULL;
+-- Expected: 237.6kg (120 × 6m × 0.33kg/m)
+```
+
+**Step 3: EXTREME Mixed Dispatch**
+```
+Action: Create Dispatch to "Customer MEGA-MIX"
+Items:
+1. 8 FULL_ROLL from BATCH-HDPE-001 (500m each)
+2. 3 FULL_ROLL from BATCH-HDPE-002 (400m each)
+3. 4 CUT pieces from BATCH-HDPE-001:
+   - 200m cut
+   - 150m cut
+   - 100m cut
+   - 300m remaining
+4. 5 BUNDLE from BATCH-SPR-001 (30 pcs each)
+5. 3 BUNDLE from BATCH-SPR-002 (25 pcs each)
+6. 50 SPARE pieces from BATCH-SPR-001 (split bundles)
+
+Dispatch Summary:
+- HDPE: 11 full rolls + 4 cut pieces = 5,050m
+- Sprinkler: 8 bundles (225 pcs) + 50 spare pieces = 1,650m
+- Total weight: ~1,090kg
+```
+
+**P&C After Mixed Dispatch:**
+```sql
+-- dispatches table
+SELECT * FROM dispatches WHERE customer_name = 'Customer MEGA-MIX';
+-- Verify: status='DISPATCHED', dispatch_date, customer info
+
+-- dispatch_items (should have 6 types)
+SELECT item_type, COUNT(*), SUM(quantity) as total
+FROM dispatch_items di
+JOIN dispatches d ON di.dispatch_id = d.id
+WHERE d.customer_name = 'Customer MEGA-MIX'
+GROUP BY item_type;
+-- Expected:
+-- FULL_ROLL: 11 items (8 from BATCH-HDPE-001 + 3 from BATCH-HDPE-002)
+-- CUT_ROLL: 4 items
+-- BUNDLE: 8 items (5 from BATCH-SPR-001 + 3 from BATCH-SPR-002)
+-- SPARE_PIECES: 1 item with quantity=50
+
+-- Verify mixed products flag
+SELECT mixed_products FROM dispatches WHERE customer_name = 'Customer MEGA-MIX';
+-- Expected: true (mixing HDPE + Sprinkler)
+
+-- inventory_stock status updates
+-- HDPE full rolls
+SELECT COUNT(*) FROM inventory_stock
+WHERE batch_code IN ('BATCH-HDPE-001', 'BATCH-HDPE-002')
+AND stock_type = 'FULL_ROLL' AND status = 'DISPATCHED';
+-- Expected: 11
+
+-- HDPE cut pieces
+SELECT COUNT(*) FROM hdpe_cut_pieces
+WHERE status = 'DISPATCHED';
+-- Expected: 4
+
+-- Sprinkler bundles
+SELECT COUNT(*) FROM inventory_stock
+WHERE batch_code IN ('BATCH-SPR-001', 'BATCH-SPR-002')
+AND stock_type = 'BUNDLE' AND status = 'DISPATCHED';
+-- Expected: 8
+
+-- Sprinkler spare pieces
+SELECT COUNT(*) FROM sprinkler_spare_pieces
+WHERE status = 'DISPATCHED';
+-- Expected: 50
+
+-- Weight verification
+SELECT SUM(weight_kg) FROM dispatch_items di
+JOIN dispatches d ON di.dispatch_id = d.id
+WHERE d.customer_name = 'Customer MEGA-MIX';
+-- Expected: ~1,090kg
+```
+
+**Step 4: EXTREME Mixed Return**
+```
+Action: Customer returns PARTIAL dispatch with MIXED items
+Returned Items:
+1. 3 FULL_ROLL (HDPE) - Good condition
+2. 2 CUT pieces (HDPE) - 200m + 150m - Good
+3. 2 BUNDLE (Sprinkler) - Good condition
+4. 15 SPARE pieces (Sprinkler) - Good condition
+
+Return Summary:
+- HDPE: 3 rolls + 2 cut pieces
+- Sprinkler: 2 bundles + 15 spares
+- All items good condition (will restock)
+```
+
+**P&C After Mixed Return:**
+```sql
+-- returns table
+INSERT verification:
+SELECT * FROM returns WHERE customer_name = 'Customer MEGA-MIX';
+-- Verify: return_date, status='RECEIVED'
+
+-- return_items
+SELECT item_type, COUNT(*), SUM(quantity_returned) as total
+FROM return_items ri
+JOIN returns r ON ri.return_id = r.id
+WHERE r.customer_name = 'Customer MEGA-MIX'
+GROUP BY item_type;
+-- Expected:
+-- FULL_ROLL: 3
+-- CUT_ROLL: 2
+-- BUNDLE: 2
+-- SPARE_PIECES: 1 item with quantity=15
+
+-- inventory_stock status restoration
+-- HDPE full rolls back to IN_STOCK
+SELECT COUNT(*) FROM inventory_stock
+WHERE batch_code = 'BATCH-HDPE-001'
+AND stock_type = 'FULL_ROLL'
+AND status = 'IN_STOCK'
+AND id IN (SELECT stock_id FROM return_items);
+-- Expected: 3
+
+-- HDPE cut pieces back to IN_STOCK
+SELECT COUNT(*) FROM hdpe_cut_pieces
+WHERE length_meters IN (200, 150) AND status = 'IN_STOCK';
+-- Expected: 2
+
+-- Sprinkler bundles back to IN_STOCK
+SELECT COUNT(*) FROM inventory_stock
+WHERE stock_type = 'BUNDLE' AND status = 'IN_STOCK'
+AND id IN (SELECT stock_id FROM return_items);
+-- Expected: 2
+
+-- Sprinkler spare pieces back to IN_STOCK
+SELECT COUNT(*) FROM sprinkler_spare_pieces
+WHERE status = 'IN_STOCK'
+AND id IN (SELECT spare_piece_id FROM return_pieces);
+-- Expected: 15
+
+-- inventory_transactions
+SELECT transaction_type, COUNT(*)
+FROM inventory_transactions
+WHERE transaction_type = 'RETURN'
+GROUP BY transaction_type;
+-- Should include all 5 return transaction groups
+```
+
+**Step 5: Scrap Operations (Separate by Category & Type)**
+```
+Scrap Operation 1: HDPE Full Rolls Only
+- Scrap 2 FULL_ROLL from returned items
+- Reason: "Water damage during storage"
+- Type: Damaged
+
+Scrap Operation 2: HDPE Cut Pieces Only
+- Scrap 1 CUT piece (100m) from remaining cut pieces
+- Reason: "Crushed during handling"
+- Type: Damaged
+
+Scrap Operation 3: Sprinkler Bundles Only
+- Scrap 1 BUNDLE from returned bundles
+- Reason: "UV degradation"
+- Type: Damaged
+
+Scrap Operation 4: Sprinkler Spare Pieces Only
+- Scrap 10 SPARE pieces
+- Reason: "Contaminated"
+- Type: Damaged
+```
+
+**P&C After Scrap Operations:**
+```sql
+-- scraps table (4 separate scrap records)
+SELECT scrap_type, reason, COUNT(*) as scrap_count
+FROM scraps
+WHERE created_at >= CURRENT_DATE
+GROUP BY scrap_type, reason;
+-- Expected: 4 scrap records
+
+-- scrap_items validation
+-- Scrap 1: HDPE Full Rolls
+SELECT COUNT(*) FROM scrap_items
+WHERE scrap_id = (SELECT id FROM scraps WHERE reason = 'Water damage during storage')
+AND stock_type = 'FULL_ROLL';
+-- Expected: 2
+
+-- Scrap 2: HDPE Cut Pieces
+SELECT COUNT(*) FROM scrap_pieces
+WHERE scrap_id = (SELECT id FROM scraps WHERE reason = 'Crushed during handling')
+AND cut_piece_id IS NOT NULL;
+-- Expected: 1
+
+-- Scrap 3: Sprinkler Bundles
+SELECT COUNT(*) FROM scrap_items
+WHERE scrap_id = (SELECT id FROM scraps WHERE reason = 'UV degradation')
+AND stock_type = 'BUNDLE';
+-- Expected: 1
+
+-- Scrap 4: Sprinkler Spare Pieces
+SELECT COUNT(*) FROM scrap_pieces
+WHERE scrap_id = (SELECT id FROM scraps WHERE reason = 'Contaminated')
+AND spare_piece_id IS NOT NULL;
+-- Expected: 10
+
+-- Verify BUSINESS RULE: Each scrap has only 1 category + 1 type
+SELECT s.id,
+  COUNT(DISTINCT CASE WHEN si.product_type = 'HDPE Pipe' THEN 1
+                       WHEN si.product_type LIKE 'Sprinkler%' THEN 2 END) as category_count,
+  COUNT(DISTINCT si.stock_type) as type_count
+FROM scraps s
+LEFT JOIN scrap_items si ON s.id = si.scrap_id
+WHERE s.created_at >= CURRENT_DATE
+GROUP BY s.id;
+-- Expected: All rows have category_count=1 AND type_count=1
+
+-- inventory_stock status updates
+SELECT status, stock_type, COUNT(*)
+FROM inventory_stock
+WHERE id IN (SELECT inventory_stock_id FROM scrap_items WHERE scrap_date >= CURRENT_DATE)
+GROUP BY status, stock_type;
+-- Expected: All SCRAPPED status
+
+-- hdpe_cut_pieces status
+SELECT COUNT(*) FROM hdpe_cut_pieces
+WHERE status = 'SCRAPPED' AND length_meters = 100;
+-- Expected: 1
+
+-- sprinkler_spare_pieces status
+SELECT COUNT(*) FROM sprinkler_spare_pieces
+WHERE status = 'SCRAPPED';
+-- Expected: 10
+```
+
+**Step 6: Revert Mixed Dispatch**
+```
+Action: Revert the EXTREME mixed dispatch
+Reason: "Incorrect customer - order was for Customer B"
+```
+
+**P&C After Dispatch Revert:**
+```sql
+-- dispatches table
+SELECT status, reverted_at, revert_reason
+FROM dispatches
+WHERE customer_name = 'Customer MEGA-MIX';
+-- Expected: status='REVERTED', reverted_at IS NOT NULL
+
+-- ALL inventory_stock items restored (except scrapped)
+-- HDPE full rolls
+SELECT COUNT(*) FROM inventory_stock
+WHERE batch_code IN ('BATCH-HDPE-001', 'BATCH-HDPE-002')
+AND stock_type = 'FULL_ROLL' AND status = 'IN_STOCK';
+-- Expected: Original count minus (returned=3, scrapped=2)
+-- = 20 + 10 - 11 dispatched + 11 reverted - 3 returned - 2 scrapped
+
+-- HDPE cut pieces
+SELECT COUNT(*) FROM hdpe_cut_pieces
+WHERE status = 'IN_STOCK';
+-- Expected: 10 - 4 dispatched + 4 reverted - 2 returned - 1 scrapped = 7
+
+-- Sprinkler bundles
+SELECT COUNT(*) FROM inventory_stock
+WHERE batch_code IN ('BATCH-SPR-001', 'BATCH-SPR-002')
+AND stock_type = 'BUNDLE' AND status = 'IN_STOCK';
+-- Expected: Original - dispatched + reverted - returned - scrapped
+
+-- Sprinkler spare pieces
+SELECT COUNT(*) FROM sprinkler_spare_pieces
+WHERE status = 'IN_STOCK';
+-- Expected: 120 - 50 dispatched + 50 reverted - 15 returned - 10 scrapped = 95
+
+-- inventory_transactions reverted_at
+SELECT COUNT(*) FROM inventory_transactions
+WHERE dispatch_id = (SELECT id FROM dispatches WHERE customer_name = 'Customer MEGA-MIX')
+AND reverted_at IS NOT NULL;
+-- Expected: Should equal number of dispatch_items (23 items)
+```
+
+**Step 7: Re-dispatch Corrected Mixed Order**
+```
+Action: Create NEW dispatch to correct customer (Customer B)
+Items (subset of original):
+1. 5 FULL_ROLL HDPE
+2. 2 CUT pieces HDPE
+3. 3 BUNDLE Sprinkler
+4. 20 SPARE pieces Sprinkler
+```
+
+**P&C After Re-dispatch:**
+```sql
+-- dispatches table
+SELECT * FROM dispatches WHERE customer_name = 'Customer B';
+-- Verify: New dispatch created, mixed_products=true
+
+-- dispatch_items
+SELECT item_type, COUNT(*)
+FROM dispatch_items di
+JOIN dispatches d ON di.dispatch_id = d.id
+WHERE d.customer_name = 'Customer B'
+GROUP BY item_type;
+-- Expected:
+-- FULL_ROLL: 5
+-- CUT_ROLL: 2
+-- BUNDLE: 3
+-- SPARE_PIECES: 1 (qty=20)
+
+-- Verify correct items dispatched (not duplicates)
+SELECT DISTINCT di.stock_id
+FROM dispatch_items di
+JOIN dispatches d ON di.dispatch_id = d.id
+WHERE d.customer_name = 'Customer B'
+INTERSECT
+SELECT DISTINCT di.stock_id
+FROM dispatch_items di
+JOIN dispatches d ON di.dispatch_id = d.id
+WHERE d.customer_name = 'Customer MEGA-MIX' AND d.status = 'REVERTED';
+-- Should return items that were reverted and now re-dispatched
+```
+
+**FINAL STATE VERIFICATION:**
+```sql
+-- Complete inventory reconciliation
+SELECT
+  batch_code,
+  stock_type,
+  status,
+  COUNT(*) as count,
+  SUM(CASE WHEN stock_type = 'FULL_ROLL' THEN length_per_unit * quantity
+           WHEN stock_type = 'CUT_ROLL' THEN (SELECT SUM(length_meters) FROM hdpe_cut_pieces WHERE stock_id = inventory_stock.id)
+           WHEN stock_type = 'BUNDLE' THEN pieces_per_bundle * piece_length_meters * quantity
+           WHEN stock_type = 'SPARE' THEN quantity * piece_length_meters
+      END) as total_length_meters,
+  SUM(CASE WHEN stock_type = 'FULL_ROLL' THEN length_per_unit * weight_per_meter * quantity
+           WHEN stock_type = 'CUT_ROLL' THEN (SELECT SUM(weight_grams)/1000 FROM hdpe_cut_pieces WHERE stock_id = inventory_stock.id)
+           WHEN stock_type = 'BUNDLE' THEN pieces_per_bundle * weight_per_piece * quantity
+           WHEN stock_type = 'SPARE' THEN quantity * weight_per_piece
+      END) as total_weight_kg
+FROM inventory_stock
+WHERE batch_code IN ('BATCH-HDPE-001', 'BATCH-HDPE-002', 'BATCH-SPR-001', 'BATCH-SPR-002')
+AND deleted_at IS NULL
+GROUP BY batch_code, stock_type, status
+ORDER BY batch_code, stock_type, status;
+
+-- Transaction audit trail
+SELECT
+  transaction_type,
+  COUNT(*) as transaction_count,
+  COUNT(DISTINCT batch_code) as affected_batches
+FROM inventory_transactions
+WHERE batch_code IN ('BATCH-HDPE-001', 'BATCH-HDPE-002', 'BATCH-SPR-001', 'BATCH-SPR-002')
+GROUP BY transaction_type
+ORDER BY transaction_count DESC;
+-- Expected transaction types: PRODUCTION, CUT_ROLL, SPLIT_BUNDLE, DISPATCH, RETURN, SCRAP
+
+-- Verify no orphaned records
+SELECT 'orphaned_dispatch_items' as check_type, COUNT(*) as count
+FROM dispatch_items di
+LEFT JOIN inventory_stock ist ON di.stock_id = ist.id
+WHERE ist.id IS NULL
+UNION ALL
+SELECT 'orphaned_cut_pieces', COUNT(*)
+FROM hdpe_cut_pieces hcp
+LEFT JOIN inventory_stock ist ON hcp.stock_id = ist.id
+WHERE hcp.deleted_at IS NULL AND ist.id IS NULL
+UNION ALL
+SELECT 'orphaned_spare_pieces', COUNT(*)
+FROM sprinkler_spare_pieces ssp
+LEFT JOIN inventory_stock ist ON ssp.stock_id = ist.id
+WHERE ssp.deleted_at IS NULL AND ist.id IS NULL;
+-- Expected: All counts = 0
+```
+
+---
+
+### 9X.2: Backend Unit Test Structure
+
+**Test File:** `test_extreme_workflows.py`
+
+```python
+import pytest
+from datetime import datetime
+from decimal import Decimal
+
+class TestExtremeMultiStepWorkflow:
+    """
+    Test extreme multi-step workflow with all item types and mixed operations.
+    Validates business rules:
+    - Production: Single category only
+    - Dispatch/Return: Can mix any categories and types
+    - Scrap: Single category AND single type only
+    """
+
+    @pytest.fixture
+    def setup_inventory(self, db_session):
+        """Create initial inventory for testing"""
+        # Create HDPE batches
+        hdpe_batch_1 = create_batch(
+            batch_code='BATCH-HDPE-001',
+            product_type='HDPE Pipe',
+            parameters={'PE': '80', 'PN': '10', 'OD': '32mm'},
+            roll_count=20,
+            roll_length=500,
+            weight_per_meter=0.2
+        )
+
+        hdpe_batch_2 = create_batch(
+            batch_code='BATCH-HDPE-002',
+            product_type='HDPE Pipe',
+            parameters={'PE': '80', 'PN': '10', 'OD': '32mm'},
+            roll_count=10,
+            roll_length=400,
+            weight_per_meter=0.2
+        )
+
+        # Create Sprinkler batches
+        spr_batch_1 = create_batch(
+            batch_code='BATCH-SPR-001',
+            product_type='Sprinkler Pipe',
+            parameters={'OD': '16mm', 'PN': '6', 'Type': 'Lateral'},
+            bundle_count=15,
+            pieces_per_bundle=30,
+            piece_length=6,
+            weight_per_meter=0.33
+        )
+
+        spr_batch_2 = create_batch(
+            batch_code='BATCH-SPR-002',
+            product_type='Sprinkler Pipe',
+            parameters={'OD': '16mm', 'PN': '6', 'Type': 'Lateral'},
+            bundle_count=10,
+            pieces_per_bundle=25,
+            piece_length=6,
+            weight_per_meter=0.33
+        )
+
+        return {
+            'hdpe_1': hdpe_batch_1,
+            'hdpe_2': hdpe_batch_2,
+            'spr_1': spr_batch_1,
+            'spr_2': spr_batch_2
+        }
+
+    def test_step_1_cut_rolls(self, db_session, setup_inventory):
+        """Test cutting HDPE rolls into cut pieces"""
+        hdpe_batch = setup_inventory['hdpe_1']
+        rolls_to_cut = get_rolls(hdpe_batch.id, limit=5)
+
+        cut_operations = [
+            {'roll_id': rolls_to_cut[0].id, 'cut_length': 200},
+            {'roll_id': rolls_to_cut[1].id, 'cut_length': 150},
+            {'roll_id': rolls_to_cut[2].id, 'cut_length': 100},
+            {'roll_id': rolls_to_cut[3].id, 'cut_length': 250},
+            {'roll_id': rolls_to_cut[4].id, 'cut_length': 180},
+        ]
+
+        for op in cut_operations:
+            result = cut_roll(op['roll_id'], op['cut_length'])
+
+            # Verify cut pieces created
+            assert result['status'] == 'success'
+            assert result['pieces_created'] == 2
+            assert result['cut_piece_length'] == op['cut_length']
+            assert result['remaining_length'] == (500 - op['cut_length'])
+
+        # Verify final state
+        cut_pieces = get_cut_pieces(batch_code='BATCH-HDPE-001')
+        assert len(cut_pieces) == 10  # 5 cuts × 2 pieces
+        assert sum(p.length_meters for p in cut_pieces) == 2500  # 5 × 500m
+        assert all(p.status == 'IN_STOCK' for p in cut_pieces)
+
+        # Verify original rolls status
+        original_rolls = get_rolls_by_ids([op['roll_id'] for op in cut_operations])
+        assert all(r.status == 'SOLD_OUT' or r.deleted_at is not None for r in original_rolls)
+
+    def test_step_2_split_bundles(self, db_session, setup_inventory):
+        """Test splitting bundles into spare pieces"""
+        spr_batch = setup_inventory['spr_1']
+        bundles_to_split = get_bundles(spr_batch.id, limit=4)
+
+        for bundle in bundles_to_split:
+            result = split_bundle(bundle.id)
+
+            assert result['status'] == 'success'
+            assert result['spare_pieces_created'] == 30
+
+        # Verify spare pieces created
+        spare_pieces = get_spare_pieces(batch_code='BATCH-SPR-001')
+        assert len(spare_pieces) == 120  # 4 bundles × 30 pieces
+        assert all(sp.piece_length_meters == 6 for sp in spare_pieces)
+        assert all(sp.status == 'IN_STOCK' for sp in spare_pieces)
+
+        # Verify weight conservation
+        total_weight = sum(sp.weight_grams for sp in spare_pieces) / 1000
+        assert abs(total_weight - 237.6) < 0.1  # 120 × 6m × 0.33kg/m
+
+    def test_step_3_mixed_dispatch(self, db_session, setup_inventory):
+        """Test dispatch with ALL item types mixed"""
+        # Prepare items
+        hdpe_1_rolls = get_available_rolls('BATCH-HDPE-001', limit=8)
+        hdpe_2_rolls = get_available_rolls('BATCH-HDPE-002', limit=3)
+        cut_pieces = get_available_cut_pieces('BATCH-HDPE-001', limit=4)
+        spr_1_bundles = get_available_bundles('BATCH-SPR-001', limit=5)
+        spr_2_bundles = get_available_bundles('BATCH-SPR-002', limit=3)
+        spare_pieces = get_available_spare_pieces('BATCH-SPR-001', limit=50)
+
+        # Create mixed dispatch
+        dispatch_data = {
+            'customer_name': 'Customer MEGA-MIX',
+            'dispatch_date': datetime.now(),
+            'items': [
+                *[{'stock_id': r.id, 'item_type': 'FULL_ROLL'} for r in hdpe_1_rolls],
+                *[{'stock_id': r.id, 'item_type': 'FULL_ROLL'} for r in hdpe_2_rolls],
+                *[{'cut_piece_id': cp.id, 'item_type': 'CUT_ROLL'} for cp in cut_pieces],
+                *[{'stock_id': b.id, 'item_type': 'BUNDLE'} for b in spr_1_bundles],
+                *[{'stock_id': b.id, 'item_type': 'BUNDLE'} for b in spr_2_bundles],
+                {'spare_piece_ids': [sp.id for sp in spare_pieces], 'item_type': 'SPARE_PIECES'}
+            ]
+        }
+
+        result = create_dispatch(dispatch_data)
+
+        # Verify dispatch created
+        assert result['status'] == 'success'
+        assert result['mixed_products'] == True
+        assert result['total_items'] == 23  # 11 rolls + 4 cuts + 8 bundles
+
+        # Verify item types in dispatch_items
+        dispatch_items = get_dispatch_items(result['dispatch_id'])
+        item_type_counts = {}
+        for item in dispatch_items:
+            item_type_counts[item.item_type] = item_type_counts.get(item.item_type, 0) + 1
+
+        assert item_type_counts == {
+            'FULL_ROLL': 11,
+            'CUT_ROLL': 4,
+            'BUNDLE': 8,
+            'SPARE_PIECES': 1  # One entry for 50 pieces
+        }
+
+        # Verify all items status = DISPATCHED
+        for roll in hdpe_1_rolls + hdpe_2_rolls:
+            assert get_stock_status(roll.id) == 'DISPATCHED'
+        for cp in cut_pieces:
+            assert get_cut_piece_status(cp.id) == 'DISPATCHED'
+        for bundle in spr_1_bundles + spr_2_bundles:
+            assert get_stock_status(bundle.id) == 'DISPATCHED'
+        for sp in spare_pieces:
+            assert get_spare_piece_status(sp.id) == 'DISPATCHED'
+
+    def test_step_4_mixed_return(self, db_session, setup_inventory):
+        """Test return with mixed item types"""
+        dispatch = get_dispatch_by_customer('Customer MEGA-MIX')
+
+        # Select items to return
+        return_data = {
+            'dispatch_id': dispatch.id,
+            'customer_name': 'Customer MEGA-MIX',
+            'return_date': datetime.now(),
+            'items': [
+                {'item_type': 'FULL_ROLL', 'quantity': 3},  # 3 HDPE rolls
+                {'item_type': 'CUT_ROLL', 'quantity': 2},    # 2 cut pieces
+                {'item_type': 'BUNDLE', 'quantity': 2},       # 2 bundles
+                {'item_type': 'SPARE_PIECES', 'quantity': 15} # 15 spares
+            ]
+        }
+
+        result = create_return(return_data)
+
+        assert result['status'] == 'success'
+        assert result['items_returned'] == 4  # 4 different types
+
+        # Verify items back to IN_STOCK
+        returned_items = get_return_items(result['return_id'])
+        for item in returned_items:
+            if item.item_type == 'FULL_ROLL':
+                assert get_stock_status(item.stock_id) == 'IN_STOCK'
+            elif item.item_type == 'CUT_ROLL':
+                assert get_cut_piece_status(item.cut_piece_id) == 'IN_STOCK'
+            elif item.item_type == 'BUNDLE':
+                assert get_stock_status(item.stock_id) == 'IN_STOCK'
+            elif item.item_type == 'SPARE_PIECES':
+                spare_ids = get_return_spare_pieces(item.id)
+                for sp_id in spare_ids:
+                    assert get_spare_piece_status(sp_id) == 'IN_STOCK'
+
+    def test_step_5_scrap_operations_business_rules(self, db_session, setup_inventory):
+        """Test scrap operations validate business rules: single category + single type"""
+
+        # Valid: Scrap HDPE full rolls only
+        scrap_1 = create_scrap({
+            'scrap_type': 'Damaged',
+            'reason': 'Water damage',
+            'items': [
+                {'stock_id': roll1.id, 'stock_type': 'FULL_ROLL'},
+                {'stock_id': roll2.id, 'stock_type': 'FULL_ROLL'}
+            ]
+        })
+        assert scrap_1['status'] == 'success'
+
+        # Valid: Scrap HDPE cut pieces only
+        scrap_2 = create_scrap({
+            'scrap_type': 'Damaged',
+            'reason': 'Crushed',
+            'items': [
+                {'cut_piece_id': cp1.id}
+            ]
+        })
+        assert scrap_2['status'] == 'success'
+
+        # Valid: Scrap Sprinkler bundles only
+        scrap_3 = create_scrap({
+            'scrap_type': 'Damaged',
+            'reason': 'UV degradation',
+            'items': [
+                {'stock_id': bundle1.id, 'stock_type': 'BUNDLE'}
+            ]
+        })
+        assert scrap_3['status'] == 'success'
+
+        # Valid: Scrap Sprinkler spare pieces only
+        scrap_4 = create_scrap({
+            'scrap_type': 'Damaged',
+            'reason': 'Contaminated',
+            'items': [
+                *[{'spare_piece_id': sp.id} for sp in spare_pieces[:10]]
+            ]
+        })
+        assert scrap_4['status'] == 'success'
+
+        # INVALID: Mix HDPE rolls + cut pieces (different types)
+        with pytest.raises(ValidationError) as exc:
+            create_scrap({
+                'scrap_type': 'Damaged',
+                'reason': 'Mixed',
+                'items': [
+                    {'stock_id': roll3.id, 'stock_type': 'FULL_ROLL'},
+                    {'cut_piece_id': cp2.id}
+                ]
+            })
+        assert 'single type per scrap' in str(exc.value).lower()
+
+        # INVALID: Mix HDPE + Sprinkler (different categories)
+        with pytest.raises(ValidationError) as exc:
+            create_scrap({
+                'scrap_type': 'Damaged',
+                'reason': 'Mixed',
+                'items': [
+                    {'stock_id': roll4.id, 'stock_type': 'FULL_ROLL'},  # HDPE
+                    {'stock_id': bundle2.id, 'stock_type': 'BUNDLE'}     # Sprinkler
+                ]
+            })
+        assert 'single category per scrap' in str(exc.value).lower()
+
+        # Verify all scrapped items status
+        assert get_stock_status(roll1.id) == 'SCRAPPED'
+        assert get_stock_status(roll2.id) == 'SCRAPPED'
+        assert get_cut_piece_status(cp1.id) == 'SCRAPPED'
+        assert get_stock_status(bundle1.id) == 'SCRAPPED'
+        for sp in spare_pieces[:10]:
+            assert get_spare_piece_status(sp.id) == 'SCRAPPED'
+
+    def test_step_6_revert_mixed_dispatch(self, db_session, setup_inventory):
+        """Test reverting mixed dispatch restores all items"""
+        dispatch = get_dispatch_by_customer('Customer MEGA-MIX')
+        dispatch_items = get_dispatch_items(dispatch.id)
+
+        # Store original item IDs before revert
+        full_roll_ids = [di.stock_id for di in dispatch_items if di.item_type == 'FULL_ROLL']
+        cut_piece_ids = [di.cut_piece_id for di in dispatch_items if di.item_type == 'CUT_ROLL']
+        bundle_ids = [di.stock_id for di in dispatch_items if di.item_type == 'BUNDLE']
+        spare_piece_ids = get_dispatch_spare_pieces(dispatch.id)
+
+        # Revert dispatch
+        result = revert_dispatch(dispatch.id, reason='Incorrect customer')
+
+        assert result['status'] == 'success'
+        assert result['items_reverted'] == len(dispatch_items)
+
+        # Verify dispatch status
+        dispatch_after = get_dispatch(dispatch.id)
+        assert dispatch_after.status == 'REVERTED'
+        assert dispatch_after.reverted_at is not None
+        assert dispatch_after.revert_reason == 'Incorrect customer'
+
+        # Verify all non-scrapped items back to IN_STOCK
+        for stock_id in full_roll_ids:
+            if not is_scrapped(stock_id):
+                assert get_stock_status(stock_id) == 'IN_STOCK'
+
+        for cp_id in cut_piece_ids:
+            if not is_cut_piece_scrapped(cp_id):
+                assert get_cut_piece_status(cp_id) == 'IN_STOCK'
+
+        for bundle_id in bundle_ids:
+            if not is_scrapped(bundle_id):
+                assert get_stock_status(bundle_id) == 'IN_STOCK'
+
+        for sp_id in spare_piece_ids:
+            if not is_spare_piece_scrapped(sp_id):
+                assert get_spare_piece_status(sp_id) == 'IN_STOCK'
+
+        # Verify transactions have reverted_at
+        transactions = get_dispatch_transactions(dispatch.id)
+        assert all(t.reverted_at is not None for t in transactions)
+
+    def test_step_7_redispatch_to_correct_customer(self, db_session, setup_inventory):
+        """Test re-dispatching subset of reverted items"""
+        # Get available items after revert
+        available_rolls = get_available_rolls(['BATCH-HDPE-001', 'BATCH-HDPE-002'], limit=5)
+        available_cuts = get_available_cut_pieces('BATCH-HDPE-001', limit=2)
+        available_bundles = get_available_bundles(['BATCH-SPR-001', 'BATCH-SPR-002'], limit=3)
+        available_spares = get_available_spare_pieces('BATCH-SPR-001', limit=20)
+
+        # Create new dispatch to correct customer
+        redispatch_data = {
+            'customer_name': 'Customer B',
+            'dispatch_date': datetime.now(),
+            'items': [
+                *[{'stock_id': r.id, 'item_type': 'FULL_ROLL'} for r in available_rolls],
+                *[{'cut_piece_id': cp.id, 'item_type': 'CUT_ROLL'} for cp in available_cuts],
+                *[{'stock_id': b.id, 'item_type': 'BUNDLE'} for b in available_bundles],
+                {'spare_piece_ids': [sp.id for sp in available_spares], 'item_type': 'SPARE_PIECES'}
+            ]
+        }
+
+        result = create_dispatch(redispatch_data)
+
+        assert result['status'] == 'success'
+        assert result['mixed_products'] == True
+        assert result['customer_name'] == 'Customer B'
+
+        # Verify items dispatched again
+        new_dispatch = get_dispatch(result['dispatch_id'])
+        assert new_dispatch.status == 'DISPATCHED'
+
+        # Verify no duplicate dispatches
+        customer_b_dispatches = get_dispatches_by_customer('Customer B')
+        assert len(customer_b_dispatches) == 1
+
+    def test_final_state_reconciliation(self, db_session, setup_inventory):
+        """Verify complete inventory reconciliation after all operations"""
+        batches = ['BATCH-HDPE-001', 'BATCH-HDPE-002', 'BATCH-SPR-001', 'BATCH-SPR-002']
+
+        # Get final inventory state
+        final_state = {}
+        for batch in batches:
+            final_state[batch] = {
+                'full_rolls': count_by_status(batch, 'FULL_ROLL'),
+                'cut_pieces': count_cut_pieces_by_status(batch),
+                'bundles': count_by_status(batch, 'BUNDLE'),
+                'spare_pieces': count_spare_pieces_by_status(batch)
+            }
+
+        # Verify no orphaned records
+        assert count_orphaned_dispatch_items() == 0
+        assert count_orphaned_cut_pieces() == 0
+        assert count_orphaned_spare_pieces() == 0
+        assert count_orphaned_transactions() == 0
+
+        # Verify weight conservation
+        for batch in batches:
+            original_weight = get_batch_original_weight(batch)
+            current_weight = calculate_current_total_weight(batch)
+            scrapped_weight = calculate_scrapped_weight(batch)
+
+            assert abs(original_weight - (current_weight + scrapped_weight)) < 0.1
+
+        # Verify transaction audit trail
+        transaction_types = get_transaction_types(batches)
+        expected_types = ['PRODUCTION', 'CUT_ROLL', 'SPLIT_BUNDLE', 'DISPATCH', 'RETURN', 'SCRAP']
+        assert all(t in transaction_types for t in expected_types)
+
+        # Verify business rule compliance
+        assert verify_scrap_single_category_rule() == True
+        assert verify_scrap_single_type_rule() == True
+        assert verify_production_single_category_rule() == True
+```
+
+**Test Execution:**
+```bash
+# Run extreme workflow tests
+pytest tests/test_extreme_workflows.py -v -s
+
+# Run with coverage
+pytest tests/test_extreme_workflows.py --cov=backend --cov-report=html
+
+# Run specific test
+pytest tests/test_extreme_workflows.py::TestExtremeMultiStepWorkflow::test_step_3_mixed_dispatch -v
+```
+
+---
+
 ## Test Phase 10: Database Integrity Checks
 
 ### 10.1: Foreign Key Integrity
