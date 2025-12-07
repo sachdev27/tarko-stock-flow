@@ -1031,10 +1031,10 @@ def split_bundle():
                     description, created_at
                 ) VALUES (%s, 'SPLIT_BUNDLE', 'STOCK', %s, %s, NOW())
             """, (user_id, str(stock_id),
-                  f"{actor['name']} split 1 bundle into {len(pieces_created)} spare groups"))
+                  f"{actor['name']} split 1 bundle into {pieces_created} spare pieces"))
 
         return jsonify({
-            'message': f'Successfully split bundle into {len(pieces_created)} spare groups',
+            'message': f'Successfully split bundle into {pieces_created} spare pieces',
             'spare_groups': pieces_created
         }), 200
 

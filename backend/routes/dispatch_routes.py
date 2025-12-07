@@ -167,6 +167,17 @@ def get_available_rolls():
                 'product_category': 'SPRINKLER'
             }
 
+            # For spare pieces, fetch individual spare_ids from sprinkler_spare_pieces table
+            if roll['bundle_type'] == 'spare':
+                cursor = get_db_cursor().__enter__()
+                cursor.execute("""
+                    SELECT array_agg(id::text ORDER BY created_at) as spare_ids
+                    FROM sprinkler_spare_pieces
+                    WHERE stock_id = %s AND status = 'IN_STOCK'
+                """, (roll['id'],))
+                spare_ids_result = cursor.fetchone()
+                roll_info['spare_ids'] = spare_ids_result['spare_ids'] if spare_ids_result and spare_ids_result['spare_ids'] else []
+
             if roll['bundle_type'] == 'bundle':
                 product_groups[product_label]['bundles'].append(roll_info)
             else:  # spare
@@ -820,6 +831,101 @@ def create_dispatch():
             cursor.execute("BEGIN")
 
             try:
+                # ============================================================
+                # PHASE 1: PRE-VALIDATION - Validate ALL items before dispatch
+                # This ensures atomic all-or-nothing behavior
+                # ============================================================
+                print(f"DEBUG: Pre-validating {len(items)} items before dispatch...")
+
+                for idx, item in enumerate(items):
+                    stock_id = item.get('stock_id')
+                    product_variant_id = item.get('product_variant_id')
+                    item_type = item.get('item_type')
+                    quantity = item.get('quantity', 1)
+
+                    if not all([stock_id, product_variant_id, item_type]):
+                        cursor.execute("ROLLBACK")
+                        return jsonify({'error': f'Item {idx+1}: Missing required fields (stock_id, product_variant_id, item_type)'}), 400
+
+                    # Validate stock exists and is available
+                    cursor.execute("""
+                        SELECT quantity, status, stock_type
+                        FROM inventory_stock
+                        WHERE id = %s AND deleted_at IS NULL
+                    """, (stock_id,))
+
+                    stock = cursor.fetchone()
+                    if not stock:
+                        cursor.execute("ROLLBACK")
+                        return jsonify({'error': f'Item {idx+1}: Stock {stock_id} not found'}), 404
+
+                    if stock['status'] != 'IN_STOCK':
+                        cursor.execute("ROLLBACK")
+                        return jsonify({'error': f'Item {idx+1}: Stock {stock_id} is not available (status: {stock["status"]})'}), 400
+
+                    if stock['quantity'] < quantity:
+                        cursor.execute("ROLLBACK")
+                        return jsonify({'error': f'Item {idx+1}: Insufficient quantity for stock {stock_id}. Available: {stock["quantity"]}, Requested: {quantity}'}), 400
+
+                    # Validate item-type specific requirements
+                    if item_type == 'CUT_PIECE':
+                        cut_piece_id = item.get('cut_piece_id')
+                        if not cut_piece_id:
+                            cursor.execute("ROLLBACK")
+                            return jsonify({'error': f'Item {idx+1}: cut_piece_id required for CUT_PIECE'}), 400
+
+                        cursor.execute("""
+                            SELECT status FROM hdpe_cut_pieces
+                            WHERE id = %s AND stock_id = %s AND deleted_at IS NULL
+                        """, (cut_piece_id, stock_id))
+
+                        cut_piece = cursor.fetchone()
+                        if not cut_piece:
+                            cursor.execute("ROLLBACK")
+                            return jsonify({'error': f'Item {idx+1}: Cut piece {cut_piece_id} not found'}), 400
+
+                        if cut_piece['status'] != 'IN_STOCK':
+                            cursor.execute("ROLLBACK")
+                            return jsonify({'error': f'Item {idx+1}: Cut piece {cut_piece_id} not available (status: {cut_piece["status"]})'}, 400)
+
+                    elif item_type == 'SPARE_PIECES':
+                        spare_piece_ids = item.get('spare_piece_ids', [])
+                        piece_count = item.get('piece_count', 0)
+
+                        if not spare_piece_ids or piece_count <= 0:
+                            cursor.execute("ROLLBACK")
+                            return jsonify({'error': f'Item {idx+1}: spare_piece_ids and piece_count required for SPARE_PIECES'}), 400
+
+                        # Validate all spare pieces exist and are available
+                        from collections import Counter
+                        spare_id_counts = Counter(spare_piece_ids)
+
+                        for spare_id, count_needed in spare_id_counts.items():
+                            cursor.execute("""
+                                SELECT piece_count, status
+                                FROM sprinkler_spare_pieces
+                                WHERE id = %s AND deleted_at IS NULL
+                            """, (spare_id,))
+
+                            spare_record = cursor.fetchone()
+                            if not spare_record:
+                                cursor.execute("ROLLBACK")
+                                return jsonify({'error': f'Item {idx+1}: Spare piece {spare_id} not found'}), 400
+
+                            if spare_record['status'] != 'IN_STOCK':
+                                cursor.execute("ROLLBACK")
+                                return jsonify({'error': f'Item {idx+1}: Spare piece {spare_id} not available (status: {spare_record["status"]})'}, 400)
+
+                            if count_needed > spare_record['piece_count']:
+                                cursor.execute("ROLLBACK")
+                                return jsonify({'error': f'Item {idx+1}: Not enough pieces in spare group {spare_id}. Available: {spare_record["piece_count"]}, Requested: {count_needed}'}), 400
+
+                print(f"DEBUG: All {len(items)} items validated successfully. Proceeding with dispatch...")
+
+                # ============================================================
+                # PHASE 2: CREATE DISPATCH - All validations passed
+                # ============================================================
+
                 # Generate dispatch number
                 current_year = 2025
                 cursor.execute("""
@@ -864,25 +970,8 @@ def create_dispatch():
                     item_type = item.get('item_type')
                     quantity = item.get('quantity', 1)
 
-                    if not all([stock_id, product_variant_id, item_type]):
-                        return jsonify({'error': 'Each item must have stock_id, product_variant_id, and item_type'}), 400
-
-                    # Validate stock availability
-                    cursor.execute("""
-                        SELECT quantity, status, stock_type
-                        FROM inventory_stock
-                        WHERE id = %s AND deleted_at IS NULL
-                    """, (stock_id,))
-
-                    stock = cursor.fetchone()
-                    if not stock:
-                        return jsonify({'error': f'Stock {stock_id} not found'}), 404
-
-                    if stock['status'] != 'IN_STOCK':
-                        return jsonify({'error': f'Stock {stock_id} is not available (status: {stock["status"]})'}), 400
-
-                    if stock['quantity'] < quantity:
-                        return jsonify({'error': f'Insufficient quantity for stock {stock_id}. Available: {stock["quantity"]}, Requested: {quantity}'}), 400
+                    # All validations already done in Phase 1
+                    # Directly process the dispatch
 
                     # Handle different item types
                     if item_type == 'CUT_PIECE':
@@ -951,9 +1040,7 @@ def create_dispatch():
                         spare_piece_ids = item.get('spare_piece_ids', [])
                         piece_count = item.get('piece_count', 0)
 
-                        if not spare_piece_ids or piece_count <= 0:
-                            return jsonify({'error': 'spare_piece_ids and piece_count required for SPARE_PIECES'}), 400
-
+                        # Already validated in Phase 1
                         print(f"DEBUG: Dispatching spares - spare_piece_ids: {spare_piece_ids}, piece_count: {piece_count}")
 
                         # Get unique spare piece IDs and count how many times each appears
@@ -985,18 +1072,10 @@ def create_dispatch():
                             """, (spare_id,))
 
                             spare_record = cursor.fetchone()
-                            if not spare_record:
-                                return jsonify({'error': f'Spare piece {spare_id} not found'}), 400
-
-                            if spare_record['status'] != 'IN_STOCK':
-                                return jsonify({'error': f'Spare piece {spare_id} not available'}), 400
-
                             available_pieces = spare_record['piece_count']
                             print(f"DEBUG: spare_id {spare_id}: available={available_pieces}, needed={count_needed}")
 
-                            if count_needed > available_pieces:
-                                return jsonify({'error': f'Not enough pieces in group {spare_id}'}), 400
-
+                            # Already validated in Phase 1, proceed with dispatch
                             if count_needed == available_pieces:
                                 # Dispatching all pieces - mark as DISPATCHED
                                 cursor.execute("""

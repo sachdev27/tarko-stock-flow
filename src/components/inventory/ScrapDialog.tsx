@@ -27,6 +27,7 @@ interface StockEntry {
   piece_id?: string;
   piece_ids?: string[];
   spare_id?: string;
+  spare_ids?: string[]; // Array of spare piece IDs from backend
   stock_type: 'FULL_ROLL' | 'CUT_ROLL' | 'BUNDLE' | 'SPARE';
   quantity: number;
   status: string;
@@ -260,11 +261,14 @@ export const ScrapDialog = ({
             item.piece_ids = entry.piece_ids.slice(0, quantityFromThisEntry);
           } else if (entry.stock_type === 'SPARE') {
             // For spare, always send piece_ids (backend requires it)
-            // If entry has spare_id, repeat it for the number of pieces being scrapped
-            if (entry.spare_id) {
+            // Use spare_ids array from backend (each piece has its own ID)
+            if (entry.spare_ids && entry.spare_ids.length > 0) {
+              item.piece_ids = entry.spare_ids.slice(0, quantityFromThisEntry);
+            } else if (entry.spare_id) {
+              // Fallback for legacy single spare_id
               item.piece_ids = Array(quantityFromThisEntry).fill(entry.spare_id);
             } else if (entry.piece_ids) {
-              // If entry has piece_ids array, take the required number
+              // Fallback for piece_ids array
               item.piece_ids = entry.piece_ids.slice(0, quantityFromThisEntry);
             }
           }

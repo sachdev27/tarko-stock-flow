@@ -13,6 +13,7 @@ interface StockEntry {
   piece_id?: string;
   piece_ids?: string[];
   spare_id?: string;
+  spare_ids?: string[]; // Array of spare piece IDs from backend
   stock_type: 'FULL_ROLL' | 'CUT_ROLL' | 'BUNDLE' | 'SPARE';
   quantity: number;
   status: string;
@@ -374,15 +375,13 @@ export const StockEntryList = ({ stockEntries, onUpdate }: StockEntryListProps) 
           onOpenChange={setCombineDialogOpen}
           stockId={selectedStock.stock_id}
           spareGroups={
-            (selectedStock as any).allSpares
-              ? (selectedStock as any).allSpares.map((s: StockEntry) => ({
-                  spare_id: s.spare_id || s.stock_id,
-                  piece_count: s.piece_count || 0,
+            // spare_ids is an array from backend - convert to individual spare groups
+            selectedStock.spare_ids && selectedStock.spare_ids.length > 0
+              ? selectedStock.spare_ids.map(spare_id => ({
+                  spare_id: spare_id,
+                  piece_count: 1, // Each spare piece has piece_count=1 in the foundational model
                 }))
-              : [{
-                  spare_id: selectedStock.spare_id || selectedStock.stock_id,
-                  piece_count: selectedStock.piece_count || 0,
-                }]
+              : []
           }
           pieceLength={selectedStock.piece_length_meters || 0}
           onSuccess={handleSuccess}

@@ -145,7 +145,7 @@ export const ImportExportDialog = ({
         },
         {
           'Product Type': 'HDPE Pipe',
-          'Brand': 'Tarkolex',
+          'Brand': 'Tarko',
           'Production Date': '2025-01-22',
           'roll_length (m)': '300',
           'number_of_rolls': '20',
@@ -157,7 +157,7 @@ export const ImportExportDialog = ({
         },
         {
           'Product Type': 'HDPE Pipe',
-          'Brand': 'Tarkolex',
+          'Brand': 'Tarko',
           'Production Date': '2025-01-23',
           'roll_length (m)': '300',
           'number_of_rolls': '15',
@@ -300,7 +300,7 @@ export const ImportExportDialog = ({
         },
         {
           'Product Type': 'Sprinkler Pipe',
-          'Brand': 'Tarkolex',
+          'Brand': 'Tarko',
           'Production Date': '2025-01-17',
           'bundle_size (pcs)': '20',
           'piece_length (m)': '6',
