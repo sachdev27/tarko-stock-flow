@@ -4431,5 +4431,39 @@ WHERE id IN (
 
 
 --
+-- Seed Data: SMTP Configuration (Pre-configured email settings)
+--
+
+INSERT INTO public.smtp_config (
+    id,
+    smtp_server,
+    smtp_port,
+    smtp_email,
+    smtp_password_encrypted,
+    use_tls,
+    use_ssl,
+    from_name,
+    reply_to_email,
+    is_active,
+    created_at,
+    updated_at
+) VALUES (
+    gen_random_uuid(),
+    'smtp.gmail.com',
+    587,
+    'sandeshsachdev1@gmail.com',
+    'Z0FBQUFBQnBOUjVaZ25WMnNyWHpyakRXTWVuQjJmRTNEX3YtMDZSQzV0QUpaZ2FYY3M0Y2JRSzZrU0dUbks4X3J0MDdTOTdNeFRrZGJyYUNDTXFXZlZfMjRQTXB3UlFfTWJXbHNOQjRBVXduMFpST0hVaFBUREU9',
+    true,
+    false,
+    'Tarko Inventory',
+    'sandeshsachdev1@gmail.com',
+    true,
+    now(),
+    now()
+)
+ON CONFLICT (id) DO NOTHING;
+
+
+--
 -- PostgreSQL database dump complete
 --
