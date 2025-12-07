@@ -186,6 +186,10 @@ export const DispatchNewTab = () => {
         console.log('Skipping merge for stock_type:', normalizedRoll.stock_type);
         return false;
       }
+      // For CUT_ROLL with piece_ids array, also check length_meters to avoid merging different lengths
+      if (normalizedRoll.stock_type === 'CUT_ROLL' && normalizedRoll.piece_ids) {
+        return r.id === normalizedRoll.id && r.length_meters === normalizedRoll.length_meters;
+      }
       return r.id === normalizedRoll.id && !normalizedRoll.piece_id;
     });
 
