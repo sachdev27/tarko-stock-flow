@@ -121,7 +121,7 @@ export const ImportExportDialog = ({
         },
         {
           'Product Type': 'HDPE Pipe',
-          'Brand': 'Supreme',
+          'Brand': 'Tarko',
           'Production Date': '2025-01-20',
           'roll_length (m)': '400',
           'number_of_rolls': '10',
@@ -133,7 +133,7 @@ export const ImportExportDialog = ({
         },
         {
           'Product Type': 'HDPE Pipe',
-          'Brand': 'Supreme',
+          'Brand': 'Tarko',
           'Production Date': '2025-01-21',
           'roll_length (m)': '400',
           'number_of_rolls': '8',
@@ -145,7 +145,7 @@ export const ImportExportDialog = ({
         },
         {
           'Product Type': 'HDPE Pipe',
-          'Brand': 'Finolex',
+          'Brand': 'Tarkolex',
           'Production Date': '2025-01-22',
           'roll_length (m)': '300',
           'number_of_rolls': '20',
@@ -157,7 +157,7 @@ export const ImportExportDialog = ({
         },
         {
           'Product Type': 'HDPE Pipe',
-          'Brand': 'Finolex',
+          'Brand': 'Tarkolex',
           'Production Date': '2025-01-23',
           'roll_length (m)': '300',
           'number_of_rolls': '15',
@@ -169,7 +169,7 @@ export const ImportExportDialog = ({
         },
         {
           'Product Type': 'HDPE Pipe',
-          'Brand': 'Jain',
+          'Brand': 'Tarko',
           'Production Date': '2025-01-24',
           'roll_length (m)': '200',
           'number_of_rolls': '30',
@@ -193,7 +193,7 @@ export const ImportExportDialog = ({
         },
         {
           'Product Type': 'HDPE Pipe',
-          'Brand': 'Supreme',
+          'Brand': 'Tarko',
           'Production Date': '2025-01-26',
           'roll_length (m)': '',
           'number_of_rolls': '',
@@ -274,7 +274,7 @@ export const ImportExportDialog = ({
         },
         {
           'Product Type': 'Sprinkler Pipe',
-          'Brand': 'Supreme',
+          'Brand': 'Tarko',
           'Production Date': '2025-01-15',
           'bundle_size (pcs)': '20',
           'piece_length (m)': '6',
@@ -287,7 +287,7 @@ export const ImportExportDialog = ({
         },
         {
           'Product Type': 'Sprinkler Pipe',
-          'Brand': 'Supreme',
+          'Brand': 'Tarko',
           'Production Date': '2025-01-16',
           'bundle_size (pcs)': '10',
           'piece_length (m)': '6',
@@ -300,7 +300,7 @@ export const ImportExportDialog = ({
         },
         {
           'Product Type': 'Sprinkler Pipe',
-          'Brand': 'Finolex',
+          'Brand': 'Tarkolex',
           'Production Date': '2025-01-17',
           'bundle_size (pcs)': '20',
           'piece_length (m)': '6',
@@ -313,7 +313,7 @@ export const ImportExportDialog = ({
         },
         {
           'Product Type': 'Sprinkler Pipe',
-          'Brand': 'Jain',
+          'Brand': 'Tarko',
           'Production Date': '2025-01-18',
           'bundle_size (pcs)': '10',
           'piece_length (m)': '6',
@@ -326,7 +326,7 @@ export const ImportExportDialog = ({
         },
         {
           'Product Type': 'Sprinkler Pipe',
-          'Brand': 'Jain',
+          'Brand': 'Tarko',
           'Production Date': '2025-01-19',
           'bundle_size (pcs)': '20',
           'piece_length (m)': '6',
@@ -352,10 +352,10 @@ export const ImportExportDialog = ({
         },
         {
           'Product Type': 'Sprinkler Pipe',
-          'Brand': 'Supreme',
+          'Brand': 'Tarko',
           'Production Date': '2025-01-21',
           'bundle_size (pcs)': '',
-          'piece_length (m)': '5.8',
+          'piece_length (m)': '6',
           'number_of_bundles': '',
           'spare_pieces': '30',
           'OD (mm)': '20',
