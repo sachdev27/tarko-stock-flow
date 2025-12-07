@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { Factory } from 'lucide-react';
+import { BackendStatusIndicator } from '@/components/BackendStatusIndicator';
 
 const Auth = () => {
   const [identifier, setIdentifier] = useState('');
@@ -42,6 +43,11 @@ const Auth = () => {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-muted/30 to-background p-4 relative overflow-hidden">
+      {/* Backend Status Indicator */}
+      <div className="absolute top-4 right-4 z-50">
+        <BackendStatusIndicator />
+      </div>
+
       {/* Animated background elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-3xl animate-pulse"></div>

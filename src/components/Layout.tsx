@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SyncIndicator } from '@/components/SyncIndicator';
+import { BackendStatusIndicator } from '@/components/BackendStatusIndicator';
 
 interface LayoutProps {
   children: ReactNode;
@@ -89,6 +90,7 @@ export const Layout = ({ children }: LayoutProps) => {
 
           <div className="flex items-center space-x-2">
             <div className="hidden md:flex items-center space-x-3">
+              <BackendStatusIndicator />
               <div className="flex items-center space-x-2 px-3 py-1 bg-secondary/50 rounded-lg">
                 <Clock className="h-4 w-4 text-primary" />
                 <span className="text-sm font-mono text-foreground">{currentTime}</span>
