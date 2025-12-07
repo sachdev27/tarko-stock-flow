@@ -74,12 +74,13 @@ export const BackupStorageTab = ({
   const fetchSuggestedPaths = async () => {
     try {
       const response = await versionControl.getSuggestedPaths();
-      setSuggestedPaths(response.data.suggestions || []);
-      setSystemUsername(response.data.username || 'user');
+      setSuggestedPaths(response?.data?.suggestions || response?.suggestions || []);
+      setSystemUsername(response?.data?.username || response?.username || 'user');
 
       // Set first suggestion as default
-      if (response.data.suggestions && response.data.suggestions.length > 0) {
-        setSelectedPath(response.data.suggestions[0]);
+      const suggestions = response?.data?.suggestions || response?.suggestions || [];
+      if (suggestions && suggestions.length > 0) {
+        setSelectedPath(suggestions[0]);
       }
     } catch (error) {
       console.error('Failed to fetch suggested paths:', error);
@@ -357,7 +358,7 @@ export const BackupStorageTab = ({
           {activeSection === 'local' && (
             <div className="space-y-4">
               {/* Upload and Cleanup Actions */}
-              <div className="flex justify-between items-center gap-2">
+              <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2">
                 <div className="flex gap-2">
                   <input
                     ref={fileInputRef}
@@ -371,6 +372,7 @@ export const BackupStorageTab = ({
                     size="sm"
                     onClick={handleUploadClick}
                     disabled={uploading}
+                    className="flex-1 sm:flex-initial"
                   >
                     <FileUp className="h-4 w-4 mr-2" />
                     {uploading ? 'Uploading...' : 'Upload Snapshot'}
@@ -382,6 +384,7 @@ export const BackupStorageTab = ({
                     size="sm"
                     onClick={() => handleCleanupOld(7)}
                     title="Delete automatic snapshots older than 7 days"
+                    className="flex-1 sm:flex-initial"
                   >
                     Clean 7d+
                   </Button>
@@ -390,6 +393,7 @@ export const BackupStorageTab = ({
                     size="sm"
                     onClick={() => handleCleanupOld(30)}
                     title="Delete automatic snapshots older than 30 days"
+                    className="flex-1 sm:flex-initial"
                   >
                     Clean 30d+
                   </Button>

@@ -50,6 +50,7 @@ interface Batch {
   total_items: number;
   created_by_email: string;
   created_at: string;
+  items?: StockItem[];
 }
 
 interface StockItem {
@@ -199,8 +200,27 @@ export const ProductionHistoryTab = () => {
       // Backend returns {batches: []} format - extract array
       const batchesArray = Array.isArray(data) ? data : ((data as any)?.batches || []);
       // Cast API response to component's Batch interface
-      setBatches(batchesArray as any);
-      setFilteredBatches(batchesArray as any);
+      const batches = batchesArray as any[];
+
+      // For spare-piece-only batches, fetch actual counts
+      const batchesWithCounts = await Promise.all(
+        batches.map(async (batch) => {
+          // Only fetch details for spare-piece-only batches (piece_length exists AND total_items = 1)
+          // If total_items > 1, it means there are bundles + spare pieces
+          if (batch.piece_length && batch.total_items === 1) {
+            try {
+              const details = await production.getDetails(batch.id);
+              return { ...batch, items: (details as any).items };
+            } catch {
+              return batch;
+            }
+          }
+          return batch;
+        })
+      );
+
+      setBatches(batchesWithCounts as any);
+      setFilteredBatches(batchesWithCounts as any);
     } catch (error: unknown) {
       const err = error as { response?: { data?: { error?: string } } };
       toast.error(err.response?.data?.error || 'Failed to fetch production history');
@@ -450,7 +470,18 @@ export const ProductionHistoryTab = () => {
                           <div className="text-xs text-muted-foreground">#{batch.batch_no}</div>
                         </div>
                         <Badge variant="outline" className="text-xs">
-                          {batch.initial_quantity} {batch.piece_length ? 'pcs' : 'm'}
+                          {(() => {
+                            const spareItem = batch.items?.find(item =>
+                              item.stock_type === 'SPARE' || item.stock_type === 'SPARE_PIECES'
+                            );
+                            if (spareItem) {
+                              const actualCount = spareItem.total_pieces ??
+                                (spareItem.spare_pieces?.[0]?.piece_count) ??
+                                spareItem.quantity ?? 0;
+                              return `${actualCount} pcs`;
+                            }
+                            return `${batch.initial_quantity} ${batch.piece_length ? 'pcs' : 'm'}`;
+                          })()}
                         </Badge>
                       </div>
                       <div>
@@ -519,7 +550,18 @@ export const ProductionHistoryTab = () => {
                       </TableCell>
                       <TableCell>
                         <div className="font-medium">
-                          {batch.initial_quantity} {batch.piece_length ? 'pcs' : 'm'}
+                          {(() => {
+                            const spareItem = batch.items?.find(item =>
+                              item.stock_type === 'SPARE' || item.stock_type === 'SPARE_PIECES'
+                            );
+                            if (spareItem) {
+                              const actualCount = spareItem.total_pieces ??
+                                (spareItem.spare_pieces?.[0]?.piece_count) ??
+                                spareItem.quantity ?? 0;
+                              return `${actualCount} pcs`;
+                            }
+                            return `${batch.initial_quantity} ${batch.piece_length ? 'pcs' : 'm'}`;
+                          })()}
                         </div>
                       </TableCell>
                       <TableCell>
@@ -658,7 +700,20 @@ export const ProductionHistoryTab = () => {
                 <div>
                   <div className="text-sm text-gray-500">Quantity</div>
                   <div className="font-medium">
-                    {selectedBatch.initial_quantity} {selectedBatch.piece_length ? 'pcs' : 'm'}
+                    {(() => {
+                      // For spare pieces, calculate actual total from stock items
+                      const spareItem = selectedBatch.items?.find(item =>
+                        item.stock_type === 'SPARE' || item.stock_type === 'SPARE_PIECES'
+                      );
+                      if (spareItem) {
+                        // Use total_pieces if available, otherwise sum from spare_pieces array
+                        const actualCount = spareItem.total_pieces ||
+                          (spareItem.spare_pieces?.[0]?.piece_count) ||
+                          spareItem.quantity || 0;
+                        return `${actualCount} pcs`;
+                      }
+                      return `${selectedBatch.initial_quantity} ${selectedBatch.piece_length ? 'pcs' : 'm'}`;
+                    })()}
                   </div>
                 </div>
                 {selectedBatch.total_weight && (
@@ -806,7 +861,7 @@ export const ProductionHistoryTab = () => {
                                 </>
                               ) : (
                                 <div>
-                                  <span className="font-medium">Spare pieces:</span> {item.spare_pieces[0]?.piece_count || 0} pcs
+                                  <span className="font-medium">Spare pieces:</span> {item.total_pieces ?? item.spare_pieces[0]?.piece_count ?? 0} pcs
                                   {item.spare_pieces[0]?.piece_length_meters && ` × ${item.spare_pieces[0].piece_length_meters}m`}
                                 </div>
                               )}

@@ -99,13 +99,13 @@ export const UsersTab = ({ users, currentUserId, onDataChange }: UsersTabProps) 
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <CardTitle className="flex items-center">
+            <CardTitle className="flex items-center text-lg sm:text-xl">
               <Users className="h-5 w-5 mr-2" />
               User Management
             </CardTitle>
-            <CardDescription>Manage system users and their roles</CardDescription>
+            <CardDescription className="text-xs sm:text-sm">Manage system users and their roles</CardDescription>
           </div>
           <Dialog open={userDialog} onOpenChange={(open) => {
             setUserDialog(open);
@@ -122,12 +122,12 @@ export const UsersTab = ({ users, currentUserId, onDataChange }: UsersTabProps) 
             }
           }}>
             <DialogTrigger asChild>
-              <Button>
+              <Button size="sm" className="w-full sm:w-auto">
                 <Plus className="h-4 w-4 mr-2" />
                 Add User
               </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="w-[95vw] sm:w-full max-w-lg">
               <DialogHeader>
                 <DialogTitle>{editingUser ? 'Edit' : 'Add'} User</DialogTitle>
                 <DialogDescription>
@@ -207,7 +207,54 @@ export const UsersTab = ({ users, currentUserId, onDataChange }: UsersTabProps) 
         </div>
       </CardHeader>
       <CardContent>
-        <div className="rounded-md border">
+        {/* Mobile Card View */}
+        <div className="md:hidden space-y-3">
+          {users.map((usr) => (
+            <div key={usr.id} className="p-4 bg-secondary/30 rounded-lg space-y-3">
+              <div className="flex items-start justify-between">
+                <div className="space-y-1 min-w-0 flex-1">
+                  <div className="font-semibold text-sm break-words">{usr.email}</div>
+                  <div className="text-xs text-muted-foreground">{usr.username || 'No username'}</div>
+                </div>
+                <div className="flex gap-1 ml-2 flex-shrink-0">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => handleEditUser(usr)}
+                  >
+                    <Edit className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => handleDelete(usr.id)}
+                    disabled={usr.id === currentUserId}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Badge variant={usr.role === 'admin' ? 'default' : 'secondary'} className="text-xs">
+                  {usr.role}
+                </Badge>
+                <Badge variant={usr.is_active ? 'default' : 'secondary'} className="text-xs">
+                  {usr.is_active ? 'Active' : 'Inactive'}
+                </Badge>
+              </div>
+              <div className="text-xs text-muted-foreground">
+                <div><strong>Full Name:</strong> {usr.full_name || '-'}</div>
+                <div><strong>Last Login:</strong> {usr.last_login_at ? (() => {
+                  const date = new Date(usr.last_login_at);
+                  return `${formatDate(usr.last_login_at)} ${date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}`;
+                })() : 'Never'}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Desktop Table View */}
+        <div className="hidden md:block rounded-md border overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="border-b bg-muted/50">
               <tr>
@@ -236,7 +283,7 @@ export const UsersTab = ({ users, currentUserId, onDataChange }: UsersTabProps) 
                       {usr.is_active ? 'Active' : 'Inactive'}
                     </Badge>
                   </td>
-                  <td className="p-3">
+                  <td className="p-3 whitespace-nowrap">
                     {usr.last_login_at ? (() => {
                       const date = new Date(usr.last_login_at);
                       return `${formatDate(usr.last_login_at)} ${date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}`;

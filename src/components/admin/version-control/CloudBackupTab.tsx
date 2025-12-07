@@ -279,14 +279,15 @@ export const CloudBackupTab = ({
 
             {/* Cloud Snapshots */}
             <div>
-              <div className="flex items-center justify-between mb-3">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-3 gap-2">
                 <h3 className="font-semibold text-sm">Cloud Backups ({cloudSnapshots.length})</h3>
-                <div className="flex gap-2">
+                <div className="flex gap-2 w-full sm:w-auto">
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => handleCleanupOldCloud(7)}
                     title="Delete cloud snapshots older than 7 days"
+                    className="flex-1 sm:flex-initial"
                   >
                     Clean 7d+
                   </Button>
@@ -295,6 +296,7 @@ export const CloudBackupTab = ({
                     size="sm"
                     onClick={() => handleCleanupOldCloud(30)}
                     title="Delete cloud snapshots older than 30 days"
+                    className="flex-1 sm:flex-initial"
                   >
                     Clean 30d+
                   </Button>

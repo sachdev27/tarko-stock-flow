@@ -175,10 +175,10 @@ export const ProductTypesTab = ({ productTypes, units, onDataChange }: ProductTy
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <CardTitle>Product Types</CardTitle>
-            <CardDescription>Product categories with parameter definitions</CardDescription>
+            <CardTitle className="text-lg sm:text-xl">Product Types</CardTitle>
+            <CardDescription className="text-xs sm:text-sm">Product categories with parameter definitions</CardDescription>
           </div>
           <Dialog open={productTypeDialog} onOpenChange={(open) => {
             setProductTypeDialog(open);
@@ -206,12 +206,12 @@ export const ProductTypesTab = ({ productTypes, units, onDataChange }: ProductTy
             }
           }}>
             <DialogTrigger asChild>
-              <Button>
+              <Button size="sm" className="w-full sm:w-auto">
                 <Plus className="h-4 w-4 mr-2" />
                 Add Product Type
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto w-[95vw] sm:w-full">
               <DialogHeader>
                 <DialogTitle>{editingProductType ? 'Edit' : 'Add'} Product Type</DialogTitle>
                 <DialogDescription>Define a product type with its parameters</DialogDescription>
@@ -529,54 +529,62 @@ export const ProductTypesTab = ({ productTypes, units, onDataChange }: ProductTy
               key={type.id}
               className="p-4 bg-secondary/30 rounded-lg"
             >
-              <div className="flex items-start justify-between">
-                <div className="flex items-start space-x-3">
-                  <Package className="h-5 w-5 text-muted-foreground mt-1" />
-                  <div>
-                    <div className="font-semibold text-lg">{type.name}</div>
+              <div className="flex flex-col sm:flex-row items-start justify-between gap-3">
+                <div className="flex items-start space-x-3 min-w-0 flex-1">
+                  <Package className="h-5 w-5 text-muted-foreground mt-1 flex-shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <div className="font-semibold text-base sm:text-lg">{type.name}</div>
                     {type.description && (
-                      <div className="text-sm text-muted-foreground">{type.description}</div>
+                      <div className="text-xs sm:text-sm text-muted-foreground mt-1">{type.description}</div>
                     )}
-                    <div className="mt-2 flex items-center space-x-2">
-                      <Badge variant="outline">Unit: {type.unit_name || 'N/A'}</Badge>
-                      <Badge variant="outline">
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <Badge variant="outline" className="text-xs">Unit: {type.unit_name || 'N/A'}</Badge>
+                      <Badge variant="outline" className="text-xs">
                         {type.parameter_schema?.length || 0} parameters
                       </Badge>
                     </div>
-                    <div className="mt-2 text-sm">
-                      <strong>Parameters:</strong>
-                      {(type.parameter_schema || []).map((param: any, idx: number) => (
-                        <span key={idx} className="ml-2 text-muted-foreground">
-                          {param.name}({param.type})
-                          {idx < (type.parameter_schema?.length || 0) - 1 && ','}
-                        </span>
-                      ))}
-                    </div>
+                    {(type.parameter_schema || []).length > 0 && (
+                      <div className="mt-2 text-xs sm:text-sm">
+                        <strong>Parameters:</strong>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {(type.parameter_schema || []).map((param: any, idx: number) => (
+                            <Badge key={idx} variant="secondary" className="text-xs">
+                              {param.name} ({param.type})
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
-                {!type.is_system && (
-                  <div className="flex gap-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleEditProductType(type)}
-                    >
-                      <Edit className="h-4 w-4 text-primary" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleDelete(type.id)}
-                    >
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
-                  </div>
-                )}
-                {type.is_system && (
-                  <Badge variant="secondary" className="ml-auto">
-                    System
-                  </Badge>
-                )}
+                <div className="flex gap-2 flex-shrink-0 w-full sm:w-auto">
+                  {!type.is_system ? (
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1 sm:flex-initial"
+                        onClick={() => handleEditProductType(type)}
+                      >
+                        <Edit className="h-4 w-4 mr-2" />
+                        <span className="sm:inline">Edit</span>
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1 sm:flex-initial"
+                        onClick={() => handleDelete(type.id)}
+                      >
+                        <Trash2 className="h-4 w-4 mr-2 text-destructive" />
+                        <span className="sm:inline">Delete</span>
+                      </Button>
+                    </>
+                  ) : (
+                    <Badge variant="secondary" className="w-full sm:w-auto justify-center">
+                      System
+                    </Badge>
+                  )}
+                </div>
               </div>
             </div>
           ))}

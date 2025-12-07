@@ -112,58 +112,60 @@ const Admin = () => {
 
   return (
     <Layout>
-      <div className="space-y-6">
+      <div className="space-y-4 md:space-y-6 p-4 md:p-6">
         {/* Header */}
         <div className="flex items-center space-x-3">
           <div className="h-10 w-10 rounded-lg bg-primary flex items-center justify-center">
             <Settings className="h-6 w-6 text-primary-foreground" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-foreground">Admin Panel</h1>
-            <p className="text-muted-foreground">Manage master data and system configuration</p>
+            <h1 className="text-2xl md:text-3xl font-bold text-foreground">Admin Panel</h1>
+            <p className="text-sm md:text-base text-muted-foreground">Manage master data and system configuration</p>
           </div>
         </div>
 
-        <Tabs defaultValue="brands" className="space-y-6">
-          <TabsList className="w-full flex-nowrap sm:inline-flex">
-            <TabsTrigger value="brands">Brands</TabsTrigger>
-            <TabsTrigger value="products">Products</TabsTrigger>
-            <TabsTrigger value="users">Users</TabsTrigger>
-            <TabsTrigger value="parameters">Parameters</TabsTrigger>
-            <TabsTrigger value="version-control">Version Control</TabsTrigger>
-            <TabsTrigger value="backups">
-              <HardDrive className="h-4 w-4 mr-2" />
-              Backups
-            </TabsTrigger>
-            <TabsTrigger value="audit">Audit Logs</TabsTrigger>
-            <TabsTrigger value="database" className="text-destructive">
-              <Database className="h-4 w-4 mr-2" />
-              Database
-            </TabsTrigger>
-          </TabsList>
+        <Tabs defaultValue="brands" className="space-y-4 md:space-y-6">
+          <div className="w-full overflow-x-auto scrollbar-hide -mx-1 px-1">
+            <TabsList className="w-auto">
+              <TabsTrigger value="brands" className="text-xs sm:text-sm">Brands</TabsTrigger>
+              <TabsTrigger value="products" className="text-xs sm:text-sm">Products</TabsTrigger>
+              <TabsTrigger value="users" className="text-xs sm:text-sm">Users</TabsTrigger>
+              <TabsTrigger value="parameters" className="text-xs sm:text-sm">Parameters</TabsTrigger>
+              <TabsTrigger value="version-control" className="text-xs sm:text-sm">Version Control</TabsTrigger>
+              <TabsTrigger value="backups" className="text-xs sm:text-sm">
+                <HardDrive className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                Backups
+              </TabsTrigger>
+              <TabsTrigger value="audit" className="text-xs sm:text-sm">Audit Logs</TabsTrigger>
+              <TabsTrigger value="database" className="text-xs sm:text-sm text-destructive">
+                <Database className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                Database
+              </TabsTrigger>
+            </TabsList>
+          </div>
 
           {/* Brands Tab */}
-          <TabsContent value="brands">
+          <TabsContent value="brands" className="mt-6">
             <BrandsTab brands={brands} onDataChange={fetchAllData} />
           </TabsContent>
 
           {/* Product Types Tab */}
-          <TabsContent value="products">
+          <TabsContent value="products" className="mt-6">
             <ProductTypesTab productTypes={productTypes} units={units} onDataChange={fetchAllData} />
           </TabsContent>
 
           {/* Users Tab */}
-          <TabsContent value="users">
+          <TabsContent value="users" className="mt-6">
             <UsersTab users={users} currentUserId={user?.id} onDataChange={fetchAllData} />
           </TabsContent>
 
           {/* Parameters Tab */}
-          <TabsContent value="parameters">
+          <TabsContent value="parameters" className="mt-6">
             <ParametersTab parameterOptions={parameterOptions} onDataChange={fetchAllData} />
           </TabsContent>
 
           {/* Version Control Tab */}
-          <TabsContent value="version-control">
+          <TabsContent value="version-control" className="mt-6">
             <VersionControlTab
               snapshots={snapshots}
               rollbackHistory={rollbackHistory}
@@ -172,16 +174,18 @@ const Admin = () => {
           </TabsContent>
 
           {/* Backup Management Tab */}
-          <TabsContent value="backups">
+          <TabsContent value="backups" className="mt-6">
             <div className="space-y-6">
               <Tabs defaultValue="credentials" className="space-y-6">
-                <TabsList className="w-full flex-wrap sm:inline-flex">
-                  <TabsTrigger value="credentials">Cloud Credentials</TabsTrigger>
-                  <TabsTrigger value="retention">Retention Policies</TabsTrigger>
-                  <TabsTrigger value="archive">Archive Management</TabsTrigger>
-                  <TabsTrigger value="deletion-log">Deletion Log</TabsTrigger>
-                  <TabsTrigger value="smtp">Email (SMTP)</TabsTrigger>
-                </TabsList>
+                <div className="w-full overflow-x-auto scrollbar-hide -mx-1 px-1">
+                  <TabsList className="w-auto">
+                    <TabsTrigger value="credentials" className="text-xs sm:text-sm">Cloud Credentials</TabsTrigger>
+                    <TabsTrigger value="retention" className="text-xs sm:text-sm">Retention Policies</TabsTrigger>
+                    <TabsTrigger value="archive" className="text-xs sm:text-sm">Archive Management</TabsTrigger>
+                    <TabsTrigger value="deletion-log" className="text-xs sm:text-sm">Deletion Log</TabsTrigger>
+                    <TabsTrigger value="smtp" className="text-xs sm:text-sm">Email (SMTP)</TabsTrigger>
+                  </TabsList>
+                </div>
 
                 <TabsContent value="credentials">
                   <CloudCredentialsTab />
@@ -207,12 +211,12 @@ const Admin = () => {
           </TabsContent>
 
           {/* Audit Logs Tab */}
-          <TabsContent value="audit">
+          <TabsContent value="audit" className="mt-6">
             <AuditLogsTab auditLogs={auditLogs} users={users} />
           </TabsContent>
 
           {/* Database Reset Tab */}
-          <TabsContent value="database">
+          <TabsContent value="database" className="mt-6">
             <DatabaseTab />
           </TabsContent>
         </Tabs>

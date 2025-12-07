@@ -721,7 +721,7 @@ def get_transactions():
             NULL as dispatch_id,
             'SCRAP' as transaction_type,
             -COALESCE(s.total_quantity, 0) as quantity_change,
-            s.scrap_date as transaction_date,
+            s.created_at as transaction_date,
             NULL as invoice_no,
             CASE
                 WHEN (SELECT COUNT(DISTINCT si_count.product_variant_id) FROM scrap_items si_count WHERE si_count.scrap_id = s.id) > 1

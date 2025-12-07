@@ -28,7 +28,7 @@ export function OverviewTab({ transaction, isDispatch, isReturn, isScrap }: Over
         <CardHeader>
           <CardTitle className="text-lg flex items-center gap-2">
             <FileText className="h-5 w-5" />
-            Transaction Information
+            Activity Information
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -36,12 +36,10 @@ export function OverviewTab({ transaction, isDispatch, isReturn, isScrap }: Over
             <div>
               <div className="text-sm text-muted-foreground mb-1 flex items-center gap-2">
                 <Calendar className="h-4 w-4" />
-                Transaction Date
+                Activity Date
               </div>
               <div className="font-medium">
-                {transaction.transaction_type === 'DISPATCH'
-                  ? formatDate(transaction.transaction_date)
-                  : formatDateTime(transaction.transaction_date)}
+                {formatDateTime(transaction.transaction_date)}
               </div>
             </div>
             <div>

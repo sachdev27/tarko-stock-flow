@@ -101,17 +101,17 @@ export function TransactionTable({
   showCheckboxes = false,
   isAdmin = false,
 }: TransactionTableProps) {
-  const [sortField, setSortField] = useState<SortField>('created_at');
+  const [sortField, setSortField] = useState<SortField>('transaction_date');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
-      // Cycle through: desc -> asc -> null
+      // Cycle through: desc -> asc -> null (back to default)
       if (sortDirection === 'desc') {
         setSortDirection('asc');
       } else if (sortDirection === 'asc') {
         setSortDirection(null);
-        setSortField('created_at');
+        setSortField('transaction_date');
       }
     } else {
       setSortField(field);
@@ -126,6 +126,10 @@ export function TransactionTable({
     let bValue: string | number = '';
 
     switch (sortField) {
+      case 'transaction_date':
+        aValue = new Date(a.transaction_date || a.created_at).getTime();
+        bValue = new Date(b.transaction_date || b.created_at).getTime();
+        break;
       case 'created_at':
         aValue = new Date(a.created_at).getTime();
         bValue = new Date(b.created_at).getTime();
@@ -185,11 +189,11 @@ export function TransactionTable({
             <TableHead>
               <Button
                 variant="ghost"
-                onClick={() => handleSort('created_at')}
+                onClick={() => handleSort('transaction_date')}
                 className="h-auto p-0 hover:bg-transparent"
               >
-                Date/Time
-                <SortIcon field="created_at" />
+                Activity Date
+                <SortIcon field="transaction_date" />
               </Button>
             </TableHead>
             <TableHead>
