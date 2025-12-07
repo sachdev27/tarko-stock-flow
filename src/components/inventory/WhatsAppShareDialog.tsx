@@ -40,6 +40,14 @@ export const WhatsAppShareDialog = ({ open, onOpenChange, batches }: WhatsAppSha
   const [selectedStockIds, setSelectedStockIds] = useState<Set<string>>(new Set());
   const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set());
 
+  // Debug logging
+  console.log('[WhatsAppShareDialog] Rendered with:', {
+    open,
+    batchesCount: batches?.length || 0,
+    batches: batches?.slice(0, 2), // Log first 2 batches as sample
+    firstBatchStockEntries: batches?.[0]?.stock_entries?.length || 0
+  });
+
   // Group batches by product variant
   const groupedByProduct = batches.reduce((acc, batch) => {
     const key = `${batch.product_type_name}_${batch.brand_name}_${JSON.stringify(batch.parameters)}`;
@@ -59,6 +67,7 @@ export const WhatsAppShareDialog = ({ open, onOpenChange, batches }: WhatsAppSha
         batch_no: batch.batch_no
       });
     });
+    console.log('[WhatsAppShareDialog] Grouped product:', key, 'entries:', acc[key].stock_entries.length);
     return acc;
   }, {} as Record<string, {
     product_type: string;
@@ -66,6 +75,8 @@ export const WhatsAppShareDialog = ({ open, onOpenChange, batches }: WhatsAppSha
     parameters: Record<string, unknown>;
     stock_entries: (StockEntry & { batch_code: string; batch_no: string })[]
   }>);
+
+  console.log('[WhatsAppShareDialog] Total product groups:', Object.keys(groupedByProduct).length);
 
   const toggleStockEntry = (stockId: string) => {
     const newSelected = new Set(selectedStockIds);
@@ -122,8 +133,8 @@ export const WhatsAppShareDialog = ({ open, onOpenChange, batches }: WhatsAppSha
     }
 
     // Generate inventory message
-    let message = '📦 *INVENTORY REPORT*\n';
-    message += `📅 ${new Date().toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}\n`;
+    let message = '📦 *INVENTORY STOCK REPORT*\n';
+    message += `📅 ${new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}\n`;
     message += '━━━━━━━━━━━━━━━━━━━━\n\n';
 
     // Group by product type
@@ -142,84 +153,124 @@ export const WhatsAppShareDialog = ({ open, onOpenChange, batches }: WhatsAppSha
     });
 
     Object.entries(byProductType).forEach(([productType, products]) => {
-      message += `🏷️ *${productType.toUpperCase()}*\n`;
-      message += '─────────────────\n';
+      message += `*${productType.toUpperCase()}*\n`;
 
       Object.values(products).forEach(product => {
         const params = product.parameters as Record<string, string>;
-        const paramsLine = Object.entries(params)
-          .filter(([k, v]) => v && k !== 'Type' && k !== 'type')
-          .map(([k, v]) => `${k}: ${v}`)
-          .join(' | ');
 
-        message += `\n📌 *${product.brand}*`;
-        if (paramsLine) message += ` (${paramsLine})`;
-        message += '\n';
+        // Build parameter line (sorted: OD, PN, PE, then rest)
+        const sortedParams = Object.entries(params)
+          .sort(([keyA], [keyB]) => {
+            const order = ['OD', 'PN', 'PE'];
+            const indexA = order.indexOf(keyA);
+            const indexB = order.indexOf(keyB);
+            if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+            if (indexA !== -1) return -1;
+            if (indexB !== -1) return 1;
+            return keyA.localeCompare(keyB);
+          });
 
-        // Aggregate stock by type
-        const stockByType: Record<string, { qty: number; details: string[] }> = {
-          FULL_ROLL: { qty: 0, details: [] },
-          CUT_ROLL: { qty: 0, details: [] },
-          BUNDLE: { qty: 0, details: [] },
-          SPARE: { qty: 0, details: [] }
-        };
+        message += `*${product.brand}*\n`;
+        sortedParams.forEach(([key, value]) => {
+          message += `${key}: ${value}\n`;
+        });
+
+        // Aggregate bundles by (pieces_per_bundle, piece_length_meters)
+        const bundleGroups = new Map<string, { qty: number; pcs_per_bundle: number; length: number; totalPieces: number }>();
+        const spareGroups = new Map<number, number>(); // piece_length_meters => total_pieces
+        const cutRollGroups = new Map<number, { count: number; totalMeters: number }>(); // cutLength => { count, totalMeters }
+        let fullRollsTotal = 0;
 
         product.stock_entries.forEach(entry => {
           if (entry.stock_type === 'FULL_ROLL') {
-            stockByType.FULL_ROLL.qty += entry.total_available || 0;
-            if (entry.quantity > 0) {
-              stockByType.FULL_ROLL.details.push(
-                `${entry.quantity} rolls × ${entry.length_per_unit?.toFixed(0) || 0}m`
-              );
-            }
+            fullRollsTotal += entry.quantity;
           } else if (entry.stock_type === 'CUT_ROLL') {
-            stockByType.CUT_ROLL.qty += entry.total_available || 0;
-            stockByType.CUT_ROLL.details.push(
-              `${entry.total_available?.toFixed(2) || 0}m (cut pieces)`
-            );
+            const cutLength = Number(entry.total_available || 0);
+            const existing = cutRollGroups.get(cutLength) || { count: 0, totalMeters: 0 };
+            existing.count += 1;
+            existing.totalMeters += cutLength;
+            cutRollGroups.set(cutLength, existing);
           } else if (entry.stock_type === 'BUNDLE') {
-            const pieces = entry.piece_count || (entry.quantity * (entry.pieces_per_bundle || 1));
-            stockByType.BUNDLE.qty += pieces;
-            if (entry.quantity > 0) {
-              stockByType.BUNDLE.details.push(
-                `${entry.quantity} bundles × ${entry.pieces_per_bundle || 0} pcs`
-              );
-            }
+            const normalizedPieces = Number(entry.pieces_per_bundle || 0);
+            const normalizedLength = Number(entry.piece_length_meters || 0);
+            const key = `${normalizedPieces}-${normalizedLength}`;
+            const existing = bundleGroups.get(key) || { qty: 0, pcs_per_bundle: normalizedPieces, length: normalizedLength, totalPieces: 0 };
+            existing.qty += entry.quantity;
+            existing.totalPieces += entry.piece_count || (entry.quantity * normalizedPieces);
+            bundleGroups.set(key, existing);
           } else if (entry.stock_type === 'SPARE') {
             const pieces = entry.piece_count || entry.total_available || 0;
-            stockByType.SPARE.qty += pieces;
-            stockByType.SPARE.details.push(`${pieces} spare pieces`);
+            const normalizedLength = Number(entry.piece_length_meters || 0);
+            spareGroups.set(normalizedLength, (spareGroups.get(normalizedLength) || 0) + pieces);
           }
         });
 
-        // Display stock with details
-        if (stockByType.FULL_ROLL.qty > 0) {
-          message += `   🔵 Full Rolls: ${stockByType.FULL_ROLL.details.join(' + ')} = *${stockByType.FULL_ROLL.qty.toFixed(2)}m*\n`;
-        }
-        if (stockByType.CUT_ROLL.qty > 0) {
-          message += `   ✂️  Cut Rolls: ${stockByType.CUT_ROLL.details.join(' + ')} = *${stockByType.CUT_ROLL.qty.toFixed(2)}m*\n`;
-        }
-        if (stockByType.BUNDLE.qty > 0) {
-          message += `   📦 Bundles: ${stockByType.BUNDLE.details.join(' + ')} = *${stockByType.BUNDLE.qty} pcs*\n`;
-        }
-        if (stockByType.SPARE.qty > 0) {
-          message += `   🔸 Spares: ${stockByType.SPARE.details.join(' + ')} = *${stockByType.SPARE.qty} pcs*\n`;
+        // Display aggregated stock
+        let totalPieces = 0;
+        let totalMeters = 0;
+
+        if (fullRollsTotal > 0) {
+          message += `\n*${fullRollsTotal} Full Rolls*\n`;
         }
 
-        // Calculate total
+        if (cutRollGroups.size > 0) {
+          const totalCutRolls = Array.from(cutRollGroups.values()).reduce((sum, g) => sum + g.count, 0);
+          const totalCutMeters = Array.from(cutRollGroups.values()).reduce((sum, g) => sum + g.totalMeters, 0);
+          message += `\n*${totalCutRolls} Cut ${totalCutRolls === 1 ? 'Roll' : 'Rolls'}*\n`;
+
+          // Sort by length descending
+          const sortedCutRolls = Array.from(cutRollGroups.entries()).sort(([a], [b]) => b - a);
+          sortedCutRolls.forEach(([cutLength, group]) => {
+            message += `${group.count} ${group.count === 1 ? 'roll' : 'rolls'} × ${cutLength.toFixed(0)}m = ${group.totalMeters.toFixed(0)}m\n`;
+          });
+
+          totalMeters += totalCutMeters;
+        }
+
+        if (bundleGroups.size > 0) {
+          const totalBundles = Array.from(bundleGroups.values()).reduce((sum, g) => sum + g.qty, 0);
+          message += `\n*${totalBundles} ${totalBundles === 1 ? 'Bundle' : 'Bundles'}*\n`;
+
+          // Sort by length desc, then by pieces_per_bundle desc
+          const sortedBundles = Array.from(bundleGroups.values()).sort((a, b) => {
+            if (b.length !== a.length) return b.length - a.length;
+            return b.pcs_per_bundle - a.pcs_per_bundle;
+          });
+
+          sortedBundles.forEach(({ qty, pcs_per_bundle, length, totalPieces: pcs }) => {
+            message += `${qty} ${qty === 1 ? 'Bundle' : 'Bundles'}\n`;
+            message += `${pcs_per_bundle} pieces each • ${length}m per piece\n`;
+            totalPieces += pcs;
+          });
+        }
+
+        if (spareGroups.size > 0) {
+          const totalSpares = Array.from(spareGroups.values()).reduce((sum, qty) => sum + qty, 0);
+          message += `\n*${totalSpares} Spare ${totalSpares === 1 ? 'Piece' : 'Pieces'}*\n`;
+
+          // Sort by length descending
+          const sortedSpares = Array.from(spareGroups.entries()).sort((a, b) => b[0] - a[0]);
+
+          sortedSpares.forEach(([length, qty]) => {
+            message += `${qty} ${qty === 1 ? 'pc' : 'pcs'} × ${length}m\n`;
+          });
+          totalPieces += totalSpares;
+        }
+
+        // Total summary
         const isSprinkler = product.product_type.toLowerCase().includes('sprinkler');
-        const totalQty = isSprinkler
-          ? stockByType.BUNDLE.qty + stockByType.SPARE.qty
-          : stockByType.FULL_ROLL.qty + stockByType.CUT_ROLL.qty;
-        const unit = isSprinkler ? 'pcs' : 'm';
-        message += `   ➡️ *Total: ${totalQty.toFixed(2)} ${unit}*\n`;
-      });
+        if (isSprinkler && totalPieces > 0) {
+          message += `\n_Total: ${totalPieces} pieces_\n`;
+        } else if (!isSprinkler && totalMeters > 0) {
+          message += `\n_Total: ${totalMeters.toFixed(0)}m_\n`;
+        }
 
-      message += '\n';
+        message += '\n';
+      });
     });
 
     message += '━━━━━━━━━━━━━━━━━━━━\n';
-    message += '✅ _Stock Updated_';
+    message += '✅ Stock as of ' + new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 
     const encodedMessage = encodeURIComponent(message);
     const whatsappUrl = `https://wa.me/?text=${encodedMessage}`;
@@ -311,73 +362,189 @@ export const WhatsAppShareDialog = ({ open, onOpenChange, batches }: WhatsAppSha
 
                   {isExpanded && (
                     <div className="ml-6 mt-2 space-y-2">
-                      {byType.FULL_ROLL.length > 0 && (
-                        <div className="space-y-1">
-                          <p className="text-xs font-medium text-muted-foreground">Full Rolls</p>
-                          {byType.FULL_ROLL.map(entry => (
-                            <div key={entry.stock_id} className="flex items-center gap-2 p-2 hover:bg-muted rounded">
-                              <Checkbox
-                                checked={selectedStockIds.has(entry.stock_id)}
-                                onCheckedChange={() => toggleStockEntry(entry.stock_id)}
-                              />
-                              <span className="text-sm">
-                                {entry.quantity} rolls × {Number(entry.length_per_unit || 0).toFixed(0)}m = {Number(entry.total_available || 0).toFixed(2)}m
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                      {byType.FULL_ROLL.length > 0 && (() => {
+                        // Aggregate full rolls by length_per_unit
+                        const rollGroups = new Map<number, { entries: typeof byType.FULL_ROLL; totalQty: number; totalMeters: number }>();
+                        byType.FULL_ROLL.forEach(entry => {
+                          const normalizedLength = Number(entry.length_per_unit || 0);
+                          const existing = rollGroups.get(normalizedLength) || { entries: [], totalQty: 0, totalMeters: 0 };
+                          existing.entries.push(entry);
+                          existing.totalQty += entry.quantity;
+                          existing.totalMeters += Number(entry.total_available || 0);
+                          rollGroups.set(normalizedLength, existing);
+                        });
 
-                      {byType.CUT_ROLL.length > 0 && (
-                        <div className="space-y-1">
-                          <p className="text-xs font-medium text-muted-foreground">Cut Rolls</p>
-                          {byType.CUT_ROLL.map(entry => (
-                            <div key={entry.stock_id} className="flex items-center gap-2 p-2 hover:bg-muted rounded">
-                              <Checkbox
-                                checked={selectedStockIds.has(entry.stock_id)}
-                                onCheckedChange={() => toggleStockEntry(entry.stock_id)}
-                              />
-                              <span className="text-sm">
-                                {Number(entry.total_available || 0).toFixed(2)}m (cut pieces)
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                        return (
+                          <div className="space-y-1">
+                            <p className="text-xs font-medium text-muted-foreground">Full Rolls</p>
+                            {Array.from(rollGroups.values()).map((group, idx) => {
+                              const firstEntry = group.entries[0];
+                              const allStockIds = group.entries.map(e => e.stock_id);
+                              const allSelected = allStockIds.every(id => selectedStockIds.has(id));
 
-                      {byType.BUNDLE.length > 0 && (
-                        <div className="space-y-1">
-                          <p className="text-xs font-medium text-muted-foreground">Bundles</p>
-                          {byType.BUNDLE.map(entry => (
-                            <div key={entry.stock_id} className="flex items-center gap-2 p-2 hover:bg-muted rounded">
-                              <Checkbox
-                                checked={selectedStockIds.has(entry.stock_id)}
-                                onCheckedChange={() => toggleStockEntry(entry.stock_id)}
-                              />
-                              <span className="text-sm">
-                                {entry.quantity} bundles × {entry.pieces_per_bundle || 0} pcs = {entry.piece_count || (entry.quantity * (entry.pieces_per_bundle || 1))} pcs
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                              return (
+                                <div key={idx} className="flex items-center gap-2 p-2 hover:bg-muted rounded">
+                                  <Checkbox
+                                    checked={allSelected}
+                                    onCheckedChange={() => {
+                                      const newSelected = new Set(selectedStockIds);
+                                      allStockIds.forEach(id => {
+                                        if (allSelected) {
+                                          newSelected.delete(id);
+                                        } else {
+                                          newSelected.add(id);
+                                        }
+                                      });
+                                      setSelectedStockIds(newSelected);
+                                    }}
+                                  />
+                                  <span className="text-sm">
+                                    {group.totalQty} rolls × {Number(firstEntry.length_per_unit || 0).toFixed(0)}m = {group.totalMeters.toFixed(2)}m
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
 
-                      {byType.SPARE.length > 0 && (
-                        <div className="space-y-1">
-                          <p className="text-xs font-medium text-muted-foreground">Spare Pieces</p>
-                          {byType.SPARE.map(entry => (
-                            <div key={entry.stock_id} className="flex items-center gap-2 p-2 hover:bg-muted rounded">
-                              <Checkbox
-                                checked={selectedStockIds.has(entry.stock_id)}
-                                onCheckedChange={() => toggleStockEntry(entry.stock_id)}
-                              />
-                              <span className="text-sm">
-                                {entry.piece_count || entry.total_available || 0} spare pieces
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                      {byType.CUT_ROLL.length > 0 && (() => {
+                        // Aggregate cut rolls by the cut piece length (total_available)
+                        const cutGroups = new Map<number, { entries: typeof byType.CUT_ROLL; count: number; totalMeters: number }>();
+                        byType.CUT_ROLL.forEach(entry => {
+                          const cutLength = Number(entry.total_available || 0);
+                          const existing = cutGroups.get(cutLength) || { entries: [], count: 0, totalMeters: 0 };
+                          existing.entries.push(entry);
+                          existing.count += 1;
+                          existing.totalMeters += cutLength;
+                          cutGroups.set(cutLength, existing);
+                        });
+
+                        return (
+                          <div className="space-y-1">
+                            <p className="text-xs font-medium text-muted-foreground">Cut Rolls</p>
+                            {Array.from(cutGroups.entries())
+                              .sort(([a], [b]) => b - a) // Sort by length descending
+                              .map(([cutLength, group], idx) => {
+                                const allStockIds = group.entries.map(e => e.stock_id);
+                                const allSelected = allStockIds.every(id => selectedStockIds.has(id));
+
+                                return (
+                                  <div key={idx} className="flex items-center gap-2 p-2 hover:bg-muted rounded">
+                                    <Checkbox
+                                      checked={allSelected}
+                                      onCheckedChange={() => {
+                                        const newSelected = new Set(selectedStockIds);
+                                        allStockIds.forEach(id => {
+                                          if (allSelected) {
+                                            newSelected.delete(id);
+                                          } else {
+                                            newSelected.add(id);
+                                          }
+                                        });
+                                        setSelectedStockIds(newSelected);
+                                      }}
+                                    />
+                                    <span className="text-sm">
+                                      {group.count} {group.count === 1 ? 'roll' : 'rolls'} × {cutLength.toFixed(0)}m = {group.totalMeters.toFixed(0)}m
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                          </div>
+                        );
+                      })()}                      {byType.BUNDLE.length > 0 && (() => {
+                        // Aggregate bundles by (pieces_per_bundle, piece_length_meters)
+                        // Normalize numbers to avoid "6" vs "6.0" mismatch
+                        const bundleGroups = new Map<string, { entries: typeof byType.BUNDLE; totalQty: number; totalPieces: number }>();
+                        byType.BUNDLE.forEach(entry => {
+                          const normalizedLength = Number(entry.piece_length_meters || 0);
+                          const normalizedPieces = Number(entry.pieces_per_bundle || 0);
+                          const key = `${normalizedPieces}-${normalizedLength}`;
+                          const existing = bundleGroups.get(key) || { entries: [], totalQty: 0, totalPieces: 0 };
+                          existing.entries.push(entry);
+                          existing.totalQty += entry.quantity;
+                          existing.totalPieces += entry.piece_count || (entry.quantity * (entry.pieces_per_bundle || 1));
+                          bundleGroups.set(key, existing);
+                        });
+
+                        return (
+                          <div className="space-y-1">
+                            <p className="text-xs font-medium text-muted-foreground">Bundles</p>
+                            {Array.from(bundleGroups.values()).map((group, idx) => {
+                              const firstEntry = group.entries[0];
+                              const allStockIds = group.entries.map(e => e.stock_id);
+                              const allSelected = allStockIds.every(id => selectedStockIds.has(id));
+
+                              return (
+                                <div key={idx} className="flex items-center gap-2 p-2 hover:bg-muted rounded">
+                                  <Checkbox
+                                    checked={allSelected}
+                                    onCheckedChange={() => {
+                                      const newSelected = new Set(selectedStockIds);
+                                      allStockIds.forEach(id => {
+                                        if (allSelected) {
+                                          newSelected.delete(id);
+                                        } else {
+                                          newSelected.add(id);
+                                        }
+                                      });
+                                      setSelectedStockIds(newSelected);
+                                    }}
+                                  />
+                                  <span className="text-sm">
+                                    {group.totalQty} bundles × {firstEntry.pieces_per_bundle || 0} pcs ({firstEntry.piece_length_meters || 0}m each) = {group.totalPieces} pcs
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
+
+                      {byType.SPARE.length > 0 && (() => {
+                        // Aggregate spare pieces by piece_length_meters (normalize to avoid "6" vs "6.0")
+                        const spareGroups = new Map<number, { entries: typeof byType.SPARE; totalPieces: number }>();
+                        byType.SPARE.forEach(entry => {
+                          const normalizedLength = Number(entry.piece_length_meters || 0);
+                          const existing = spareGroups.get(normalizedLength) || { entries: [], totalPieces: 0 };
+                          existing.entries.push(entry);
+                          existing.totalPieces += entry.piece_count || entry.total_available || 0;
+                          spareGroups.set(normalizedLength, existing);
+                        });
+
+                        return (
+                          <div className="space-y-1">
+                            <p className="text-xs font-medium text-muted-foreground">Spare Pieces</p>
+                            {Array.from(spareGroups.entries()).map(([length, group]) => {
+                              const allStockIds = group.entries.map(e => e.stock_id);
+                              const allSelected = allStockIds.every(id => selectedStockIds.has(id));
+
+                              return (
+                                <div key={length} className="flex items-center gap-2 p-2 hover:bg-muted rounded">
+                                  <Checkbox
+                                    checked={allSelected}
+                                    onCheckedChange={() => {
+                                      const newSelected = new Set(selectedStockIds);
+                                      allStockIds.forEach(id => {
+                                        if (allSelected) {
+                                          newSelected.delete(id);
+                                        } else {
+                                          newSelected.add(id);
+                                        }
+                                      });
+                                      setSelectedStockIds(newSelected);
+                                    }}
+                                  />
+                                  <span className="text-sm">
+                                    {group.totalPieces} pcs × {length}m
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
                 </div>

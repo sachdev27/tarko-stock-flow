@@ -816,16 +816,24 @@ const ScrapHistory = ({ embedded = false }: ScrapHistoryProps) => {
                         {/* Show pieces for CUT_ROLL and SPARE */}
                         {item.pieces && item.pieces.length > 0 && (
                           <div className="mt-2">
-                            <div className="font-medium mb-1">Pieces scrapped:</div>
-                            <div className="flex flex-wrap gap-1">
-                              {item.pieces.map((piece: any, i: number) => (
-                                <Badge key={i} variant="secondary" className="text-xs">
-                                  {piece.piece_type === 'CUT_PIECE'
-                                    ? `${piece.length_meters}m`
-                                    : `${piece.piece_count} pcs`}
-                                </Badge>
-                              ))}
-                            </div>
+                            {item.stock_type === 'CUT_ROLL' ? (
+                              <>
+                                <div className="font-medium mb-1">Pieces scrapped:</div>
+                                <div className="flex flex-wrap gap-1">
+                                  {item.pieces.map((piece: any, i: number) => (
+                                    <Badge key={i} variant="secondary" className="text-xs">
+                                      {piece.length_meters}m
+                                    </Badge>
+                                  ))}
+                                </div>
+                              </>
+                            ) : (
+                              <div>
+                                <span className="font-medium">Pieces scrapped:</span>{' '}
+                                {item.pieces.reduce((sum: number, p: any) => sum + (p.piece_count || 0), 0)} pcs
+                                {item.pieces[0]?.piece_length_meters && ` × ${item.pieces[0].piece_length_meters}m`}
+                              </div>
+                            )}
                           </div>
                         )}
 

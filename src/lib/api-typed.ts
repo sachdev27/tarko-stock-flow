@@ -374,8 +374,71 @@ export const transactions = {
   getAll: (params?: API.TransactionHistoryParams): Promise<API.Transaction[]> =>
     apiClient.get<API.Transaction[]>('/transactions/', { params }).then(unwrapResponse),
 
-  revert: (data: API.RevertTransactionRequest): Promise<API.RevertTransactionResponse> =>
-    apiClient.post<API.RevertTransactionResponse>('/transactions/revert', data).then(unwrapResponse),
+  revert: async (data: API.RevertTransactionRequest): Promise<API.RevertTransactionResponse> => {
+    const { transaction_ids } = data;
+
+    // Separate scrap transactions from other transactions
+    const scrapIds: string[] = [];
+    const otherIds: string[] = [];
+
+    transaction_ids.forEach(id => {
+      if (id.startsWith('scrap_')) {
+        // Extract actual scrap ID (remove 'scrap_' prefix)
+        scrapIds.push(id.substring(6));
+      } else {
+        otherIds.push(id);
+      }
+    });
+
+    let scrapResult = { reverted_count: 0, total_requested: 0, failed_transactions: [] as any[] };
+    let otherResult = { reverted_count: 0, total_requested: 0, failed_transactions: [] as any[] };
+
+    // Revert scrap transactions using the specialized endpoint
+    if (scrapIds.length > 0) {
+      const scrapPromises = scrapIds.map(scrapId =>
+        apiClient.post(`/scraps/${scrapId}/revert`)
+          .then(() => ({ success: true, scrapId }))
+          .catch((error) => ({
+            success: false,
+            scrapId,
+            error: error.response?.data?.error || error.message
+          }))
+      );
+
+      const scrapResults = await Promise.all(scrapPromises);
+      scrapResult.total_requested = scrapIds.length;
+      scrapResult.reverted_count = scrapResults.filter(r => r.success).length;
+      scrapResult.failed_transactions = scrapResults
+        .filter(r => !r.success)
+        .map(r => ({ id: `scrap_${r.scrapId}`, error: r.error }));
+    }
+
+    // Revert other transactions using the generic endpoint
+    if (otherIds.length > 0) {
+      try {
+        otherResult = await apiClient
+          .post<API.RevertTransactionResponse>('/transactions/revert', { transaction_ids: otherIds })
+          .then(unwrapResponse);
+      } catch (error: any) {
+        // If the entire request fails, mark all as failed
+        otherResult = {
+          reverted_count: 0,
+          total_requested: otherIds.length,
+          failed_transactions: otherIds.map(id => ({
+            id,
+            error: error.response?.data?.error || error.message || 'Unknown error'
+          }))
+        };
+      }
+    }
+
+    // Combine results
+    return {
+      reverted_count: scrapResult.reverted_count + otherResult.reverted_count,
+      total_requested: scrapResult.total_requested + otherResult.total_requested,
+      failed_transactions: [...scrapResult.failed_transactions, ...otherResult.failed_transactions]
+    };
+  },
 };
 
 // ============================================================================

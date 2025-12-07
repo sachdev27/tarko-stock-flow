@@ -83,8 +83,8 @@ def create_batch():
         # Handle number_of_bundles safely - can be None
         number_of_bundles_raw = data.get('number_of_bundles')
         number_of_bundles = int(number_of_bundles_raw) if number_of_bundles_raw not in (None, '', 'null') else 0
-        # Handle bundle_size/piece_length safely - default to 10 if both are None or empty
-        bundle_size_raw = data.get('bundle_size') or data.get('piece_length')
+        # Handle bundle_size safely - this is the number of pieces per bundle (integer)
+        bundle_size_raw = data.get('bundle_size')
         bundle_size = int(bundle_size_raw) if bundle_size_raw not in (None, '', 'null') else 10
         spare_pipes = json.loads(data.get('spare_pipes', '[]')) if isinstance(data.get('spare_pipes'), str) else data.get('spare_pipes', [])
 
@@ -470,9 +470,11 @@ def get_attachment(filename):
 @production_bp.route('/history', methods=['GET'])
 @jwt_required_with_role('user')
 def get_production_history():
-    """Get production batch history"""
+    """Get production batch history - shows all productions regardless of current stock status"""
     try:
         with get_db_cursor() as cursor:
+            # Show all batches, including those that were soft-deleted (fully consumed)
+            # Production history should show the complete production record
             cursor.execute("""
                 SELECT
                     b.id,
@@ -497,7 +499,6 @@ def get_production_history():
                 JOIN brands br ON pv.brand_id = br.id
                 LEFT JOIN users u ON b.created_by = u.id
                 LEFT JOIN inventory_stock ist ON b.id = ist.batch_id
-                WHERE b.deleted_at IS NULL
                 GROUP BY b.id, pt.name, br.name, pv.parameters, u.email, b.attachment_url
                 ORDER BY b.created_at DESC
             """)
@@ -596,49 +597,75 @@ def get_production_details(batch_id):
                 # Get stock entries from snapshot
                 stock_entries = snapshot.get('stock_entries', [])
 
+                # Group stock entries by stock_type, length, and other specs to aggregate spare pieces
+                from collections import defaultdict
+                grouped_entries = defaultdict(list)
+
                 for stock in stock_entries:
-                    item = {
-                        'id': stock.get('stock_id'),
-                        'stock_type': stock.get('stock_type'),
-                        'quantity': stock.get('quantity', 0),
-                        'status': stock.get('status', 'IN_STOCK'),
-                        'notes': f"Initial production: {stock.get('quantity', 0)} items"
-                    }
+                    stock_type = stock.get('stock_type')
+                    # For spare pieces, group by piece_length_meters
+                    if stock_type in ['SPARE', 'SPARE_PIECES']:
+                        key = (stock_type, stock.get('piece_length_meters'), stock.get('status', 'IN_STOCK'))
+                    else:
+                        # For other types, each entry is unique
+                        key = (stock_type, stock.get('stock_id'))
+                    grouped_entries[key].append(stock)
 
-                    # Add type-specific details from snapshot
-                    if stock['stock_type'] == 'FULL_ROLL':
-                        item['length_per_unit'] = stock.get('length_per_unit')
-                        if item['length_per_unit']:
-                            item['total_length'] = item['length_per_unit'] * item['quantity']
+                for key, stocks in grouped_entries.items():
+                    stock = stocks[0]  # Take first as template
+                    stock_type = stock.get('stock_type')
 
-                    elif stock['stock_type'] == 'BUNDLE':
-                        item['pieces_per_bundle'] = stock.get('pieces_per_bundle')
-                        item['piece_length_meters'] = stock.get('piece_length_meters')
-                        if item['pieces_per_bundle'] and item['piece_length_meters']:
-                            item['total_pieces'] = item['quantity'] * item['pieces_per_bundle']
-                            item['total_length'] = item['total_pieces'] * item['piece_length_meters']
-
-                    elif stock['stock_type'] == 'CUT_ROLL':
-                        cut_piece_lengths = stock.get('cut_piece_lengths', [])
-                        item['cut_pieces'] = [
-                            {'length_meters': length, 'status': 'IN_STOCK'}
-                            for length in cut_piece_lengths
-                        ]
-                        item['total_length'] = sum(cut_piece_lengths)
-
-                    elif stock['stock_type'] in ['SPARE', 'SPARE_PIECES']:
-                        spare_count = stock.get('spare_piece_count', 0)
+                    if stock_type in ['SPARE', 'SPARE_PIECES']:
+                        # Aggregate spare pieces
+                        total_spare_count = sum(s.get('spare_piece_count', 0) for s in stocks)
                         piece_length = stock.get('piece_length_meters')
-                        # For spare pieces, create groups based on the snapshot
-                        item['spare_pieces'] = [
-                            {
-                                'piece_count': spare_count,
-                                'piece_length_meters': piece_length,
-                                'status': 'IN_STOCK'
-                            }
-                        ]
-                        item['total_pieces'] = spare_count
-                        item['piece_length_meters'] = piece_length
+
+                        item = {
+                            'id': stock.get('stock_id'),
+                            'stock_type': stock_type,
+                            'quantity': len(stocks),  # Number of stock entries
+                            'status': stock.get('status', 'IN_STOCK'),
+                            'notes': f"Initial production: {len(stocks)} items",
+                            'spare_pieces': [
+                                {
+                                    'piece_count': total_spare_count,
+                                    'piece_length_meters': piece_length,
+                                    'status': stock.get('status', 'IN_STOCK')
+                                }
+                            ],
+                            'total_pieces': total_spare_count,
+                            'piece_length_meters': piece_length
+                        }
+                    else:
+                        # Non-spare items - use original logic
+                        item = {
+                            'id': stock.get('stock_id'),
+                            'stock_type': stock_type,
+                            'quantity': stock.get('quantity', 0),
+                            'status': stock.get('status', 'IN_STOCK'),
+                            'notes': f"Initial production: {stock.get('quantity', 0)} items"
+                        }
+
+                        # Add type-specific details from snapshot
+                        if stock_type == 'FULL_ROLL':
+                            item['length_per_unit'] = stock.get('length_per_unit')
+                            if item['length_per_unit']:
+                                item['total_length'] = item['length_per_unit'] * item['quantity']
+
+                        elif stock_type == 'BUNDLE':
+                            item['pieces_per_bundle'] = stock.get('pieces_per_bundle')
+                            item['piece_length_meters'] = stock.get('piece_length_meters')
+                            if item['pieces_per_bundle'] and item['piece_length_meters']:
+                                item['total_pieces'] = item['quantity'] * item['pieces_per_bundle']
+                                item['total_length'] = item['total_pieces'] * item['piece_length_meters']
+
+                        elif stock_type == 'CUT_ROLL':
+                            cut_piece_lengths = stock.get('cut_piece_lengths', [])
+                            item['cut_pieces'] = [
+                                {'length_meters': length, 'status': 'IN_STOCK'}
+                                for length in cut_piece_lengths
+                            ]
+                            item['total_length'] = sum(cut_piece_lengths)
 
                     items.append(item)
             else:
@@ -700,14 +727,15 @@ def get_production_details(batch_id):
                         item['total_length'] = sum(float(cp['length_meters']) for cp in cut_pieces)
 
                     elif stock['stock_type'] in ['SPARE', 'SPARE_PIECES']:
-                        # Get spare piece details
+                        # Get spare piece details - group by status and sum piece counts
                         cursor.execute("""
-                            SELECT piece_count, status
+                            SELECT status, COUNT(*) as piece_count
                             FROM sprinkler_spare_pieces
                             WHERE stock_id = %s
-                            ORDER BY created_at
+                            GROUP BY status
+                            ORDER BY status
                         """, (stock['id'],))
-                        spare_pieces = cursor.fetchall()
+                        spare_pieces_grouped = cursor.fetchall()
                         # Get piece_length from the stock item itself
                         piece_length = float(stock['piece_length_meters']) if stock['piece_length_meters'] else None
                         item['spare_pieces'] = [
@@ -715,9 +743,9 @@ def get_production_details(batch_id):
                                 'piece_count': int(sp['piece_count']),
                                 'piece_length_meters': piece_length,
                                 'status': sp['status']
-                            } for sp in spare_pieces
+                            } for sp in spare_pieces_grouped
                         ]
-                        item['total_pieces'] = sum(int(sp['piece_count']) for sp in spare_pieces)
+                        item['total_pieces'] = sum(int(sp['piece_count']) for sp in spare_pieces_grouped)
                         item['piece_length_meters'] = piece_length
 
                     items.append(item)

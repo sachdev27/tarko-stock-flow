@@ -3607,7 +3607,7 @@ CREATE TRIGGER update_vehicles_updated_at BEFORE UPDATE ON public.vehicles FOR E
 -- Name: inventory_stock validate_spare_stock_quantity_trigger; Type: TRIGGER; Schema: public; Owner: -
 --
 
-CREATE TRIGGER validate_spare_stock_quantity_trigger BEFORE UPDATE ON public.inventory_stock FOR EACH ROW WHEN ((new.stock_type = 'SPARE'::text)) EXECUTE FUNCTION public.validate_spare_stock_quantity();
+CREATE CONSTRAINT TRIGGER validate_spare_stock_quantity_trigger AFTER UPDATE ON public.inventory_stock DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN (((new.stock_type = 'SPARE'::text) AND (old.quantity IS DISTINCT FROM new.quantity))) EXECUTE FUNCTION public.validate_spare_stock_quantity();
 
 
 --

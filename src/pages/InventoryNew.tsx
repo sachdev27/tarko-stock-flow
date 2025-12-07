@@ -575,7 +575,13 @@ const InventoryNew = () => {
             )}
             <Button
               variant="outline"
-              onClick={() => setWhatsappDialogOpen(true)}
+              onClick={() => {
+                console.log('[InventoryNew] Opening WhatsApp dialog, filteredBatches:', {
+                  count: filteredBatches.length,
+                  sample: filteredBatches.slice(0, 1)
+                });
+                setWhatsappDialogOpen(true);
+              }}
               className="bg-green-50 hover:bg-green-100 border-green-200"
             >
               <MessageCircle className="h-4 w-4 mr-2 text-green-600" />

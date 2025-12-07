@@ -169,6 +169,7 @@ export const ProductSelectionSection = ({
         piece_id: roll.piece_id,
         piece_ids: roll.piece_ids,
         spare_id: roll.spare_id,
+        spare_ids: roll.spare_ids, // Array of individual spare piece IDs from backend
         total_available: roll.total_available || roll.length_meters,
         product_type_name: roll.product_type_name,
         batch_code: roll.batch_code
@@ -493,9 +494,8 @@ export const ProductSelectionSection = ({
       return;
     }
 
-    // Each spareEntry represents a GROUP of spare pieces with the same length and piece_count
-    // The spare_id is the ID of the sprinkler_spare_pieces record (the group)
-    // We need to collect spare_ids, potentially repeating them if we take multiple pieces from one group
+    // Each spareEntry has spare_ids array with individual piece IDs (foundational model)
+    // We need to collect the exact unique IDs from the spare_ids arrays
     const spare_ids: string[] = [];
     let remaining = quantity;
 
@@ -504,14 +504,20 @@ export const ProductSelectionSection = ({
 
       const piecesFromThisGroup = Math.min(remaining, entry.piece_count || 1);
 
-      // Add this group's spare_id once for each piece we're taking from it
-      if (entry.spare_id) {
+      // Use individual piece IDs from spare_ids array (each physical piece has unique ID)
+      if (entry.spare_ids && entry.spare_ids.length > 0) {
+        // Take the required number of unique IDs from this entry's spare_ids array
+        const idsToTake = entry.spare_ids.slice(0, piecesFromThisGroup);
+        spare_ids.push(...idsToTake);
+        remaining -= idsToTake.length;
+      } else if (entry.spare_id) {
+        // Fallback for legacy single spare_id (shouldn't happen with new model)
         for (let i = 0; i < piecesFromThisGroup; i++) {
           spare_ids.push(entry.spare_id);
         }
         remaining -= piecesFromThisGroup;
       } else {
-        console.error('Entry missing spare_id:', entry);
+        console.error('Entry missing spare_ids:', entry);
       }
     }
 

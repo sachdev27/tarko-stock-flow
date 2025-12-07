@@ -124,37 +124,38 @@ class InventoryOperations:
         if not stock:
             raise ValidationError(f"SPARE stock {stock_id} not found or deleted")
 
-        # Create pieces with IMMUTABLE created_by_transaction_id
-        self.cursor.execute("""
-            INSERT INTO sprinkler_spare_pieces (
-                id,
+        # Create pieces - ONE RECORD PER PHYSICAL PIECE (foundational model)
+        piece_ids = []
+        for piece_num in range(1, piece_count + 1):
+            self.cursor.execute("""
+                INSERT INTO sprinkler_spare_pieces (
+                    id,
+                    stock_id,
+                    piece_count,
+                    status,
+                    notes,
+                    created_by_transaction_id,  -- IMMUTABLE
+                    original_stock_id,          -- IMMUTABLE
+                    version,
+                    created_at,
+                    updated_at
+                ) VALUES (%s, %s, 1, 'IN_STOCK', %s, %s, %s, 1, NOW(), NOW())
+                RETURNING id
+            """, (
+                str(uuid.uuid4()),
                 stock_id,
-                piece_count,
-                status,
-                notes,
-                created_by_transaction_id,  -- IMMUTABLE
-                original_stock_id,          -- IMMUTABLE
-                version,
-                created_at,
-                updated_at
-            ) VALUES (%s, %s, %s, 'IN_STOCK', %s, %s, %s, 1, NOW(), NOW())
-            RETURNING id
-        """, (
-            str(uuid.uuid4()),
-            stock_id,
-            piece_count,
-            notes,
-            transaction_id,  # Set once, never change!
-            stock_id         # Remember original location
-        ))
+                f'{notes} - Piece {piece_num}' if notes else f'Piece {piece_num}',
+                transaction_id,  # Set once, never change!
+                stock_id         # Remember original location
+            ))
 
-        result = self.cursor.fetchone()
-        piece_id = result['id']
+            result = self.cursor.fetchone()
+            piece_ids.append(result['id'])
 
         # Note: Trigger auto_update_stock_quantity will update stock.quantity
         # Note: Trigger log_piece_lifecycle will log CREATED event
 
-        return [piece_id]
+        return piece_ids
 
     def create_cut_pieces(
         self,

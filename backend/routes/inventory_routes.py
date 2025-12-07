@@ -124,51 +124,44 @@ def get_batches():
                         'piece_length_meters': None,
                         'total_available': group['length_meters'] * group['piece_count'],
                         'product_type_name': group['product_type_name']
-                    })                # For SPARE, fetch individual spare groups as separate entries
+                    })                # For SPARE, aggregate all pieces by stock_id
                 cursor.execute("""
-                    SELECT s.id::text as stock_id
+                    SELECT
+                        s.id::text as stock_id,
+                        s.piece_length_meters,
+                        pt.name as product_type_name,
+                        COUNT(sp.id)::integer as total_piece_count,
+                        array_agg(sp.id::text) as spare_ids
                     FROM inventory_stock s
+                    JOIN sprinkler_spare_pieces sp ON sp.stock_id = s.id
+                    JOIN product_variants pv ON s.product_variant_id = pv.id
+                    JOIN product_types pt ON pv.product_type_id = pt.id
                     WHERE s.batch_id = %s::uuid
                     AND s.deleted_at IS NULL
                     AND s.status = 'IN_STOCK'
                     AND s.stock_type = 'SPARE'
+                    AND sp.status = 'IN_STOCK'
+                    GROUP BY s.id, s.piece_length_meters, pt.name
+                    ORDER BY s.created_at
                 """, (batch_id,))
 
                 spare_stocks = cursor.fetchall()
 
+                # Add aggregated spare entries
                 for spare_stock in spare_stocks:
-                    cursor.execute("""
-                        SELECT
-                            sp.id::text as spare_id,
-                            sp.piece_count,
-                            s.id::text as stock_id,
-                            s.piece_length_meters,
-                            pt.name as product_type_name
-                        FROM sprinkler_spare_pieces sp
-                        JOIN inventory_stock s ON sp.stock_id = s.id
-                        JOIN product_variants pv ON s.product_variant_id = pv.id
-                        JOIN product_types pt ON pv.product_type_id = pt.id
-                        WHERE s.id = %s::uuid AND sp.status = 'IN_STOCK'
-                        ORDER BY sp.piece_count DESC
-                    """, (spare_stock['stock_id'],))
-
-                    spare_groups = cursor.fetchall()
-
-                    # Add each spare group as a separate entry
-                    for spare_group in spare_groups:
-                        stock_entries.append({
-                            'stock_id': spare_stock['stock_id'],
-                            'spare_id': spare_group['spare_id'],
-                            'stock_type': 'SPARE',
-                            'quantity': 1,
-                            'status': 'IN_STOCK',
-                            'length_per_unit': None,
-                            'pieces_per_bundle': None,
-                            'piece_length_meters': spare_group['piece_length_meters'],
-                            'piece_count': spare_group['piece_count'],
-                            'total_available': spare_group['piece_count'],
-                            'product_type_name': spare_group['product_type_name']
-                        })
+                    stock_entries.append({
+                        'stock_id': spare_stock['stock_id'],
+                        'spare_ids': spare_stock['spare_ids'],
+                        'stock_type': 'SPARE',
+                        'quantity': 1,
+                        'status': 'IN_STOCK',
+                        'length_per_unit': None,
+                        'pieces_per_bundle': None,
+                        'piece_length_meters': spare_stock['piece_length_meters'],
+                        'piece_count': spare_stock['total_piece_count'],
+                        'total_available': spare_stock['total_piece_count'],
+                        'product_type_name': spare_stock['product_type_name']
+                    })
 
                 batch['stock_entries'] = stock_entries
 
@@ -1005,25 +998,28 @@ def split_bundle():
 
             transaction_id = cursor.fetchone()['id']
 
-            # Create individual spare piece entries with IMMUTABLE created_by_transaction_id
-            pieces_created = []
+            # Create individual spare piece entries - ONE RECORD PER PHYSICAL PIECE (foundational model)
+            pieces_created = 0
             for piece_count in pieces_to_split:
-                cursor.execute("""
-                    INSERT INTO sprinkler_spare_pieces (
-                        stock_id, piece_count, status, notes, created_by_transaction_id, original_stock_id, created_at
-                    ) VALUES (%s, %s, 'IN_STOCK', %s, %s, %s, NOW())
-                """, (spare_stock_id, piece_count, f'Split from bundle: {piece_count} pieces', transaction_id, spare_stock_id))
-                pieces_created.append(piece_count)
+                # Create one record for each physical piece in this group
+                for _ in range(piece_count):
+                    cursor.execute("""
+                        INSERT INTO sprinkler_spare_pieces (
+                            stock_id, piece_count, status, notes, created_by_transaction_id, original_stock_id, created_at
+                        ) VALUES (%s, 1, 'IN_STOCK', %s, %s, %s, NOW())
+                    """, (spare_stock_id, f'Piece from bundle split', transaction_id, spare_stock_id))
+                    pieces_created += 1
 
-            # Add remainder if any
+            # Add remainder pieces individually if any
             remainder = pieces_per_bundle - total_pieces_needed
             if remainder > 0:
-                cursor.execute("""
-                    INSERT INTO sprinkler_spare_pieces (
-                        stock_id, piece_count, status, notes, created_by_transaction_id, original_stock_id, created_at
-                    ) VALUES (%s, %s, 'IN_STOCK', %s, %s, %s, NOW())
-                """, (spare_stock_id, remainder, f'Remainder from bundle split: {remainder} pieces', transaction_id, spare_stock_id))
-                pieces_created.append(remainder)
+                for _ in range(remainder):
+                    cursor.execute("""
+                        INSERT INTO sprinkler_spare_pieces (
+                            stock_id, piece_count, status, notes, created_by_transaction_id, original_stock_id, created_at
+                        ) VALUES (%s, 1, 'IN_STOCK', %s, %s, %s, NOW())
+                    """, (spare_stock_id, f'Remainder piece from bundle split', transaction_id, spare_stock_id))
+                    pieces_created += 1
 
             # NOTE: inventory_stock quantity is automatically updated by trigger
             # No manual update needed here
@@ -1035,10 +1031,10 @@ def split_bundle():
                     description, created_at
                 ) VALUES (%s, 'SPLIT_BUNDLE', 'STOCK', %s, %s, NOW())
             """, (user_id, str(stock_id),
-                  f"{actor['name']} split 1 bundle into {len(pieces_created)} spare groups"))
+                  f"{actor['name']} split 1 bundle into {pieces_created} spare pieces"))
 
         return jsonify({
-            'message': f'Successfully split bundle into {len(pieces_created)} spare groups',
+            'message': f'Successfully split bundle into {pieces_created} spare pieces',
             'spare_groups': pieces_created
         }), 200
 
