@@ -125,7 +125,11 @@ TABLES_WITHOUT_UPDATED_AT = [
     'piece_lifecycle_events',
     'product_aliases',
     'inventory_transactions',
-    'audit_logs'
+    'audit_logs',
+    'archive_buckets',
+    'archived_backups',
+    'backup_credentials',
+    'password_reset_tokens'
 ]
 
 # Columns that are UUID arrays (need explicit casting)
@@ -528,7 +532,17 @@ def cleanup_old_snapshots():
 def rollback_to_snapshot(snapshot_id):
     """Rollback database to a specific snapshot"""
     user_id = get_jwt_identity()
-    data = request.json or {}
+    data = request.json
+
+    # Handle case where data might be a boolean or None
+    if data is None:
+        data = {}
+    elif isinstance(data, bool):
+        # If a boolean was sent directly, convert it to the expected format
+        data = {'confirm': data}
+    elif not isinstance(data, dict):
+        return jsonify({'error': 'Invalid request format. Expected JSON object.'}), 400
+
     confirm = data.get('confirm', False)
     selective_tables = data.get('tables', None)  # Optional: restore only specific tables
 

@@ -32,6 +32,7 @@ export const CreateSnapshotDialog = ({
 }: CreateSnapshotDialogProps) => {
   const [customPath, setCustomPath] = useState('');
   const [suggestedPaths, setSuggestedPaths] = useState<string[]>([]);
+  const [loadingPaths, setLoadingPaths] = useState(true);
 
   useEffect(() => {
     if (open) {
@@ -40,18 +41,28 @@ export const CreateSnapshotDialog = ({
   }, [open]);
 
   const fetchSuggestedPaths = async () => {
+    setLoadingPaths(true);
     try {
       const response = await versionControl.getSuggestedPaths();
-      setSuggestedPaths(response.data.suggestions || []);
+      console.log('Raw API response:', response);
+      console.log('Response data:', response.data);
+      console.log('Response suggestions:', response.data?.suggestions);
+
+      // Handle both response.data.suggestions and response.suggestions patterns
+      const paths = response.data?.suggestions || response?.suggestions || [];
+      console.log('Extracted paths:', paths);
+      setSuggestedPaths(paths);
 
       // Set first suggestion as default
-      if (response.data.suggestions && response.data.suggestions.length > 0) {
-        const defaultPath = response.data.suggestions[0];
+      if (paths.length > 0) {
+        const defaultPath = paths[0];
         setCustomPath(defaultPath);
         onFormChange({ ...snapshotForm, storage_path: defaultPath });
       }
     } catch (error) {
       console.error('Failed to fetch suggested paths:', error);
+    } finally {
+      setLoadingPaths(false);
     }
   };
   return (
@@ -97,7 +108,13 @@ export const CreateSnapshotDialog = ({
               className="flex-1"
             />
             <p className="text-xs text-muted-foreground">
-              Suggested: {suggestedPaths[0] || 'Loading...'}
+              {loadingPaths ? (
+                'Loading suggested paths...'
+              ) : suggestedPaths.length > 0 ? (
+                `Suggested: ${suggestedPaths[0]}`
+              ) : (
+                'No suggested paths available'
+              )}
             </p>
           </div>
 

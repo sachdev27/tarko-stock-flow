@@ -342,12 +342,16 @@ export const VersionControlTab = ({ snapshots, rollbackHistory, onDataChange }: 
     setLoading(true);
     try {
       const response = await versionControl.rollbackToSnapshot(selectedSnapshot.id, true);
-      toast.success(`Rollback completed! ${response.data.affected_tables.length} tables restored.`);
+      console.log('Rollback response:', response);
+      const affectedCount = response.data?.affected_tables?.length || response.affected_tables?.length || 0;
+      toast.success(`Rollback completed! ${affectedCount} tables restored.`);
       setRollbackDialog(false);
       setSelectedSnapshot(null);
       onDataChange();
     } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Rollback failed');
+      console.error('Rollback error:', error);
+      console.error('Error response:', error.response);
+      toast.error(error.response?.data?.error || error.message || 'Rollback failed');
     } finally {
       setLoading(false);
     }
