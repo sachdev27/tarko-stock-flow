@@ -1005,25 +1005,28 @@ def split_bundle():
 
             transaction_id = cursor.fetchone()['id']
 
-            # Create individual spare piece entries with IMMUTABLE created_by_transaction_id
-            pieces_created = []
+            # Create individual spare piece entries - ONE RECORD PER PHYSICAL PIECE (foundational model)
+            pieces_created = 0
             for piece_count in pieces_to_split:
-                cursor.execute("""
-                    INSERT INTO sprinkler_spare_pieces (
-                        stock_id, piece_count, status, notes, created_by_transaction_id, original_stock_id, created_at
-                    ) VALUES (%s, %s, 'IN_STOCK', %s, %s, %s, NOW())
-                """, (spare_stock_id, piece_count, f'Split from bundle: {piece_count} pieces', transaction_id, spare_stock_id))
-                pieces_created.append(piece_count)
+                # Create one record for each physical piece in this group
+                for _ in range(piece_count):
+                    cursor.execute("""
+                        INSERT INTO sprinkler_spare_pieces (
+                            stock_id, piece_count, status, notes, created_by_transaction_id, original_stock_id, created_at
+                        ) VALUES (%s, 1, 'IN_STOCK', %s, %s, %s, NOW())
+                    """, (spare_stock_id, f'Piece from bundle split', transaction_id, spare_stock_id))
+                    pieces_created += 1
 
-            # Add remainder if any
+            # Add remainder pieces individually if any
             remainder = pieces_per_bundle - total_pieces_needed
             if remainder > 0:
-                cursor.execute("""
-                    INSERT INTO sprinkler_spare_pieces (
-                        stock_id, piece_count, status, notes, created_by_transaction_id, original_stock_id, created_at
-                    ) VALUES (%s, %s, 'IN_STOCK', %s, %s, %s, NOW())
-                """, (spare_stock_id, remainder, f'Remainder from bundle split: {remainder} pieces', transaction_id, spare_stock_id))
-                pieces_created.append(remainder)
+                for _ in range(remainder):
+                    cursor.execute("""
+                        INSERT INTO sprinkler_spare_pieces (
+                            stock_id, piece_count, status, notes, created_by_transaction_id, original_stock_id, created_at
+                        ) VALUES (%s, 1, 'IN_STOCK', %s, %s, %s, NOW())
+                    """, (spare_stock_id, f'Remainder piece from bundle split', transaction_id, spare_stock_id))
+                    pieces_created += 1
 
             # NOTE: inventory_stock quantity is automatically updated by trigger
             # No manual update needed here

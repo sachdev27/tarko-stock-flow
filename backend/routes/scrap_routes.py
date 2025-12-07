@@ -219,25 +219,31 @@ def create_scrap():
                     # Note: stock quantity for CUT_ROLL is auto-updated by trigger
 
                 elif stock_type == 'SPARE':
-                    # Handle spare pieces
+                    # Handle spare pieces - supports partial scrapping like dispatch
                     if not piece_ids or len(piece_ids) == 0:
                         raise ValueError('piece_ids required for SPARE items')
 
-                    # Get spare pieces details
+                    # quantity_to_scrap represents the NUMBER OF PIECES to scrap
+                    pieces_to_scrap = int(quantity_to_scrap)
+
+                    # Get unique spare piece IDs and count how many pieces needed from each
+                    from collections import Counter
+                    spare_id_counts = Counter(piece_ids)
+
+                    total_pieces_scrapped = 0
+
+                    # Get piece_length_meters from first spare piece for the scrap_item
+                    first_spare_id = next(iter(spare_id_counts.keys()))
                     cursor.execute("""
-                        SELECT id, piece_count, status, piece_length_meters
-                        FROM sprinkler_spare_pieces
-                        WHERE id = ANY(%s::uuid[]) AND stock_id = %s AND status = 'IN_STOCK'
-                    """, (piece_ids, stock_id))
+                        SELECT ist.piece_length_meters
+                        FROM sprinkler_spare_pieces sp
+                        JOIN inventory_stock ist ON sp.stock_id = ist.id
+                        WHERE sp.id = %s
+                    """, (first_spare_id,))
+                    first_spare = cursor.fetchone()
+                    piece_length_for_item = first_spare['piece_length_meters'] if first_spare else None
 
-                    spare_pieces = cursor.fetchall()
-                    if len(spare_pieces) != len(piece_ids):
-                        raise ValueError('Some spare pieces not found or not available')
-
-                    # Calculate total piece count
-                    total_piece_count = sum(sp['piece_count'] for sp in spare_pieces)
-
-                    # Create scrap item
+                    # Create scrap item FIRST so we have the scrap_item_id
                     cursor.execute("""
                         INSERT INTO scrap_items (
                             scrap_id, stock_id, batch_id, product_variant_id,
@@ -250,32 +256,95 @@ def create_scrap():
                         RETURNING id
                     """, (
                         scrap_id, stock_id, stock['batch_id'], stock['product_variant_id'],
-                        stock_type, len(spare_pieces),
-                        stock.get('piece_length_meters'),
+                        stock_type, pieces_to_scrap,
+                        piece_length_for_item,
                         original_quantity, original_status,
                         estimated_value, item_notes
                     ))
 
                     scrap_item_id = cursor.fetchone()['id']
 
-                    # Mark spare pieces as scrapped and create scrap_pieces records
-                    for spare_piece in spare_pieces:
+                    # Now process each spare group
+                    scrapped_piece_ids = []  # Track all scrapped piece IDs
+
+                    for spare_id, count_needed in spare_id_counts.items():
                         cursor.execute("""
-                            UPDATE sprinkler_spare_pieces
-                            SET status = 'SCRAPPED', updated_at = NOW()
-                            WHERE id = %s
-                        """, (spare_piece['id'],))
+                            SELECT sp.id, sp.piece_count, sp.status, ist.piece_length_meters
+                            FROM sprinkler_spare_pieces sp
+                            JOIN inventory_stock ist ON sp.stock_id = ist.id
+                            WHERE sp.id = %s AND sp.stock_id = %s AND sp.status = 'IN_STOCK'
+                        """, (spare_id, stock_id))
+
+                        spare_record = cursor.fetchone()
+                        if not spare_record:
+                            raise ValueError(f'Spare piece group {spare_id} not found or not available')
+
+                        available_pieces = spare_record['piece_count']
+
+                        if count_needed > available_pieces:
+                            raise ValueError(f'Not enough pieces in spare group {spare_id}. Available: {available_pieces}, Requested: {count_needed}')
+
+                        # Since returns create ONE record per physical piece (piece_count=1 each),
+                        # we should always be scrapping individual piece records
+                        if available_pieces == 1:
+                            # This is already an individual piece record - mark as SCRAPPED
+                            cursor.execute("""
+                                UPDATE sprinkler_spare_pieces
+                                SET status = 'SCRAPPED', updated_at = NOW()
+                                WHERE id = %s
+                            """, (spare_id,))
+
+                            scrapped_piece_ids.append(spare_id)
+                        else:
+                            # This is a grouped record (from production) - need to split
+                            # Reduce the group size
+                            cursor.execute("""
+                                UPDATE sprinkler_spare_pieces
+                                SET piece_count = piece_count - %s, updated_at = NOW()
+                                WHERE id = %s
+                            """, (count_needed, spare_id))
+
+                            # Create individual SCRAPPED records (one per physical piece)
+                            for i in range(count_needed):
+                                cursor.execute("""
+                                    INSERT INTO sprinkler_spare_pieces (
+                                        stock_id, piece_count, status,
+                                        created_by_transaction_id, original_stock_id,
+                                        version, created_at, updated_at
+                                    )
+                                    SELECT stock_id, 1, 'SCRAPPED',
+                                        created_by_transaction_id, original_stock_id,
+                                        1, NOW(), NOW()
+                                    FROM sprinkler_spare_pieces
+                                    WHERE id = %s
+                                    RETURNING id
+                                """, (spare_id,))
+
+                                new_spare_id = cursor.fetchone()['id']
+                                scrapped_piece_ids.append(new_spare_id)
+
+                        total_pieces_scrapped += count_needed
+
+                    # Create scrap_pieces records - one per physical piece
+                    for piece_id in scrapped_piece_ids:
+                        # Get piece_length_meters for this specific piece
+                        cursor.execute("""
+                            SELECT ist.piece_length_meters
+                            FROM sprinkler_spare_pieces sp
+                            JOIN inventory_stock ist ON sp.stock_id = ist.id
+                            WHERE sp.id = %s
+                        """, (piece_id,))
+                        piece_info = cursor.fetchone()
 
                         cursor.execute("""
                             INSERT INTO scrap_pieces (
                                 scrap_item_id, original_piece_id, piece_type,
                                 piece_count, piece_length_meters
                             )
-                            VALUES (%s, %s, 'SPARE_PIECE', %s, %s)
-                        """, (scrap_item_id, spare_piece['id'], spare_piece['piece_count'],
-                              spare_piece.get('piece_length_meters')))
+                            VALUES (%s, %s, 'SPARE_PIECE', 1, %s)
+                        """, (scrap_item_id, piece_id, piece_info['piece_length_meters'] if piece_info else None))
 
-                    total_quantity += len(spare_pieces)
+                    total_quantity += total_pieces_scrapped
 
                     # Note: stock quantity for SPARE is auto-updated by trigger
 
@@ -646,12 +715,18 @@ def revert_scrap(scrap_id):
             if not scrap_items:
                 return jsonify({'error': 'No scrap items found'}), 404
 
-            # Restore inventory for each scrapped item
+            # Group scrap items by stock_id to avoid multiple updates to same stock
+            # This prevents trigger firing multiple times for the same stock
+            from collections import defaultdict
+            items_by_stock = defaultdict(list)
             for item in scrap_items:
-                stock_id = item['stock_id']
-                stock_type = item['stock_type']
-                quantity_scrapped = item['quantity_scrapped']
+                items_by_stock[(item['stock_id'], item['stock_type'])].append(item)
 
+            # Disable validation during revert to avoid ROW-level trigger race conditions
+            cursor.execute("SET LOCAL tarko.skip_validation = 'true'")
+
+            # Restore inventory for each unique stock
+            for (stock_id, stock_type), items in items_by_stock.items():
                 # Check if stock still exists
                 cursor.execute("""
                     SELECT id, quantity, status
@@ -665,45 +740,49 @@ def revert_scrap(scrap_id):
                     print(f"Warning: Stock {stock_id} not found, skipping restoration")
                     continue
 
-                # Restore quantity to inventory_stock
-                cursor.execute("""
-                    UPDATE inventory_stock
-                    SET quantity = quantity + %s,
-                        status = 'IN_STOCK',
-                        updated_at = NOW()
-                    WHERE id = %s
-                """, (quantity_scrapped, stock_id))
-
-                # For CUT_ROLL and SPARE types, restore pieces status
+                # For CUT_ROLL and SPARE types, restore the SCRAPPED pieces back to IN_STOCK
+                # Let the auto_update triggers handle inventory_stock.quantity automatically
                 if stock_type in ('CUT_ROLL', 'SPARE'):
-                    # Get the piece IDs from scrap_pieces
-                    cursor.execute("""
-                        SELECT original_piece_id, piece_type
-                        FROM scrap_pieces sp
-                        JOIN scrap_items si ON sp.scrap_item_id = si.id
-                        WHERE si.id = %s AND sp.original_piece_id IS NOT NULL
-                    """, (item['id'],))
+                    # Collect ALL piece IDs from ALL scrap_items for this stock
+                    all_piece_ids = []
+                    for item in items:
+                        cursor.execute("""
+                            SELECT original_piece_id, piece_type
+                            FROM scrap_pieces sp
+                            WHERE sp.scrap_item_id = %s AND sp.original_piece_id IS NOT NULL
+                        """, (item['id'],))
+                        all_piece_ids.extend(cursor.fetchall())
 
-                    pieces = cursor.fetchall()
-
-                    for piece in pieces:
-                        piece_id = piece['original_piece_id']
-                        piece_type = piece['piece_type']
-
-                        if piece_type == 'CUT_PIECE':
-                            # Restore cut piece status
+                    if stock_type == 'CUT_ROLL':
+                        cut_piece_ids = [p['original_piece_id'] for p in all_piece_ids if p['piece_type'] == 'CUT_PIECE']
+                        if cut_piece_ids:
+                            # Restore ALL cut pieces for this stock in ONE UPDATE
                             cursor.execute("""
                                 UPDATE hdpe_cut_pieces
                                 SET status = 'IN_STOCK', deleted_at = NULL, updated_at = NOW()
-                                WHERE id = %s
-                            """, (piece_id,))
-                        elif piece_type == 'SPARE_PIECE':
-                            # Restore spare piece status
+                                WHERE id = ANY(%s::uuid[])
+                            """, (cut_piece_ids,))
+
+                    elif stock_type == 'SPARE':
+                        spare_piece_ids = [p['original_piece_id'] for p in all_piece_ids if p['piece_type'] == 'SPARE_PIECE']
+                        if spare_piece_ids:
+                            # Restore ALL spare pieces for this stock in ONE UPDATE
                             cursor.execute("""
                                 UPDATE sprinkler_spare_pieces
                                 SET status = 'IN_STOCK', deleted_at = NULL, updated_at = NOW()
-                                WHERE id = %s
-                            """, (piece_id,))
+                                WHERE id = ANY(%s::uuid[])
+                            """, (spare_piece_ids,))
+
+                else:
+                    # For non-piece types (FULL_ROLL, BUNDLE), sum up quantities from all items
+                    total_quantity = sum(item['quantity_scrapped'] for item in items)
+                    cursor.execute("""
+                        UPDATE inventory_stock
+                        SET quantity = quantity + %s,
+                            status = 'IN_STOCK',
+                            updated_at = NOW()
+                        WHERE id = %s
+                    """, (total_quantity, stock_id))
 
             # Mark the scrap as cancelled
             cursor.execute("""

@@ -1005,27 +1005,28 @@ def create_dispatch():
                                     WHERE id = %s
                                 """, (dispatch_id, spare_id))
                             else:
-                                # Partial dispatch - reduce piece_count and create new record for dispatched portion
+                                # Partial dispatch - reduce piece_count and create new records for dispatched portion
+                                # ONE RECORD PER PHYSICAL PIECE (foundational model)
                                 cursor.execute("""
                                     UPDATE sprinkler_spare_pieces
                                     SET piece_count = piece_count - %s, updated_at = NOW()
                                     WHERE id = %s
                                 """, (count_needed, spare_id))
 
-                                # Create new record for dispatched pieces - preserve immutable creator
-                                # dispatch_id is stored separately, created_by_transaction_id stays unchanged
-                                cursor.execute("""
-                                    INSERT INTO sprinkler_spare_pieces (
-                                        stock_id, piece_count, status, dispatch_id,
-                                        created_by_transaction_id, original_stock_id,
-                                        version, created_at, updated_at
-                                    )
-                                    SELECT stock_id, %s, 'DISPATCHED', %s,
-                                        created_by_transaction_id, original_stock_id,
-                                        1, NOW(), NOW()
-                                    FROM sprinkler_spare_pieces
-                                    WHERE id = %s
-                                """, (count_needed, dispatch_id, spare_id))
+                                # Create individual records for dispatched pieces
+                                for _ in range(count_needed):
+                                    cursor.execute("""
+                                        INSERT INTO sprinkler_spare_pieces (
+                                            stock_id, piece_count, status, dispatch_id,
+                                            created_by_transaction_id, original_stock_id,
+                                            version, created_at, updated_at
+                                        )
+                                        SELECT stock_id, 1, 'DISPATCHED', %s,
+                                            created_by_transaction_id, original_stock_id,
+                                            1, NOW(), NOW()
+                                        FROM sprinkler_spare_pieces
+                                        WHERE id = %s
+                                    """, (dispatch_id, spare_id))
 
                         # Create dispatch item
                         cursor.execute("""

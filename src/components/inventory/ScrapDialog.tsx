@@ -162,7 +162,7 @@ export const ScrapDialog = ({
     });
   });
 
-  // Group Spares by piece length
+  // Group Spares by piece length - allow selection by PIECE count, not bundle count
   const sparesByLength: Record<number, StockEntry[]> = {};
   stockEntries.filter(e => e.stock_type === 'SPARE').forEach(entry => {
     const length = Number(entry.piece_length_meters || 0);
@@ -176,10 +176,10 @@ export const ScrapDialog = ({
     groupedStock.push({
       key: `SPARE-${length}`,
       stock_type: 'SPARE',
-      label: `Spare Bundles (${length}m pieces)`,
-      description: `${totalBundles} bundles (${totalPieces} pieces total)`,
+      label: `Spare Pieces (${length}m each)`,
+      description: `${totalPieces} pieces`,
       entries,
-      total_quantity: totalBundles,
+      total_quantity: totalPieces, // Use total pieces, not bundles
       icon: <Box className="h-5 w-5 text-amber-600" />
     });
   });
@@ -242,7 +242,13 @@ export const ScrapDialog = ({
         for (const entry of group.entries) {
           if (remainingToScrap <= 0) break;
 
-          const quantityFromThisEntry = Math.min(remainingToScrap, entry.quantity);
+          // For SPARE type, user selects by pieces, not bundles
+          let quantityFromThisEntry: number;
+          if (entry.stock_type === 'SPARE') {
+            quantityFromThisEntry = Math.min(remainingToScrap, entry.piece_count || 0);
+          } else {
+            quantityFromThisEntry = Math.min(remainingToScrap, entry.quantity);
+          }
 
           const item: ScrapItem = {
             stock_id: entry.stock_id,
@@ -252,8 +258,15 @@ export const ScrapDialog = ({
           // Add piece_ids for CUT_ROLL and SPARE types
           if (entry.stock_type === 'CUT_ROLL' && entry.piece_ids) {
             item.piece_ids = entry.piece_ids.slice(0, quantityFromThisEntry);
-          } else if (entry.stock_type === 'SPARE' && entry.spare_id) {
-            item.piece_ids = [entry.spare_id];
+          } else if (entry.stock_type === 'SPARE') {
+            // For spare, always send piece_ids (backend requires it)
+            // If entry has spare_id, repeat it for the number of pieces being scrapped
+            if (entry.spare_id) {
+              item.piece_ids = Array(quantityFromThisEntry).fill(entry.spare_id);
+            } else if (entry.piece_ids) {
+              // If entry has piece_ids array, take the required number
+              item.piece_ids = entry.piece_ids.slice(0, quantityFromThisEntry);
+            }
           }
 
           items.push(item);

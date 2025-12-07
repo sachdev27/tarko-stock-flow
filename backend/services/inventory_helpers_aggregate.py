@@ -162,13 +162,18 @@ class AggregateInventoryHelper:
 
         production_txn_id = cursor.fetchone()['id']
 
-        # Create individual spare piece entries with IMMUTABLE created_by_transaction_id
+        # Create individual spare piece entries - ONE RECORD PER PHYSICAL PIECE (foundational model)
+        # This matches the return creation pattern for consistency
+        piece_number = 1
         for piece_count in spare_pieces:
-            cursor.execute("""
-                INSERT INTO sprinkler_spare_pieces (
-                    stock_id, piece_count, status, created_by_transaction_id, original_stock_id
-                ) VALUES (%s, %s, %s, %s, %s)
-            """, (stock_id, piece_count, status, production_txn_id, stock_id))
+            # Create one record for each physical piece in this group
+            for _ in range(piece_count):
+                cursor.execute("""
+                    INSERT INTO sprinkler_spare_pieces (
+                        stock_id, piece_count, status, notes, created_by_transaction_id, original_stock_id
+                    ) VALUES (%s, 1, %s, %s, %s, %s)
+                """, (stock_id, status, f'Piece {piece_number} from production', production_txn_id, stock_id))
+                piece_number += 1
 
         return stock_id
 
@@ -366,13 +371,20 @@ class AggregateInventoryHelper:
 
         transaction_id = cursor.fetchone()['id']
 
-        # Create spare piece entry with transaction_id
-        spare_piece_id = str(uuid.uuid4())
-        cursor.execute("""
-            INSERT INTO sprinkler_spare_pieces (
-                id, stock_id, piece_count, status, transaction_id
-            ) VALUES (%s, %s, %s, 'IN_STOCK', %s)
-        """, (spare_piece_id, spare_stock_id, pieces_to_split, transaction_id))
+        # Create spare piece entries - ONE RECORD PER PHYSICAL PIECE (foundational model)
+        # This matches the return creation pattern for consistency
+        spare_piece_ids = []
+        for piece_num in range(1, pieces_to_split + 1):
+            cursor.execute("""
+                INSERT INTO sprinkler_spare_pieces (
+                    stock_id, piece_count, status, notes, created_by_transaction_id, original_stock_id
+                ) VALUES (%s, 1, 'IN_STOCK', %s, %s, %s)
+                RETURNING id
+            """, (spare_stock_id, f'Piece {piece_num} from split bundle', transaction_id, spare_stock_id))
+
+            spare_piece_ids.append(cursor.fetchone()['id'])
+
+        spare_piece_id = spare_piece_ids[0] if spare_piece_ids else None
 
         # Create remaining pieces as new bundle if needed
         remaining_pieces = pieces_per_bundle - pieces_to_split
