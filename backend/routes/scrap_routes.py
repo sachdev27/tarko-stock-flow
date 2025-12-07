@@ -603,23 +603,22 @@ def get_scrap_details(scrap_id):
                 if item['stock_type'] in ['CUT_ROLL', 'SPARE']:
                     cursor.execute("""
                         SELECT
-                            id,
                             piece_type,
                             length_meters,
-                            piece_count,
+                            SUM(piece_count) as total_piece_count,
                             piece_length_meters
                         FROM scrap_pieces
                         WHERE scrap_item_id = %s
-                        ORDER BY created_at
+                        GROUP BY piece_type, length_meters, piece_length_meters
+                        ORDER BY piece_type, length_meters
                     """, (item['id'],))
 
                     pieces = cursor.fetchall()
                     item_dict['pieces'] = [
                         {
-                            'id': str(p['id']),
                             'piece_type': p['piece_type'],
                             'length_meters': float(p['length_meters']) if p['length_meters'] else None,
-                            'piece_count': p['piece_count'],
+                            'piece_count': int(p['total_piece_count']),
                             'piece_length_meters': float(p['piece_length_meters']) if p['piece_length_meters'] else None
                         }
                         for p in pieces

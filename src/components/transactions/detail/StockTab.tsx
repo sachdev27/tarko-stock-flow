@@ -9,6 +9,43 @@ interface StockTabProps {
 }
 
 export function StockTab({ transaction, isScrap }: StockTabProps) {
+  // Aggregate spare pieces stock entries before displaying
+  const aggregateStockEntries = (entries: any[]) => {
+    const aggregated: any[] = [];
+    const spareGroups = new Map<string, any[]>();
+
+    entries.forEach((entry) => {
+      if (entry.stock_type === 'SPARE' || entry.stock_type === 'SPARE_PIECES') {
+        // Group spare pieces by piece_length and status
+        const key = `${entry.stock_type}-${entry.piece_length_meters || 0}-${entry.status || 'IN_STOCK'}`;
+        if (!spareGroups.has(key)) {
+          spareGroups.set(key, []);
+        }
+        spareGroups.get(key)!.push(entry);
+      } else {
+        // Non-spare entries go through as-is
+        aggregated.push(entry);
+      }
+    });
+
+    // Convert aggregated spare groups to single entries
+    spareGroups.forEach((entries) => {
+      const totalPieces = entries.reduce((sum, e) => sum + (e.spare_piece_count || e.quantity || 1), 0);
+      const template = entries[0];
+      aggregated.push({
+        ...template,
+        quantity: entries.length, // Number of stock records
+        spare_piece_count: totalPieces, // Total pieces
+      });
+    });
+
+    return aggregated;
+  };
+
+  const stockEntries = transaction.roll_snapshot?.stock_entries
+    ? aggregateStockEntries(transaction.roll_snapshot.stock_entries)
+    : [];
+
   return (
     <div className="space-y-4 mt-4">
       <Card>
@@ -19,9 +56,9 @@ export function StockTab({ transaction, isScrap }: StockTabProps) {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {transaction.roll_snapshot?.stock_entries && transaction.roll_snapshot.stock_entries.length > 0 ? (
+          {stockEntries.length > 0 ? (
             <div className="space-y-2">
-              {transaction.roll_snapshot.stock_entries.map((entry, idx) => (
+              {stockEntries.map((entry, idx) => (
                 <div
                   key={idx}
                   className="border rounded-lg p-4 hover:bg-muted/50 transition-colors"
@@ -30,7 +67,7 @@ export function StockTab({ transaction, isScrap }: StockTabProps) {
                     <div className="font-medium text-lg">
                       {entry.stock_type === 'SPARE' || entry.stock_type === 'SPARE_PIECES' ? (
                         // Show actual piece count for spares
-                        <>{entry.spare_piece_count || entry.quantity} × {entry.stock_type.replace('_', ' ')}{entry.spare_piece_count && ` (${entry.quantity} group${entry.quantity !== 1 ? 's' : ''})`}</>
+                        <>{entry.spare_piece_count || entry.quantity} pcs × {entry.stock_type.replace('_', ' ')}</>
                       ) : (
                         <>{entry.quantity} × {entry.stock_type.replace('_', ' ')}</>
                       )}

@@ -790,18 +790,27 @@ export const ProductionHistoryTab = () => {
                           {/* Spare Pieces Details */}
                           {(item.stock_type === 'SPARE' || item.stock_type === 'SPARE_PIECES') && item.spare_pieces && (
                             <div className="text-sm space-y-1">
-                              <div>
-                                <span className="font-medium">Spare groups:</span> {item.spare_pieces.length}
-                              </div>
-                              <div className="flex flex-wrap gap-1">
-                                {item.spare_pieces.map((spare, i) => (
-                                  <Badge key={i} variant="secondary" className="text-xs">
-                                    {spare.piece_count} pcs
-                                    {spare.piece_length_meters && ` × ${spare.piece_length_meters}m`}
-                                  </Badge>
-                                ))}
-                              </div>
-                              {item.total_pieces && (
+                              {item.spare_pieces.length > 1 ? (
+                                <>
+                                  <div>
+                                    <span className="font-medium">Spare pieces by status:</span>
+                                  </div>
+                                  <div className="flex flex-wrap gap-1">
+                                    {item.spare_pieces.map((spare, i) => (
+                                      <Badge key={i} variant="secondary" className="text-xs">
+                                        {spare.status}: {spare.piece_count} pcs
+                                        {spare.piece_length_meters && ` × ${spare.piece_length_meters}m`}
+                                      </Badge>
+                                    ))}
+                                  </div>
+                                </>
+                              ) : (
+                                <div>
+                                  <span className="font-medium">Spare pieces:</span> {item.spare_pieces[0]?.piece_count || 0} pcs
+                                  {item.spare_pieces[0]?.piece_length_meters && ` × ${item.spare_pieces[0].piece_length_meters}m`}
+                                </div>
+                              )}
+                              {item.total_pieces && item.spare_pieces.length > 1 && (
                                 <div>
                                   <span className="font-medium">Total pieces:</span> {item.total_pieces}
                                 </div>
