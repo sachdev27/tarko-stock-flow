@@ -101,9 +101,27 @@ export const RetentionPoliciesTab = () => {
       </CardHeader>
 
       <CardContent className="space-y-4">
-        {policies?.map((policy: RetentionPolicy) => (
-          <Card key={policy.id} className={!policy.is_active ? 'opacity-60' : ''}>
-            <CardHeader>
+        {!policies || policies.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 px-4 border-2 border-dashed rounded-lg">
+            <Clock className="h-12 w-12 text-muted-foreground mb-4" />
+            <h3 className="text-lg font-semibold mb-2">No Retention Policies Found</h3>
+            <p className="text-sm text-muted-foreground text-center mb-6 max-w-md">
+              Retention policies are automatically created when you configure cloud backups or enable version control.
+              They control how long backups are kept before automatic deletion.
+            </p>
+            <div className="space-y-2 text-sm text-muted-foreground">
+              <p><strong>To create retention policies:</strong></p>
+              <ol className="list-decimal list-inside space-y-1 ml-4">
+                <li>Go to the <strong>Cloud Credentials</strong> tab and configure cloud storage (AWS S3/Cloudflare R2)</li>
+                <li>Or enable <strong>Version Control</strong> to create local snapshot policies</li>
+                <li>Policies will be automatically created and appear here</li>
+              </ol>
+            </div>
+          </div>
+        ) : (
+          policies.map((policy: RetentionPolicy) => (
+            <Card key={policy.id} className={!policy.is_active ? 'opacity-60' : ''}>
+              <CardHeader>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div>
@@ -226,7 +244,8 @@ export const RetentionPoliciesTab = () => {
               </div>
             </CardContent>
           </Card>
-        ))}
+        ))
+        )}
 
         {/* Edit Dialog */}
         <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
