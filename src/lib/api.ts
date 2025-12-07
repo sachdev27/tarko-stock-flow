@@ -327,7 +327,7 @@ export const versionControl = {
   getAutoSnapshotSettings: () =>
     api.get('/version-control/settings/auto-snapshot'),
 
-  updateAutoSnapshotSettings: (data: { enabled: boolean; time: string }) =>
+  updateAutoSnapshotSettings: (data: { enabled: boolean; time: string; interval?: string }) =>
     api.post('/version-control/settings/auto-snapshot', data),
 
   rollbackToSnapshot: (snapshotId: string, confirm: boolean = false) =>

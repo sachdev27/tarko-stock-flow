@@ -1083,11 +1083,19 @@ def auto_snapshot_settings():
                     WHERE setting_key = 'auto_snapshot_time'
                 """)
                 result = cursor.fetchone()
-                time = result['setting_value'] if result else '00:00'
+                time = result['setting_value'] if result else '02:00'
+
+                cursor.execute("""
+                    SELECT setting_value FROM system_settings
+                    WHERE setting_key = 'auto_snapshot_interval'
+                """)
+                result = cursor.fetchone()
+                interval = result['setting_value'] if result else 'daily'
 
                 return jsonify({
                     'enabled': enabled,
-                    'time': time
+                    'time': time,
+                    'interval': interval
                 }), 200
         except Exception as e:
             return jsonify({'error': str(e)}), 500
@@ -1095,7 +1103,8 @@ def auto_snapshot_settings():
     else:  # POST
         data = request.json or {}
         enabled = data.get('enabled', False)
-        time = data.get('time', '00:00')
+        time = data.get('time', '02:00')
+        interval = data.get('interval', 'daily')
 
         try:
             with get_db_cursor() as cursor:
@@ -1125,13 +1134,136 @@ def auto_snapshot_settings():
                     DO UPDATE SET setting_value = %s, updated_at = NOW()
                 """, (time, time))
 
+                # Update or insert auto_snapshot_interval
+                cursor.execute("""
+                    INSERT INTO system_settings (setting_key, setting_value, updated_at)
+                    VALUES ('auto_snapshot_interval', %s, NOW())
+                    ON CONFLICT (setting_key)
+                    DO UPDATE SET setting_value = %s, updated_at = NOW()
+                """, (interval, interval))
+
                 return jsonify({
                     'message': 'Auto-snapshot settings updated',
                     'enabled': enabled,
-                    'time': time
+                    'time': time,
+                    'interval': interval
                 }), 200
         except Exception as e:
             return jsonify({'error': str(e)}), 500
+
+
+@version_control_bp.route('/settings/auto-snapshot/test', methods=['POST'])
+@jwt_required_with_role('admin')
+def test_auto_snapshot():
+    """Manually trigger an auto-snapshot for testing purposes"""
+    user_id = get_jwt_identity()
+
+    try:
+        # Check if auto-snapshots are enabled
+        with get_db_cursor() as cursor:
+            cursor.execute("""
+                SELECT setting_value FROM system_settings
+                WHERE setting_key = 'auto_snapshot_enabled'
+            """)
+            result = cursor.fetchone()
+            enabled = result and result['setting_value'] == 'true'
+
+            if not enabled:
+                return jsonify({'error': 'Auto-snapshots are not enabled'}), 400
+
+            cursor.execute("""
+                SELECT setting_value FROM system_settings
+                WHERE setting_key = 'auto_snapshot_interval'
+            """)
+            result = cursor.fetchone()
+            interval = result['setting_value'] if result else 'daily'
+
+        # Create the automatic snapshot
+        snapshot_name = f"Auto-Snapshot ({interval}) - {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+
+        # Use the create_snapshot logic
+        with get_db_cursor() as cursor:
+            snapshot_data = {}
+            table_counts = {}
+
+            # Capture data from each table
+            for table in SNAPSHOT_TABLES:
+                where_clause = "WHERE deleted_at IS NULL" if table in SOFT_DELETE_TABLES else ""
+                cursor.execute(f"""
+                    SELECT json_agg(row_to_json(t.*)) as data
+                    FROM {table} t
+                    {where_clause}
+                """)
+                result = cursor.fetchone()
+                table_data = result['data'] if result and result.get('data') else []
+                snapshot_data[table] = table_data
+                table_counts[table] = len(table_data) if table_data else 0
+
+            # Calculate size
+            snapshot_json = json.dumps(snapshot_data)
+            file_size_mb = len(snapshot_json.encode('utf-8')) / (1024 * 1024)
+
+            # Insert snapshot marked as automatic
+            cursor.execute("""
+                INSERT INTO database_snapshots (
+                    snapshot_name, description, snapshot_data, table_counts,
+                    created_by, file_size_mb, is_automatic, tags, storage_path
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id, snapshot_name, created_at
+            """, (
+                snapshot_name,
+                f'Automatic snapshot (test) - {interval}',
+                json.dumps(snapshot_data),
+                json.dumps(table_counts),
+                user_id,
+                file_size_mb,
+                True,  # is_automatic
+                ['auto', 'test'],
+                str(snapshot_storage.storage_path)
+            ))
+
+            snapshot = cursor.fetchone()
+            snapshot_id = str(snapshot['id'])
+
+            # Save to local storage
+            metadata = {
+                'snapshot_id': snapshot_id,
+                'snapshot_name': snapshot_name,
+                'created_at': snapshot['created_at'].isoformat(),
+                'created_by': user_id,
+                'table_counts': table_counts,
+                'file_size_mb': file_size_mb,
+                'is_automatic': True,
+                'tags': ['auto', 'test']
+            }
+
+            saved_path = snapshot_storage.save_snapshot(snapshot_id, snapshot_data, metadata)
+
+            # Create audit log
+            actor = get_user_identity_details(user_id)
+            cursor.execute("""
+                INSERT INTO audit_logs (
+                    user_id, action_type, entity_type, entity_id,
+                    description, created_at
+                ) VALUES (%s, 'SNAPSHOT_CREATE', 'SNAPSHOT', %s, %s, NOW())
+            """, (
+                user_id,
+                snapshot_id,
+                f"{actor['name']} manually triggered automatic snapshot (test)"
+            ))
+
+            return jsonify({
+                'message': 'Test auto-snapshot created successfully',
+                'snapshot_id': snapshot_id,
+                'snapshot_name': snapshot_name,
+                'file_size_mb': file_size_mb,
+                'table_counts': table_counts,
+                'storage_path': str(saved_path)
+            }), 200
+
+    except Exception as e:
+        return jsonify({'error': f'Failed to create test snapshot: {str(e)}'}), 500
 
 
 # ==================== CLOUD STORAGE ROUTES ====================

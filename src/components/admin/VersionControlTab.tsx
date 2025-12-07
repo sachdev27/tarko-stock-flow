@@ -67,6 +67,7 @@ export const VersionControlTab = ({ snapshots, rollbackHistory, onDataChange }: 
   // Auto-snapshot state
   const [autoSnapshotEnabled, setAutoSnapshotEnabled] = useState(false);
   const [autoSnapshotTime, setAutoSnapshotTime] = useState('00:00');
+  const [autoSnapshotInterval, setAutoSnapshotInterval] = useState('daily');
 
   useEffect(() => {
     fetchCloudStatus();
@@ -88,6 +89,7 @@ export const VersionControlTab = ({ snapshots, rollbackHistory, onDataChange }: 
       const response = await versionControl.getAutoSnapshotSettings();
       setAutoSnapshotEnabled(response?.data?.enabled || response?.enabled || false);
       setAutoSnapshotTime(response?.data?.time || response?.time || '02:00');
+      setAutoSnapshotInterval(response?.data?.interval || response?.interval || 'daily');
     } catch (error: any) {
       console.error('Failed to fetch auto-snapshot settings:', error);
     }
@@ -97,12 +99,27 @@ export const VersionControlTab = ({ snapshots, rollbackHistory, onDataChange }: 
     try {
       await versionControl.updateAutoSnapshotSettings({
         enabled,
-        time: autoSnapshotTime
+        time: autoSnapshotTime,
+        interval: autoSnapshotInterval
       });
       setAutoSnapshotEnabled(enabled);
-      toast.success(`Daily auto-snapshot ${enabled ? 'enabled' : 'disabled'}${enabled && cloudStatus?.enabled ? ' with cloud sync' : ''}`);
+      toast.success(`Auto-snapshot ${enabled ? 'enabled' : 'disabled'}${enabled && cloudStatus?.enabled ? ' with cloud sync' : ''}`);
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Failed to update auto-snapshot settings');
+    }
+  };
+
+  const handleUpdateSnapshotInterval = async (interval: string) => {
+    try {
+      await versionControl.updateAutoSnapshotSettings({
+        enabled: autoSnapshotEnabled,
+        time: autoSnapshotTime,
+        interval
+      });
+      setAutoSnapshotInterval(interval);
+      toast.success('Auto-snapshot schedule updated');
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Failed to update schedule');
     }
   };
 
@@ -471,7 +488,9 @@ export const VersionControlTab = ({ snapshots, rollbackHistory, onDataChange }: 
             operationProgress={operationProgress}
             autoSnapshotEnabled={autoSnapshotEnabled}
             autoSnapshotTime={autoSnapshotTime}
+            autoSnapshotInterval={autoSnapshotInterval}
             onToggleAutoSnapshot={handleToggleAutoSnapshot}
+            onUpdateInterval={handleUpdateSnapshotInterval}
             onCreateSnapshot={() => setSnapshotDialog(true)}
             onRollback={openRollbackDialog}
             onDelete={handleDeleteSnapshot}
@@ -485,6 +504,7 @@ export const VersionControlTab = ({ snapshots, rollbackHistory, onDataChange }: 
             externalSnapshots={externalSnapshots}
             loadingSnapshots={loadingSnapshots}
             onImport={handleImportClick}
+            onDataChange={onDataChange}
           />
         </TabsContent>
 

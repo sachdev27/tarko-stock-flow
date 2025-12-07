@@ -5,11 +5,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { Switch } from '@/components/ui/switch';
-import { Database, RotateCcw, Trash2, CloudUpload, Upload, Save, HardDrive, FolderOpen, RefreshCw, FileUp, Download, Loader2 } from 'lucide-react';
+import { Database, RotateCcw, Trash2, CloudUpload, Upload, Save, HardDrive, FolderOpen, RefreshCw, FileUp, Download, Loader2, Play } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 import { useState, useEffect, useRef } from 'react';
-import { versionControl } from '@/lib/api-typed';
 import { toast } from 'sonner';
+import { versionControl } from '@/lib/api-typed';
 import type * as API from '@/types';
 
 interface BackupStorageTabProps {
@@ -24,7 +24,9 @@ interface BackupStorageTabProps {
   };
   autoSnapshotEnabled?: boolean;
   autoSnapshotTime?: string;
+  autoSnapshotInterval?: string;
   onToggleAutoSnapshot?: (enabled: boolean) => void;
+  onUpdateInterval?: (interval: string) => void;
   onCreateSnapshot: () => void;
   onRollback: (snapshot: any) => void;
   onDelete: (snapshotId: string) => void;
@@ -35,6 +37,7 @@ interface BackupStorageTabProps {
   externalSnapshots: any[];
   loadingSnapshots?: boolean;
   onImport: (snapshot?: any) => void;
+  onDataChange: () => void;
 }
 
 export const BackupStorageTab = ({
@@ -44,7 +47,9 @@ export const BackupStorageTab = ({
   operationProgress,
   autoSnapshotEnabled = false,
   autoSnapshotTime = '00:00',
+  autoSnapshotInterval = 'daily',
   onToggleAutoSnapshot,
+  onUpdateInterval,
   onCreateSnapshot,
   onRollback,
   onDelete,
@@ -55,6 +60,7 @@ export const BackupStorageTab = ({
   externalSnapshots,
   loadingSnapshots = false,
   onImport,
+  onDataChange,
 }: BackupStorageTabProps) => {
   const [selectedPath, setSelectedPath] = useState('');
   const [activeSection, setActiveSection] = useState<'local' | 'external'>('local');
@@ -287,14 +293,14 @@ export const BackupStorageTab = ({
       <CardContent>
         <div className="space-y-6">
           {/* Auto-Snapshot Toggle */}
-          <div className="p-4 border rounded-lg bg-muted/20">
+          <div className="p-4 border rounded-lg bg-muted/20 space-y-4">
             <div className="flex items-center justify-between">
               <div className="space-y-1">
                 <Label className="text-base font-semibold flex items-center gap-2">
-                  🤖 Daily Auto-Snapshot
+                  🤖 Auto-Snapshot
                 </Label>
                 <p className="text-sm text-muted-foreground">
-                  Automatically create snapshots daily at {autoSnapshotTime}
+                  Automatically create snapshots on a schedule
                   {cloudStatus?.enabled && ' and sync to cloud'}
                 </p>
               </div>
@@ -303,6 +309,66 @@ export const BackupStorageTab = ({
                 onCheckedChange={onToggleAutoSnapshot}
               />
             </div>
+
+            {autoSnapshotEnabled && onUpdateInterval && (
+              <div className="space-y-2 pt-2 border-t">
+                <Label className="text-sm font-medium">Snapshot Frequency</Label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {[
+                    { value: 'every-6h', label: 'Every 6 hours' },
+                    { value: 'every-12h', label: 'Every 12 hours' },
+                    { value: 'daily', label: 'Daily' },
+                    { value: 'every-2d', label: 'Every 2 days' },
+                    { value: 'weekly', label: 'Weekly' },
+                  ].map((preset) => (
+                    <button
+                      key={preset.value}
+                      onClick={() => onUpdateInterval(preset.value)}
+                      className={`px-3 py-2 text-sm rounded-md border transition-colors ${
+                        autoSnapshotInterval === preset.value
+                          ? 'bg-primary text-primary-foreground border-primary'
+                          : 'bg-background hover:bg-muted border-input'
+                      }`}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+                {autoSnapshotInterval === 'daily' && (
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Runs daily at {autoSnapshotTime}
+                  </p>
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => {
+                    try {
+                      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5500/api'}/version-control/settings/auto-snapshot/test`, {
+                        method: 'POST',
+                        headers: {
+                          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                          'Content-Type': 'application/json'
+                        }
+                      });
+                      const data = await response.json();
+                      if (response.ok) {
+                        toast.success(`Test snapshot created: ${data.snapshot_name}`);
+                        onDataChange();
+                      } else {
+                        toast.error(data.error || 'Failed to create test snapshot');
+                      }
+                    } catch (error: any) {
+                      toast.error('Failed to create test snapshot');
+                    }
+                  }}
+                  className="w-full sm:w-auto"
+                >
+                  <Play className="h-4 w-4 mr-2" />
+                  Test Auto-Snapshot Now
+                </Button>
+              </div>
+            )}
           </div>
 
           {/* Progress Indicator */}
