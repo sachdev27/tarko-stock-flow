@@ -83,8 +83,8 @@ def create_batch():
         # Handle number_of_bundles safely - can be None
         number_of_bundles_raw = data.get('number_of_bundles')
         number_of_bundles = int(number_of_bundles_raw) if number_of_bundles_raw not in (None, '', 'null') else 0
-        # Handle bundle_size/piece_length safely - default to 10 if both are None or empty
-        bundle_size_raw = data.get('bundle_size') or data.get('piece_length')
+        # Handle bundle_size safely - this is the number of pieces per bundle (integer)
+        bundle_size_raw = data.get('bundle_size')
         bundle_size = int(bundle_size_raw) if bundle_size_raw not in (None, '', 'null') else 10
         spare_pipes = json.loads(data.get('spare_pipes', '[]')) if isinstance(data.get('spare_pipes'), str) else data.get('spare_pipes', [])
 

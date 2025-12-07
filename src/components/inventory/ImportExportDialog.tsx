@@ -63,23 +63,145 @@ export const ImportExportDialog = ({
           'Product Type': 'HDPE Pipe',
           'Brand': 'Tarko',
           'Production Date': '2025-01-15',
-          'roll_length (m)': '100',
+          'roll_length (m)': '500',
+          'number_of_rolls': '25',
+          'cut_pieces': '',
+          'weight_per_meter (kg/m)': '0.75',
+          'PE (SDR)': '10',
+          'OD (mm)': '32',
+          'PN (bar)': '6'
+        },
+        {
+          'Product Type': 'HDPE Pipe',
+          'Brand': 'Tarko',
+          'Production Date': '2025-01-16',
+          'roll_length (m)': '500',
+          'number_of_rolls': '30',
+          'cut_pieces': '',
+          'weight_per_meter (kg/m)': '1.25',
+          'PE (SDR)': '10',
+          'OD (mm)': '40',
+          'PN (bar)': '6'
+        },
+        {
+          'Product Type': 'HDPE Pipe',
+          'Brand': 'Tarko',
+          'Production Date': '2025-01-17',
+          'roll_length (m)': '500',
+          'number_of_rolls': '20',
+          'cut_pieces': '',
+          'weight_per_meter (kg/m)': '2.10',
+          'PE (SDR)': '10',
+          'OD (mm)': '50',
+          'PN (bar)': '6'
+        },
+        {
+          'Product Type': 'HDPE Pipe',
+          'Brand': 'Tarko',
+          'Production Date': '2025-01-18',
+          'roll_length (m)': '500',
+          'number_of_rolls': '15',
+          'cut_pieces': '',
+          'weight_per_meter (kg/m)': '3.50',
+          'PE (SDR)': '10',
+          'OD (mm)': '63',
+          'PN (bar)': '6'
+        },
+        {
+          'Product Type': 'HDPE Pipe',
+          'Brand': 'Tarko',
+          'Production Date': '2025-01-19',
+          'roll_length (m)': '500',
+          'number_of_rolls': '12',
+          'cut_pieces': '',
+          'weight_per_meter (kg/m)': '5.80',
+          'PE (SDR)': '10',
+          'OD (mm)': '75',
+          'PN (bar)': '6'
+        },
+        {
+          'Product Type': 'HDPE Pipe',
+          'Brand': 'Supreme',
+          'Production Date': '2025-01-20',
+          'roll_length (m)': '400',
           'number_of_rolls': '10',
-          'weight_per_meter (kg/m)': '0.85',
-          'PE (SDR)': '100',
+          'cut_pieces': '',
+          'weight_per_meter (kg/m)': '0.95',
+          'PE (SDR)': '11',
+          'OD (mm)': '32',
+          'PN (bar)': '8'
+        },
+        {
+          'Product Type': 'HDPE Pipe',
+          'Brand': 'Supreme',
+          'Production Date': '2025-01-21',
+          'roll_length (m)': '400',
+          'number_of_rolls': '8',
+          'cut_pieces': '',
+          'weight_per_meter (kg/m)': '1.45',
+          'PE (SDR)': '11',
+          'OD (mm)': '40',
+          'PN (bar)': '8'
+        },
+        {
+          'Product Type': 'HDPE Pipe',
+          'Brand': 'Finolex',
+          'Production Date': '2025-01-22',
+          'roll_length (m)': '300',
+          'number_of_rolls': '20',
+          'cut_pieces': '',
+          'weight_per_meter (kg/m)': '0.65',
+          'PE (SDR)': '13.6',
+          'OD (mm)': '25',
+          'PN (bar)': '10'
+        },
+        {
+          'Product Type': 'HDPE Pipe',
+          'Brand': 'Finolex',
+          'Production Date': '2025-01-23',
+          'roll_length (m)': '300',
+          'number_of_rolls': '15',
+          'cut_pieces': '',
+          'weight_per_meter (kg/m)': '1.10',
+          'PE (SDR)': '13.6',
           'OD (mm)': '32',
           'PN (bar)': '10'
         },
         {
           'Product Type': 'HDPE Pipe',
+          'Brand': 'Jain',
+          'Production Date': '2025-01-24',
+          'roll_length (m)': '200',
+          'number_of_rolls': '30',
+          'cut_pieces': '',
+          'weight_per_meter (kg/m)': '0.55',
+          'PE (SDR)': '17',
+          'OD (mm)': '20',
+          'PN (bar)': '12.5'
+        },
+        {
+          'Product Type': 'HDPE Pipe',
           'Brand': 'Tarko',
-          'Production Date': '2025-01-20',
-          'roll_length (m)': '100',
-          'number_of_rolls': '8',
-          'weight_per_meter (kg/m)': '1.20',
-          'PE (SDR)': '100',
+          'Production Date': '2025-01-25',
+          'roll_length (m)': '',
+          'number_of_rolls': '',
+          'cut_pieces': '140;120;120;100',
+          'weight_per_meter (kg/m)': '0.75',
+          'PE (SDR)': '10',
+          'OD (mm)': '32',
+          'PN (bar)': '6'
+        },
+        {
+          'Product Type': 'HDPE Pipe',
+          'Brand': 'Supreme',
+          'Production Date': '2025-01-26',
+          'roll_length (m)': '',
+          'number_of_rolls': '',
+          'cut_pieces': '200;150;100;50',
+          'weight_per_meter (kg/m)': '1.25',
+          'PE (SDR)': '10',
           'OD (mm)': '40',
-          'PN (bar)': '10'
+          'PN (bar)': '6'
         }
       ];
       filename = 'hdpe_import_template.csv';
@@ -91,7 +213,8 @@ export const ImportExportDialog = ({
           'Production Date': '2025-01-10',
           'bundle_size (pcs)': '10',
           'piece_length (m)': '6',
-          'number_of_bundles': '20',
+          'number_of_bundles': '50',
+          'spare_pieces': '',
           'OD (mm)': '16',
           'PN (bar)': '4',
           'weight_per_meter (kg/m)': '0.15',
@@ -100,14 +223,145 @@ export const ImportExportDialog = ({
         {
           'Product Type': 'Sprinkler Pipe',
           'Brand': 'Tarko',
-          'Production Date': '2025-01-15',
+          'Production Date': '2025-01-11',
           'bundle_size (pcs)': '20',
           'piece_length (m)': '6',
-          'number_of_bundles': '15',
+          'number_of_bundles': '30',
+          'spare_pieces': '',
+          'OD (mm)': '16',
+          'PN (bar)': '4',
+          'weight_per_meter (kg/m)': '0.15',
+          'Type/PE': 'L'
+        },
+        {
+          'Product Type': 'Sprinkler Pipe',
+          'Brand': 'Tarko',
+          'Production Date': '2025-01-12',
+          'bundle_size (pcs)': '10',
+          'piece_length (m)': '6',
+          'number_of_bundles': '40',
+          'spare_pieces': '',
           'OD (mm)': '20',
           'PN (bar)': '4',
           'weight_per_meter (kg/m)': '0.20',
           'Type/PE': 'L'
+        },
+        {
+          'Product Type': 'Sprinkler Pipe',
+          'Brand': 'Tarko',
+          'Production Date': '2025-01-13',
+          'bundle_size (pcs)': '20',
+          'piece_length (m)': '6',
+          'number_of_bundles': '25',
+          'spare_pieces': '',
+          'OD (mm)': '20',
+          'PN (bar)': '4',
+          'weight_per_meter (kg/m)': '0.20',
+          'Type/PE': 'L'
+        },
+        {
+          'Product Type': 'Sprinkler Pipe',
+          'Brand': 'Tarko',
+          'Production Date': '2025-01-14',
+          'bundle_size (pcs)': '10',
+          'piece_length (m)': '6',
+          'number_of_bundles': '35',
+          'spare_pieces': '',
+          'OD (mm)': '25',
+          'PN (bar)': '6',
+          'weight_per_meter (kg/m)': '0.35',
+          'Type/PE': 'M'
+        },
+        {
+          'Product Type': 'Sprinkler Pipe',
+          'Brand': 'Supreme',
+          'Production Date': '2025-01-15',
+          'bundle_size (pcs)': '20',
+          'piece_length (m)': '6',
+          'number_of_bundles': '20',
+          'spare_pieces': '',
+          'OD (mm)': '25',
+          'PN (bar)': '6',
+          'weight_per_meter (kg/m)': '0.35',
+          'Type/PE': 'M'
+        },
+        {
+          'Product Type': 'Sprinkler Pipe',
+          'Brand': 'Supreme',
+          'Production Date': '2025-01-16',
+          'bundle_size (pcs)': '10',
+          'piece_length (m)': '6',
+          'number_of_bundles': '30',
+          'spare_pieces': '',
+          'OD (mm)': '32',
+          'PN (bar)': '6',
+          'weight_per_meter (kg/m)': '0.55',
+          'Type/PE': 'H'
+        },
+        {
+          'Product Type': 'Sprinkler Pipe',
+          'Brand': 'Finolex',
+          'Production Date': '2025-01-17',
+          'bundle_size (pcs)': '20',
+          'piece_length (m)': '6',
+          'number_of_bundles': '25',
+          'spare_pieces': '',
+          'OD (mm)': '32',
+          'PN (bar)': '6',
+          'weight_per_meter (kg/m)': '0.55',
+          'Type/PE': 'H'
+        },
+        {
+          'Product Type': 'Sprinkler Pipe',
+          'Brand': 'Jain',
+          'Production Date': '2025-01-18',
+          'bundle_size (pcs)': '10',
+          'piece_length (m)': '6',
+          'number_of_bundles': '40',
+          'spare_pieces': '',
+          'OD (mm)': '40',
+          'PN (bar)': '8',
+          'weight_per_meter (kg/m)': '0.85',
+          'Type/PE': 'H'
+        },
+        {
+          'Product Type': 'Sprinkler Pipe',
+          'Brand': 'Jain',
+          'Production Date': '2025-01-19',
+          'bundle_size (pcs)': '20',
+          'piece_length (m)': '6',
+          'number_of_bundles': '20',
+          'spare_pieces': '',
+          'OD (mm)': '40',
+          'PN (bar)': '8',
+          'weight_per_meter (kg/m)': '0.85',
+          'Type/PE': 'H'
+        },
+        {
+          'Product Type': 'Sprinkler Pipe',
+          'Brand': 'Tarko',
+          'Production Date': '2025-01-20',
+          'bundle_size (pcs)': '',
+          'piece_length (m)': '6',
+          'number_of_bundles': '',
+          'spare_pieces': '45',
+          'OD (mm)': '16',
+          'PN (bar)': '4',
+          'weight_per_meter (kg/m)': '0.15',
+          'Type/PE': 'L'
+        },
+        {
+          'Product Type': 'Sprinkler Pipe',
+          'Brand': 'Supreme',
+          'Production Date': '2025-01-21',
+          'bundle_size (pcs)': '',
+          'piece_length (m)': '5.8',
+          'number_of_bundles': '',
+          'spare_pieces': '30',
+          'OD (mm)': '20',
+          'PN (bar)': '6',
+          'weight_per_meter (kg/m)': '0.20',
+          'Type/PE': 'M'
         }
       ];
       filename = 'sprinkler_import_template.csv';
@@ -277,33 +531,84 @@ export const ImportExportDialog = ({
           }
 
           if (isHDPE) {
+            // HDPE: Check if full rolls or cut pieces
             const rollLength = getValue('roll_length (m)', ['roll_length', 'Roll Length (m)']);
             const numRolls = getValue('number_of_rolls', ['Number of Rolls']);
+            const cutPieces = getValue('cut_pieces', ['Cut Pieces', 'cut_pieces']);
 
-            // Calculate quantity for HDPE: rollLength * numRolls
-            const quantity = parseFloat(rollLength) * parseInt(numRolls);
+            if (cutPieces && cutPieces !== '') {
+              // Cut pieces production (semicolon or comma-separated lengths: 140;120;100)
+              const separator = cutPieces.includes(';') ? ';' : ',';
+              const lengths = cutPieces.split(separator).map(l => l.trim()).filter(l => l !== '');
+              if (lengths.length === 0) {
+                errors.push(`Row ${rowNum}: cut_pieces must contain at least one length`);
+                continue;
+              }
 
-            formData.append('roll_config_type', 'standard_rolls');
-            formData.append('quantity_based', 'false');
-            formData.append('roll_length', rollLength);
-            formData.append('length_per_roll', rollLength);
-            formData.append('number_of_rolls', numRolls);
-            formData.append('quantity', quantity.toString());
+              const totalLength = lengths.reduce((sum, len) => sum + parseFloat(len), 0);
+
+              // Backend expects cut_rolls as array of objects with 'length' property
+              const cutRollsArray = lengths.map(len => ({ length: parseFloat(len) }));
+
+              formData.append('roll_config_type', 'standard_rolls');
+              formData.append('quantity_based', 'false');
+              formData.append('number_of_rolls', '0');
+              formData.append('cut_rolls', JSON.stringify(cutRollsArray));
+              formData.append('quantity', totalLength.toString());
+            } else if (rollLength && numRolls) {
+              // Full rolls production
+              const quantity = parseFloat(rollLength) * parseInt(numRolls);
+
+              formData.append('roll_config_type', 'standard_rolls');
+              formData.append('quantity_based', 'false');
+              formData.append('roll_length', rollLength);
+              formData.append('length_per_roll', rollLength);
+              formData.append('number_of_rolls', numRolls);
+              formData.append('quantity', quantity.toString());
+            } else {
+              errors.push(`Row ${rowNum}: HDPE requires either (roll_length + number_of_rolls) or cut_pieces`);
+              continue;
+            }
           } else {
+            // Sprinkler: Check if bundles or spare pieces
             const bundleSize = getValue('bundle_size (pcs)', ['bundle_size', 'Bundle Size (pcs)']);
             const pieceLength = getValue('piece_length (m)', ['piece_length', 'Piece Length (m)']);
             const numBundles = getValue('number_of_bundles', ['Number of Bundles']);
+            const sparePieces = getValue('spare_pieces', ['Spare Pieces', 'spare_pieces']);
 
-            // Calculate quantity for Sprinkler: numBundles * bundleSize * pieceLength
-            const quantity = parseInt(numBundles) * parseInt(bundleSize) * parseFloat(pieceLength);
+            if (!pieceLength) {
+              errors.push(`Row ${rowNum}: Sprinkler requires piece_length`);
+              continue;
+            }
 
-            formData.append('roll_config_type', 'bundles');
-            formData.append('quantity_based', 'true');
-            formData.append('bundle_size', bundleSize);
-            formData.append('piece_length', pieceLength);
-            formData.append('length_per_roll', pieceLength);
-            formData.append('number_of_bundles', numBundles);
-            formData.append('quantity', quantity.toString());
+            if (sparePieces && sparePieces !== '') {
+              // Spare pieces production
+              // Backend expects spare_pipes as array of objects with 'length' property (which is actually piece count)
+              const sparePiecesArray = [{ length: parseInt(sparePieces) }];
+              const quantity = parseInt(sparePieces) * parseFloat(pieceLength);
+
+              formData.append('roll_config_type', 'bundles');
+              formData.append('quantity_based', 'true');
+              formData.append('number_of_bundles', '0');
+              formData.append('spare_pipes', JSON.stringify(sparePiecesArray));
+              formData.append('piece_length', pieceLength);
+              formData.append('length_per_roll', pieceLength);
+              formData.append('quantity', quantity.toString());
+            } else if (bundleSize && numBundles) {
+              // Bundle production
+              const quantity = parseInt(numBundles) * parseInt(bundleSize) * parseFloat(pieceLength);
+
+              formData.append('roll_config_type', 'bundles');
+              formData.append('quantity_based', 'true');
+              formData.append('bundle_size', bundleSize);
+              formData.append('piece_length', pieceLength);
+              formData.append('length_per_roll', pieceLength);
+              formData.append('number_of_bundles', numBundles);
+              formData.append('quantity', quantity.toString());
+            } else {
+              errors.push(`Row ${rowNum}: Sprinkler requires either (bundle_size + number_of_bundles) or spare_pieces`);
+              continue;
+            }
           }
 
           await productionAPI.createBatch(formData);
