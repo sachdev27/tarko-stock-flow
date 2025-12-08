@@ -46,7 +46,7 @@ def forgot_password():
                 'message': 'If an account with that email exists, a password reset link has been sent.'
             }), 200
 
-        # Rate limiting: prevent spam (max 1 request per 5 minutes)
+        # Rate limiting: prevent spam (max 1 request per 2 minutes)
         if user['last_password_reset_request']:
             last_request = user['last_password_reset_request']
             if isinstance(last_request, str):
@@ -54,7 +54,7 @@ def forgot_password():
                 last_request = parser.parse(last_request)
 
             time_since_last = datetime.now(last_request.tzinfo) - last_request
-            if time_since_last.total_seconds() < 300:  # 5 minutes
+            if time_since_last.total_seconds() < 120:  # 2 minutes
                 minutes_left = 5 - int(time_since_last.total_seconds() / 60)
                 return jsonify({
                     'error': f'Please wait {minutes_left} more minute(s) before requesting another reset.'
