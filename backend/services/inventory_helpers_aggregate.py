@@ -139,7 +139,7 @@ class AggregateInventoryHelper:
             stock_id: UUID of created stock entry
         """
         stock_id = str(uuid.uuid4())
-        total_spare_count = len(spare_pieces)
+        total_spare_count = sum(spare_pieces)  # Fixed: use total pieces, not array length
 
         cursor.execute("""
             INSERT INTO inventory_stock (
@@ -151,14 +151,13 @@ class AggregateInventoryHelper:
               total_spare_count, piece_length_meters, notes))
 
         # Create production transaction first to get transaction_id
-        total_pieces = sum(spare_pieces)
         cursor.execute("""
             INSERT INTO inventory_transactions (
                 transaction_type, to_stock_id, to_quantity, to_pieces, batch_id, notes
             ) VALUES ('PRODUCTION', %s, %s, %s, %s, %s)
             RETURNING id
-        """, (stock_id, total_spare_count, total_pieces, batch_id,
-              f'Produced {total_spare_count} spare groups ({total_pieces} pieces total)'))
+        """, (stock_id, total_spare_count, total_spare_count, batch_id,
+              f'Produced {total_spare_count} spare pieces'))
 
         production_txn_id = cursor.fetchone()['id']
 
