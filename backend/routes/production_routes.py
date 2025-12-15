@@ -315,13 +315,19 @@ def create_batch():
 
                 # Create spare pipes (aggregate with individual piece tracking)
                 if spare_pipes:
+                    # DEBUG: Log received spare_pipes data
+                    print(f"DEBUG spare_pipes received: {spare_pipes}")
+
                     # Collect all spare piece counts
                     spare_piece_counts = []
                     for spare_pipe in spare_pipes:
                         spare_count = int(spare_pipe.get('length', 1))  # 'length' field contains piece count
+                        print(f"DEBUG spare_pipe: {spare_pipe}, spare_count: {spare_count}")
                         if spare_count > 0:
                             spare_piece_counts.append(spare_count)
                             total_items += 1
+
+                    print(f"DEBUG spare_piece_counts: {spare_piece_counts}")
 
                     if spare_piece_counts:
                         InventoryHelper.create_sprinkler_spare_stock(

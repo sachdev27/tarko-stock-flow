@@ -141,6 +141,9 @@ class AggregateInventoryHelper:
         stock_id = str(uuid.uuid4())
         total_spare_count = sum(spare_pieces)  # Fixed: use total pieces, not array length
 
+        # DEBUG: Log spare pieces data
+        print(f"DEBUG create_sprinkler_spare_stock: spare_pieces={spare_pieces}, total_spare_count={total_spare_count}")
+
         cursor.execute("""
             INSERT INTO inventory_stock (
                 id, batch_id, product_variant_id, status, stock_type,
