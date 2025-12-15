@@ -120,9 +120,9 @@ BEGIN
   DELETE FROM piece_lifecycle_events
   WHERE created_at < NOW() - MAKE_INTERVAL(days => days_to_keep)
     AND event_type NOT IN ('CREATED');  -- Never delete creation events
-
+  
   GET DIAGNOSTICS deleted_count = ROW_COUNT;
-
+  
   RETURN deleted_count;
 END;
 $$;
@@ -276,20 +276,20 @@ BEGIN
   IF TG_OP = 'INSERT' THEN
     RETURN NEW;
   END IF;
-
+  
   -- On UPDATE: Prevent changing created_by_transaction_id
   IF TG_OP = 'UPDATE' THEN
-    IF OLD.created_by_transaction_id IS NOT NULL
+    IF OLD.created_by_transaction_id IS NOT NULL 
        AND NEW.created_by_transaction_id IS DISTINCT FROM OLD.created_by_transaction_id THEN
-      RAISE EXCEPTION 'created_by_transaction_id is immutable and cannot be changed. Old: %, New: %',
+      RAISE EXCEPTION 'created_by_transaction_id is immutable and cannot be changed. Old: %, New: %', 
         OLD.created_by_transaction_id, NEW.created_by_transaction_id;
     END IF;
-
+    
     -- Increment version for optimistic locking
     NEW.version = OLD.version + 1;
     NEW.updated_at = NOW();
   END IF;
-
+  
   RETURN NEW;
 END;
 $$;
@@ -366,7 +366,7 @@ BEGIN
   EXCEPTION WHEN OTHERS THEN
     skip_validation := 'false';
   END;
-
+  
   IF skip_validation = 'true' THEN
     RETURN NEW;
   END IF;
@@ -4498,124 +4498,6 @@ ALTER TABLE ONLY public.user_roles
 
 ALTER TABLE ONLY public.users
     ADD CONSTRAINT users_created_by_user_id_fkey FOREIGN KEY (created_by_user_id) REFERENCES public.users(id);
-
-
---
--- Seed Data: Units (Required for system initialization)
---
-
-INSERT INTO public.units (id, name, abbreviation, created_at, updated_at) VALUES
-('f8c19461-bfe0-40c3-b077-a42511148b28', 'Meters', 'm', '2025-11-18 02:39:37.500052+05:30', '2025-12-04 01:10:46.163998+05:30'),
-('e5d6e26d-f869-42f4-9c38-4dd7e980d8e1', 'Pieces', 'pcs', '2025-11-18 02:39:37.500052+05:30', '2025-12-04 01:10:46.163998+05:30'),
-('a4d6cb7c-7895-494e-9d22-e857f78609a8', 'Kilograms', 'kg', '2025-11-18 02:39:37.500052+05:30', '2025-12-04 01:10:46.163998+05:30'),
-('77b0cf16-13a5-4606-a3f6-17176bfcf1e9', 'Rolls', 'rolls', '2025-11-18 02:39:37.500052+05:30', '2025-12-04 01:10:46.163998+05:30')
-ON CONFLICT (id) DO NOTHING;
-
-
---
--- Seed Data: Product Types (Required for system initialization)
---
-
-INSERT INTO public.product_types (id, name, description, unit_id, parameter_schema, roll_configuration, created_at, updated_at, created_by) VALUES
-('8c7e8160-778d-418d-848b-78c55996c542',
- 'HDPE Pipe',
- 'High Density Polyethylene Pipes',
- 'f8c19461-bfe0-40c3-b077-a42511148b28',
- '[{"name": "PE", "type": "select", "required": true}, {"name": "PN", "type": "number", "required": true}, {"name": "OD", "type": "number", "unit": "mm", "required": true}]'::jsonb,
- '{"type": "standard_rolls", "options": [{"label": "500m", "value": 500}, {"label": "300m", "value": 300}], "allow_cut_rolls": true}'::jsonb,
- '2025-11-18 02:39:37.511739+05:30',
- '2025-12-04 01:10:46.163998+05:30',
- NULL),
-('280f664a-cd54-41a9-aeb0-e0cd7148acc3',
- 'Sprinkler Pipe',
- 'Irrigation Sprinkler Pipes',
- 'e5d6e26d-f869-42f4-9c38-4dd7e980d8e1',
- '[{"name": "OD", "type": "number", "unit": "mm", "required": true}, {"name": "PN", "type": "number", "required": true}, {"name": "Type", "type": "select", "required": true}]'::jsonb,
- '{"type": "bundles", "unit": "pieces", "allow_spare": true, "bundle_sizes": [10, 20], "quantity_based": true}'::jsonb,
- '2025-11-18 02:39:37.513801+05:30',
- '2025-12-04 01:10:46.163998+05:30',
- NULL)
-ON CONFLICT (id) DO NOTHING;
-
-
---
--- Add is_system flag to units table for deletion protection
---
-
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
-                   WHERE table_schema = 'public'
-                   AND table_name = 'units'
-                   AND column_name = 'is_system') THEN
-        ALTER TABLE public.units ADD COLUMN is_system BOOLEAN DEFAULT FALSE NOT NULL;
-        COMMENT ON COLUMN public.units.is_system IS 'System units cannot be deleted by users';
-    END IF;
-END $$;
-
-UPDATE public.units SET is_system = TRUE
-WHERE id IN (
-    'f8c19461-bfe0-40c3-b077-a42511148b28',
-    'e5d6e26d-f869-42f4-9c38-4dd7e980d8e1',
-    'a4d6cb7c-7895-494e-9d22-e857f78609a8',
-    '77b0cf16-13a5-4606-a3f6-17176bfcf1e9'
-);
-
-
---
--- Add is_system flag to product_types table for deletion protection
---
-
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
-                   WHERE table_schema = 'public'
-                   AND table_name = 'product_types'
-                   AND column_name = 'is_system') THEN
-        ALTER TABLE public.product_types ADD COLUMN is_system BOOLEAN DEFAULT FALSE NOT NULL;
-        COMMENT ON COLUMN public.product_types.is_system IS 'System product types cannot be deleted by users';
-    END IF;
-END $$;
-
-UPDATE public.product_types SET is_system = TRUE
-WHERE id IN (
-    '8c7e8160-778d-418d-848b-78c55996c542',
-    '280f664a-cd54-41a9-aeb0-e0cd7148acc3'
-);
-
-
---
--- Seed Data: SMTP Configuration (Pre-configured email settings)
---
-
-INSERT INTO public.smtp_config (
-    id,
-    smtp_server,
-    smtp_port,
-    smtp_email,
-    smtp_password_encrypted,
-    use_tls,
-    use_ssl,
-    from_name,
-    reply_to_email,
-    is_active,
-    created_at,
-    updated_at
-) VALUES (
-    gen_random_uuid(),
-    'smtp.gmail.com',
-    587,
-    'sandeshsachdev1@gmail.com',
-    'Z0FBQUFBQnBOUjVaZ25WMnNyWHpyakRXTWVuQjJmRTNEX3YtMDZSQzV0QUpaZ2FYY3M0Y2JRSzZrU0dUbks4X3J0MDdTOTdNeFRrZGJyYUNDTXFXZlZfMjRQTXB3UlFfTWJXbHNOQjRBVXduMFpST0hVaFBUREU9',
-    true,
-    false,
-    'Tarko Inventory',
-    'sandeshsachdev1@gmail.com',
-    true,
-    now(),
-    now()
-)
-ON CONFLICT (id) DO NOTHING;
 
 
 --
