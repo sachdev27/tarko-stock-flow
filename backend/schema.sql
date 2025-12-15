@@ -358,7 +358,19 @@ CREATE FUNCTION public.validate_spare_stock_quantity() RETURNS trigger
     AS $$
 DECLARE
   actual_piece_count INTEGER;
+  skip_validation TEXT;
 BEGIN
+  -- Check if validation should be skipped (during revert operations)
+  BEGIN
+    skip_validation := current_setting('tarko.skip_validation', true);
+  EXCEPTION WHEN OTHERS THEN
+    skip_validation := 'false';
+  END;
+
+  IF skip_validation = 'true' THEN
+    RETURN NEW;
+  END IF;
+
   -- Only validate for SPARE stock type
   IF NEW.stock_type != 'SPARE' THEN
     RETURN NEW;
@@ -914,7 +926,8 @@ CREATE TABLE public.product_types (
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     deleted_at timestamp with time zone,
     created_by uuid,
-    roll_configuration jsonb DEFAULT '{"type": "standard_rolls", "options": [{"label": "500m", "value": 500}, {"label": "300m", "value": 300}]}'::jsonb
+    roll_configuration jsonb DEFAULT '{"type": "standard_rolls", "options": [{"label": "500m", "value": 500}, {"label": "300m", "value": 300}]}'::jsonb,
+    is_system boolean DEFAULT false NOT NULL
 );
 
 
@@ -923,6 +936,13 @@ CREATE TABLE public.product_types (
 --
 
 COMMENT ON COLUMN public.product_types.roll_configuration IS 'JSON config for roll types: standard_rolls, bundles, spare_pipes, cut_rolls';
+
+
+--
+-- Name: COLUMN product_types.is_system; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.product_types.is_system IS 'System product types cannot be deleted by users';
 
 
 --
@@ -1982,6 +2002,79 @@ CREATE VIEW public.sprinkler_stock_details AS
 
 
 --
+-- Name: sync_config; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.sync_config (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    name character varying(255) NOT NULL,
+    sync_type character varying(50) NOT NULL,
+    rsync_destination text,
+    rsync_user character varying(100),
+    rsync_host character varying(255),
+    rsync_port integer DEFAULT 22,
+    ssh_key_path text,
+    cloud_provider character varying(50),
+    cloud_bucket character varying(255),
+    cloud_access_key text,
+    cloud_secret_key text,
+    cloud_endpoint text,
+    cloud_region character varying(100),
+    is_enabled boolean DEFAULT true,
+    auto_sync_enabled boolean DEFAULT false,
+    sync_interval_seconds integer DEFAULT 60,
+    sync_database_snapshots boolean DEFAULT true,
+    sync_uploads boolean DEFAULT true,
+    sync_backups boolean DEFAULT true,
+    last_sync_at timestamp with time zone,
+    last_sync_status character varying(50),
+    last_sync_error text,
+    last_sync_files_count integer,
+    last_sync_bytes_transferred bigint,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    created_by uuid,
+    sync_postgres_data boolean DEFAULT false,
+    network_mount_path text,
+    CONSTRAINT sync_config_sync_type_check CHECK (((sync_type)::text = ANY ((ARRAY['rsync'::character varying, 'network'::character varying, 'r2'::character varying, 's3'::character varying])::text[])))
+);
+
+
+--
+-- Name: TABLE sync_config; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.sync_config IS 'Configuration for continuous sync to NAS or cloud storage';
+
+
+--
+-- Name: sync_history; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.sync_history (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    sync_config_id uuid NOT NULL,
+    sync_type character varying(50) NOT NULL,
+    started_at timestamp with time zone DEFAULT now() NOT NULL,
+    completed_at timestamp with time zone,
+    status character varying(50) NOT NULL,
+    files_synced integer DEFAULT 0,
+    bytes_transferred bigint DEFAULT 0,
+    duration_seconds numeric(10,2),
+    error_message text,
+    triggered_by character varying(50) DEFAULT 'manual'::character varying,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: TABLE sync_history; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.sync_history IS 'Audit trail of all sync operations';
+
+
+--
 -- Name: system_settings; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -2073,8 +2166,16 @@ CREATE TABLE public.units (
     name text NOT NULL,
     abbreviation text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    is_system boolean DEFAULT false NOT NULL
 );
+
+
+--
+-- Name: COLUMN units.is_system; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.units.is_system IS 'System units cannot be deleted by users';
 
 
 --
@@ -2572,6 +2673,22 @@ ALTER TABLE ONLY public.smtp_config
 
 ALTER TABLE ONLY public.sprinkler_spare_pieces
     ADD CONSTRAINT sprinkler_spare_pieces_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: sync_config sync_config_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.sync_config
+    ADD CONSTRAINT sync_config_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: sync_history sync_history_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.sync_history
+    ADD CONSTRAINT sync_history_pkey PRIMARY KEY (id);
 
 
 --
@@ -3338,6 +3455,34 @@ CREATE INDEX idx_sprinkler_spare_pieces_transaction_id ON public.sprinkler_spare
 
 
 --
+-- Name: idx_sync_config_enabled; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_sync_config_enabled ON public.sync_config USING btree (is_enabled, auto_sync_enabled);
+
+
+--
+-- Name: idx_sync_config_last_sync; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_sync_config_last_sync ON public.sync_config USING btree (last_sync_at);
+
+
+--
+-- Name: idx_sync_history_config; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_sync_history_config ON public.sync_history USING btree (sync_config_id, started_at DESC);
+
+
+--
+-- Name: idx_sync_history_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_sync_history_status ON public.sync_history USING btree (status, started_at DESC);
+
+
+--
 -- Name: idx_transactions_batch; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -3601,13 +3746,6 @@ CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON public.users FOR EACH RO
 --
 
 CREATE TRIGGER update_vehicles_updated_at BEFORE UPDATE ON public.vehicles FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
-
-
---
--- Name: inventory_stock validate_spare_stock_quantity_trigger; Type: TRIGGER; Schema: public; Owner: -
---
-
-CREATE CONSTRAINT TRIGGER validate_spare_stock_quantity_trigger AFTER UPDATE ON public.inventory_stock DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN (((new.stock_type = 'SPARE'::text) AND (old.quantity IS DISTINCT FROM new.quantity))) EXECUTE FUNCTION public.validate_spare_stock_quantity();
 
 
 --
@@ -4259,6 +4397,22 @@ ALTER TABLE ONLY public.sprinkler_spare_pieces
 
 
 --
+-- Name: sync_config sync_config_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.sync_config
+    ADD CONSTRAINT sync_config_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id);
+
+
+--
+-- Name: sync_history sync_history_sync_config_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.sync_history
+    ADD CONSTRAINT sync_history_sync_config_id_fkey FOREIGN KEY (sync_config_id) REFERENCES public.sync_config(id) ON DELETE CASCADE;
+
+
+--
 -- Name: transactions transactions_batch_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -4467,3 +4621,4 @@ ON CONFLICT (id) DO NOTHING;
 --
 -- PostgreSQL database dump complete
 --
+
