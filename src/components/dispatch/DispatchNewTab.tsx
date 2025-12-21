@@ -333,9 +333,7 @@ export const DispatchNewTab = () => {
         bill_to_id: billToId || undefined,
         transport_id: transportId || undefined,
         vehicle_id: vehicleId || undefined,
-        dispatch_date: dispatchDate ?
-          `${dispatchDate.getFullYear()}-${String(dispatchDate.getMonth() + 1).padStart(2, '0')}-${String(dispatchDate.getDate()).padStart(2, '0')}`
-          : undefined,
+        dispatch_date: dispatchDate ? dispatchDate.toISOString() : undefined,
         notes: notes || undefined,
         items
       });
