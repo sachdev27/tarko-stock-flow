@@ -260,14 +260,15 @@ def create_batch():
                 # Create cut rolls (aggregate with individual piece tracking)
                 if cut_rolls:
                     # Create one CUT_ROLL stock entry
+                    # Initialize with quantity=0, auto_update trigger will set based on piece records
                     cut_stock_id = str(uuid.uuid4())
                     cursor.execute("""
                         INSERT INTO inventory_stock (
                             id, batch_id, product_variant_id, status, stock_type,
                             quantity, notes
-                        ) VALUES (%s, %s, %s, 'IN_STOCK', 'CUT_ROLL', %s, %s)
+                        ) VALUES (%s, %s, %s, 'IN_STOCK', 'CUT_ROLL', 0, %s)
                         RETURNING id
-                    """, (cut_stock_id, batch_id, variant_id, len(cut_rolls),
+                    """, (cut_stock_id, batch_id, variant_id,
                           f'{len(cut_rolls)} cut rolls from production'))
 
                     # Create production transaction first to get transaction_id

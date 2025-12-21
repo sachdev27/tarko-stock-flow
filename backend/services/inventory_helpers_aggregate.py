@@ -144,14 +144,15 @@ class AggregateInventoryHelper:
         # DEBUG: Log spare pieces data
         print(f"DEBUG create_sprinkler_spare_stock: spare_pieces={spare_pieces}, total_spare_count={total_spare_count}")
 
+        # Initialize with quantity=0, auto_update trigger will set based on piece records
         cursor.execute("""
             INSERT INTO inventory_stock (
                 id, batch_id, product_variant_id, status, stock_type,
                 quantity, piece_length_meters, notes
-            ) VALUES (%s, %s, %s, %s, 'SPARE', %s, %s, %s)
+            ) VALUES (%s, %s, %s, %s, 'SPARE', 0, %s, %s)
             RETURNING id
         """, (stock_id, batch_id, product_variant_id, status,
-              total_spare_count, piece_length_meters, notes))
+              piece_length_meters, notes))
 
         # Create production transaction first to get transaction_id
         cursor.execute("""

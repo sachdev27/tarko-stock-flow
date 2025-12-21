@@ -120,9 +120,9 @@ BEGIN
   DELETE FROM piece_lifecycle_events
   WHERE created_at < NOW() - MAKE_INTERVAL(days => days_to_keep)
     AND event_type NOT IN ('CREATED');  -- Never delete creation events
-  
+
   GET DIAGNOSTICS deleted_count = ROW_COUNT;
-  
+
   RETURN deleted_count;
 END;
 $$;
@@ -276,20 +276,20 @@ BEGIN
   IF TG_OP = 'INSERT' THEN
     RETURN NEW;
   END IF;
-  
+
   -- On UPDATE: Prevent changing created_by_transaction_id
   IF TG_OP = 'UPDATE' THEN
-    IF OLD.created_by_transaction_id IS NOT NULL 
+    IF OLD.created_by_transaction_id IS NOT NULL
        AND NEW.created_by_transaction_id IS DISTINCT FROM OLD.created_by_transaction_id THEN
-      RAISE EXCEPTION 'created_by_transaction_id is immutable and cannot be changed. Old: %, New: %', 
+      RAISE EXCEPTION 'created_by_transaction_id is immutable and cannot be changed. Old: %, New: %',
         OLD.created_by_transaction_id, NEW.created_by_transaction_id;
     END IF;
-    
+
     -- Increment version for optimistic locking
     NEW.version = OLD.version + 1;
     NEW.updated_at = NOW();
   END IF;
-  
+
   RETURN NEW;
 END;
 $$;
@@ -358,6 +358,7 @@ CREATE FUNCTION public.validate_spare_stock_quantity() RETURNS trigger
     AS $$
 DECLARE
   actual_piece_count INTEGER;
+  current_quantity INTEGER;
   skip_validation TEXT;
 BEGIN
   -- Check if validation should be skipped (during revert operations)
@@ -366,7 +367,7 @@ BEGIN
   EXCEPTION WHEN OTHERS THEN
     skip_validation := 'false';
   END;
-  
+
   IF skip_validation = 'true' THEN
     RETURN NEW;
   END IF;
@@ -376,6 +377,12 @@ BEGIN
     RETURN NEW;
   END IF;
 
+  -- Get CURRENT stock quantity (not NEW.quantity which is from the UPDATE event)
+  -- This is critical for DEFERRED triggers that see stale NEW values
+  SELECT quantity INTO current_quantity
+  FROM inventory_stock
+  WHERE id = NEW.id;
+
   -- Get actual COUNT of spare pieces (one record per piece)
   SELECT COUNT(*) INTO actual_piece_count
   FROM sprinkler_spare_pieces
@@ -383,10 +390,10 @@ BEGIN
     AND status = 'IN_STOCK'
     AND deleted_at IS NULL;
 
-  -- Validate quantity matches actual piece count
-  IF NEW.quantity != actual_piece_count THEN
+  -- Validate current quantity matches actual piece count
+  IF current_quantity != actual_piece_count THEN
     RAISE EXCEPTION 'SPARE stock quantity validation failed. Stock quantity: %, Actual pieces: %. Stock ID: %',
-      NEW.quantity, actual_piece_count, NEW.id;
+      current_quantity, actual_piece_count, NEW.id;
   END IF;
 
   RETURN NEW;
@@ -4503,4 +4510,3 @@ ALTER TABLE ONLY public.users
 --
 -- PostgreSQL database dump complete
 --
-
