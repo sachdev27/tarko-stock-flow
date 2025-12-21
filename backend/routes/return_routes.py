@@ -77,14 +77,16 @@ def create_return():
                 return_number = f"RET-{datetime.now().year}-001"
 
             # Create return record
+            # Append +05:30 to tell PostgreSQL the input is in IST
+            return_date_with_tz = f"{return_date}+05:30" if return_date else None
             cursor.execute("""
                 INSERT INTO returns (
                     return_number, customer_id, return_date, notes,
                     status, created_by
                 )
-                VALUES (%s, %s, %s, %s, 'RECEIVED', %s)
+                VALUES (%s, %s, COALESCE(%s::timestamptz, NOW()), %s, 'RECEIVED', %s)
                 RETURNING id, return_number
-            """, (return_number, customer_id, return_date, notes, user_id))
+            """, (return_number, customer_id, return_date_with_tz, notes, user_id))
 
             return_record = cursor.fetchone()
             return_id = return_record['id']
@@ -236,7 +238,10 @@ def create_return():
                     for length, roll_group in rolls_by_length.items():
                         stock_type = 'FULL_ROLL' if item_type == 'FULL_ROLL' else 'CUT_ROLL'
 
-                        # Create stock entry (pieces will be created after transaction exists)
+                        # Create stock entry with appropriate initial quantity
+                        # For CUT_ROLL: start at 0, auto_update trigger will set based on piece records
+                        # For FULL_ROLL: set actual count since no piece records exist
+                        initial_quantity = 0 if item_type == 'CUT_ROLL' else len(roll_group)
                         cursor.execute("""
                             INSERT INTO inventory_stock (
                                 batch_id, product_variant_id, status, stock_type,
@@ -244,7 +249,7 @@ def create_return():
                             )
                             VALUES (%s, %s, 'IN_STOCK', %s, %s, %s, %s)
                             RETURNING id
-                        """, (batch_id, product_variant_id, stock_type, len(roll_group), length,
+                        """, (batch_id, product_variant_id, stock_type, initial_quantity, length,
                               f'{len(roll_group)} rolls of {length}m each from return {return_number}'))
 
                         stock = cursor.fetchone()
@@ -347,15 +352,16 @@ def create_return():
                     return_item = cursor.fetchone()
                     return_item_id = return_item['id']
 
-                    # Create stock entry with actual piece count as quantity
+                    # Create stock entry with quantity=0 (auto_update trigger will set correct value)
+                    # Piece records are the source of truth for SPARE stock
                     cursor.execute("""
                         INSERT INTO inventory_stock (
                             batch_id, product_variant_id, status, stock_type,
                             quantity, piece_length_meters, notes
                         )
-                        VALUES (%s, %s, 'IN_STOCK', 'SPARE', %s, %s, %s)
+                        VALUES (%s, %s, 'IN_STOCK', 'SPARE', 0, %s, %s)
                         RETURNING id
-                    """, (batch_id, product_variant_id, piece_count, piece_length,
+                    """, (batch_id, product_variant_id, piece_length,
                           f'{piece_count} spare pieces from return {return_number}'))
 
                     stock = cursor.fetchone()

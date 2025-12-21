@@ -358,11 +358,30 @@ CREATE FUNCTION public.validate_spare_stock_quantity() RETURNS trigger
     AS $$
 DECLARE
   actual_piece_count INTEGER;
+  current_quantity INTEGER;
+  skip_validation TEXT;
 BEGIN
+  -- Check if validation should be skipped (during revert operations)
+  BEGIN
+    skip_validation := current_setting('tarko.skip_validation', true);
+  EXCEPTION WHEN OTHERS THEN
+    skip_validation := 'false';
+  END;
+
+  IF skip_validation = 'true' THEN
+    RETURN NEW;
+  END IF;
+
   -- Only validate for SPARE stock type
   IF NEW.stock_type != 'SPARE' THEN
     RETURN NEW;
   END IF;
+
+  -- Get CURRENT stock quantity (not NEW.quantity which is from the UPDATE event)
+  -- This is critical for DEFERRED triggers that see stale NEW values
+  SELECT quantity INTO current_quantity
+  FROM inventory_stock
+  WHERE id = NEW.id;
 
   -- Get actual COUNT of spare pieces (one record per piece)
   SELECT COUNT(*) INTO actual_piece_count
@@ -371,10 +390,10 @@ BEGIN
     AND status = 'IN_STOCK'
     AND deleted_at IS NULL;
 
-  -- Validate quantity matches actual piece count
-  IF NEW.quantity != actual_piece_count THEN
+  -- Validate current quantity matches actual piece count
+  IF current_quantity != actual_piece_count THEN
     RAISE EXCEPTION 'SPARE stock quantity validation failed. Stock quantity: %, Actual pieces: %. Stock ID: %',
-      NEW.quantity, actual_piece_count, NEW.id;
+      current_quantity, actual_piece_count, NEW.id;
   END IF;
 
   RETURN NEW;
@@ -821,7 +840,7 @@ CREATE TABLE public.dispatches (
     transport_id uuid,
     vehicle_id uuid,
     invoice_number text,
-    dispatch_date date DEFAULT CURRENT_DATE NOT NULL,
+    dispatch_date timestamp with time zone DEFAULT now() NOT NULL,
     notes text,
     total_amount numeric(15,2),
     status text DEFAULT 'PENDING'::text,
@@ -914,7 +933,8 @@ CREATE TABLE public.product_types (
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
     deleted_at timestamp with time zone,
     created_by uuid,
-    roll_configuration jsonb DEFAULT '{"type": "standard_rolls", "options": [{"label": "500m", "value": 500}, {"label": "300m", "value": 300}]}'::jsonb
+    roll_configuration jsonb DEFAULT '{"type": "standard_rolls", "options": [{"label": "500m", "value": 500}, {"label": "300m", "value": 300}]}'::jsonb,
+    is_system boolean DEFAULT false NOT NULL
 );
 
 
@@ -923,6 +943,13 @@ CREATE TABLE public.product_types (
 --
 
 COMMENT ON COLUMN public.product_types.roll_configuration IS 'JSON config for roll types: standard_rolls, bundles, spare_pipes, cut_rolls';
+
+
+--
+-- Name: COLUMN product_types.is_system; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.product_types.is_system IS 'System product types cannot be deleted by users';
 
 
 --
@@ -1631,7 +1658,7 @@ CREATE TABLE public.returns (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     return_number text NOT NULL,
     customer_id uuid NOT NULL,
-    return_date date DEFAULT CURRENT_DATE NOT NULL,
+    return_date timestamp with time zone DEFAULT now() NOT NULL,
     notes text,
     total_amount numeric(15,2),
     status text DEFAULT 'RECEIVED'::text,
@@ -1982,6 +2009,79 @@ CREATE VIEW public.sprinkler_stock_details AS
 
 
 --
+-- Name: sync_config; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.sync_config (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    name character varying(255) NOT NULL,
+    sync_type character varying(50) NOT NULL,
+    rsync_destination text,
+    rsync_user character varying(100),
+    rsync_host character varying(255),
+    rsync_port integer DEFAULT 22,
+    ssh_key_path text,
+    cloud_provider character varying(50),
+    cloud_bucket character varying(255),
+    cloud_access_key text,
+    cloud_secret_key text,
+    cloud_endpoint text,
+    cloud_region character varying(100),
+    is_enabled boolean DEFAULT true,
+    auto_sync_enabled boolean DEFAULT false,
+    sync_interval_seconds integer DEFAULT 60,
+    sync_database_snapshots boolean DEFAULT true,
+    sync_uploads boolean DEFAULT true,
+    sync_backups boolean DEFAULT true,
+    last_sync_at timestamp with time zone,
+    last_sync_status character varying(50),
+    last_sync_error text,
+    last_sync_files_count integer,
+    last_sync_bytes_transferred bigint,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    created_by uuid,
+    sync_postgres_data boolean DEFAULT false,
+    network_mount_path text,
+    CONSTRAINT sync_config_sync_type_check CHECK (((sync_type)::text = ANY ((ARRAY['rsync'::character varying, 'network'::character varying, 'r2'::character varying, 's3'::character varying])::text[])))
+);
+
+
+--
+-- Name: TABLE sync_config; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.sync_config IS 'Configuration for continuous sync to NAS or cloud storage';
+
+
+--
+-- Name: sync_history; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.sync_history (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    sync_config_id uuid NOT NULL,
+    sync_type character varying(50) NOT NULL,
+    started_at timestamp with time zone DEFAULT now() NOT NULL,
+    completed_at timestamp with time zone,
+    status character varying(50) NOT NULL,
+    files_synced integer DEFAULT 0,
+    bytes_transferred bigint DEFAULT 0,
+    duration_seconds numeric(10,2),
+    error_message text,
+    triggered_by character varying(50) DEFAULT 'manual'::character varying,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: TABLE sync_history; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.sync_history IS 'Audit trail of all sync operations';
+
+
+--
 -- Name: system_settings; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -2073,8 +2173,16 @@ CREATE TABLE public.units (
     name text NOT NULL,
     abbreviation text NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    is_system boolean DEFAULT false NOT NULL
 );
+
+
+--
+-- Name: COLUMN units.is_system; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.units.is_system IS 'System units cannot be deleted by users';
 
 
 --
@@ -2572,6 +2680,22 @@ ALTER TABLE ONLY public.smtp_config
 
 ALTER TABLE ONLY public.sprinkler_spare_pieces
     ADD CONSTRAINT sprinkler_spare_pieces_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: sync_config sync_config_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.sync_config
+    ADD CONSTRAINT sync_config_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: sync_history sync_history_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.sync_history
+    ADD CONSTRAINT sync_history_pkey PRIMARY KEY (id);
 
 
 --
@@ -3338,6 +3462,34 @@ CREATE INDEX idx_sprinkler_spare_pieces_transaction_id ON public.sprinkler_spare
 
 
 --
+-- Name: idx_sync_config_enabled; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_sync_config_enabled ON public.sync_config USING btree (is_enabled, auto_sync_enabled);
+
+
+--
+-- Name: idx_sync_config_last_sync; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_sync_config_last_sync ON public.sync_config USING btree (last_sync_at);
+
+
+--
+-- Name: idx_sync_history_config; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_sync_history_config ON public.sync_history USING btree (sync_config_id, started_at DESC);
+
+
+--
+-- Name: idx_sync_history_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_sync_history_status ON public.sync_history USING btree (status, started_at DESC);
+
+
+--
 -- Name: idx_transactions_batch; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -3601,13 +3753,6 @@ CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON public.users FOR EACH RO
 --
 
 CREATE TRIGGER update_vehicles_updated_at BEFORE UPDATE ON public.vehicles FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
-
-
---
--- Name: inventory_stock validate_spare_stock_quantity_trigger; Type: TRIGGER; Schema: public; Owner: -
---
-
-CREATE CONSTRAINT TRIGGER validate_spare_stock_quantity_trigger AFTER UPDATE ON public.inventory_stock DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN (((new.stock_type = 'SPARE'::text) AND (old.quantity IS DISTINCT FROM new.quantity))) EXECUTE FUNCTION public.validate_spare_stock_quantity();
 
 
 --
@@ -4259,6 +4404,22 @@ ALTER TABLE ONLY public.sprinkler_spare_pieces
 
 
 --
+-- Name: sync_config sync_config_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.sync_config
+    ADD CONSTRAINT sync_config_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id);
+
+
+--
+-- Name: sync_history sync_history_sync_config_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.sync_history
+    ADD CONSTRAINT sync_history_sync_config_id_fkey FOREIGN KEY (sync_config_id) REFERENCES public.sync_config(id) ON DELETE CASCADE;
+
+
+--
 -- Name: transactions transactions_batch_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -4344,124 +4505,6 @@ ALTER TABLE ONLY public.user_roles
 
 ALTER TABLE ONLY public.users
     ADD CONSTRAINT users_created_by_user_id_fkey FOREIGN KEY (created_by_user_id) REFERENCES public.users(id);
-
-
---
--- Seed Data: Units (Required for system initialization)
---
-
-INSERT INTO public.units (id, name, abbreviation, created_at, updated_at) VALUES
-('f8c19461-bfe0-40c3-b077-a42511148b28', 'Meters', 'm', '2025-11-18 02:39:37.500052+05:30', '2025-12-04 01:10:46.163998+05:30'),
-('e5d6e26d-f869-42f4-9c38-4dd7e980d8e1', 'Pieces', 'pcs', '2025-11-18 02:39:37.500052+05:30', '2025-12-04 01:10:46.163998+05:30'),
-('a4d6cb7c-7895-494e-9d22-e857f78609a8', 'Kilograms', 'kg', '2025-11-18 02:39:37.500052+05:30', '2025-12-04 01:10:46.163998+05:30'),
-('77b0cf16-13a5-4606-a3f6-17176bfcf1e9', 'Rolls', 'rolls', '2025-11-18 02:39:37.500052+05:30', '2025-12-04 01:10:46.163998+05:30')
-ON CONFLICT (id) DO NOTHING;
-
-
---
--- Seed Data: Product Types (Required for system initialization)
---
-
-INSERT INTO public.product_types (id, name, description, unit_id, parameter_schema, roll_configuration, created_at, updated_at, created_by) VALUES
-('8c7e8160-778d-418d-848b-78c55996c542',
- 'HDPE Pipe',
- 'High Density Polyethylene Pipes',
- 'f8c19461-bfe0-40c3-b077-a42511148b28',
- '[{"name": "PE", "type": "select", "required": true}, {"name": "PN", "type": "number", "required": true}, {"name": "OD", "type": "number", "unit": "mm", "required": true}]'::jsonb,
- '{"type": "standard_rolls", "options": [{"label": "500m", "value": 500}, {"label": "300m", "value": 300}], "allow_cut_rolls": true}'::jsonb,
- '2025-11-18 02:39:37.511739+05:30',
- '2025-12-04 01:10:46.163998+05:30',
- NULL),
-('280f664a-cd54-41a9-aeb0-e0cd7148acc3',
- 'Sprinkler Pipe',
- 'Irrigation Sprinkler Pipes',
- 'e5d6e26d-f869-42f4-9c38-4dd7e980d8e1',
- '[{"name": "OD", "type": "number", "unit": "mm", "required": true}, {"name": "PN", "type": "number", "required": true}, {"name": "Type", "type": "select", "required": true}]'::jsonb,
- '{"type": "bundles", "unit": "pieces", "allow_spare": true, "bundle_sizes": [10, 20], "quantity_based": true}'::jsonb,
- '2025-11-18 02:39:37.513801+05:30',
- '2025-12-04 01:10:46.163998+05:30',
- NULL)
-ON CONFLICT (id) DO NOTHING;
-
-
---
--- Add is_system flag to units table for deletion protection
---
-
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
-                   WHERE table_schema = 'public'
-                   AND table_name = 'units'
-                   AND column_name = 'is_system') THEN
-        ALTER TABLE public.units ADD COLUMN is_system BOOLEAN DEFAULT FALSE NOT NULL;
-        COMMENT ON COLUMN public.units.is_system IS 'System units cannot be deleted by users';
-    END IF;
-END $$;
-
-UPDATE public.units SET is_system = TRUE
-WHERE id IN (
-    'f8c19461-bfe0-40c3-b077-a42511148b28',
-    'e5d6e26d-f869-42f4-9c38-4dd7e980d8e1',
-    'a4d6cb7c-7895-494e-9d22-e857f78609a8',
-    '77b0cf16-13a5-4606-a3f6-17176bfcf1e9'
-);
-
-
---
--- Add is_system flag to product_types table for deletion protection
---
-
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
-                   WHERE table_schema = 'public'
-                   AND table_name = 'product_types'
-                   AND column_name = 'is_system') THEN
-        ALTER TABLE public.product_types ADD COLUMN is_system BOOLEAN DEFAULT FALSE NOT NULL;
-        COMMENT ON COLUMN public.product_types.is_system IS 'System product types cannot be deleted by users';
-    END IF;
-END $$;
-
-UPDATE public.product_types SET is_system = TRUE
-WHERE id IN (
-    '8c7e8160-778d-418d-848b-78c55996c542',
-    '280f664a-cd54-41a9-aeb0-e0cd7148acc3'
-);
-
-
---
--- Seed Data: SMTP Configuration (Pre-configured email settings)
---
-
-INSERT INTO public.smtp_config (
-    id,
-    smtp_server,
-    smtp_port,
-    smtp_email,
-    smtp_password_encrypted,
-    use_tls,
-    use_ssl,
-    from_name,
-    reply_to_email,
-    is_active,
-    created_at,
-    updated_at
-) VALUES (
-    gen_random_uuid(),
-    'smtp.gmail.com',
-    587,
-    'sandeshsachdev1@gmail.com',
-    'Z0FBQUFBQnBOUjVaZ25WMnNyWHpyakRXTWVuQjJmRTNEX3YtMDZSQzV0QUpaZ2FYY3M0Y2JRSzZrU0dUbks4X3J0MDdTOTdNeFRrZGJyYUNDTXFXZlZfMjRQTXB3UlFfTWJXbHNOQjRBVXduMFpST0hVaFBUREU9',
-    true,
-    false,
-    'Tarko Inventory',
-    'sandeshsachdev1@gmail.com',
-    true,
-    now(),
-    now()
-)
-ON CONFLICT (id) DO NOTHING;
 
 
 --

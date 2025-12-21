@@ -59,10 +59,10 @@ export const ReturnDetailsSection = ({
           />
         </div>
 
-        {/* Return Date */}
+        {/* Return Date & Time */}
         <div>
           <Label>
-            Return Date <span className="text-red-500">*</span>
+            Return Date & Time <span className="text-red-500">*</span>
           </Label>
           <Popover>
             <PopoverTrigger asChild>
@@ -74,16 +74,57 @@ export const ReturnDetailsSection = ({
                 )}
               >
                 <CalendarIcon className="mr-2 h-4 w-4" />
-                {returnDate ? format(returnDate, "PPP") : <span>Pick a date</span>}
+                {returnDate ? format(returnDate, "PPP p") : <span>Pick date & time</span>}
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-auto p-0">
-              <Calendar
-                mode="single"
-                selected={returnDate}
-                onSelect={(date) => date && onReturnDateChange(date)}
-                initialFocus
-              />
+              <div className="space-y-3">
+                <Calendar
+                  mode="single"
+                  selected={returnDate}
+                  onSelect={(date) => {
+                    if (date) {
+                      const newDate = new Date(date);
+                      newDate.setHours(returnDate.getHours());
+                      newDate.setMinutes(returnDate.getMinutes());
+                      onReturnDateChange(newDate);
+                    }
+                  }}
+                  initialFocus
+                />
+                <div className="px-3 pb-3 space-y-2">
+                  <Label className="text-xs">Time</Label>
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      min="0"
+                      max="23"
+                      value={returnDate.getHours()}
+                      onChange={(e) => {
+                        const newDate = new Date(returnDate);
+                        newDate.setHours(parseInt(e.target.value) || 0);
+                        onReturnDateChange(newDate);
+                      }}
+                      className="w-16 px-2 py-1 text-sm border rounded"
+                      placeholder="HH"
+                    />
+                    <span className="self-center">:</span>
+                    <input
+                      type="number"
+                      min="0"
+                      max="59"
+                      value={returnDate.getMinutes()}
+                      onChange={(e) => {
+                        const newDate = new Date(returnDate);
+                        newDate.setMinutes(parseInt(e.target.value) || 0);
+                        onReturnDateChange(newDate);
+                      }}
+                      className="w-16 px-2 py-1 text-sm border rounded"
+                      placeholder="MM"
+                    />
+                  </div>
+                </div>
+              </div>
             </PopoverContent>
           </Popover>
         </div>

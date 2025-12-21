@@ -10,7 +10,7 @@ const Dispatch = () => {
 
   return (
     <Layout>
-      <div className="space-y-6">
+      <div className="space-y-4 md:space-y-6 p-4 md:p-6">
         <div>
           <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
             <TruckIcon className="h-8 w-8" />

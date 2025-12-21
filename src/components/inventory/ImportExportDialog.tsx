@@ -209,7 +209,7 @@ export const ImportExportDialog = ({
       template = [
         {
           'Product Type': 'Sprinkler Pipe',
-          'Brand': 'Tarko',
+          'Brand': 'Tarko Gold',
           'Production Date': '2025-01-10',
           'bundle_size (pcs)': '10',
           'piece_length (m)': '6',
@@ -222,7 +222,7 @@ export const ImportExportDialog = ({
         },
         {
           'Product Type': 'Sprinkler Pipe',
-          'Brand': 'Tarko',
+          'Brand': 'Tarko Gold',
           'Production Date': '2025-01-11',
           'bundle_size (pcs)': '20',
           'piece_length (m)': '6',
@@ -235,7 +235,7 @@ export const ImportExportDialog = ({
         },
         {
           'Product Type': 'Sprinkler Pipe',
-          'Brand': 'Tarko',
+          'Brand': 'Tarko Gold',
           'Production Date': '2025-01-12',
           'bundle_size (pcs)': '10',
           'piece_length (m)': '6',
@@ -248,7 +248,7 @@ export const ImportExportDialog = ({
         },
         {
           'Product Type': 'Sprinkler Pipe',
-          'Brand': 'Tarko',
+          'Brand': 'Tarko Gold',
           'Production Date': '2025-01-13',
           'bundle_size (pcs)': '20',
           'piece_length (m)': '6',
@@ -261,7 +261,7 @@ export const ImportExportDialog = ({
         },
         {
           'Product Type': 'Sprinkler Pipe',
-          'Brand': 'Tarko',
+          'Brand': 'Tarko Gold',
           'Production Date': '2025-01-14',
           'bundle_size (pcs)': '10',
           'piece_length (m)': '6',
@@ -270,11 +270,11 @@ export const ImportExportDialog = ({
           'OD (mm)': '25',
           'PN (bar)': '6',
           'weight_per_meter (kg/m)': '0.35',
-          'Type/PE': 'M'
+          'Type/PE': 'C'
         },
         {
           'Product Type': 'Sprinkler Pipe',
-          'Brand': 'Tarko',
+          'Brand': 'Tarko Gold',
           'Production Date': '2025-01-15',
           'bundle_size (pcs)': '20',
           'piece_length (m)': '6',
@@ -283,11 +283,11 @@ export const ImportExportDialog = ({
           'OD (mm)': '25',
           'PN (bar)': '6',
           'weight_per_meter (kg/m)': '0.35',
-          'Type/PE': 'M'
+          'Type/PE': 'C'
         },
         {
           'Product Type': 'Sprinkler Pipe',
-          'Brand': 'Tarko',
+          'Brand': 'Tarko Gold',
           'Production Date': '2025-01-16',
           'bundle_size (pcs)': '10',
           'piece_length (m)': '6',
@@ -296,11 +296,11 @@ export const ImportExportDialog = ({
           'OD (mm)': '32',
           'PN (bar)': '6',
           'weight_per_meter (kg/m)': '0.55',
-          'Type/PE': 'H'
+          'Type/PE': 'C'
         },
         {
           'Product Type': 'Sprinkler Pipe',
-          'Brand': 'Tarko',
+          'Brand': 'Tarko Gold',
           'Production Date': '2025-01-17',
           'bundle_size (pcs)': '20',
           'piece_length (m)': '6',
@@ -309,11 +309,11 @@ export const ImportExportDialog = ({
           'OD (mm)': '32',
           'PN (bar)': '6',
           'weight_per_meter (kg/m)': '0.55',
-          'Type/PE': 'H'
+          'Type/PE': 'C'
         },
         {
           'Product Type': 'Sprinkler Pipe',
-          'Brand': 'Tarko',
+          'Brand': 'Tarko Gold',
           'Production Date': '2025-01-18',
           'bundle_size (pcs)': '10',
           'piece_length (m)': '6',
@@ -322,11 +322,11 @@ export const ImportExportDialog = ({
           'OD (mm)': '40',
           'PN (bar)': '8',
           'weight_per_meter (kg/m)': '0.85',
-          'Type/PE': 'H'
+          'Type/PE': 'C'
         },
         {
           'Product Type': 'Sprinkler Pipe',
-          'Brand': 'Tarko',
+          'Brand': 'Tarko Gold',
           'Production Date': '2025-01-19',
           'bundle_size (pcs)': '20',
           'piece_length (m)': '6',
@@ -335,33 +335,33 @@ export const ImportExportDialog = ({
           'OD (mm)': '40',
           'PN (bar)': '8',
           'weight_per_meter (kg/m)': '0.85',
-          'Type/PE': 'H'
+          'Type/PE': 'C'
         },
         {
           'Product Type': 'Sprinkler Pipe',
-          'Brand': 'Tarko',
+          'Brand': 'Tarko Gold',
           'Production Date': '2025-01-20',
           'bundle_size (pcs)': '',
           'piece_length (m)': '6',
           'number_of_bundles': '',
-          'spare_pieces': '45',
-          'OD (mm)': '16',
-          'PN (bar)': '4',
-          'weight_per_meter (kg/m)': '0.15',
-          'Type/PE': 'L'
+          'spare_pieces': '9',
+          'OD (mm)': '40',
+          'PN (bar)': '8',
+          'weight_per_meter (kg/m)': '0.85',
+          'Type/PE': 'C'
         },
         {
           'Product Type': 'Sprinkler Pipe',
-          'Brand': 'Tarko',
+          'Brand': 'Tarko Gold',
           'Production Date': '2025-01-21',
           'bundle_size (pcs)': '',
           'piece_length (m)': '6',
           'number_of_bundles': '',
-          'spare_pieces': '30',
+          'spare_pieces': '5',
           'OD (mm)': '20',
-          'PN (bar)': '6',
-          'weight_per_meter (kg/m)': '0.20',
-          'Type/PE': 'M'
+          'PN (bar)': '8',
+          'weight_per_meter (kg/m)': '0.85',
+          'Type/PE': 'C'
         }
       ];
       filename = 'sprinkler_import_template.csv';

@@ -260,14 +260,15 @@ def create_batch():
                 # Create cut rolls (aggregate with individual piece tracking)
                 if cut_rolls:
                     # Create one CUT_ROLL stock entry
+                    # Initialize with quantity=0, auto_update trigger will set based on piece records
                     cut_stock_id = str(uuid.uuid4())
                     cursor.execute("""
                         INSERT INTO inventory_stock (
                             id, batch_id, product_variant_id, status, stock_type,
                             quantity, notes
-                        ) VALUES (%s, %s, %s, 'IN_STOCK', 'CUT_ROLL', %s, %s)
+                        ) VALUES (%s, %s, %s, 'IN_STOCK', 'CUT_ROLL', 0, %s)
                         RETURNING id
-                    """, (cut_stock_id, batch_id, variant_id, len(cut_rolls),
+                    """, (cut_stock_id, batch_id, variant_id,
                           f'{len(cut_rolls)} cut rolls from production'))
 
                     # Create production transaction first to get transaction_id
@@ -315,13 +316,19 @@ def create_batch():
 
                 # Create spare pipes (aggregate with individual piece tracking)
                 if spare_pipes:
+                    # DEBUG: Log received spare_pipes data
+                    print(f"DEBUG spare_pipes received: {spare_pipes}")
+
                     # Collect all spare piece counts
                     spare_piece_counts = []
                     for spare_pipe in spare_pipes:
                         spare_count = int(spare_pipe.get('length', 1))  # 'length' field contains piece count
+                        print(f"DEBUG spare_pipe: {spare_pipe}, spare_count: {spare_count}")
                         if spare_count > 0:
                             spare_piece_counts.append(spare_count)
                             total_items += 1
+
+                    print(f"DEBUG spare_piece_counts: {spare_piece_counts}")
 
                     if spare_piece_counts:
                         InventoryHelper.create_sprinkler_spare_stock(
@@ -417,14 +424,16 @@ def create_batch():
             })
 
             # Create single batch-level production transaction with stock snapshot
+            # Append +05:30 to tell PostgreSQL the input is in IST
+            production_date_with_tz = f"{production_date}+05:30" if production_date else None
             cursor.execute("""
                 INSERT INTO transactions (
                     batch_id, roll_id, transaction_type, quantity_change,
                     transaction_date, customer_id, invoice_no, notes,
                     roll_snapshot, created_by, created_at, updated_at
-                ) VALUES (%s, NULL, %s, %s, %s, NULL, NULL, %s, %s, %s, NOW(), NOW())
+                ) VALUES (%s, NULL, %s, %s, COALESCE(%s::timestamptz, NOW()), NULL, NULL, %s, %s, %s, NOW(), NOW())
             """, (batch_id, 'PRODUCTION', float(quantity),
-                  production_date or None, notes, stock_snapshot_json, user_id))
+                  production_date_with_tz, notes, stock_snapshot_json, user_id))
 
         return jsonify({
             'id': batch_id,

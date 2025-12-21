@@ -131,12 +131,58 @@ export const CustomerDetailsSection = ({
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-auto p-0">
-              <Calendar
-                mode="single"
-                selected={dispatchDate}
-                onSelect={onDispatchDateChange}
-                initialFocus
-              />
+              <div className="p-3 space-y-3">
+                <Calendar
+                  mode="single"
+                  selected={dispatchDate}
+                  onSelect={(newDate) => {
+                    if (newDate) {
+                      // Preserve the time from existing date when changing date
+                      const existingTime = dispatchDate || new Date();
+                      newDate.setHours(existingTime.getHours());
+                      newDate.setMinutes(existingTime.getMinutes());
+                      newDate.setSeconds(existingTime.getSeconds());
+                    }
+                    onDispatchDateChange(newDate);
+                  }}
+                  initialFocus
+                />
+                <div className="border-t pt-3">
+                  <Label className="text-sm font-medium mb-2 block">Time</Label>
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1">
+                      <Label className="text-xs text-muted-foreground">Hour</Label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="23"
+                        value={dispatchDate?.getHours() || 0}
+                        onChange={(e) => {
+                          const newDate = dispatchDate ? new Date(dispatchDate) : new Date();
+                          newDate.setHours(parseInt(e.target.value) || 0);
+                          onDispatchDateChange(newDate);
+                        }}
+                        className="w-full px-2 py-1 border rounded text-sm"
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <Label className="text-xs text-muted-foreground">Minute</Label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="59"
+                        value={dispatchDate?.getMinutes() || 0}
+                        onChange={(e) => {
+                          const newDate = dispatchDate ? new Date(dispatchDate) : new Date();
+                          newDate.setMinutes(parseInt(e.target.value) || 0);
+                          onDispatchDateChange(newDate);
+                        }}
+                        className="w-full px-2 py-1 border rounded text-sm"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
             </PopoverContent>
           </Popover>
         </div>

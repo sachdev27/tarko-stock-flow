@@ -826,6 +826,8 @@ def create_dispatch():
         notes = data.get('notes')
         dispatch_date = data.get('dispatch_date')  # Optional: for backdating
 
+        print(f"DEBUG: Received dispatch_date = {dispatch_date}")
+
         with get_db_cursor() as cursor:
             # Start explicit transaction
             cursor.execute("BEGIN")
@@ -946,16 +948,18 @@ def create_dispatch():
                 dispatch_number = f'DISP-{current_year}-{new_number:04d}'
 
                 # Create dispatch record
+                # Append +05:30 to tell PostgreSQL the input is in IST
+                dispatch_date_with_tz = f"{dispatch_date}+05:30" if dispatch_date else None
                 cursor.execute("""
                     INSERT INTO dispatches (
                         dispatch_number, customer_id, bill_to_id, transport_id,
                         vehicle_id, invoice_number, notes, status, created_by, dispatch_date
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, 'DISPATCHED', %s, COALESCE(%s, CURRENT_DATE))
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, 'DISPATCHED', %s, COALESCE(%s::timestamptz, NOW()))
                     RETURNING id, dispatch_number
                 """, (
                     dispatch_number, customer_id, bill_to_id, transport_id,
-                    vehicle_id, invoice_number, notes, user_id, dispatch_date
+                    vehicle_id, invoice_number, notes, user_id, dispatch_date_with_tz
                 ))
 
                 dispatch_result = cursor.fetchone()

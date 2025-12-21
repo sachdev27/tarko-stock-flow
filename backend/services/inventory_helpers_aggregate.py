@@ -139,26 +139,29 @@ class AggregateInventoryHelper:
             stock_id: UUID of created stock entry
         """
         stock_id = str(uuid.uuid4())
-        total_spare_count = len(spare_pieces)
+        total_spare_count = sum(spare_pieces)  # Fixed: use total pieces, not array length
 
+        # DEBUG: Log spare pieces data
+        print(f"DEBUG create_sprinkler_spare_stock: spare_pieces={spare_pieces}, total_spare_count={total_spare_count}")
+
+        # Initialize with quantity=0, auto_update trigger will set based on piece records
         cursor.execute("""
             INSERT INTO inventory_stock (
                 id, batch_id, product_variant_id, status, stock_type,
                 quantity, piece_length_meters, notes
-            ) VALUES (%s, %s, %s, %s, 'SPARE', %s, %s, %s)
+            ) VALUES (%s, %s, %s, %s, 'SPARE', 0, %s, %s)
             RETURNING id
         """, (stock_id, batch_id, product_variant_id, status,
-              total_spare_count, piece_length_meters, notes))
+              piece_length_meters, notes))
 
         # Create production transaction first to get transaction_id
-        total_pieces = sum(spare_pieces)
         cursor.execute("""
             INSERT INTO inventory_transactions (
                 transaction_type, to_stock_id, to_quantity, to_pieces, batch_id, notes
             ) VALUES ('PRODUCTION', %s, %s, %s, %s, %s)
             RETURNING id
-        """, (stock_id, total_spare_count, total_pieces, batch_id,
-              f'Produced {total_spare_count} spare groups ({total_pieces} pieces total)'))
+        """, (stock_id, total_spare_count, total_spare_count, batch_id,
+              f'Produced {total_spare_count} spare pieces'))
 
         production_txn_id = cursor.fetchone()['id']
 

@@ -391,7 +391,7 @@ const ReturnHistory = () => {
                   <Card
                     key={ret.id}
                     className="cursor-pointer hover:shadow-md transition-shadow"
-                    onClick={() => handleViewDetails(ret.id)}
+                    onClick={() => fetchReturnDetails(ret.id)}
                   >
                     <CardContent className="p-4 space-y-2">
                       <div className="flex justify-between items-start">
@@ -627,7 +627,7 @@ const ReturnHistory = () => {
                             </div>
                           )}
 
-                          {item.piece_count && (
+                          {item.item_type === 'SPARE_PIECES' && item.piece_count && (
                             <div className="text-sm">
                               <span className="font-medium">Spare Pieces:</span>{' '}
                               {item.piece_count} pcs × {item.piece_length_meters}m

@@ -150,10 +150,12 @@ def get_transactions():
             t.dispatch_id,
             t.transaction_type::text,
             t.quantity_change,
-            t.transaction_date,
+            to_char(t.transaction_date AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD"T"HH24:MI:SS"+05:30"') as transaction_date,
             t.invoice_no,
             t.notes,
-            t.created_at,
+            to_char(t.created_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD"T"HH24:MI:SS"+05:30"') as created_at,
+            t.transaction_date as transaction_date_sort,
+            t.created_at as created_at_sort,
             t.roll_snapshot,
             b.batch_code,
             b.batch_no,
@@ -225,10 +227,12 @@ def get_transactions():
             NULL as dispatch_id,
             it.transaction_type::text,
             COALESCE(it.to_quantity, 0) - COALESCE(it.from_quantity, 0) as quantity_change,
-            it.created_at as transaction_date,
+            to_char(it.created_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD"T"HH24:MI:SS"+05:30"') as transaction_date,
             NULL as invoice_no,
             it.notes,
-            it.created_at,
+            to_char(it.created_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD"T"HH24:MI:SS"+05:30"') as created_at,
+            it.created_at as transaction_date_sort,
+            it.created_at as created_at_sort,
             -- Build roll_snapshot with cut piece information for CUT_ROLL transactions
             -- and bundle info for SPLIT_BUNDLE transactions
             CASE
@@ -356,7 +360,7 @@ def get_transactions():
                 ELSE 'DISPATCH'
             END as transaction_type,
             -COALESCE(SUM(di.quantity), 0) as quantity_change,
-            d.dispatch_date as transaction_date,
+            to_char(d.dispatch_date AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD"T"HH24:MI:SS"+05:30"') as transaction_date,
             d.invoice_number as invoice_no,
             CONCAT('Dispatch: ', d.dispatch_number,
                    CASE
@@ -368,7 +372,9 @@ def get_transactions():
                        WHEN d.reverted_at IS NOT NULL THEN ' [REVERTED]'
                        ELSE ''
                    END) as notes,
-            d.created_at,
+            to_char(d.created_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD"T"HH24:MI:SS"+05:30"') as created_at,
+            d.dispatch_date as transaction_date_sort,
+            d.created_at as created_at_sort,
             jsonb_build_object(
                 'dispatch_number', d.dispatch_number,
                 'dispatch_id', d.id,
@@ -473,7 +479,7 @@ def get_transactions():
                 ELSE 'RETURN'
             END as transaction_type,
             (SELECT COALESCE(SUM(ri_sum.quantity), 0) FROM return_items ri_sum WHERE ri_sum.return_id = r.id) as quantity_change,
-            r.return_date as transaction_date,
+            to_char(r.return_date AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD"T"HH24:MI:SS"+05:30"') as transaction_date,
             NULL as invoice_no,
             CASE
                 WHEN (SELECT COUNT(DISTINCT ri_count.product_variant_id) FROM return_items ri_count WHERE ri_count.return_id = r.id) > 1
@@ -495,9 +501,10 @@ def get_transactions():
                        CASE
                            WHEN r.reverted_at IS NOT NULL THEN ' [REVERTED]'
                            ELSE ''
-                       END)
-            END as notes,
-            r.created_at,
+                       END)            END as notes,
+            to_char(r.created_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD"T"HH24:MI:SS"+05:30"') as created_at,
+            r.return_date as transaction_date_sort,
+            r.created_at as created_at_sort,
             (SELECT jsonb_build_object(
                 'return_number', r.return_number,
                 'return_id', r.id,
@@ -612,7 +619,7 @@ def get_transactions():
             NULL as dispatch_id,
             'REVERTED' as transaction_type,
             0 as quantity_change,
-            it.created_at as transaction_date,
+            to_char(it.created_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD"T"HH24:MI:SS"+05:30"') as transaction_date,
             NULL as invoice_no,
             CONCAT('[REVERTED] ',
                 CASE it.transaction_type
@@ -622,7 +629,9 @@ def get_transactions():
                     ELSE it.transaction_type
                 END,
                 COALESCE(': ' || it.notes, '')) as notes,
-            it.created_at,
+            to_char(it.created_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD"T"HH24:MI:SS"+05:30"') as created_at,
+            it.created_at as transaction_date_sort,
+            it.created_at as created_at_sort,
             -- Fetch roll_snapshot from the original transaction data (before it was reverted)
             CASE
                 WHEN it.transaction_type = 'CUT_ROLL' THEN
@@ -721,7 +730,7 @@ def get_transactions():
             NULL as dispatch_id,
             'SCRAP' as transaction_type,
             -COALESCE(s.total_quantity, 0) as quantity_change,
-            s.created_at as transaction_date,
+            to_char(s.created_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD"T"HH24:MI:SS"+05:30"') as transaction_date,
             NULL as invoice_no,
             CASE
                 WHEN (SELECT COUNT(DISTINCT si_count.product_variant_id) FROM scrap_items si_count WHERE si_count.scrap_id = s.id) > 1
@@ -737,7 +746,9 @@ def get_transactions():
                     FROM scrap_items si_agg WHERE si_agg.scrap_id = s.id
                 ), ''))
             END as notes,
-            s.created_at,
+            to_char(s.created_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD"T"HH24:MI:SS"+05:30"') as created_at,
+            s.created_at as transaction_date_sort,
+            s.created_at as created_at_sort,
             (SELECT jsonb_build_object(
                 'scrap_number', s.scrap_number,
                 'scrap_id', s.id,
@@ -855,7 +866,7 @@ def get_transactions():
         LEFT JOIN users u ON s.created_by = u.id
         WHERE s.deleted_at IS NULL AND s.status = 'SCRAPPED'""" + date_filter_dispatch + """
 
-        ORDER BY transaction_date DESC
+        ORDER BY transaction_date_sort DESC, created_at_sort DESC
         LIMIT 1000
     """
 

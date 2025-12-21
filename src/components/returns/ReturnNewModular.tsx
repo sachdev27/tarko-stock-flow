@@ -5,6 +5,7 @@ import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { Save, Loader2, PackageX } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { dateToISTString } from '@/lib/utils';
 import { inventory, returns, admin } from '@/lib/api-typed';
 import type * as API from '@/types';
 import { ReturnDetailsSection } from './ReturnDetailsSection';
@@ -228,7 +229,7 @@ const ReturnNewModular = () => {
     try {
       const returnData = {
         customer_id: customerId,
-        return_date: returnDate.toISOString().split('T')[0],
+        return_date: dateToISTString(returnDate),
         notes,
         items: items.map(item => ({
           product_type_id: item.product_type_id,

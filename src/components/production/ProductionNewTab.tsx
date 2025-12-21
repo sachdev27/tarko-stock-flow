@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import { Plus } from 'lucide-react';
 import { inventory, production, parameters } from '@/lib/api-typed';
 import type * as API from '@/types';
-import { toISTDateTimeLocal } from '@/lib/utils';
+import { toISTDateTimeLocal, datetimeLocalToISTString } from '@/lib/utils';
 import { ProductSelectionForm } from './ProductSelectionForm';
 import { QuantityConfigForm } from './QuantityConfigForm';
 import { BatchDetailsForm } from './BatchDetailsForm';
@@ -220,7 +220,8 @@ export const ProductionNewTab = () => {
       formDataToSend.append('product_type_id', formData.productTypeId);
       formDataToSend.append('brand_id', formData.brandId);
       formDataToSend.append('parameters', JSON.stringify(formData.parameters));
-      formDataToSend.append('production_date', formData.productionDate);
+      // Convert datetime-local to ISO string with IST timezone offset
+      formDataToSend.append('production_date', datetimeLocalToISTString(formData.productionDate));
       formDataToSend.append('quantity', formData.quantity);
       formDataToSend.append('batch_no', formData.batchNo);
       formDataToSend.append('notes', formData.notes);

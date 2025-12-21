@@ -202,9 +202,12 @@ export const ProductionHistoryTab = () => {
       // Cast API response to component's Batch interface
       const batches = batchesArray as any[];
 
+      // Filter out return batches (batch_code starts with "RET-")
+      const productionBatches = batches.filter(batch => !batch.batch_code?.startsWith('RET-'));
+
       // For spare-piece-only batches, fetch actual counts
       const batchesWithCounts = await Promise.all(
-        batches.map(async (batch) => {
+        productionBatches.map(async (batch) => {
           // Only fetch details for spare-piece-only batches (piece_length exists AND total_items = 1)
           // If total_items > 1, it means there are bundles + spare pieces
           if (batch.piece_length && batch.total_items === 1) {
