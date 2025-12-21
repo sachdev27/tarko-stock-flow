@@ -56,6 +56,49 @@ INSERT INTO public.product_types (id, name, description, unit_id, parameter_sche
  NOW())
 ON CONFLICT (id) DO UPDATE SET is_system = TRUE;
 
+-- Insert parameter options for PE, PN, OD, and Type
+INSERT INTO public.parameter_options (parameter_name, option_value, created_at) VALUES
+-- PE (Polyethylene) options
+('PE', '63', NOW()),
+('PE', '80', NOW()),
+('PE', '100', NOW()),
+-- PN (Pressure Nominal) options
+('PN', '4', NOW()),
+('PN', '6', NOW()),
+('PN', '8', NOW()),
+('PN', '10', NOW()),
+('PN', '12.5', NOW()),
+-- OD (Outer Diameter) options
+('OD', '25', NOW()),
+('OD', '32', NOW()),
+('OD', '40', NOW()),
+('OD', '50', NOW()),
+('OD', '63', NOW()),
+('OD', '75', NOW()),
+('OD', '90', NOW()),
+('OD', '110', NOW()),
+('OD', '125', NOW()),
+('OD', '140', NOW()),
+('OD', '160', NOW()),
+-- Type (Sprinkler Type) options
+('Type', 'C', NOW()),
+('Type', 'L', NOW())
+ON CONFLICT (parameter_name, option_value) DO NOTHING;
+
+-- Insert brand options
+INSERT INTO public.brands (name, created_at, updated_at) VALUES
+('AMDO', NOW(), NOW()),
+('AQUAWAY', NOW(), NOW()),
+('KARTEX', NOW(), NOW()),
+('KISAN PRAJWAL', NOW(), NOW()),
+('SP JAIN', NOW(), NOW()),
+('SUPERFLOW', NOW(), NOW()),
+('TARKO', NOW(), NOW()),
+('Tarko Gold', NOW(), NOW())
+ON CONFLICT (name) DO NOTHING;
+
 -- Verification
 SELECT 'Units created/updated:' as status, COUNT(*) as count FROM units WHERE is_system = TRUE;
 SELECT 'Product Types created/updated:' as status, COUNT(*) as count FROM product_types WHERE is_system = TRUE;
+SELECT 'Parameter Options created:' as status, COUNT(*) as count FROM parameter_options;
+SELECT 'Brands created:' as status, COUNT(*) as count FROM brands WHERE deleted_at IS NULL;

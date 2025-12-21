@@ -348,14 +348,15 @@ const Details = () => {
 
   return (
     <Layout>
-      <div className="space-y-6">
+      <div className="space-y-4 md:space-y-6 p-4 md:p-6">
         <div>
           <h1 className="text-3xl font-bold">Details Management</h1>
           <p className="text-muted-foreground">Manage customers, vehicles, transports, and billing entities</p>
         </div>
 
         <Tabs defaultValue="customers" className="space-y-4">
-          <TabsList className="w-full flex-wrap sm:inline-flex">
+          <div className="w-full overflow-x-auto scrollbar-hide -mx-1 px-1">
+            <TabsList className="w-auto">
             <TabsTrigger value="customers">
               <Users className="h-4 w-4 mr-2" />
               Customers
@@ -373,6 +374,7 @@ const Details = () => {
               Bill To
             </TabsTrigger>
           </TabsList>
+          </div>
 
           {/* Customers Tab */}
           <TabsContent value="customers">

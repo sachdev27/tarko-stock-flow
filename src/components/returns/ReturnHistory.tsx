@@ -391,7 +391,7 @@ const ReturnHistory = () => {
                   <Card
                     key={ret.id}
                     className="cursor-pointer hover:shadow-md transition-shadow"
-                    onClick={() => handleViewDetails(ret.id)}
+                    onClick={() => fetchReturnDetails(ret.id)}
                   >
                     <CardContent className="p-4 space-y-2">
                       <div className="flex justify-between items-start">
