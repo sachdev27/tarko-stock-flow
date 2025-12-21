@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { TruckIcon, RotateCcw } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { dateToISTString } from '@/lib/utils';
 import { CustomerDetailsSection } from '@/components/dispatch/CustomerDetailsSection';
 import { ProductSelectionSection } from '@/components/dispatch/ProductSelectionSection';
 import { useKeyboardShortcuts, KeyboardShortcutsHelp } from '@/components/dispatch/useKeyboardShortcuts';
@@ -333,7 +334,7 @@ export const DispatchNewTab = () => {
         bill_to_id: billToId || undefined,
         transport_id: transportId || undefined,
         vehicle_id: vehicleId || undefined,
-        dispatch_date: dispatchDate ? dispatchDate.toISOString() : undefined,
+        dispatch_date: dispatchDate ? dateToISTString(dispatchDate) : undefined,
         notes: notes || undefined,
         items
       });

@@ -135,7 +135,16 @@ export const CustomerDetailsSection = ({
                 <Calendar
                   mode="single"
                   selected={dispatchDate}
-                  onSelect={onDispatchDateChange}
+                  onSelect={(newDate) => {
+                    if (newDate) {
+                      // Preserve the time from existing date when changing date
+                      const existingTime = dispatchDate || new Date();
+                      newDate.setHours(existingTime.getHours());
+                      newDate.setMinutes(existingTime.getMinutes());
+                      newDate.setSeconds(existingTime.getSeconds());
+                    }
+                    onDispatchDateChange(newDate);
+                  }}
                   initialFocus
                 />
                 <div className="border-t pt-3">

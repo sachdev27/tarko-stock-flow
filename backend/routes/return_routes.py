@@ -77,14 +77,16 @@ def create_return():
                 return_number = f"RET-{datetime.now().year}-001"
 
             # Create return record
+            # Append +05:30 to tell PostgreSQL the input is in IST
+            return_date_with_tz = f"{return_date}+05:30" if return_date else None
             cursor.execute("""
                 INSERT INTO returns (
                     return_number, customer_id, return_date, notes,
                     status, created_by
                 )
-                VALUES (%s, %s, %s, %s, 'RECEIVED', %s)
+                VALUES (%s, %s, COALESCE(%s::timestamptz, NOW()), %s, 'RECEIVED', %s)
                 RETURNING id, return_number
-            """, (return_number, customer_id, return_date, notes, user_id))
+            """, (return_number, customer_id, return_date_with_tz, notes, user_id))
 
             return_record = cursor.fetchone()
             return_id = return_record['id']

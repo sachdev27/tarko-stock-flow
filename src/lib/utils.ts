@@ -41,6 +41,33 @@ export function fromISTDateTimeLocal(dateTimeStr: string): Date {
 }
 
 /**
+ * Convert datetime-local value to ISO string for storage
+ * The backend will handle timezone conversion
+ */
+export function datetimeLocalToISTString(dateTimeStr: string): string {
+  if (!dateTimeStr) return new Date().toISOString();
+  // Just append seconds, backend handles timezone
+  return `${dateTimeStr}:00`;
+}
+
+/**
+ * Convert Date object to ISO string for storage
+ * Assumes the Date object represents IST time
+ * The backend will handle timezone conversion
+ */
+export function dateToISTString(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  const seconds = String(date.getSeconds()).padStart(2, '0');
+
+  // Return ISO format without timezone offset - backend handles it
+  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+}
+
+/**
  * Format bytes to human-readable string
  */
 export function formatBytes(bytes: number, decimals = 2): string {

@@ -424,14 +424,16 @@ def create_batch():
             })
 
             # Create single batch-level production transaction with stock snapshot
+            # Append +05:30 to tell PostgreSQL the input is in IST
+            production_date_with_tz = f"{production_date}+05:30" if production_date else None
             cursor.execute("""
                 INSERT INTO transactions (
                     batch_id, roll_id, transaction_type, quantity_change,
                     transaction_date, customer_id, invoice_no, notes,
                     roll_snapshot, created_by, created_at, updated_at
-                ) VALUES (%s, NULL, %s, %s, %s, NULL, NULL, %s, %s, %s, NOW(), NOW())
+                ) VALUES (%s, NULL, %s, %s, COALESCE(%s::timestamptz, NOW()), NULL, NULL, %s, %s, %s, NOW(), NOW())
             """, (batch_id, 'PRODUCTION', float(quantity),
-                  production_date or None, notes, stock_snapshot_json, user_id))
+                  production_date_with_tz, notes, stock_snapshot_json, user_id))
 
         return jsonify({
             'id': batch_id,
