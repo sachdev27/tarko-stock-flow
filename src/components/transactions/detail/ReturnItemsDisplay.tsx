@@ -76,7 +76,7 @@ export function ReturnItemsDisplay({ items }: ReturnItemsDisplayProps) {
                 <div>
                   <span className="text-muted-foreground">Length:</span>
                   <span className="ml-2 font-medium">
-                    {item.item_type === 'FULL_ROLL' && item.quantity && item.quantity > 1
+                    {item.quantity && item.quantity > 1
                       ? `${(Number(item.length_meters) / item.quantity).toFixed(2)}m per piece`
                       : `${Number(item.length_meters).toFixed(2)}m`}
                   </span>

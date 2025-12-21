@@ -228,7 +228,7 @@ const ReturnNewModular = () => {
     try {
       const returnData = {
         customer_id: customerId,
-        return_date: returnDate.toISOString().split('T')[0],
+        return_date: returnDate.toISOString(),
         notes,
         items: items.map(item => ({
           product_type_id: item.product_type_id,

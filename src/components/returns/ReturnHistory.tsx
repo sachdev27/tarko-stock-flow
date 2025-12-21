@@ -627,7 +627,7 @@ const ReturnHistory = () => {
                             </div>
                           )}
 
-                          {item.piece_count && (
+                          {item.item_type === 'SPARE_PIECES' && item.piece_count && (
                             <div className="text-sm">
                               <span className="font-medium">Spare Pieces:</span>{' '}
                               {item.piece_count} pcs × {item.piece_length_meters}m
