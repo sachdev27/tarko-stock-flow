@@ -59,6 +59,8 @@ class CloudStorage:
 
             with get_db_connection() as conn:
                 cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+                # First check cloud_backup_config
                 cursor.execute("""
                     SELECT provider, account_id, access_key_id, secret_access_key,
                            bucket_name, region, endpoint_url, is_enabled
@@ -67,12 +69,11 @@ class CloudStorage:
                     ORDER BY created_at DESC
                     LIMIT 1
                 """)
-
                 db_config = cursor.fetchone()
 
                 if db_config and db_config['is_enabled']:
                     encryption_service = get_encryption_service()
-                    logger.info(f"✅ Loading cloud config from database: {db_config['provider']} - {db_config['bucket_name']}")
+                    logger.info(f"✅ Loading cloud config from cloud_backup_config: {db_config['provider']} - {db_config['bucket_name']}")
                     return {
                         'enabled': True,
                         'provider': db_config['provider'],
@@ -82,6 +83,31 @@ class CloudStorage:
                         'bucket_name': db_config['bucket_name'],
                         'region': db_config['region'],
                         'endpoint_url': db_config['endpoint_url']
+                    }
+
+                # If not found, check cloud_credentials table
+                cursor.execute("""
+                    SELECT provider, account_id, access_key_id, secret_access_key,
+                           bucket_name, region, endpoint_url
+                    FROM cloud_credentials
+                    WHERE is_active = TRUE
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                """)
+                credentials = cursor.fetchone()
+
+                if credentials:
+                    encryption_service = get_encryption_service()
+                    logger.info(f"✅ Loading cloud config from cloud_credentials: {credentials['provider']} - {credentials['bucket_name']}")
+                    return {
+                        'enabled': True,
+                        'provider': credentials['provider'],
+                        'account_id': credentials['account_id'],
+                        'access_key_id': credentials['access_key_id'],
+                        'secret_access_key': encryption_service.decrypt(credentials['secret_access_key']),
+                        'bucket_name': credentials['bucket_name'],
+                        'region': credentials['region'],
+                        'endpoint_url': credentials['endpoint_url']
                     }
         except Exception as e:
             logger.warning(f"Could not load cloud config from database: {e}")

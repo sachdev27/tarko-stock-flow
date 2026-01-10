@@ -20,6 +20,8 @@ export const useAddCloudCredential = () => {
     mutationFn: (data: any) => backupConfig.addCloudCredential(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cloud-credentials'] });
+      // Trigger cloud status refresh in Version Control tab
+      window.dispatchEvent(new CustomEvent('cloud-credentials-changed'));
       toast.success('Cloud credentials added successfully');
     },
     onError: (error: any) => {
@@ -35,6 +37,8 @@ export const useUpdateCloudCredential = () => {
       backupConfig.updateCloudCredential(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cloud-credentials'] });
+      // Trigger cloud status refresh in Version Control tab
+      window.dispatchEvent(new CustomEvent('cloud-credentials-changed'));
       toast.success('Cloud credentials updated successfully');
     },
     onError: (error: any) => {

@@ -73,6 +73,17 @@ export const VersionControlTab = ({ snapshots, rollbackHistory, onDataChange }: 
     fetchCloudStatus();
     fetchStorageStats();
     fetchAutoSnapshotSettings();
+
+    // Listen for credential changes from Cloud Credentials tab
+    const handleCredentialsChange = () => {
+      fetchCloudStatus();
+      fetchCloudSnapshots();
+    };
+    window.addEventListener('cloud-credentials-changed', handleCredentialsChange);
+
+    return () => {
+      window.removeEventListener('cloud-credentials-changed', handleCredentialsChange);
+    };
   }, []);
 
   const fetchStorageStats = async () => {

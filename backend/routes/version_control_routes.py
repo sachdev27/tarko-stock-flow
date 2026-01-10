@@ -1275,9 +1275,15 @@ def get_cloud_status():
     try:
         from psycopg2.extras import RealDictCursor
 
+        enabled = False
+        provider = None
+        bucket_name = None
+
         # Always read fresh config from database first
         with get_db_connection() as conn:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+            # Check cloud_backup_config first
             cursor.execute("""
                 SELECT provider, bucket_name, is_enabled
                 FROM cloud_backup_config
@@ -1285,20 +1291,35 @@ def get_cloud_status():
                 ORDER BY created_at DESC
                 LIMIT 1
             """)
-
             db_config = cursor.fetchone()
 
-        # If database config exists and is enabled, use it
-        if db_config and db_config['is_enabled']:
-            enabled = True
-            provider = db_config['provider']
-            bucket_name = db_config['bucket_name']
-        else:
-            # Fallback to checking environment variables
-            import os
-            enabled = os.getenv('ENABLE_CLOUD_BACKUP', 'false').lower() == 'true'
-            provider = os.getenv('CLOUD_STORAGE_PROVIDER', 'r2').lower() if enabled else None
-            bucket_name = (os.getenv('R2_BUCKET_NAME') or os.getenv('S3_BUCKET_NAME')) if enabled else None
+            # If database config exists and is enabled, use it
+            if db_config and db_config['is_enabled']:
+                enabled = True
+                provider = db_config['provider']
+                bucket_name = db_config['bucket_name']
+            else:
+                # Check if there are any active credentials in cloud_credentials table
+                cursor.execute("""
+                    SELECT provider, bucket_name
+                    FROM cloud_credentials
+                    WHERE is_active = TRUE
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                """)
+                credentials = cursor.fetchone()
+
+                if credentials:
+                    # Credentials exist, consider cloud as configured
+                    enabled = True
+                    provider = credentials['provider']
+                    bucket_name = credentials['bucket_name']
+                else:
+                    # Fallback to checking environment variables
+                    import os
+                    enabled = os.getenv('ENABLE_CLOUD_BACKUP', 'false').lower() == 'true'
+                    provider = os.getenv('CLOUD_STORAGE_PROVIDER', 'r2').lower() if enabled else None
+                    bucket_name = (os.getenv('R2_BUCKET_NAME') or os.getenv('S3_BUCKET_NAME')) if enabled else None
 
         # Try to get stats from cloud_storage object if available
         stats = None
