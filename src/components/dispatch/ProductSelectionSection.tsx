@@ -306,7 +306,17 @@ export const ProductSelectionSection = ({
   }, [groupedVariants, productSearch]);
 
   const handleCutRoll = (entry: StockEntry) => {
-    setSelectedStock(entry);
+    // For CUT_ROLL, we need a specific piece_id
+    // If piece_ids array exists, use the first one
+    if (entry.stock_type === 'CUT_ROLL' && entry.piece_ids && entry.piece_ids.length > 0) {
+      setSelectedStock({
+        ...entry,
+        piece_id: entry.piece_ids[0], // Use the first piece_id from the array
+        quantity: 1 // Set quantity to 1 since we're cutting a single piece
+      });
+    } else {
+      setSelectedStock(entry);
+    }
     setCutDialogOpen(true);
   };
 
