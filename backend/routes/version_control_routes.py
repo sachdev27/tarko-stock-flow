@@ -588,7 +588,16 @@ def rollback_to_snapshot(snapshot_id):
                 if invalid_tables:
                     return jsonify({'error': f'Invalid table names: {", ".join(invalid_tables)}'}), 400
 
-            # Perform rollback for each table in correct order (parent tables first)
+            # FIRST: Clear all tables in REVERSE order (child tables first) to respect FK constraints
+            for table in reversed(SNAPSHOT_TABLES):
+                # Skip if selective restore and table not selected
+                if selective_tables and table not in selective_tables:
+                    continue
+
+                # Hard delete everything for a clean slate (including seed data)
+                cursor.execute(f"DELETE FROM {table}")
+
+            # THEN: Perform rollback for each table in correct order (parent tables first)
             for table in SNAPSHOT_TABLES:
                 # Skip if selective restore and table not selected
                 if selective_tables and table not in selective_tables:
@@ -601,7 +610,7 @@ def rollback_to_snapshot(snapshot_id):
                 data = snapshot_data[table]
                 affected_tables.append(table)
 
-                # Restore snapshot data first
+                # Restore snapshot data (tables are already cleared above)
                 if data and len(data) > 0:
                     # Get columns from first record
                     columns = list(data[0].keys())
@@ -687,33 +696,9 @@ def rollback_to_snapshot(snapshot_id):
                                         {update_set},
                                         updated_at = NOW()
                                 """, values)
-
-                    # After restoring, soft-delete records NOT in snapshot
-                    if table in SOFT_DELETE_TABLES:
-                        # Soft delete records that aren't in the snapshot
-                        # Cast snapshot_ids to UUID array for comparison
-                        cursor.execute(f"""
-                            UPDATE {table}
-                            SET deleted_at = NOW()
-                            WHERE deleted_at IS NULL
-                            AND id::text != ALL(%s)
-                        """, (snapshot_ids,))
-                    else:
-                        # For non-soft-delete tables, hard delete records not in snapshot
-                        cursor.execute(f"""
-                            DELETE FROM {table}
-                            WHERE id::text != ALL(%s)
-                        """, (snapshot_ids,))
                 else:
-                    # If snapshot has no data for this table, delete/soft-delete all
-                    if table in SOFT_DELETE_TABLES:
-                        cursor.execute(f"""
-                            UPDATE {table}
-                            SET deleted_at = NOW()
-                            WHERE deleted_at IS NULL
-                        """)
-                    else:
-                        cursor.execute(f"TRUNCATE TABLE {table} CASCADE")
+                    # If snapshot has no data for this table, it's already cleared above
+                    pass
 
             # Re-enable FK constraint checks
             cursor.execute("SET session_replication_role = 'origin'")
