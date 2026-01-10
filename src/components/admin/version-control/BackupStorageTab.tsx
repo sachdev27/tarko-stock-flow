@@ -180,12 +180,12 @@ export const BackupStorageTab = ({
 
     try {
       const response = await versionControl.bulkDeleteSnapshots(Array.from(selectedSnapshots));
-      toast.success(response.data.message);
+      toast.success(response.message);
       setSelectedSnapshots(new Set());
       setSelectAll(false);
       window.location.reload();
     } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to delete snapshots');
+      toast.error(error?.error || 'Failed to delete snapshots');
     }
   };
 
@@ -194,10 +194,10 @@ export const BackupStorageTab = ({
 
     try {
       const response = await versionControl.cleanupOldSnapshots(days);
-      toast.success(response.data.message);
+      toast.success(response.message);
       window.location.reload();
     } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to cleanup old snapshots');
+      toast.error(error?.error || 'Failed to cleanup old snapshots');
     }
   };
 

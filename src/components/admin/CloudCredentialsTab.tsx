@@ -61,6 +61,9 @@ export const CloudCredentialsTab = () => {
   const updateCredential = useUpdateCloudCredential();
   const deleteCredential = useDeleteCloudCredential();
 
+  console.log('CloudCredentialsTab - credentials:', credentials);
+  console.log('CloudCredentialsTab - isLoading:', isLoading);
+
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
@@ -96,16 +99,16 @@ export const CloudCredentialsTab = () => {
 
     try {
       const response = await backupConfig.testCloudCredential(credId);
-      if (response.data.success) {
+      if (response.success) {
         setConnectionStatus((prev) => ({ ...prev, [credId]: 'valid' }));
-        toast.success(response.data.message);
+        toast.success(response.message);
       } else {
         setConnectionStatus((prev) => ({ ...prev, [credId]: 'invalid' }));
-        toast.error(response.data.error);
+        toast.error(response.error);
       }
     } catch (error: any) {
       setConnectionStatus((prev) => ({ ...prev, [credId]: 'invalid' }));
-      toast.error(error.response?.data?.error || 'Connection test failed');
+      toast.error(error?.error || 'Connection test failed');
     }
   };  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

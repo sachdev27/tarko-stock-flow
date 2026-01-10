@@ -75,7 +75,7 @@ const Admin = () => {
       const response = await versionControl.getSnapshots();
       setSnapshots(response || []);
     } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to load snapshots');
+      toast.error(error?.error || 'Failed to load snapshots');
     }
   };
 
@@ -84,7 +84,7 @@ const Admin = () => {
       const response = await versionControl.getRollbackHistory();
       setRollbackHistory(response || []);
     } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to load rollback history');
+      toast.error(error?.error || 'Failed to load rollback history');
     }
   };
 

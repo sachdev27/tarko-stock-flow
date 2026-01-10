@@ -9,7 +9,8 @@ export const useCloudCredentials = () => {
     queryKey: ['cloud-credentials'],
     queryFn: async () => {
       const response = await backupConfig.getCloudCredentials();
-      return response.data;
+      console.log('useCloudCredentials response:', response);
+      return response;
     },
   });
 };
@@ -25,7 +26,7 @@ export const useAddCloudCredential = () => {
       toast.success('Cloud credentials added successfully');
     },
     onError: (error: any) => {
-      toast.error(error.response?.data?.error || 'Failed to add credentials');
+      toast.error(error?.error || 'Failed to add credentials');
     },
   });
 };
@@ -42,7 +43,7 @@ export const useUpdateCloudCredential = () => {
       toast.success('Cloud credentials updated successfully');
     },
     onError: (error: any) => {
-      toast.error(error.response?.data?.error || 'Failed to update credentials');
+      toast.error(error?.error || 'Failed to update credentials');
     },
   });
 };
@@ -56,7 +57,7 @@ export const useDeleteCloudCredential = () => {
       toast.success('Cloud credentials deleted successfully');
     },
     onError: (error: any) => {
-      toast.error(error.response?.data?.error || 'Failed to delete credentials');
+      toast.error(error?.error || 'Failed to delete credentials');
     },
   });
 };
@@ -67,7 +68,7 @@ export const useRetentionPolicies = () => {
     queryKey: ['retention-policies'],
     queryFn: async () => {
       const response = await backupConfig.getRetentionPolicies();
-      return response.data;
+      return response;
     },
   });
 };
@@ -82,7 +83,7 @@ export const useUpdateRetentionPolicy = () => {
       toast.success('Retention policy updated successfully');
     },
     onError: (error: any) => {
-      toast.error(error.response?.data?.error || 'Failed to update policy');
+      toast.error(error?.error || 'Failed to update policy');
     },
   });
 };
@@ -93,7 +94,7 @@ export const useArchiveBuckets = () => {
     queryKey: ['archive-buckets'],
     queryFn: async () => {
       const response = await backupConfig.getArchiveBuckets();
-      return response.data;
+      return response;
     },
   });
 };
@@ -107,7 +108,7 @@ export const useAddArchiveBucket = () => {
       toast.success('Archive bucket added successfully');
     },
     onError: (error: any) => {
-      toast.error(error.response?.data?.error || 'Failed to add archive bucket');
+      toast.error(error?.error || 'Failed to add archive bucket');
     },
   });
 };
@@ -118,7 +119,7 @@ export const useArchivedBackups = () => {
     queryKey: ['archived-backups'],
     queryFn: async () => {
       const response = await backupConfig.getArchivedBackups();
-      return response.data;
+      return response;
     },
   });
 };
@@ -133,7 +134,7 @@ export const useArchiveBackup = () => {
       toast.success('Backup archived successfully');
     },
     onError: (error: any) => {
-      toast.error(error.response?.data?.error || 'Failed to archive backup');
+      toast.error(error?.error || 'Failed to archive backup');
     },
   });
 };
@@ -144,7 +145,7 @@ export const useDeletionLog = (limit = 100) => {
     queryKey: ['deletion-log', limit],
     queryFn: async () => {
       const response = await backupConfig.getDeletionLog(limit);
-      return response.data;
+      return response;
     },
   });
 };
