@@ -75,9 +75,9 @@ export const VersionControlTab = ({ snapshots, rollbackHistory, onDataChange }: 
     fetchAutoSnapshotSettings();
 
     // Listen for credential changes from Cloud Credentials tab
-    const handleCredentialsChange = () => {
-      fetchCloudStatus();
-      fetchCloudSnapshots();
+    const handleCredentialsChange = async () => {
+      const status = await fetchCloudStatus();
+      fetchCloudSnapshots(status);
     };
     window.addEventListener('cloud-credentials-changed', handleCredentialsChange);
 
@@ -116,7 +116,7 @@ export const VersionControlTab = ({ snapshots, rollbackHistory, onDataChange }: 
       setAutoSnapshotEnabled(enabled);
       toast.success(`Auto-snapshot ${enabled ? 'enabled' : 'disabled'}${enabled && cloudStatus?.enabled ? ' with cloud sync' : ''}`);
     } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to update auto-snapshot settings');
+      toast.error(error?.error || 'Failed to update auto-snapshot settings');
     }
   };
 
@@ -130,27 +130,32 @@ export const VersionControlTab = ({ snapshots, rollbackHistory, onDataChange }: 
       setAutoSnapshotInterval(interval);
       toast.success('Auto-snapshot schedule updated');
     } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to update schedule');
+      toast.error(error?.error || 'Failed to update schedule');
     }
   };
 
   const fetchCloudStatus = async () => {
     try {
       const response = await versionControl.getCloudStatus();
-      setCloudStatus(response.data);
+      console.log('fetchCloudStatus response:', response);
+      setCloudStatus(response);
+      return response; // Return the data so it can be used immediately
     } catch (error: any) {
       console.error('Failed to fetch cloud status:', error);
+      return null;
     }
   };
 
-  const fetchCloudSnapshots = async () => {
-    if (!cloudStatus?.enabled) return;
+  const fetchCloudSnapshots = async (statusOverride?: any) => {
+    // Use statusOverride if provided, otherwise use state
+    const status = statusOverride !== undefined ? statusOverride : cloudStatus;
+    if (!status?.enabled) return;
     setCloudLoading(true);
     try {
       const response = await versionControl.getCloudSnapshots();
-      setCloudSnapshots(response.data.snapshots || []);
+      setCloudSnapshots(response.snapshots || []);
     } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to load cloud snapshots');
+      toast.error(error?.error || 'Failed to load cloud snapshots');
     } finally {
       setCloudLoading(false);
     }
@@ -160,9 +165,9 @@ export const VersionControlTab = ({ snapshots, rollbackHistory, onDataChange }: 
     setDetectingDevices(true);
     try {
       const response = await versionControl.detectExternalDevices();
-      setExternalDevices(response.data.devices || []);
-      if (response.data.devices?.length > 0) {
-        toast.success(`Found ${response.data.devices.length} external device(s)`);
+      setExternalDevices(response.devices || []);
+      if (response.devices?.length > 0) {
+        toast.success(`Found ${response.devices.length} external device(s)`);
       } else {
         toast.info('No external devices detected');
       }
@@ -178,12 +183,12 @@ export const VersionControlTab = ({ snapshots, rollbackHistory, onDataChange }: 
     setLoadingSnapshots(true);
     try {
       const response = await versionControl.listExternalSnapshots({ device_path: devicePath });
-      setExternalSnapshots(response.data.snapshots || []);
-      if (response.data.snapshots?.length > 0) {
-        toast.success(`Found ${response.data.snapshots.length} snapshot(s) on device`);
+      setExternalSnapshots(response.snapshots || []);
+      if (response.snapshots?.length > 0) {
+        toast.success(`Found ${response.snapshots.length} snapshot(s) on device`);
       }
     } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to list external snapshots');
+      toast.error(error?.error || 'Failed to list external snapshots');
       setExternalSnapshots([]);
     } finally {
       setLoadingSnapshots(false);
@@ -209,7 +214,7 @@ export const VersionControlTab = ({ snapshots, rollbackHistory, onDataChange }: 
       setSnapshotForm({ snapshot_name: '', description: '', tags: [] });
       onDataChange();
     } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to create snapshot');
+      toast.error(error?.error || 'Failed to create snapshot');
       setOperationProgress({ type: null, progress: 0, message: '' });
     } finally {
       setLoading(false);
@@ -227,7 +232,7 @@ export const VersionControlTab = ({ snapshots, rollbackHistory, onDataChange }: 
       setTimeout(() => setOperationProgress({ type: null, progress: 0, message: '' }), 1000);
       fetchCloudSnapshots();
     } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to upload to cloud');
+      toast.error(error?.error || 'Failed to upload to cloud');
       setOperationProgress({ type: null, progress: 0, message: '' });
     }
   };
@@ -243,7 +248,7 @@ export const VersionControlTab = ({ snapshots, rollbackHistory, onDataChange }: 
       setTimeout(() => setOperationProgress({ type: null, progress: 0, message: '' }), 1000);
       onDataChange();
     } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to download from cloud');
+      toast.error(error?.error || 'Failed to download from cloud');
       setOperationProgress({ type: null, progress: 0, message: '' });
     }
   };
@@ -258,13 +263,13 @@ export const VersionControlTab = ({ snapshots, rollbackHistory, onDataChange }: 
       setOperationProgress({ type: 'restore', progress: 20, message: 'Downloading snapshot from cloud...', snapshotId });
       const downloadResponse = await versionControl.restoreFromCloud(snapshotId);
 
-      if (downloadResponse.data.needs_rollback) {
+      if (downloadResponse.needs_rollback) {
         // Then automatically rollback to this snapshot
         setOperationProgress({ type: 'restore', progress: 50, message: 'Restoring database from snapshot...', snapshotId });
         const rollbackResponse = await versionControl.rollbackToSnapshot(snapshotId, true);
 
         setOperationProgress({ type: 'restore', progress: 90, message: 'Finalizing restore...', snapshotId });
-        toast.success(`✅ Restore from cloud completed! ${rollbackResponse.data.affected_tables.length} tables restored.`);
+        toast.success(`✅ Restore from cloud completed! ${rollbackResponse.affected_tables.length} tables restored.`);
       } else {
         toast.success('Database restored from cloud successfully');
       }
@@ -273,7 +278,7 @@ export const VersionControlTab = ({ snapshots, rollbackHistory, onDataChange }: 
       setTimeout(() => setOperationProgress({ type: null, progress: 0, message: '' }), 1500);
       onDataChange();
     } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to restore from cloud');
+      toast.error(error?.error || 'Failed to restore from cloud');
       setOperationProgress({ type: null, progress: 0, message: '' });
     } finally {
       setCloudLoading(false);
@@ -288,7 +293,7 @@ export const VersionControlTab = ({ snapshots, rollbackHistory, onDataChange }: 
       toast.success('Snapshot deleted from cloud');
       fetchCloudSnapshots();
     } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to delete from cloud');
+      toast.error(error?.error || 'Failed to delete from cloud');
     }
   };
 
@@ -314,7 +319,7 @@ export const VersionControlTab = ({ snapshots, rollbackHistory, onDataChange }: 
         await fetchExternalSnapshots(destinationPath);
       }
     } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to export snapshot');
+      toast.error(error?.error || 'Failed to export snapshot');
     } finally {
       setLoading(false);
     }
@@ -329,7 +334,7 @@ export const VersionControlTab = ({ snapshots, rollbackHistory, onDataChange }: 
       const importResponse = await versionControl.importFromExternal({
         source_path: sourcePath
       });
-      const snapshotId = importResponse.data.snapshot_id;
+      const snapshotId = importResponse.snapshot_id;
 
       setOperationProgress({ type: 'import', progress: 50, message: 'Snapshot imported successfully' });
       toast.success('Snapshot imported successfully');
@@ -339,13 +344,13 @@ export const VersionControlTab = ({ snapshots, rollbackHistory, onDataChange }: 
       const rollbackResponse = await versionControl.rollbackToSnapshot(snapshotId, true);
 
       setOperationProgress({ type: 'import', progress: 90, message: 'Finalizing restore...' });
-      toast.success(`✅ Restore completed! ${rollbackResponse.data.affected_tables.length} tables restored.`);
+      toast.success(`✅ Restore completed! ${rollbackResponse.affected_tables.length} tables restored.`);
       setOperationProgress({ type: 'import', progress: 100, message: 'Import & restore complete!' });
       setTimeout(() => setOperationProgress({ type: null, progress: 0, message: '' }), 1500);
       setImportDialog(false);
       onDataChange();
     } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to import and restore snapshot');
+      toast.error(error?.error || 'Failed to import and restore snapshot');
       setOperationProgress({ type: null, progress: 0, message: '' });
     } finally {
       setLoading(false);
@@ -360,7 +365,7 @@ export const VersionControlTab = ({ snapshots, rollbackHistory, onDataChange }: 
       toast.success('Snapshot deleted successfully');
       onDataChange();
     } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to delete snapshot');
+      toast.error(error?.error || 'Failed to delete snapshot');
     }
   };
 
@@ -371,15 +376,14 @@ export const VersionControlTab = ({ snapshots, rollbackHistory, onDataChange }: 
     try {
       const response = await versionControl.rollbackToSnapshot(selectedSnapshot.id, true);
       console.log('Rollback response:', response);
-      const affectedCount = response.data?.affected_tables?.length || response.affected_tables?.length || 0;
+      const affectedCount = response?.affected_tables?.length || 0;
       toast.success(`Rollback completed! ${affectedCount} tables restored.`);
       setRollbackDialog(false);
       setSelectedSnapshot(null);
       onDataChange();
     } catch (error: any) {
       console.error('Rollback error:', error);
-      console.error('Error response:', error.response);
-      toast.error(error.response?.data?.error || error.message || 'Rollback failed');
+      toast.error(error?.error || error?.message || 'Rollback failed');
     } finally {
       setLoading(false);
     }
@@ -407,12 +411,10 @@ export const VersionControlTab = ({ snapshots, rollbackHistory, onDataChange }: 
       const response = await versionControl.configureCloud(config);
       toast.success('Cloud backup enabled successfully! 🎉');
       // Refresh cloud status and snapshots immediately
-      await fetchCloudStatus();
-      setTimeout(() => {
-        fetchCloudSnapshots();
-      }, 500);
+      const status = await fetchCloudStatus();
+      fetchCloudSnapshots(status);
     } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to save cloud configuration');
+      toast.error(error?.error || 'Failed to save cloud configuration');
       throw error;
     }
   };
@@ -451,7 +453,7 @@ export const VersionControlTab = ({ snapshots, rollbackHistory, onDataChange }: 
       toast.success(`Synced ${unsyncedSnapshots.length} snapshot(s) to cloud`);
       await fetchCloudSnapshots();
     } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Sync failed');
+      toast.error(error?.error || 'Sync failed');
     } finally {
       setCloudLoading(false);
     }
@@ -480,7 +482,10 @@ export const VersionControlTab = ({ snapshots, rollbackHistory, onDataChange }: 
             <Database className="h-4 w-4 mr-2" />
             Backup Storage
           </TabsTrigger>
-          <TabsTrigger value="cloud" onClick={() => fetchCloudSnapshots()}>
+          <TabsTrigger value="cloud" onClick={async () => {
+            const status = await fetchCloudStatus();
+            fetchCloudSnapshots(status);
+          }}>
             <Cloud className="h-4 w-4 mr-2" />
             Cloud Backup
             {cloudStatus?.enabled && <Badge variant="secondary" className="ml-2 text-xs">Active</Badge>}

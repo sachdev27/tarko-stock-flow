@@ -51,6 +51,12 @@ export const CloudBackupTab = ({
   onManualSync,
   onCreateAndUpload,
 }: CloudBackupTabProps) => {
+  // Debug logging
+  React.useEffect(() => {
+    console.log('CloudBackupTab - cloudStatus:', cloudStatus);
+    console.log('CloudBackupTab - cloudStatus?.enabled:', cloudStatus?.enabled);
+  }, [cloudStatus]);
+
   const [selectedCloudSnapshots, setSelectedCloudSnapshots] = React.useState<Set<string>>(new Set());
   const [selectAllCloud, setSelectAllCloud] = React.useState(false);
 

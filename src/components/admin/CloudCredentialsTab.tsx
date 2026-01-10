@@ -44,13 +44,15 @@ interface CloudCredential {
   id: string;
   provider: string;
   account_id: string;
-  access_key_id: string;
-  secret_access_key: string;
+  access_key_id?: string; // Only available when decrypting
+  access_key_id_masked?: string; // Masked version from list API
+  secret_access_key?: string;
   bucket_name: string;
   region?: string;
   endpoint_url?: string;
   is_active: boolean;
   created_at: string;
+  updated_at?: string;
 }
 
 export const CloudCredentialsTab = () => {
@@ -135,7 +137,7 @@ export const CloudCredentialsTab = () => {
     setFormData({
       provider: cred.provider,
       account_id: cred.account_id,
-      access_key_id: cred.access_key_id,
+      access_key_id: '', // Don't populate - user must re-enter
       secret_access_key: '', // Don't populate secret
       bucket_name: cred.bucket_name,
       region: cred.region || '',
@@ -340,7 +342,7 @@ export const CloudCredentialsTab = () => {
                   <TableCell className="font-mono text-sm">{cred.bucket_name}</TableCell>
                   <TableCell className="text-muted-foreground">{cred.account_id}</TableCell>
                   <TableCell className="font-mono text-xs text-muted-foreground">
-                    {cred.access_key_id}
+                    {cred.access_key_id_masked || cred.access_key_id}
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-3">
