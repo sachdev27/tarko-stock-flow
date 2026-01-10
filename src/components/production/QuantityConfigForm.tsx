@@ -1,12 +1,17 @@
+import { useState } from 'react';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Plus, Trash2 } from 'lucide-react';
 
-interface RollConfig {
+interface RollGroup {
   numberOfRolls: string;
   lengthPerRoll: string;
+}
+
+interface RollConfig {
+  rollGroups: RollGroup[];
   cutRolls: { length: string }[];
 }
 
@@ -22,7 +27,8 @@ interface QuantityConfigFormProps {
   isQuantityBased: boolean;
   rollConfig: RollConfig;
   bundleConfig: BundleConfig;
-  onRollChange: (field: keyof RollConfig, value: string) => void;
+  onRollGroupAdd: (group: RollGroup) => void;
+  onRollGroupRemove: (index: number) => void;
   onBundleChange: (field: keyof BundleConfig, value: string) => void;
   onAddCutRoll: (length: string) => void;
   onRemoveCutRoll: (index: number) => void;
@@ -36,7 +42,8 @@ export const QuantityConfigForm = ({
   isQuantityBased,
   rollConfig,
   bundleConfig,
-  onRollChange,
+  onRollGroupAdd,
+  onRollGroupRemove,
   onBundleChange,
   onAddCutRoll,
   onRemoveCutRoll,
@@ -46,54 +53,121 @@ export const QuantityConfigForm = ({
 }: QuantityConfigFormProps) => {
   const [newCutRollLength, setNewCutRollLength] = useState('');
   const [newSparePipeLength, setNewSparePipeLength] = useState('');
+  const [newRollGroup, setNewRollGroup] = useState({ numberOfRolls: '', lengthPerRoll: '' });
 
   if (configType === 'standard_rolls') {
     return (
       <>
-        {/* Number of Rolls */}
-        <div className="space-y-2">
-          <Label htmlFor="numberOfRolls">
-            Number of Rolls <span className="text-red-500">*</span>
-          </Label>
-          <Input
-            id="numberOfRolls"
-            type="number"
-            min="0"
-            step="1"
-            value={rollConfig.numberOfRolls}
-            onChange={(e) => onRollChange('numberOfRolls', e.target.value)}
-            className="h-12"
-          />
-          {submitAttempted && (!rollConfig.numberOfRolls || parseInt(rollConfig.numberOfRolls) <= 0) && (
-            <p className="text-xs text-red-500">Number of rolls must be greater than 0</p>
-          )}
-        </div>
+        {/* Roll Groups Section */}
+        <Card className="p-4 bg-blue-50 dark:bg-blue-950/20 border-blue-200">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h3 className="font-semibold text-lg">Roll Groups</h3>
+              <p className="text-sm text-muted-foreground">Add multiple roll groups with different lengths</p>
+            </div>
+            <span className="text-sm font-medium text-blue-600 dark:text-blue-400">
+              {rollConfig.rollGroups.length} group{rollConfig.rollGroups.length !== 1 ? 's' : ''}
+            </span>
+          </div>
 
-        {/* Length per Roll */}
-        <div className="space-y-2">
-          <Label htmlFor="lengthPerRoll">
-            Length per Roll (meters) <span className="text-red-500">*</span>
-          </Label>
-          <Input
-            id="lengthPerRoll"
-            type="number"
-            min="0"
-            step="0.01"
-            value={rollConfig.lengthPerRoll}
-            onChange={(e) => onRollChange('lengthPerRoll', e.target.value)}
-            className="h-12"
-          />
-          {submitAttempted && (!rollConfig.lengthPerRoll || parseFloat(rollConfig.lengthPerRoll) <= 0) && (
-            <p className="text-xs text-red-500">Length per roll must be greater than 0</p>
+          {/* Existing Roll Groups */}
+          <div className="space-y-3 mb-3">
+            {rollConfig.rollGroups.map((group, index) => (
+              <div key={index} className="flex items-center gap-2 p-3 bg-white dark:bg-gray-900 rounded-lg border">
+                <div className="flex-1 grid grid-cols-2 gap-2">
+                  <div>
+                    <Label className="text-xs">Rolls</Label>
+                    <Input
+                      type="number"
+                      value={group.numberOfRolls}
+                      readOnly
+                      className="h-9 font-mono font-bold"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Length (m)</Label>
+                    <Input
+                      type="number"
+                      value={group.lengthPerRoll}
+                      readOnly
+                      className="h-9 font-mono font-bold"
+                    />
+                  </div>
+                </div>
+                <div className="text-sm text-muted-foreground pt-5">
+                  = {(parseInt(group.numberOfRolls) * parseFloat(group.lengthPerRoll)).toFixed(0)}m
+                </div>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => onRollGroupRemove(index)}
+                  className="mt-5"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
+          </div>
+
+          {/* Add New Roll Group */}
+          <div className="border-t pt-3">
+            <Label className="text-sm font-semibold mb-2 block">Add New Roll Group</Label>
+            <div className="flex items-end gap-2">
+              <div className="flex-1">
+                <Label className="text-xs">Number of Rolls</Label>
+                <Input
+                  type="number"
+                  placeholder="e.g., 10"
+                  value={newRollGroup.numberOfRolls}
+                  onChange={(e) => setNewRollGroup({...newRollGroup, numberOfRolls: e.target.value})}
+                  className="h-10"
+                  min="1"
+                  step="1"
+                />
+              </div>
+              <div className="flex-1">
+                <Label className="text-xs">Length per Roll (m)</Label>
+                <Input
+                  type="number"
+                  placeholder="e.g., 500"
+                  value={newRollGroup.lengthPerRoll}
+                  onChange={(e) => setNewRollGroup({...newRollGroup, lengthPerRoll: e.target.value})}
+                  className="h-10"
+                  min="0.01"
+                  step="0.01"
+                />
+              </div>
+              <Button
+                type="button"
+                variant="default"
+                onClick={() => {
+                  const rolls = parseInt(newRollGroup.numberOfRolls);
+                  const length = parseFloat(newRollGroup.lengthPerRoll);
+                  if (rolls > 0 && length > 0) {
+                    onRollGroupAdd(newRollGroup);
+                    setNewRollGroup({ numberOfRolls: '', lengthPerRoll: '' });
+                  }
+                }}
+                className="h-10"
+              >
+                <Plus className="h-4 w-4 mr-1" />
+                Add Group
+              </Button>
+            </div>
+          </div>
+
+          {submitAttempted && rollConfig.rollGroups.length === 0 && (
+            <p className="text-xs text-red-500 mt-2">At least one roll group is required</p>
           )}
-        </div>
+        </Card>
 
         {/* Cut Rolls */}
         <Card className="p-4 bg-muted/50">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="font-semibold">Cut Rolls (Optional)</h3>
+            <h3 className="font-semibold">Cut Pieces (Optional)</h3>
             <span className="text-sm text-muted-foreground">
-              {rollConfig.cutRolls.length} cut rolls
+              {rollConfig.cutRolls.length} cut piece{rollConfig.cutRolls.length !== 1 ? 's' : ''}
             </span>
           </div>
 
@@ -104,7 +178,7 @@ export const QuantityConfigForm = ({
                   type="number"
                   value={roll.length}
                   readOnly
-                  className="h-10"
+                  className="h-10 font-mono"
                   placeholder="Length (m)"
                 />
                 <Button
@@ -121,7 +195,7 @@ export const QuantityConfigForm = ({
             <div className="flex items-center gap-2">
               <Input
                 type="number"
-                placeholder="Cut roll length (meters)"
+                placeholder="Cut piece length (meters)"
                 value={newCutRollLength}
                 onChange={(e) => setNewCutRollLength(e.target.value)}
                 className="h-10"
@@ -271,6 +345,3 @@ export const QuantityConfigForm = ({
     </>
   );
 };
-
-// Add missing import
-import { useState } from 'react';

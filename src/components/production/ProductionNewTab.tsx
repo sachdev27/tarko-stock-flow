@@ -41,9 +41,8 @@ export const ProductionNewTab = () => {
     autoBatchNo: true,
     parameters: {} as Record<string, string>,
     notes: '',
-    // Roll config
-    numberOfRolls: '1',
-    lengthPerRoll: '500',
+    // Roll config - NEW: Support multiple roll groups
+    rollGroups: [] as { numberOfRolls: string; lengthPerRoll: string }[],
     cutRolls: [] as { length: string }[],
     // Bundle config
     numberOfBundles: '1',
@@ -70,9 +69,12 @@ export const ProductionNewTab = () => {
     let total = 0;
 
     if (config.type === 'standard_rolls') {
-      const rolls = parseInt(formData.numberOfRolls) || 0;
-      const lengthPerRoll = parseFloat(formData.lengthPerRoll) || 0;
-      total = rolls * lengthPerRoll;
+      // Sum up all roll groups
+      formData.rollGroups.forEach(group => {
+        const rolls = parseInt(group.numberOfRolls) || 0;
+        const lengthPerRoll = parseFloat(group.lengthPerRoll) || 0;
+        total += rolls * lengthPerRoll;
+      });
       formData.cutRolls.forEach(roll => {
         total += parseFloat(roll.length) || 0;
       });
@@ -88,7 +90,7 @@ export const ProductionNewTab = () => {
         });
       } else {
         // Length-based: calculate total length
-        const lengthPerPipe = parseFloat(formData.lengthPerRoll) || 0;
+        const lengthPerPipe = parseFloat(formData.lengthPerPiece) || 0;
         total = bundles * bundleSize * lengthPerPipe;
         formData.sparePipes.forEach(pipe => {
           total += parseFloat(pipe.length) || 0;
@@ -102,8 +104,7 @@ export const ProductionNewTab = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     formData.productTypeId,
-    formData.numberOfRolls,
-    formData.lengthPerRoll,
+    formData.rollGroups,
     formData.cutRolls.length,
     formData.numberOfBundles,
     formData.bundleSize,
@@ -125,9 +126,11 @@ export const ProductionNewTab = () => {
     let totalLengthMeters = 0;
 
     if (config.type === 'standard_rolls') {
-      const rolls = parseInt(formData.numberOfRolls) || 0;
-      const lengthPerRoll = parseFloat(formData.lengthPerRoll) || 0;
-      totalLengthMeters += rolls * lengthPerRoll;
+      formData.rollGroups.forEach(group => {
+        const rolls = parseInt(group.numberOfRolls) || 0;
+        const lengthPerRoll = parseFloat(group.lengthPerRoll) || 0;
+        totalLengthMeters += rolls * lengthPerRoll;
+      });
       formData.cutRolls.forEach(roll => {
         totalLengthMeters += parseFloat(roll.length) || 0;
       });
@@ -149,7 +152,7 @@ export const ProductionNewTab = () => {
 
     const totalWeightKg = totalLengthMeters * weightPerM;
     setFormData(prev => ({ ...prev, totalWeight: totalWeightKg.toFixed(3) }));
-  }, [formData.weightPerMeter, formData.numberOfRolls, formData.lengthPerRoll, formData.cutRolls, formData.numberOfBundles, formData.bundleSize, formData.lengthPerPiece, formData.sparePipes, formData.productTypeId, productTypes]);
+  }, [formData.weightPerMeter, formData.rollGroups, formData.cutRolls, formData.numberOfBundles, formData.bundleSize, formData.lengthPerPiece, formData.sparePipes, formData.productTypeId, productTypes]);
 
   const fetchMasterData = async () => {
     try {
@@ -194,6 +197,15 @@ export const ProductionNewTab = () => {
       return;
     }
 
+    // Validate roll groups for HDPE
+    const productType = productTypes.find(pt => pt.id === formData.productTypeId);
+    const config = productType?.roll_configuration || { type: 'standard_rolls' };
+
+    if (config.type === 'standard_rolls' && formData.rollGroups.length === 0 && formData.cutRolls.length === 0) {
+      toast.error('Please add at least one roll group or cut piece');
+      return;
+    }
+
     // Validate weight per meter
     if (!formData.weightPerMeter || parseFloat(formData.weightPerMeter) <= 0) {
       toast.error('Weight per Meter is required and must be greater than 0');
@@ -201,7 +213,6 @@ export const ProductionNewTab = () => {
     }
 
     // Validate parameters
-    const productType = productTypes.find(pt => pt.id === formData.productTypeId);
     const paramSchema = productType?.parameter_schema || [];
     for (const param of paramSchema) {
       if (param.required && !formData.parameters[param.name]) {
@@ -213,7 +224,6 @@ export const ProductionNewTab = () => {
     setLoading(true);
 
     try {
-      const config = productType?.roll_configuration || { type: 'standard_rolls' };
 
       // Create FormData for file upload
       const formDataToSend = new FormData();
@@ -231,8 +241,7 @@ export const ProductionNewTab = () => {
       formDataToSend.append('quantity_based', config.quantity_based ? 'true' : 'false');
 
       if (config.type === 'standard_rolls') {
-        formDataToSend.append('number_of_rolls', formData.numberOfRolls);
-        formDataToSend.append('length_per_roll', formData.lengthPerRoll);
+        formDataToSend.append('roll_groups', JSON.stringify(formData.rollGroups));
         formDataToSend.append('cut_rolls', JSON.stringify(formData.cutRolls));
       } else {
         formDataToSend.append('number_of_bundles', formData.numberOfBundles);
@@ -255,7 +264,7 @@ export const ProductionNewTab = () => {
 
       const data = await production.createBatch(formDataToSend);
 
-      toast.success(`Production batch ${data.batch_code || data.id} created successfully!`);
+      toast.success(`Production batch created successfully!`);
 
       // Reset form
       setFormData({
@@ -267,8 +276,7 @@ export const ProductionNewTab = () => {
         autoBatchNo: true,
         parameters: {},
         notes: '',
-        numberOfRolls: '1',
-        lengthPerRoll: '500',
+        rollGroups: [],
         cutRolls: [],
         numberOfBundles: '1',
         bundleSize: '10',
@@ -317,8 +325,7 @@ export const ProductionNewTab = () => {
               configType={rollConfig.type}
               isQuantityBased={rollConfig.quantity_based || false}
               rollConfig={{
-                numberOfRolls: formData.numberOfRolls,
-                lengthPerRoll: formData.lengthPerRoll,
+                rollGroups: formData.rollGroups,
                 cutRolls: formData.cutRolls
               }}
               bundleConfig={{
@@ -327,7 +334,18 @@ export const ProductionNewTab = () => {
                 lengthPerPiece: formData.lengthPerPiece,
                 sparePipes: formData.sparePipes
               }}
-              onRollChange={(field, value) => handleFieldChange(field, value)}
+              onRollGroupAdd={(group) => {
+                setFormData(prev => ({
+                  ...prev,
+                  rollGroups: [...prev.rollGroups, group]
+                }));
+              }}
+              onRollGroupRemove={(index) => {
+                setFormData(prev => ({
+                  ...prev,
+                  rollGroups: prev.rollGroups.filter((_, i) => i !== index)
+                }));
+              }}
               onBundleChange={(field, value) => handleFieldChange(field, value)}
               onAddCutRoll={(length) => {
                 setFormData(prev => ({

@@ -78,6 +78,11 @@ def create_batch():
             number_of_rolls = int(number_of_rolls_raw) if number_of_rolls_raw not in (None, '', 'null') else 1
         cut_rolls = json.loads(data.get('cut_rolls', '[]')) if isinstance(data.get('cut_rolls'), str) else data.get('cut_rolls', [])
 
+        # NEW: Handle roll_groups (multiple roll groups with different lengths)
+        roll_groups = json.loads(data.get('roll_groups', '[]')) if isinstance(data.get('roll_groups'), str) else data.get('roll_groups', [])
+        # If roll_groups provided, it overrides number_of_rolls/length_per_roll
+        # roll_groups format: [{"numberOfRolls": "10", "lengthPerRoll": "500"}, {"numberOfRolls": "7", "lengthPerRoll": "300"}]
+
         # Bundle/spare pipe data
         quantity_based = data.get('quantity_based', 'false').lower() == 'true'
         # Handle number_of_bundles safely - can be None
@@ -232,8 +237,26 @@ def create_batch():
             # HDPE Product: Create rolls with length tracking
             # ==================================================
             if product_category == 'HDPE Pipe' and roll_config_type == 'standard_rolls':
-                # Create standard rolls (aggregate)
-                if number_of_rolls > 0:
+                # NEW: Handle multiple roll groups
+                if roll_groups and len(roll_groups) > 0:
+                    # Create separate stock entries for each roll group
+                    for group in roll_groups:
+                        group_rolls = int(group.get('numberOfRolls', 0))
+                        group_length = float(group.get('lengthPerRoll', 0))
+
+                        if group_rolls > 0 and group_length > 0:
+                            InventoryHelper.create_hdpe_stock(
+                                cursor,
+                                batch_id=batch_id,
+                                product_variant_id=variant_id,
+                                quantity=group_rolls,
+                                length_per_roll=group_length,
+                                notes=f'{group_rolls} rolls of {group_length}m each'
+                            )
+                            total_items += group_rolls
+
+                # OLD: Legacy single roll group (for backward compatibility)
+                elif number_of_rolls > 0:
                     # If length_per_roll is provided directly, use it (new aggregate model)
                     # Otherwise calculate from quantity (old behavior)
                     if length_per_roll_input > 0:

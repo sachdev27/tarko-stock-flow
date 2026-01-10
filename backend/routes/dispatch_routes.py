@@ -929,7 +929,9 @@ def create_dispatch():
                 # ============================================================
 
                 # Generate dispatch number
-                current_year = 2025
+                from datetime import datetime
+                current_year = datetime.now().year
+
                 cursor.execute("""
                     SELECT dispatch_number
                     FROM dispatches
@@ -944,6 +946,12 @@ def create_dispatch():
                     new_number = last_number + 1
                 else:
                     new_number = 1
+
+                # Check if we've exceeded 9999 dispatches in a year
+                if new_number > 9999:
+                    return jsonify({
+                        'error': f'Maximum dispatches for year {current_year} reached (9999). Please contact system administrator.'
+                    }), 400
 
                 dispatch_number = f'DISP-{current_year}-{new_number:04d}'
 
