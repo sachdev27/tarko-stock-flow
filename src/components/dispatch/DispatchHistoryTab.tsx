@@ -488,6 +488,7 @@ export const DispatchHistoryTab = () => {
                       <TableHead>Dispatch #</TableHead>
                       <TableHead>Date & Time</TableHead>
                       <TableHead>Customer</TableHead>
+                      <TableHead>Bill To</TableHead>
                       <TableHead>Transport/Driver</TableHead>
                       <TableHead>Items</TableHead>
                       <TableHead>Status</TableHead>
@@ -517,6 +518,11 @@ export const DispatchHistoryTab = () => {
                           {dispatch.customer_city && (
                             <div className="text-xs text-gray-500">{dispatch.customer_city}</div>
                           )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="text-sm">
+                          {dispatch.bill_to_name || '-'}
                         </div>
                       </TableCell>
                       <TableCell>

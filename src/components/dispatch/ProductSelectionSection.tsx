@@ -216,33 +216,82 @@ export const ProductSelectionSection = ({
       const searchValues = firstPart.split(',').map(n => n.trim()).filter(Boolean);
       const brandPattern = parts.slice(1).join(' '); // Rest is brand search
 
-      return groupedVariants.filter(variant => {
+      // Sort results with prioritization based on parameter order
+      const matchedVariants = groupedVariants.filter(variant => {
+        // Determine if HDPE or Sprinkler based on product type
+        const isHDPE = variant.product_category?.includes('HDPE') || variant.product_type_name?.includes('HDPE');
+        const isSprinkler = variant.product_category?.includes('Sprinkler') || variant.product_type_name?.includes('Sprinkler');
+
+        // Define expected parameter order based on product type
+        const expectedOrder = isHDPE ? ['OD', 'PN', 'PE'] : isSprinkler ? ['OD', 'PN', 'TYPE'] : ['OD', 'PN'];
+
         // Get parameter values in a normalized way
         const paramEntries = Object.entries(variant.parameters).map(([key, value]) => ({
           key: key.toUpperCase(),
           value: String(value).toLowerCase()
         }));
 
-        // For each search value, check if it matches ANY parameter value exactly
-        const allValuesMatch = searchValues.every(searchVal => {
-          return paramEntries.some(param => {
-            // Check for exact match or match with common units (e.g., "32" matches "32mm" or "32")
-            return param.value === searchVal ||
-                   param.value === `${searchVal}mm` ||
-                   param.value === `${searchVal}bar` ||
-                   param.value.startsWith(`${searchVal}mm`) ||
-                   param.value === searchVal.replace(/mm$/, '') ||
-                   param.value === searchVal.replace(/bar$/, '');
-          });
+        // Check if parameters match in the expected order
+        const matchesInOrder = searchValues.every((searchVal, index) => {
+          if (index >= expectedOrder.length) return false;
+
+          const expectedKey = expectedOrder[index];
+          const param = paramEntries.find(p => p.key === expectedKey);
+
+          if (!param) return false;
+
+          // Check for exact match or match with common units
+          return param.value === searchVal ||
+                 param.value === `${searchVal}mm` ||
+                 param.value === `${searchVal}bar` ||
+                 param.value.startsWith(`${searchVal}mm`) ||
+                 param.value === searchVal.replace(/mm$/, '') ||
+                 param.value === searchVal.replace(/bar$/, '') ||
+                 param.value.toLowerCase() === searchVal; // For Type parameter (e.g., 'L', 'C')
         });
 
         // If brand pattern provided, also check brand
         if (brandPattern) {
           const brandMatch = variant.brand_name?.toLowerCase().includes(brandPattern);
-          return allValuesMatch && brandMatch;
+          return matchesInOrder && brandMatch;
         }
 
-        return allValuesMatch;
+        return matchesInOrder;
+      });
+
+      // Sort matched variants: exact matches first (all params match in order)
+      return matchedVariants.sort((a, b) => {
+        const aIsHDPE = a.product_category?.includes('HDPE') || a.product_type_name?.includes('HDPE');
+        const bIsHDPE = b.product_category?.includes('HDPE') || b.product_type_name?.includes('HDPE');
+
+        // Calculate match score based on order
+        const getMatchScore = (variant: ProductVariant) => {
+          const isHDPE = variant.product_category?.includes('HDPE') || variant.product_type_name?.includes('HDPE');
+          const expectedOrder = isHDPE ? ['OD', 'PN', 'PE'] : ['OD', 'PN', 'TYPE'];
+
+          let score = 0;
+          searchValues.forEach((searchVal, index) => {
+            if (index < expectedOrder.length) {
+              const expectedKey = expectedOrder[index];
+              const paramValue = String(variant.parameters[expectedKey] || '').toLowerCase();
+
+              if (paramValue === searchVal ||
+                  paramValue === `${searchVal}mm` ||
+                  paramValue === `${searchVal}bar` ||
+                  paramValue.replace(/mm$/, '') === searchVal ||
+                  paramValue.replace(/bar$/, '') === searchVal) {
+                score += (expectedOrder.length - index); // Higher weight for earlier matches
+              }
+            }
+          });
+
+          return score;
+        };
+
+        const scoreA = getMatchScore(a);
+        const scoreB = getMatchScore(b);
+
+        return scoreB - scoreA; // Higher scores first
       });
     }
 
@@ -582,12 +631,12 @@ export const ProductSelectionSection = ({
           <Input
             value={productSearch}
             onChange={(e) => onProductSearchChange(e.target.value)}
-            placeholder="e.g., 32,6,10 astral (OD,PN,PE match)"
+            placeholder="e.g., 63,6 or 32,6,10 astral"
             className="w-full font-mono"
           />
           <p className="text-xs text-gray-500 mt-1">
             {filteredVariants.length} variant{filteredVariants.length !== 1 ? 's' : ''} •
-            Format: <span className="font-mono">value1,value2,value3 brandname</span> matches ALL values + brand
+            HDPE: <span className="font-mono">OD,PN,PE</span> • Sprinkler: <span className="font-mono">OD,PN,Type</span>
           </p>
         </div>
       </div>

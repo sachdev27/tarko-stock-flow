@@ -565,7 +565,7 @@ def create_vehicle():
                 VALUES (%s, %s, %s, %s)
                 RETURNING id, vehicle_number, vehicle_type, driver_name, driver_phone
             """, (
-                data['vehicle_number'],
+                data.get('vehicle_number'),
                 data.get('vehicle_type'),
                 data.get('driver_name'),
                 data.get('driver_phone')
@@ -605,7 +605,7 @@ def update_vehicle(vehicle_id):
                 WHERE id = %s AND deleted_at IS NULL
                 RETURNING id, vehicle_number, vehicle_type, driver_name, driver_phone
             """, (
-                data['vehicle_number'],
+                data.get('vehicle_number'),
                 data.get('vehicle_type'),
                 data.get('driver_name'),
                 data.get('driver_phone'),
