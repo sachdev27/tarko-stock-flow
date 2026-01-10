@@ -65,6 +65,18 @@ def create_cloud_credentials():
             ))
 
             result = cursor.fetchone()
+
+            # Automatically create default retention policies for cloud backups
+            cursor.execute("""
+                INSERT INTO backup_retention_policies
+                (policy_name, backup_type, retention_days, auto_delete_enabled,
+                 keep_weekly, keep_monthly, max_backups, created_by_user_id)
+                VALUES
+                ('Cloud Backup - 30 Days', 'cloud', 30, true, true, true, null, %s),
+                ('Cloud Backup - Weekly', 'cloud', 90, true, true, true, 12, %s)
+                ON CONFLICT (policy_name) DO NOTHING
+            """, (get_jwt_identity(), get_jwt_identity()))
+
             return jsonify(dict(result)), 201
 
         except Exception as e:

@@ -9,7 +9,6 @@ export const useCloudCredentials = () => {
     queryKey: ['cloud-credentials'],
     queryFn: async () => {
       const response = await backupConfig.getCloudCredentials();
-      console.log('useCloudCredentials response:', response);
       return response;
     },
   });

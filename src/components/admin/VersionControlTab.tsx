@@ -98,9 +98,9 @@ export const VersionControlTab = ({ snapshots, rollbackHistory, onDataChange }: 
   const fetchAutoSnapshotSettings = async () => {
     try {
       const response = await versionControl.getAutoSnapshotSettings();
-      setAutoSnapshotEnabled(response?.data?.enabled || response?.enabled || false);
-      setAutoSnapshotTime(response?.data?.time || response?.time || '02:00');
-      setAutoSnapshotInterval(response?.data?.interval || response?.interval || 'daily');
+      setAutoSnapshotEnabled(response?.enabled || false);
+      setAutoSnapshotTime(response?.time || '02:00');
+      setAutoSnapshotInterval(response?.interval || 'daily');
     } catch (error: any) {
       console.error('Failed to fetch auto-snapshot settings:', error);
     }

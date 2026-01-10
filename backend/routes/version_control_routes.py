@@ -1142,6 +1142,18 @@ def auto_snapshot_settings():
                     DO UPDATE SET setting_value = %s, updated_at = NOW()
                 """, (interval, interval))
 
+                # If enabling auto-snapshots for the first time, create default retention policies
+                if enabled:
+                    cursor.execute("""
+                        INSERT INTO backup_retention_policies
+                        (policy_name, backup_type, retention_days, auto_delete_enabled,
+                         keep_weekly, keep_monthly, max_backups, created_by_user_id)
+                        VALUES
+                        ('Local Snapshots - 7 Days', 'local', 7, true, true, true, null, %s),
+                        ('Local Snapshots - Monthly', 'local', 365, true, true, true, 12, %s)
+                        ON CONFLICT (policy_name) DO NOTHING
+                    """, (user_id, user_id))
+
                 return jsonify({
                     'message': 'Auto-snapshot settings updated',
                     'enabled': enabled,

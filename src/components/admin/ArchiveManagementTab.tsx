@@ -87,7 +87,7 @@ export const ArchiveManagementTab = () => {
     queryKey: ['snapshots'],
     queryFn: () => versionControl.getSnapshots(),
   });
-  const snapshots = snapshotsResponse?.data || [];
+  const snapshots = snapshotsResponse || [];
 
   const [bucketDialogOpen, setBucketDialogOpen] = useState(false);
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);

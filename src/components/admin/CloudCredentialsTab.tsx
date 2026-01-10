@@ -61,9 +61,6 @@ export const CloudCredentialsTab = () => {
   const updateCredential = useUpdateCloudCredential();
   const deleteCredential = useDeleteCloudCredential();
 
-  console.log('CloudCredentialsTab - credentials:', credentials);
-  console.log('CloudCredentialsTab - isLoading:', isLoading);
-
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
