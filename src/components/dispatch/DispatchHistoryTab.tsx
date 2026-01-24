@@ -76,7 +76,7 @@ interface DispatchDetails extends Dispatch {
 }
 
 export const DispatchHistoryTab = () => {
-  const { token } = useAuth();
+  const { token, user, isAdmin } = useAuth();
   const api = useMemo(() => new DispatchAPI(token || ''), [token]);
   const [dispatches, setDispatches] = useState<Dispatch[]>([]);
   const [filteredDispatches, setFilteredDispatches] = useState<Dispatch[]>([]);
@@ -468,7 +468,7 @@ export const DispatchHistoryTab = () => {
                           <Badge className={getStatusColor(dispatch.status)}>
                             {dispatch.status}
                           </Badge>
-                          {!['REVERTED', 'CANCELLED'].includes(dispatch.status) && (
+                          {isAdmin && !['REVERTED', 'CANCELLED'].includes(dispatch.status) && (
                             <Button
                               variant="outline"
                               size="sm"
@@ -597,7 +597,7 @@ export const DispatchHistoryTab = () => {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        {!['REVERTED', 'CANCELLED'].includes(dispatch.status) && (
+                        {isAdmin && !['REVERTED', 'CANCELLED'].includes(dispatch.status) && (
                           <Button
                             variant="outline"
                             size="sm"
