@@ -69,6 +69,7 @@ interface ProductSelectionProps {
   onProductSearchChange: (search: string) => void;
   selectedRolls: any[];
   onRemoveRoll: (index: number) => void;
+  onRemoveByStockId?: (stockId: string) => void;
   onClearCart: () => void;
   onAddRoll: (roll: any) => void;
   onUpdateRollQuantity: (index: number, quantity: number, dispatchLength?: number) => void;
@@ -96,6 +97,7 @@ export const ProductSelectionSection = ({
   onProductSearchChange,
   selectedRolls,
   onRemoveRoll,
+  onRemoveByStockId,
   onClearCart,
   onAddRoll,
   productTypes,
@@ -344,6 +346,14 @@ export const ProductSelectionSection = ({
   };
 
   const handleDialogSuccess = () => {
+    // Only remove items from cart if the stock being modified is in the cart
+    // This prevents dispatching stale data for the modified stock only
+    if (selectedStock && onRemoveByStockId) {
+      const isInCart = selectedRolls.some(r => r.id === selectedStock.stock_id);
+      if (isInCart) {
+        onRemoveByStockId(selectedStock.stock_id);
+      }
+    }
     onSearchProducts();
     setSelectedStock(null);
   };
@@ -379,7 +389,7 @@ export const ProductSelectionSection = ({
             batch_code: entry.batch_code || '',
             length_meters: entry.length_per_unit || 0,
             status: 'AVAILABLE',
-            stock_type: 'FULL_ROLL',
+            stock_type: entry.stock_type || 'FULL_ROLL',
             parameters: variant.parameters,
             brand_name: variant.brand_name,
             product_type_name: variant.product_type_name,
@@ -402,7 +412,7 @@ export const ProductSelectionSection = ({
         batch_code: fullRollEntry.batch_code || '',
         length_meters: fullRollEntry.length_per_unit || 0,
         status: 'AVAILABLE',
-        stock_type: 'FULL_ROLL',
+        stock_type: fullRollEntry.stock_type || 'FULL_ROLL',
         parameters: variant.parameters,
         brand_name: variant.brand_name,
         product_type_name: variant.product_type_name,
@@ -455,7 +465,7 @@ export const ProductSelectionSection = ({
     onAddRoll(roll);
 
     setCutPiecesQuantity(prev => ({ ...prev, [stateKey]: 0 }));
-    toast.success(`Added ${quantity} cut piece${quantity > 1 ? 's' : ''} (${(entry.length_per_unit || 0).toFixed(1)}m each)`);
+    toast.success(`Added ${quantity} cut piece${quantity > 1 ? 's' : ''} (${(parseFloat(String(entry.length_per_unit)) || 0).toFixed(1)}m each)`);
   };
 
   // Sprinkler: Add bundles

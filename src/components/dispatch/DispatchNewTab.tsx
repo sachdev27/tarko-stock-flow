@@ -229,6 +229,17 @@ export const DispatchNewTab = () => {
     toast.info(`Removed ${removed.batch_code}`);
   };
 
+  const handleRemoveByStockId = (stockId: string) => {
+    // Remove all cart items that reference this stock_id
+    // This is called when a stock is cut/modified to prevent stale cart data
+    const before = selectedRolls.length;
+    setSelectedRolls(prev => prev.filter(roll => roll.id !== stockId));
+    const removed = before - selectedRolls.filter(roll => roll.id !== stockId).length;
+    if (removed > 0) {
+      toast.info(`Removed ${removed} item(s) from cart due to stock modification`);
+    }
+  };
+
   const handleClearCart = () => {
     setSelectedRolls([]);
     toast.info('Cart cleared');
@@ -319,6 +330,11 @@ export const DispatchNewTab = () => {
             pieces_per_bundle: roll.pieces_per_bundle,
             piece_length_meters: roll.piece_length_meters
           }];
+        } else if (roll.stock_type === 'CUT_ROLL') {
+          // CUT_ROLL stock without piece_ids - this shouldn't happen
+          // It means the stock has individual pieces but they weren't selected
+          console.error('CUT_ROLL stock without piece_ids:', roll);
+          throw new Error(`Cannot dispatch CUT_ROLL stock ${roll.batch_code || roll.id} without selecting specific pieces`);
         } else {
           // Full roll
           return [{
@@ -407,6 +423,7 @@ export const DispatchNewTab = () => {
               onProductSearchChange={setProductSearch}
               selectedRolls={selectedRolls}
               onRemoveRoll={handleRemoveRoll}
+              onRemoveByStockId={handleRemoveByStockId}
               onClearCart={handleClearCart}
               onAddRoll={handleAddRoll}
               onUpdateRollQuantity={(index, quantity, dispatchLength) => {

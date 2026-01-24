@@ -76,6 +76,7 @@ def get_available_rolls():
             batch_id,
             batch_code,
             status,
+            stock_type,
             product_category,
             product_variant_id,
             parameters,
@@ -143,9 +144,23 @@ def get_available_rolls():
                 'length_meters': float(roll['length_meters']),
                 'initial_length_meters': float(roll['initial_length_meters']),
                 'status': roll['status'],
+                'stock_type': roll['stock_type'],
                 'is_cut_roll': roll['is_cut_roll'],
                 'product_category': 'HDPE'
             }
+
+            # For cut rolls, fetch individual piece_ids from hdpe_cut_pieces table
+            if roll['is_cut_roll'] or roll['stock_type'] == 'CUT_ROLL':
+                cursor = get_db_cursor().__enter__()
+                cursor.execute("""
+                    SELECT array_agg(id::text ORDER BY created_at) as piece_ids,
+                           array_agg(length_meters ORDER BY created_at) as piece_lengths
+                    FROM hdpe_cut_pieces
+                    WHERE stock_id = %s AND status = 'IN_STOCK' AND deleted_at IS NULL
+                """, (roll['id'],))
+                piece_result = cursor.fetchone()
+                roll_info['piece_ids'] = piece_result['piece_ids'] if piece_result and piece_result['piece_ids'] else []
+                roll_info['piece_lengths'] = piece_result['piece_lengths'] if piece_result and piece_result['piece_lengths'] else []
 
             if roll['is_cut_roll']:
                 product_groups[product_label]['cut_rolls'].append(roll_info)
@@ -164,6 +179,7 @@ def get_available_rolls():
                 'piece_length_meters': float(roll['piece_length_meters']),
                 'total_length_meters': float(roll['total_length_meters']),
                 'status': roll['status'],
+                'stock_type': roll['stock_type'],
                 'product_category': 'SPRINKLER'
             }
 
@@ -838,12 +854,15 @@ def create_dispatch():
                 # This ensures atomic all-or-nothing behavior
                 # ============================================================
                 print(f"DEBUG: Pre-validating {len(items)} items before dispatch...")
+                print(f"DEBUG: Items payload: {items}")
 
                 for idx, item in enumerate(items):
                     stock_id = item.get('stock_id')
                     product_variant_id = item.get('product_variant_id')
                     item_type = item.get('item_type')
                     quantity = item.get('quantity', 1)
+
+                    print(f"DEBUG: Validating item {idx+1}: stock_id={stock_id}, item_type={item_type}, quantity={quantity}")
 
                     if not all([stock_id, product_variant_id, item_type]):
                         cursor.execute("ROLLBACK")
@@ -861,6 +880,8 @@ def create_dispatch():
                         cursor.execute("ROLLBACK")
                         return jsonify({'error': f'Item {idx+1}: Stock {stock_id} not found'}), 404
 
+                    print(f"DEBUG: Stock fetched - id={stock_id}, db_stock_type={stock['stock_type']}, db_quantity={stock['quantity']}, db_status={stock['status']}, sent_item_type={item_type}")
+
                     if stock['status'] != 'IN_STOCK':
                         cursor.execute("ROLLBACK")
                         return jsonify({'error': f'Item {idx+1}: Stock {stock_id} is not available (status: {stock["status"]})'}), 400
@@ -868,6 +889,25 @@ def create_dispatch():
                     if stock['quantity'] < quantity:
                         cursor.execute("ROLLBACK")
                         return jsonify({'error': f'Item {idx+1}: Insufficient quantity for stock {stock_id}. Available: {stock["quantity"]}, Requested: {quantity}'}), 400
+
+                    # Additional validation: Check for stale cart data
+                    # If frontend sends FULL_ROLL but stock is actually CUT_ROLL, validate pieces exist
+                    if item_type == 'FULL_ROLL' and stock['stock_type'] == 'CUT_ROLL':
+                        print(f"DEBUG Pre-validation: FULL_ROLL sent but stock is CUT_ROLL. stock_id={stock_id}, checking pieces...")
+                        cursor.execute("""
+                            SELECT COUNT(*) as piece_count
+                            FROM hdpe_cut_pieces
+                            WHERE stock_id = %s AND status = 'IN_STOCK' AND deleted_at IS NULL
+                        """, (stock_id,))
+                        piece_result = cursor.fetchone()
+                        actual_pieces = piece_result['piece_count'] if piece_result else 0
+                        print(f"DEBUG Pre-validation: actual IN_STOCK pieces for stock {stock_id}: {actual_pieces}, requested: {quantity}")
+                        if actual_pieces < quantity:
+                            cursor.execute("ROLLBACK")
+                            return jsonify({
+                                'error': f'Item {idx+1}: Stock type mismatch. This item was added as a Full Roll but is now a Cut Roll with {actual_pieces} pieces available.',
+                                'details': 'The stock may have been modified since you added it to cart. Please refresh the page and re-select items.'
+                            }), 400
 
                     # Validate item-type specific requirements
                     if item_type == 'CUT_PIECE':
@@ -947,12 +987,7 @@ def create_dispatch():
                 else:
                     new_number = 1
 
-                # Check if we've exceeded 9999 dispatches in a year
-                if new_number > 9999:
-                    return jsonify({
-                        'error': f'Maximum dispatches for year {current_year} reached (9999). Please contact system administrator.'
-                    }), 400
-
+                # Use minimum 4 digits, but allow growth for larger numbers
                 dispatch_number = f'DISP-{current_year}-{new_number:04d}'
 
                 # Create dispatch record
@@ -992,6 +1027,7 @@ def create_dispatch():
                         length_meters = item.get('length_meters')
 
                         if not cut_piece_id or not length_meters:
+                            cursor.execute("ROLLBACK")
                             return jsonify({'error': 'cut_piece_id and length_meters required for CUT_PIECE'}), 400
 
                         # Mark cut piece as dispatched
@@ -1003,6 +1039,7 @@ def create_dispatch():
                         """, (dispatch_id, cut_piece_id))
 
                         if not cursor.fetchone():
+                            cursor.execute("ROLLBACK")
                             return jsonify({'error': f'Cut piece {cut_piece_id} not available'}), 400
 
                         # Create dispatch item
@@ -1210,21 +1247,44 @@ def create_dispatch():
                         # Full roll dispatch (or cut roll stock dispatched as full)
                         length_meters = item.get('length_meters')
 
+                        # Re-fetch stock data for this specific item (stock variable was overwritten in validation loop)
+                        cursor.execute("""
+                            SELECT quantity, status, stock_type
+                            FROM inventory_stock
+                            WHERE id = %s AND deleted_at IS NULL
+                        """, (stock_id,))
+                        current_stock = cursor.fetchone()
+
                         # Check if this is actually a CUT_ROLL stock
-                        stock_type = stock['stock_type']
+                        stock_type = current_stock['stock_type']
                         actual_item_type = item_type
+
+                        print(f"DEBUG FULL_ROLL dispatch: stock_id={stock_id}, stock_type={stock_type}, item_type={item_type}, quantity={quantity}")
 
                         # If stock_type is CUT_ROLL, adjust the item_type for better tracking
                         if stock_type == 'CUT_ROLL':
                             actual_item_type = 'CUT_ROLL'  # Store as CUT_ROLL for better display
 
+                            # First check how many pieces are available (for better debugging)
+                            cursor.execute("""
+                                SELECT id, status, length_meters, deleted_at
+                                FROM hdpe_cut_pieces
+                                WHERE stock_id = %s
+                                ORDER BY created_at
+                            """, (stock_id,))
+                            all_pieces = cursor.fetchall()
+                            print(f"DEBUG CUT_ROLL pieces for stock {stock_id}: total={len(all_pieces)}")
+                            for p in all_pieces:
+                                print(f"  - Piece {p['id']}: status={p['status']}, length={p['length_meters']}, deleted_at={p['deleted_at']}")
+
                             # For CUT_ROLL, mark individual pieces as DISPATCHED
+                            # FIXED: Added deleted_at IS NULL to match pre-validation query
                             cursor.execute("""
                                 UPDATE hdpe_cut_pieces
                                 SET status = 'DISPATCHED', dispatch_id = %s, updated_at = NOW()
                                 WHERE id IN (
                                     SELECT id FROM hdpe_cut_pieces
-                                    WHERE stock_id = %s AND status = 'IN_STOCK'
+                                    WHERE stock_id = %s AND status = 'IN_STOCK' AND deleted_at IS NULL
                                     ORDER BY created_at
                                     LIMIT %s
                                 )
@@ -1232,8 +1292,13 @@ def create_dispatch():
                             """, (dispatch_id, stock_id, quantity))
 
                             updated_pieces = cursor.fetchall()
+                            print(f"DEBUG CUT_ROLL dispatch: updated {len(updated_pieces)} pieces, requested {quantity}")
                             if len(updated_pieces) < quantity:
-                                return jsonify({'error': f'Not enough IN_STOCK pieces available. Requested: {quantity}, Available: {len(updated_pieces)}'}), 400
+                                cursor.execute("ROLLBACK")
+                                return jsonify({
+                                    'error': f'Not enough IN_STOCK pieces available. Requested: {quantity}, Available: {len(updated_pieces)}',
+                                    'details': f'Stock {stock_id} has stock_type={stock_type} but was sent with item_type={item_type}. This usually means the cart data is stale - please refresh and re-add items.'
+                                }), 400
 
                         # Create dispatch item
                         cursor.execute("""
