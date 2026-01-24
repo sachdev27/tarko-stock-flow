@@ -26,9 +26,10 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Search, Eye, TruckIcon, Package, Filter, X, Download, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { Search, Eye, TruckIcon, Package, Filter, X, Download, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Pencil } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { DispatchAPI } from '@/components/dispatch/dispatchAPI';
+import { EditDispatchDialog } from '@/components/dispatch/EditDispatchDialog';
 import { format } from 'date-fns';
 
 interface Dispatch {
@@ -36,10 +37,14 @@ interface Dispatch {
   dispatch_number: string;
   dispatch_date: string;
   status: string;
+  customer_id: string;
   customer_name: string;
   customer_city?: string;
+  bill_to_id?: string;
   bill_to_name?: string;
+  transport_id?: string;
   transport_name?: string;
+  vehicle_id?: string;
   vehicle_driver?: string;
   vehicle_number?: string;
   total_items: number;
@@ -79,6 +84,7 @@ export const DispatchHistoryTab = () => {
   const [loading, setLoading] = useState(false);
   const [selectedDispatch, setSelectedDispatch] = useState<DispatchDetails | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
 
   // Filter states
@@ -116,11 +122,16 @@ export const DispatchHistoryTab = () => {
     setLoading(true);
     try {
       const data = await api.getDispatches();
-      setDispatches(data);
-      setFilteredDispatches(data);
+      // Ensure data is always an array
+      const safeData = Array.isArray(data) ? data : [];
+      setDispatches(safeData);
+      setFilteredDispatches(safeData);
     } catch (error: unknown) {
       const err = error as { response?: { data?: { error?: string } } };
       toast.error(err.response?.data?.error || 'Failed to fetch dispatches');
+      // Set empty arrays on error
+      setDispatches([]);
+      setFilteredDispatches([]);
     } finally {
       setLoading(false);
     }
@@ -211,7 +222,12 @@ export const DispatchHistoryTab = () => {
   const fetchDispatchDetails = async (dispatchId: string) => {
     try {
       const data = await api.getDispatchDetails(dispatchId);
-      setSelectedDispatch(data);
+      // Ensure items is always an array
+      const safeData = {
+        ...data,
+        items: data.items || []
+      };
+      setSelectedDispatch(safeData);
       setDetailsOpen(true);
     } catch (error: unknown) {
       const err = error as { response?: { data?: { error?: string } } };
@@ -438,42 +454,56 @@ export const DispatchHistoryTab = () => {
               {/* Mobile Card View */}
               <div className="md:hidden space-y-3">
                 {paginatedDispatches.map((dispatch) => (
-                  <Card
-                    key={dispatch.id}
-                    className="cursor-pointer hover:shadow-md transition-shadow"
-                    onClick={() => fetchDispatchDetails(dispatch.id)}
-                  >
+                  <Card key={dispatch.id} className="hover:shadow-md transition-shadow">
                     <CardContent className="p-4 space-y-2">
                       <div className="flex justify-between items-start">
-                        <div>
+                        <div className="flex-1 cursor-pointer" onClick={() => fetchDispatchDetails(dispatch.id)}>
                           <div className="font-semibold text-sm">{dispatch.dispatch_number}</div>
                           <div className="text-xs text-muted-foreground">
                             {formatDate(dispatch.dispatch_date)}
                             {' '}{format(new Date(dispatch.created_at), 'HH:mm')}
                           </div>
                         </div>
-                        <Badge className={getStatusColor(dispatch.status)}>
-                          {dispatch.status}
-                        </Badge>
+                        <div className="flex items-center gap-2">
+                          <Badge className={getStatusColor(dispatch.status)}>
+                            {dispatch.status}
+                          </Badge>
+                          {!['REVERTED', 'CANCELLED'].includes(dispatch.status) && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedDispatch(dispatch);
+                                setEditOpen(true);
+                              }}
+                              className="flex items-center gap-1 p-1 h-7"
+                            >
+                              <Pencil className="h-3 w-3" />
+                            </Button>
+                          )}
+                        </div>
                       </div>
-                      <div>
+                      <div className="cursor-pointer" onClick={() => fetchDispatchDetails(dispatch.id)}>
                         <div className="font-medium text-sm">{dispatch.customer_name}</div>
                         {dispatch.customer_city && (
                           <div className="text-xs text-muted-foreground">{dispatch.customer_city}</div>
                         )}
                       </div>
-                      {dispatch.transport_name && (
+                      <div className="cursor-pointer" onClick={() => fetchDispatchDetails(dispatch.id)}>
+                        {dispatch.transport_name && (
+                          <div className="text-xs text-muted-foreground">
+                            Transport: {dispatch.transport_name}
+                          </div>
+                        )}
+                        {dispatch.vehicle_driver && (
+                          <div className="text-xs text-muted-foreground">
+                            Driver: {dispatch.vehicle_driver}
+                          </div>
+                        )}
                         <div className="text-xs text-muted-foreground">
-                          Transport: {dispatch.transport_name}
+                          Qty: {dispatch.total_quantity}
                         </div>
-                      )}
-                      {dispatch.vehicle_driver && (
-                        <div className="text-xs text-muted-foreground">
-                          Driver: {dispatch.vehicle_driver}
-                        </div>
-                      )}
-                      <div className="text-xs text-muted-foreground">
-                        Qty: {dispatch.total_quantity}
                       </div>
                     </CardContent>
                   </Card>
@@ -492,19 +522,25 @@ export const DispatchHistoryTab = () => {
                       <TableHead>Transport/Driver</TableHead>
                       <TableHead>Items</TableHead>
                       <TableHead>Status</TableHead>
+                      <TableHead>Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {paginatedDispatches.map((dispatch) => (
                     <TableRow
                       key={dispatch.id}
-                      className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => fetchDispatchDetails(dispatch.id)}
+                      className="hover:bg-muted/50"
                     >
-                      <TableCell className="font-medium">
+                      <TableCell
+                        className="font-medium cursor-pointer"
+                        onClick={() => fetchDispatchDetails(dispatch.id)}
+                      >
                         {dispatch.dispatch_number}
                       </TableCell>
-                      <TableCell>
+                      <TableCell
+                        className="cursor-pointer"
+                        onClick={() => fetchDispatchDetails(dispatch.id)}
+                      >
                         <div>
                           <div>{formatDate(dispatch.dispatch_date)}</div>
                           <div className="text-sm text-muted-foreground">
@@ -512,7 +548,10 @@ export const DispatchHistoryTab = () => {
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell>
+                      <TableCell
+                        className="cursor-pointer"
+                        onClick={() => fetchDispatchDetails(dispatch.id)}
+                      >
                         <div>
                           <div className="font-medium">{dispatch.customer_name}</div>
                           {dispatch.customer_city && (
@@ -520,12 +559,18 @@ export const DispatchHistoryTab = () => {
                           )}
                         </div>
                       </TableCell>
-                      <TableCell>
+                      <TableCell
+                        className="cursor-pointer"
+                        onClick={() => fetchDispatchDetails(dispatch.id)}
+                      >
                         <div className="text-sm">
                           {dispatch.bill_to_name || '-'}
                         </div>
                       </TableCell>
-                      <TableCell>
+                      <TableCell
+                        className="cursor-pointer"
+                        onClick={() => fetchDispatchDetails(dispatch.id)}
+                      >
                         <div className="text-sm">
                           {dispatch.transport_name && (
                             <div>{dispatch.transport_name}</div>
@@ -535,15 +580,38 @@ export const DispatchHistoryTab = () => {
                           )}
                         </div>
                       </TableCell>
-                      <TableCell>
+                      <TableCell
+                        className="cursor-pointer"
+                        onClick={() => fetchDispatchDetails(dispatch.id)}
+                      >
                         <div className="text-sm">
                           <div className="text-xs text-gray-500">Qty: {dispatch.total_quantity}</div>
                         </div>
                       </TableCell>
-                      <TableCell>
+                      <TableCell
+                        className="cursor-pointer"
+                        onClick={() => fetchDispatchDetails(dispatch.id)}
+                      >
                         <Badge className={getStatusColor(dispatch.status)}>
                           {dispatch.status}
                         </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {!['REVERTED', 'CANCELLED'].includes(dispatch.status) && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedDispatch(dispatch);
+                              setEditOpen(true);
+                            }}
+                            className="flex items-center gap-1"
+                          >
+                            <Pencil className="h-3 w-3" />
+                            <span className="hidden sm:inline">Edit</span>
+                          </Button>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -676,6 +744,15 @@ export const DispatchHistoryTab = () => {
               {/* Items */}
               <div>
                 {(() => {
+                  // Ensure items exists and is an array
+                  if (!selectedDispatch.items || !Array.isArray(selectedDispatch.items)) {
+                    return (
+                      <div className="text-center py-4 text-gray-500">
+                        No items found for this dispatch.
+                      </div>
+                    );
+                  }
+
                   // Group items by product variant, type, and specs (ignoring batch)
                   const grouped = selectedDispatch.items.reduce((acc: any, item: any) => {
                     const paramStr = JSON.stringify(item.parameters || {});
@@ -713,7 +790,7 @@ export const DispatchHistoryTab = () => {
                             {item.product_type_name} - {item.brand_name}
                           </div>
                           <div className="text-xs text-gray-500 mt-1">
-                            {Object.entries(item.parameters).map(([key, value]) => (
+                            {Object.entries(item.parameters || {}).map(([key, value]) => (
                               <span key={key} className="mr-3">
                                 {key}: {String(value)}
                               </span>
@@ -759,6 +836,17 @@ export const DispatchHistoryTab = () => {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Edit Dispatch Dialog */}
+      <EditDispatchDialog
+        dispatch={selectedDispatch}
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        onSave={() => {
+          // Refresh the dispatch list only, don't re-open details modal
+          fetchDispatches();
+        }}
+      />
     </>
   );
 };

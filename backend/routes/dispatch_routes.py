@@ -1484,10 +1484,14 @@ def get_dispatches():
                     d.status,
                     d.invoice_number,
                     d.notes,
+                    d.customer_id,
                     c.name as customer_name,
                     c.city as customer_city,
+                    d.bill_to_id,
                     bt.name as bill_to_name,
+                    d.transport_id,
                     t.name as transport_name,
+                    d.vehicle_id,
                     v.driver_name as vehicle_driver,
                     v.vehicle_number,
                     COUNT(DISTINCT di.id) as total_items,
@@ -1502,7 +1506,7 @@ def get_dispatches():
                 LEFT JOIN dispatch_items di ON d.id = di.dispatch_id
                 LEFT JOIN users u ON d.created_by = u.id
                 WHERE d.deleted_at IS NULL
-                GROUP BY d.id, c.name, c.city, bt.name, t.name, v.driver_name, v.vehicle_number, u.email
+                GROUP BY d.id, d.customer_id, c.name, c.city, d.bill_to_id, bt.name, d.transport_id, t.name, d.vehicle_id, v.driver_name, v.vehicle_number, u.email
                 ORDER BY d.dispatch_date DESC, d.created_at DESC
             """)
 
@@ -1591,6 +1595,148 @@ def get_dispatch_details(dispatch_id):
             result['items'] = [dict(item) for item in items]
 
             return jsonify(result), 200
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@dispatch_bp.route('/dispatches/<dispatch_id>', methods=['PUT'])
+@jwt_required()
+def update_dispatch(dispatch_id):
+    """
+    Update dispatch details (excluding products/items).
+    Allows updating: customer, bill_to, transport, vehicle, invoice_number, dispatch_date, notes, status
+    """
+    try:
+        data = request.json
+        user_id = get_jwt_identity()
+
+        # Validate dispatch exists
+        dispatch = execute_query(
+            "SELECT id, status FROM dispatches WHERE id = %s AND deleted_at IS NULL",
+            (dispatch_id,)
+        )
+        if not dispatch:
+            return jsonify({'error': 'Dispatch not found'}), 404
+
+        # Don't allow editing reverted or cancelled dispatches
+        current_status = dispatch[0]['status']
+        if current_status in ['REVERTED', 'CANCELLED']:
+            return jsonify({'error': f'Cannot edit a {current_status.lower()} dispatch'}), 400
+
+        # Build update query dynamically based on provided fields
+        update_fields = []
+        params = []
+
+        # Customer (required field, validate if provided)
+        if 'customer_id' in data:
+            if not data['customer_id']:
+                return jsonify({'error': 'Customer is required'}), 400
+            # Validate customer exists
+            customer = execute_query(
+                "SELECT id FROM customers WHERE id = %s AND deleted_at IS NULL",
+                (data['customer_id'],)
+            )
+            if not customer:
+                return jsonify({'error': 'Customer not found'}), 404
+            update_fields.append("customer_id = %s")
+            params.append(data['customer_id'])
+
+        # Bill To (optional)
+        if 'bill_to_id' in data:
+            if data['bill_to_id']:
+                bill_to = execute_query(
+                    "SELECT id FROM bill_to WHERE id = %s AND deleted_at IS NULL",
+                    (data['bill_to_id'],)
+                )
+                if not bill_to:
+                    return jsonify({'error': 'Bill To not found'}), 404
+            update_fields.append("bill_to_id = %s")
+            params.append(data['bill_to_id'] if data['bill_to_id'] else None)
+
+        # Transport (optional)
+        if 'transport_id' in data:
+            if data['transport_id']:
+                transport = execute_query(
+                    "SELECT id FROM transports WHERE id = %s AND deleted_at IS NULL",
+                    (data['transport_id'],)
+                )
+                if not transport:
+                    return jsonify({'error': 'Transport not found'}), 404
+            update_fields.append("transport_id = %s")
+            params.append(data['transport_id'] if data['transport_id'] else None)
+
+        # Vehicle (optional)
+        if 'vehicle_id' in data:
+            if data['vehicle_id']:
+                vehicle = execute_query(
+                    "SELECT id FROM vehicles WHERE id = %s AND deleted_at IS NULL",
+                    (data['vehicle_id'],)
+                )
+                if not vehicle:
+                    return jsonify({'error': 'Vehicle not found'}), 404
+            update_fields.append("vehicle_id = %s")
+            params.append(data['vehicle_id'] if data['vehicle_id'] else None)
+
+        # Invoice number
+        if 'invoice_number' in data:
+            update_fields.append("invoice_number = %s")
+            params.append(data['invoice_number'] if data['invoice_number'] else None)
+
+        # Dispatch date
+        if 'dispatch_date' in data:
+            if not data['dispatch_date']:
+                return jsonify({'error': 'Dispatch date is required'}), 400
+
+            # Parse ISO datetime string to ensure proper timestamp format
+            from datetime import datetime
+            try:
+                # Parse the ISO string to datetime object
+                dispatch_datetime = datetime.fromisoformat(data['dispatch_date'].replace('Z', '+00:00'))
+                update_fields.append("dispatch_date = %s")
+                params.append(dispatch_datetime)
+            except ValueError as e:
+                return jsonify({'error': f'Invalid dispatch_date format. Expected ISO format: {str(e)}'}), 400
+
+        # Notes
+        if 'notes' in data:
+            update_fields.append("notes = %s")
+            params.append(data['notes'] if data['notes'] else None)
+
+        # Status
+        if 'status' in data:
+            valid_statuses = ['PENDING', 'DISPATCHED', 'DELIVERED']
+            if data['status'] not in valid_statuses:
+                return jsonify({'error': f'Invalid status. Must be one of: {", ".join(valid_statuses)}'}), 400
+            update_fields.append("status = %s")
+            params.append(data['status'])
+
+        if not update_fields:
+            return jsonify({'error': 'No fields to update'}), 400
+
+        # Add updated_at timestamp
+        update_fields.append("updated_at = NOW()")
+
+        # Build and execute update query
+        params.append(dispatch_id)
+        query = f"""
+            UPDATE dispatches
+            SET {', '.join(update_fields)}
+            WHERE id = %s AND deleted_at IS NULL
+            RETURNING id
+        """
+
+        result = execute_query(query, tuple(params))
+        if not result:
+            return jsonify({'error': 'Failed to update dispatch'}), 500
+
+        return jsonify({
+            'success': True,
+            'message': 'Dispatch updated successfully',
+            'dispatch_id': dispatch_id
+        }), 200
 
     except Exception as e:
         import traceback
