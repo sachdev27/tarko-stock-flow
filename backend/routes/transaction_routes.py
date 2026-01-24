@@ -730,7 +730,7 @@ def get_transactions():
             NULL as dispatch_id,
             'SCRAP' as transaction_type,
             -COALESCE(s.total_quantity, 0) as quantity_change,
-            to_char(s.created_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD"T"HH24:MI:SS"+05:30"') as transaction_date,
+            to_char(s.scrap_date::timestamp AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD"T"HH24:MI:SS"+05:30"') as transaction_date,
             NULL as invoice_no,
             CASE
                 WHEN (SELECT COUNT(DISTINCT si_count.product_variant_id) FROM scrap_items si_count WHERE si_count.scrap_id = s.id) > 1
@@ -747,7 +747,7 @@ def get_transactions():
                 ), ''))
             END as notes,
             to_char(s.created_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD"T"HH24:MI:SS"+05:30"') as created_at,
-            s.created_at as transaction_date_sort,
+            s.scrap_date::timestamp as transaction_date_sort,
             s.created_at as created_at_sort,
             (SELECT jsonb_build_object(
                 'scrap_number', s.scrap_number,
