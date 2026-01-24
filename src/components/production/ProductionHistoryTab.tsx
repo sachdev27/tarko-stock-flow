@@ -26,10 +26,12 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Search, Factory, Package, Filter, X, Paperclip, ExternalLink, Download, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { Search, Factory, Package, Filter, X, Paperclip, ExternalLink, Download, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Pencil } from 'lucide-react';
 import { production } from '@/lib/api-typed';
 import type * as API from '@/types';
 import { format } from 'date-fns';
+import { useAuth } from '@/contexts/AuthContext';
+import { EditProductionDialog } from '@/components/production/EditProductionDialog';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5500/api';
 
@@ -75,12 +77,14 @@ interface BatchDetails extends Batch {
 }
 
 export const ProductionHistoryTab = () => {
+  const { token, user, isAdmin } = useAuth();
   const [batches, setBatches] = useState<Batch[]>([]);
   const [filteredBatches, setFilteredBatches] = useState<Batch[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(false);
   const [selectedBatch, setSelectedBatch] = useState<BatchDetails | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
 
   // Filter states
@@ -467,25 +471,41 @@ export const ProductionHistoryTab = () => {
                     onClick={() => fetchBatchDetails(batch.id)}
                   >
                     <CardContent className="p-4 space-y-2">
-                      <div className="flex justify-between items-start">
-                        <div>
+                      <div className="flex justify-between items-start gap-2">
+                        <div className="flex-1">
                           <div className="font-semibold text-sm">{batch.batch_code}</div>
                           <div className="text-xs text-muted-foreground">#{batch.batch_no}</div>
                         </div>
-                        <Badge variant="outline" className="text-xs">
-                          {(() => {
-                            const spareItem = batch.items?.find(item =>
-                              item.stock_type === 'SPARE' || item.stock_type === 'SPARE_PIECES'
-                            );
-                            if (spareItem) {
-                              const actualCount = spareItem.total_pieces ??
-                                (spareItem.spare_pieces?.[0]?.piece_count) ??
-                                spareItem.quantity ?? 0;
-                              return `${actualCount} pcs`;
-                            }
-                            return `${batch.initial_quantity} ${batch.piece_length ? 'pcs' : 'm'}`;
-                          })()}
-                        </Badge>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className="text-xs">
+                            {(() => {
+                              const spareItem = batch.items?.find(item =>
+                                item.stock_type === 'SPARE' || item.stock_type === 'SPARE_PIECES'
+                              );
+                              if (spareItem) {
+                                const actualCount = spareItem.total_pieces ??
+                                  (spareItem.spare_pieces?.[0]?.piece_count) ??
+                                  spareItem.quantity ?? 0;
+                                return `${actualCount} pcs`;
+                              }
+                              return `${batch.initial_quantity} ${batch.piece_length ? 'pcs' : 'm'}`;
+                            })()}
+                          </Badge>
+                          {isAdmin && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedBatch(batch);
+                                setEditOpen(true);
+                              }}
+                              className="flex items-center gap-1 p-1 h-7"
+                            >
+                              <Pencil className="h-3 w-3" />
+                            </Button>
+                          )}
+                        </div>
                       </div>
                       <div>
                         <div className="font-medium text-sm">{batch.product_type_name}</div>
@@ -521,6 +541,7 @@ export const ProductionHistoryTab = () => {
                       <TableHead>Items</TableHead>
                       <TableHead>Attachment</TableHead>
                       <TableHead>Created By</TableHead>
+                      {isAdmin && <TableHead>Actions</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -602,6 +623,23 @@ export const ProductionHistoryTab = () => {
                       <TableCell>
                         <div className="text-sm">{batch.created_by_email}</div>
                       </TableCell>
+                      {isAdmin && (
+                        <TableCell onClick={(e) => e.stopPropagation()}>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedBatch(batch);
+                              setEditOpen(true);
+                            }}
+                            className="flex items-center gap-1"
+                          >
+                            <Pencil className="h-3 w-3" />
+                            <span className="hidden sm:inline">Edit</span>
+                          </Button>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>
@@ -770,10 +808,10 @@ export const ProductionHistoryTab = () => {
               <div>
                 <h3 className="font-semibold mb-3 flex items-center gap-2">
                   <Package className="h-4 w-4" />
-                  Stock Items ({selectedBatch.items.length})
+                  Stock Items ({selectedBatch.items?.length || 0})
                 </h3>
                 <div className="space-y-2">
-                  {selectedBatch.items.map((item, idx) => (
+                  {selectedBatch.items?.map((item, idx) => (
                     <div key={idx} className="p-3 border rounded-lg">
                       <div className="flex justify-between items-start">
                         <div className="flex-1">
@@ -894,6 +932,15 @@ export const ProductionHistoryTab = () => {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Edit Production Dialog */}
+      <EditProductionDialog
+        batch={selectedBatch}
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        onSave={fetchBatches}
+        token={token || ''}
+      />
     </>
   );
 };
