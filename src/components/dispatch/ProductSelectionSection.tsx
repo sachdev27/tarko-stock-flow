@@ -626,40 +626,43 @@ export const ProductSelectionSection = ({
   };
 
   return (
-    <div className="grid gap-6 md:grid-cols-3">
-      {/* Left side - Product Selection */}
-      <div className="md:col-span-2 space-y-6">
-        <h3 className="font-semibold text-lg flex items-center gap-2">
-          <Package className="h-5 w-5" />
-          Product Selection
-        </h3>
+    <div className="grid gap-4 lg:grid-cols-3 lg:h-[calc(100vh-16rem)]">
+      {/* Left side - Product Selection (scrollable container) */}
+      <div className="lg:col-span-2 lg:h-full lg:overflow-hidden flex flex-col">
+        <Card className="flex-1 flex flex-col overflow-hidden">
+          <CardHeader className="pb-4 flex-shrink-0">
+            <h3 className="font-semibold text-lg flex items-center gap-2">
+              <Package className="h-5 w-5" />
+              Product Selection
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+              <div ref={productTypeRef}>
+                <Label>Product Type *</Label>
+                <SearchableCombobox
+                  value={productTypeId}
+                  onChange={onProductTypeChange}
+                  options={productTypes}
+                  placeholder="Select product type"
+                  displayFormat={(pt) => pt.name}
+                />
+              </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div ref={productTypeRef}>
-          <Label>Product Type *</Label>
-          <SearchableCombobox
-            value={productTypeId}
-            onChange={onProductTypeChange}
-            options={productTypes}
-            placeholder="Select product type"
-            displayFormat={(pt) => pt.name}
-          />
-        </div>
-
-        <div ref={productSearchRef}>
-          <Label>Advanced Search</Label>
-          <Input
-            value={productSearch}
-            onChange={(e) => onProductSearchChange(e.target.value)}
-            placeholder="e.g., 63,6 or 32,6,10 astral"
-            className="w-full font-mono"
-          />
-          <p className="text-xs text-gray-500 mt-1">
-            {filteredVariants.length} variant{filteredVariants.length !== 1 ? 's' : ''} •
-            HDPE: <span className="font-mono">OD,PN,PE</span> • Sprinkler: <span className="font-mono">OD,PN,Type</span>
-          </p>
-        </div>
-      </div>
+              <div ref={productSearchRef}>
+                <Label>Advanced Search</Label>
+                <Input
+                  value={productSearch}
+                  onChange={(e) => onProductSearchChange(e.target.value)}
+                  placeholder="e.g., 63,6 or 32,6,10 astral"
+                  className="w-full font-mono"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  {filteredVariants.length} variant{filteredVariants.length !== 1 ? 's' : ''} •
+                  HDPE: <span className="font-mono">OD,PN,PE</span> • Sprinkler: <span className="font-mono">OD,PN,Type</span>
+                </p>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="flex-1 overflow-y-auto space-y-4">
 
       {/* Product Variants List */}
       {productTypeId && filteredVariants.length > 0 && (
@@ -1219,16 +1222,18 @@ export const ProductSelectionSection = ({
           <p>No available products for this type</p>
         </div>
       )}
+          </CardContent>
+        </Card>
       </div>
 
-      {/* Right side - Cart */}
-      <div className="space-y-6">
-        <Card className="bg-gray-50">
-          <CardHeader>
+      {/* Right side - Cart (Fixed height, scrollable) */}
+      <div className="lg:h-full lg:overflow-hidden flex flex-col space-y-4">
+        <Card className="bg-gray-50 flex-1 flex flex-col overflow-hidden">
+          <CardHeader className="pb-2 flex-shrink-0">
             <h4 className="font-semibold flex items-center justify-between">
               <span className="flex items-center gap-2">
                 <Package className="h-4 w-4" />
-                Cart
+                Cart ({selectedRolls.length})
               </span>
               {selectedRolls.length > 0 && (
                 <Button
@@ -1238,12 +1243,12 @@ export const ProductSelectionSection = ({
                   className="text-red-600 hover:text-red-700 hover:bg-red-50"
                 >
                   <X className="h-4 w-4 mr-1" />
-                  Clear Cart
+                  Clear
                 </Button>
               )}
             </h4>
           </CardHeader>
-          <CardContent>
+          <CardContent className="pt-0 flex-1 overflow-y-auto">
             {selectedRolls.length === 0 ? (
               <div className="text-center py-8 text-gray-400">
                 <Package className="h-12 w-12 mx-auto mb-2 opacity-20" />
@@ -1366,84 +1371,47 @@ export const ProductSelectionSection = ({
               </div>
             )}
           </CardContent>
-        </Card>
 
-        {/* Summary Section */}
-        {selectedRolls.length > 0 && (
-          <Card>
-            <CardContent className="pt-6">
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
-                  <div className="flex flex-col items-center">
-                    <div className="text-gray-600">Full Rolls</div>
-                    <div className="font-bold text-lg mt-auto">
-                      {selectedRolls.filter(r => r.stock_type === 'FULL_ROLL').reduce((sum, r) => sum + (r.quantity || 1), 0)}
-                    </div>
-                  </div>
-                  <div className="flex flex-col items-center">
-                    <div className="text-gray-600">Cut Rolls</div>
-                    <div className="font-bold text-lg mt-auto">
-                      {selectedRolls.filter(r => r.stock_type === 'CUT_ROLL').reduce((sum, r) => sum + (r.quantity || 1), 0)}
-                    </div>
-                  </div>
-                  <div className="flex flex-col items-center">
-                    <div className="text-gray-600">Bundles</div>
-                    <div className="font-bold text-lg mt-auto">
-                      {selectedRolls.filter(r => r.stock_type === 'BUNDLE').reduce((sum, r) => sum + (r.quantity || 1), 0)}
-                    </div>
-                  </div>
-                  <div className="flex flex-col items-center">
-                    <div className="text-gray-600">Spare Pcs</div>
-                    <div className="font-bold text-lg mt-auto">
-                      {selectedRolls.filter(r => r.stock_type === 'SPARE').reduce((sum, r) => sum + (r.piece_count || 0), 0)}
-                    </div>
+          {/* Summary & Dispatch Button - Fixed at bottom of cart */}
+          {selectedRolls.length > 0 && (
+            <div className="flex-shrink-0 border-t bg-blue-50 p-4">
+              <div className="grid grid-cols-4 gap-2 text-xs mb-3">
+                <div className="text-center">
+                  <div className="text-gray-500">Rolls</div>
+                  <div className="font-bold">
+                    {selectedRolls.filter(r => r.stock_type === 'FULL_ROLL').reduce((sum, r) => sum + (r.quantity || 1), 0)}
                   </div>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm mt-4 pt-4 border-t border-blue-300">
-                  <div className="flex items-center gap-2">
-                    <span className="text-gray-600 font-medium">Customer:</span>
-                    <span className="font-semibold">
-                      {customers.find(c => c.id === customerId)?.name || '-'}
-                    </span>
+                <div className="text-center">
+                  <div className="text-gray-500">Cut</div>
+                  <div className="font-bold">
+                    {selectedRolls.filter(r => r.stock_type === 'CUT_ROLL').reduce((sum, r) => sum + (r.quantity || 1), 0)}
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-gray-600 font-medium">Transport:</span>
-                    <span className="font-semibold">
-                      {transports.find(t => t.id === transportId)?.name || '-'}
-                    </span>
+                </div>
+                <div className="text-center">
+                  <div className="text-gray-500">Bundles</div>
+                  <div className="font-bold">
+                    {selectedRolls.filter(r => r.stock_type === 'BUNDLE').reduce((sum, r) => sum + (r.quantity || 1), 0)}
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-gray-600 font-medium">Vehicle:</span>
-                    <span className="font-semibold">
-                      {vehicles.find(v => v.id === vehicleId)?.driver_name || '-'}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-gray-600 font-medium">Bill To:</span>
-                    <span className="font-semibold">
-                      {billToList.find(b => b.id === billToId)?.name || '-'}
-                    </span>
+                </div>
+                <div className="text-center">
+                  <div className="text-gray-500">Spare</div>
+                  <div className="font-bold">
+                    {selectedRolls.filter(r => r.stock_type === 'SPARE').reduce((sum, r) => sum + (r.piece_count || 0), 0)}
                   </div>
                 </div>
               </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Dispatch Button */}
-        {selectedRolls.length > 0 && (
-          <div className="flex gap-2 justify-end pt-4">
-            <Button
-              onClick={onDispatch}
-              disabled={loading || !customerId || selectedRolls.length === 0}
-              size="lg"
-              className="gap-2"
-            >
-              <TruckIcon className="h-4 w-4" />
-              {loading ? 'Dispatching...' : 'Dispatch Sale'}
-            </Button>
-          </div>
-        )}
+              <Button
+                onClick={onDispatch}
+                disabled={loading || !customerId || selectedRolls.length === 0}
+                className="w-full gap-2"
+              >
+                <TruckIcon className="h-4 w-4" />
+                {loading ? 'Dispatching...' : 'Dispatch Sale'}
+              </Button>
+            </div>
+          )}
+        </Card>
       </div>
 
       {/* Dialogs */}

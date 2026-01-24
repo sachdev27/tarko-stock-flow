@@ -185,7 +185,7 @@ export const Layout = ({ children }: LayoutProps) => {
       {/* Desktop sidebar + main content */}
       <div className="flex">
         {/* Desktop sidebar */}
-        <aside className="hidden md:flex flex-col w-64 bg-card border-r border-border min-h-[calc(100vh-4rem)] sticky top-16">
+        <aside className="hidden md:flex flex-col w-64 bg-card border-r border-border h-[calc(100vh-4rem)] sticky top-16 overflow-y-auto">
           <nav className="flex-1 p-4 space-y-2">
             {menuItems.map((item) => (
               <Button

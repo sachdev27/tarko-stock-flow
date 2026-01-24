@@ -368,95 +368,95 @@ export const DispatchNewTab = () => {
   };
 
   return (
-    <div className="w-full space-y-4">
-      <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <TruckIcon className="h-6 w-6" />
-                New Dispatch
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleClearAll}
-                className="gap-2"
-              >
-                <RotateCcw className="h-4 w-4" />
-                Clear All
-              </Button>
-            </CardTitle>
-            <KeyboardShortcutsHelp shortcuts={shortcuts} />
-          </CardHeader>
+    <div className="w-full">
+      {/* Header */}
+      <Card className="mb-4">
+        <CardHeader className="pb-4">
+          <CardTitle className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <TruckIcon className="h-6 w-6" />
+              New Dispatch
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleClearAll}
+              className="gap-2"
+            >
+              <RotateCcw className="h-4 w-4" />
+              Clear All
+            </Button>
+          </CardTitle>
+          <KeyboardShortcutsHelp shortcuts={shortcuts} />
+        </CardHeader>
 
-          <CardContent className="space-y-6">
-            {/* Customer Details Section */}
-            <CustomerDetailsSection
-              customerId={customerId}
-              onCustomerChange={setCustomerId}
-              billToId={billToId}
-              onBillToChange={setBillToId}
-              transportId={transportId}
-              onTransportChange={setTransportId}
-              vehicleId={vehicleId}
-              onVehicleChange={setVehicleId}
-              dispatchDate={dispatchDate}
-              onDispatchDateChange={setDispatchDate}
-              notes={notes}
-              onNotesChange={setNotes}
-              customers={customers}
-              billToList={billToList}
-              transports={transports}
-              vehicles={vehicles}
-              onCreateCustomer={createCustomer}
-              onCreateBillTo={createBillTo}
-              onCreateTransport={createTransport}
-              onCreateVehicle={createVehicle}
-              customerRef={customerRef}
-            />
+        <CardContent>
+          {/* Customer Details Section */}
+          <CustomerDetailsSection
+            customerId={customerId}
+            onCustomerChange={setCustomerId}
+            billToId={billToId}
+            onBillToChange={setBillToId}
+            transportId={transportId}
+            onTransportChange={setTransportId}
+            vehicleId={vehicleId}
+            onVehicleChange={setVehicleId}
+            dispatchDate={dispatchDate}
+            onDispatchDateChange={setDispatchDate}
+            notes={notes}
+            onNotesChange={setNotes}
+            customers={customers}
+            billToList={billToList}
+            transports={transports}
+            vehicles={vehicles}
+            onCreateCustomer={createCustomer}
+            onCreateBillTo={createBillTo}
+            onCreateTransport={createTransport}
+            onCreateVehicle={createVehicle}
+            customerRef={customerRef}
+          />
+        </CardContent>
+      </Card>
 
-            {/* Product Selection Section */}
-            <ProductSelectionSection
-              productTypeId={productTypeId}
-              onProductTypeChange={setProductTypeId}
-              productSearch={productSearch}
-              onProductSearchChange={setProductSearch}
-              selectedRolls={selectedRolls}
-              onRemoveRoll={handleRemoveRoll}
-              onRemoveByStockId={handleRemoveByStockId}
-              onClearCart={handleClearCart}
-              onAddRoll={handleAddRoll}
-              onUpdateRollQuantity={(index, quantity, dispatchLength) => {
-                // Update quantity or dispatch length for a selected roll
-                const updated = [...selectedRolls];
-                if (updated[index]) {
-                  updated[index] = {
-                    ...updated[index],
-                    quantity,
-                    dispatchLength
-                  };
-                  setSelectedRolls(updated);
-                }
-              }}
-              productTypes={productTypes}
-              availableRolls={availableRolls}
-              onSearchProducts={handleSearchProducts}
-              productTypeRef={productTypeRef}
-              productSearchRef={productSearchRef}
-              customerId={customerId}
-              transportId={transportId}
-              customers={customers}
-              transports={transports}
-              vehicleId={vehicleId}
-              billToId={billToId}
-              vehicles={vehicles}
-              billToList={billToList}
-              onDispatch={handleDispatch}
-              loading={loading}
-            />
-
-          </CardContent>
-        </Card>
-      </div>
+      {/* Product Selection Section - Full Width */}
+      <ProductSelectionSection
+        productTypeId={productTypeId}
+        onProductTypeChange={setProductTypeId}
+        productSearch={productSearch}
+        onProductSearchChange={setProductSearch}
+        selectedRolls={selectedRolls}
+        onRemoveRoll={handleRemoveRoll}
+        onRemoveByStockId={handleRemoveByStockId}
+        onClearCart={handleClearCart}
+        onAddRoll={handleAddRoll}
+        onUpdateRollQuantity={(index, quantity, dispatchLength) => {
+          // Update quantity or dispatch length for a selected roll
+          const updated = [...selectedRolls];
+          if (updated[index]) {
+            updated[index] = {
+              ...updated[index],
+              quantity,
+              dispatchLength
+            };
+            setSelectedRolls(updated);
+          }
+        }}
+        productTypes={productTypes}
+        availableRolls={availableRolls}
+        onSearchProducts={handleSearchProducts}
+        productTypeRef={productTypeRef}
+        productSearchRef={productSearchRef}
+        customerId={customerId}
+        transportId={transportId}
+        customers={customers}
+        transports={transports}
+        vehicleId={vehicleId}
+        billToId={billToId}
+        vehicles={vehicles}
+        billToList={billToList}
+        onDispatch={handleDispatch}
+        loading={loading}
+      />
+    </div>
   );
 };
