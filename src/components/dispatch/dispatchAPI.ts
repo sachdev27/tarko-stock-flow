@@ -174,6 +174,23 @@ export class DispatchAPI {
       token: this.token
     });
   }
+
+  // Update dispatch details (excluding products)
+  async updateDispatch(dispatchId: string, data: {
+    customer_id?: string;
+    bill_to_id?: string | null;
+    transport_id?: string | null;
+    vehicle_id?: string | null;
+    invoice_number?: string | null;
+    dispatch_date?: string;
+    notes?: string | null;
+  }) {
+    return apiCall(`/dispatch/dispatches/${dispatchId}`, {
+      method: 'PUT',
+      body: data,
+      token: this.token
+    });
+  }
 }
 
 // Hook for using the API

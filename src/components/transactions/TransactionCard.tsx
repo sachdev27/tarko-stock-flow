@@ -121,9 +121,7 @@ export function TransactionCard({
             </CardTitle>
           </div>
           <div className="text-right text-sm text-muted-foreground">
-            {transaction.transaction_type === 'DISPATCH'
-              ? formatDateTime(transaction.created_at)
-              : formatDateTime(transaction.transaction_date || transaction.created_at)}
+            {formatDateTime(transaction.transaction_date || transaction.created_at)}
           </div>
         </div>
       </CardHeader>

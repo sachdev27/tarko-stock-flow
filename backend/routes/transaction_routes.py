@@ -730,7 +730,7 @@ def get_transactions():
             NULL as dispatch_id,
             'SCRAP' as transaction_type,
             -COALESCE(s.total_quantity, 0) as quantity_change,
-            to_char(s.created_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD"T"HH24:MI:SS"+05:30"') as transaction_date,
+            to_char(s.scrap_date::timestamp AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD"T"HH24:MI:SS"+05:30"') as transaction_date,
             NULL as invoice_no,
             CASE
                 WHEN (SELECT COUNT(DISTINCT si_count.product_variant_id) FROM scrap_items si_count WHERE si_count.scrap_id = s.id) > 1
@@ -747,7 +747,7 @@ def get_transactions():
                 ), ''))
             END as notes,
             to_char(s.created_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD"T"HH24:MI:SS"+05:30"') as created_at,
-            s.created_at as transaction_date_sort,
+            s.scrap_date::timestamp as transaction_date_sort,
             s.created_at as created_at_sort,
             (SELECT jsonb_build_object(
                 'scrap_number', s.scrap_number,
@@ -1058,6 +1058,15 @@ def revert_transactions():
                             """, (stock_row['batch_id'],))
 
                     # Mark the dispatch as reverted (NOT deleted - keep it visible in activity feed)
+                    # First clean up orphaned created_by reference if the user no longer exists
+                    cursor.execute("""
+                        UPDATE dispatches
+                        SET created_by = NULL
+                        WHERE id = %s
+                          AND created_by IS NOT NULL
+                          AND NOT EXISTS (SELECT 1 FROM users WHERE id = created_by)
+                    """, (clean_id,))
+
                     cursor.execute("""
                         UPDATE dispatches
                         SET reverted_at = NOW(), reverted_by = %s, status = 'REVERTED', updated_at = NOW()
@@ -1166,6 +1175,15 @@ def revert_transactions():
                         """, (stock_ids,))
 
                     # Mark the return as reverted
+                    # First clean up orphaned created_by reference if the user no longer exists
+                    cursor.execute("""
+                        UPDATE returns
+                        SET created_by = NULL
+                        WHERE id = %s
+                          AND created_by IS NOT NULL
+                          AND NOT EXISTS (SELECT 1 FROM users WHERE id = created_by)
+                    """, (clean_id,))
+
                     cursor.execute("""
                         UPDATE returns
                         SET reverted_at = NOW(), reverted_by = %s, status = 'REVERTED', updated_at = NOW()
@@ -1470,7 +1488,17 @@ def revert_transactions():
                             continue
 
                     # Mark inventory transaction as reverted using reverted_at/reverted_by columns
+                    # First, clean up any orphaned created_by reference that might cause FK constraint failure
+                    # This handles cases where data was restored from backup or users were deleted
                     try:
+                        cursor.execute("""
+                            UPDATE inventory_transactions
+                            SET created_by = NULL
+                            WHERE id = %s
+                              AND created_by IS NOT NULL
+                              AND NOT EXISTS (SELECT 1 FROM users WHERE id = created_by)
+                        """, (clean_id,))
+
                         cursor.execute("""
                             UPDATE inventory_transactions
                             SET reverted_at = NOW(), reverted_by = %s

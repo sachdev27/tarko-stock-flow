@@ -689,6 +689,16 @@ class InventoryOperations:
                 """, (check_stock_id,))
 
         # 7. Mark transaction as reverted
+        # First clean up orphaned created_by reference if the user no longer exists
+        # This handles restored backups or deleted users
+        self.cursor.execute("""
+            UPDATE inventory_transactions
+            SET created_by = NULL
+            WHERE id = %s
+              AND created_by IS NOT NULL
+              AND NOT EXISTS (SELECT 1 FROM users WHERE id = created_by)
+        """, (transaction_id,))
+
         self.cursor.execute("""
             UPDATE inventory_transactions
             SET reverted_at = NOW(), reverted_by = %s
@@ -886,6 +896,15 @@ class InventoryOperations:
                 """, (txn['from_stock_id'],))
 
         # 8. Mark transaction as reverted
+        # First clean up orphaned created_by reference if the user no longer exists
+        self.cursor.execute("""
+            UPDATE inventory_transactions
+            SET created_by = NULL
+            WHERE id = %s
+              AND created_by IS NOT NULL
+              AND NOT EXISTS (SELECT 1 FROM users WHERE id = created_by)
+        """, (transaction_id,))
+
         self.cursor.execute("""
             UPDATE inventory_transactions
             SET reverted_at = NOW(), reverted_by = %s

@@ -81,6 +81,7 @@ export const QuantityConfigForm = ({
                       type="number"
                       value={group.numberOfRolls}
                       readOnly
+                      onWheel={(e) => e.currentTarget.blur()}
                       className="h-9 font-mono font-bold"
                     />
                   </div>
@@ -90,6 +91,7 @@ export const QuantityConfigForm = ({
                       type="number"
                       value={group.lengthPerRoll}
                       readOnly
+                      onWheel={(e) => e.currentTarget.blur()}
                       className="h-9 font-mono font-bold"
                     />
                   </div>
@@ -121,6 +123,7 @@ export const QuantityConfigForm = ({
                   placeholder="e.g., 10"
                   value={newRollGroup.numberOfRolls}
                   onChange={(e) => setNewRollGroup({...newRollGroup, numberOfRolls: e.target.value})}
+                  onWheel={(e) => e.currentTarget.blur()}
                   className="h-10"
                   min="1"
                   step="1"
@@ -133,6 +136,7 @@ export const QuantityConfigForm = ({
                   placeholder="e.g., 500"
                   value={newRollGroup.lengthPerRoll}
                   onChange={(e) => setNewRollGroup({...newRollGroup, lengthPerRoll: e.target.value})}
+                  onWheel={(e) => e.currentTarget.blur()}
                   className="h-10"
                   min="0.01"
                   step="0.01"
@@ -178,6 +182,7 @@ export const QuantityConfigForm = ({
                   type="number"
                   value={roll.length}
                   readOnly
+                  onWheel={(e) => e.currentTarget.blur()}
                   className="h-10 font-mono"
                   placeholder="Length (m)"
                 />
@@ -198,6 +203,7 @@ export const QuantityConfigForm = ({
                 placeholder="Cut piece length (meters)"
                 value={newCutRollLength}
                 onChange={(e) => setNewCutRollLength(e.target.value)}
+                onWheel={(e) => e.currentTarget.blur()}
                 className="h-10"
                 min="0"
                 step="0.01"
@@ -238,6 +244,7 @@ export const QuantityConfigForm = ({
           step="1"
           value={bundleConfig.numberOfBundles}
           onChange={(e) => onBundleChange('numberOfBundles', e.target.value)}
+          onWheel={(e) => e.currentTarget.blur()}
           className="h-12"
         />
         {submitAttempted && (!bundleConfig.numberOfBundles || parseInt(bundleConfig.numberOfBundles) <= 0) && (
@@ -257,6 +264,7 @@ export const QuantityConfigForm = ({
           step="1"
           value={bundleConfig.bundleSize}
           onChange={(e) => onBundleChange('bundleSize', e.target.value)}
+          onWheel={(e) => e.currentTarget.blur()}
           className="h-12"
         />
         {submitAttempted && (!bundleConfig.bundleSize || parseInt(bundleConfig.bundleSize) <= 0) && (
@@ -277,6 +285,7 @@ export const QuantityConfigForm = ({
             step="0.01"
             value={bundleConfig.lengthPerPiece}
             onChange={(e) => onBundleChange('lengthPerPiece', e.target.value)}
+            onWheel={(e) => e.currentTarget.blur()}
             className="h-12"
           />
           {submitAttempted && (!bundleConfig.lengthPerPiece || parseFloat(bundleConfig.lengthPerPiece) <= 0) && (
@@ -301,6 +310,7 @@ export const QuantityConfigForm = ({
                 type="number"
                 value={pipe.length}
                 readOnly
+                onWheel={(e) => e.currentTarget.blur()}
                 className="h-10"
                 placeholder={isQuantityBased ? 'Quantity' : 'Length (m)'}
               />
@@ -321,6 +331,7 @@ export const QuantityConfigForm = ({
               placeholder={isQuantityBased ? 'Number of spare pieces' : 'Spare length (meters)'}
               value={newSparePipeLength}
               onChange={(e) => setNewSparePipeLength(e.target.value)}
+              onWheel={(e) => e.currentTarget.blur()}
               className="h-10"
               min="0"
               step={isQuantityBased ? '1' : '0.01'}

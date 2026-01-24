@@ -809,3 +809,121 @@ def get_production_details(batch_id):
         error_trace = traceback.format_exc()
         print(f"Error fetching production details: {error_trace}")
         return jsonify({'error': f'Failed to fetch production details: {str(e)}'}), 500
+
+
+@production_bp.route('/history/<batch_id>', methods=['PUT'])
+@jwt_required_with_role('admin')
+def update_production_batch(batch_id):
+    """
+    Update production batch metadata (admin only).
+    Allows updating: batch_no, production_date, notes, weight_per_meter, total_weight, piece_length
+    Does NOT allow editing: product variant, quantity, or stock items
+    """
+    try:
+        data = request.json
+        user_id = get_jwt_identity()
+
+        # Validate batch exists
+        batch = execute_query(
+            "SELECT id, product_variant_id FROM batches WHERE id = %s AND deleted_at IS NULL",
+            (batch_id,)
+        )
+        if not batch:
+            return jsonify({'error': 'Batch not found'}), 404
+
+        # Build update query dynamically based on provided fields
+        update_fields = []
+        params = []
+
+        # Batch number (optional)
+        if 'batch_no' in data:
+            if not data['batch_no']:
+                return jsonify({'error': 'Batch number cannot be empty'}), 400
+            update_fields.append("batch_no = %s")
+            params.append(data['batch_no'])
+
+        # Production date
+        if 'production_date' in data:
+            if not data['production_date']:
+                return jsonify({'error': 'Production date is required'}), 400
+
+            # Parse ISO datetime string to ensure proper timestamp format
+            from datetime import datetime
+            try:
+                # Parse the ISO string to datetime object
+                production_datetime = datetime.fromisoformat(data['production_date'].replace('Z', '+00:00'))
+                update_fields.append("production_date = %s")
+                params.append(production_datetime)
+            except ValueError as e:
+                return jsonify({'error': f'Invalid production_date format. Expected ISO format: {str(e)}'}), 400
+
+        # Notes
+        if 'notes' in data:
+            update_fields.append("notes = %s")
+            params.append(data['notes'] if data['notes'] else None)
+
+        # Weight per meter
+        if 'weight_per_meter' in data:
+            if data['weight_per_meter']:
+                try:
+                    weight_value = float(data['weight_per_meter'])
+                    if weight_value <= 0:
+                        return jsonify({'error': 'Weight per meter must be greater than 0'}), 400
+                    update_fields.append("weight_per_meter = %s")
+                    params.append(weight_value)
+                except ValueError:
+                    return jsonify({'error': 'Invalid weight_per_meter value'}), 400
+
+        # Total weight
+        if 'total_weight' in data:
+            if data['total_weight']:
+                try:
+                    total_weight_value = float(data['total_weight'])
+                    if total_weight_value <= 0:
+                        return jsonify({'error': 'Total weight must be greater than 0'}), 400
+                    update_fields.append("total_weight = %s")
+                    params.append(total_weight_value)
+                except ValueError:
+                    return jsonify({'error': 'Invalid total_weight value'}), 400
+
+        # Piece length (for quantity-based products)
+        if 'piece_length' in data:
+            if data['piece_length']:
+                try:
+                    piece_length_value = float(data['piece_length'])
+                    if piece_length_value <= 0:
+                        return jsonify({'error': 'Piece length must be greater than 0'}), 400
+                    update_fields.append("piece_length = %s")
+                    params.append(piece_length_value)
+                except ValueError:
+                    return jsonify({'error': 'Invalid piece_length value'}), 400
+
+        if not update_fields:
+            return jsonify({'error': 'No fields to update'}), 400
+
+        # Add updated_at timestamp
+        update_fields.append("updated_at = NOW()")
+
+        # Build and execute update query
+        params.append(batch_id)
+        query = f"""
+            UPDATE batches
+            SET {', '.join(update_fields)}
+            WHERE id = %s AND deleted_at IS NULL
+            RETURNING id
+        """
+
+        result = execute_query(query, tuple(params))
+        if not result:
+            return jsonify({'error': 'Failed to update batch'}), 500
+
+        return jsonify({
+            'success': True,
+            'message': 'Batch updated successfully',
+            'batch_id': batch_id
+        }), 200
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500

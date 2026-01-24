@@ -272,9 +272,7 @@ export function TransactionTable({
                   </TableCell>
                 )}
                 <TableCell className="text-sm">
-                  {transaction.transaction_type === 'DISPATCH'
-                    ? formatDateTime(transaction.created_at)
-                    : formatDateTime(transaction.transaction_date || transaction.created_at)}
+                  {formatDateTime(transaction.transaction_date || transaction.created_at)}
                 </TableCell>
                 <TableCell>
                   <TransactionTypeBadge transaction={transaction} />
