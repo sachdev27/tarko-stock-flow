@@ -5,6 +5,7 @@ from config import Config
 from database import init_connection_pool, close_connection_pool
 import atexit
 import logging
+import os
 
 # Import blueprints
 from routes.auth_routes import auth_bp
@@ -101,12 +102,29 @@ def not_found(error):
 def internal_error(error):
     return jsonify({'error': 'Internal server error'}), 500
 
-if __name__ == '__main__':
-    # Initialize database connection pool
+
+def init_app():
+    """Initialize database and scheduler for production (gunicorn)"""
     logger.info("Initializing database connection pool...")
     init_connection_pool()
+
+    # Initialize scheduler for auto-snapshots (only in main process)
+    # Skip in debug mode with reloader to avoid duplicate schedulers
+    if not os.environ.get('WERKZEUG_RUN_MAIN') or os.environ.get('FLASK_ENV') == 'production':
+        try:
+            from services.scheduler_service import init_scheduler, shutdown_scheduler
+            logger.info("Initializing auto-snapshot scheduler...")
+            init_scheduler(app)
+            atexit.register(shutdown_scheduler)
+        except Exception as e:
+            logger.warning(f"Could not initialize scheduler: {e}")
 
     # Register cleanup
     atexit.register(close_connection_pool)
 
+
+# Initialize on import for gunicorn
+init_app()
+
+if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5500)
