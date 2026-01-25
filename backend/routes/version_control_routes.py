@@ -1119,6 +1119,7 @@ def auto_snapshot_settings():
             return jsonify({'error': str(e)}), 500
 
     else:  # POST
+        user_id = get_jwt_identity()
         data = request.json or {}
         enabled = data.get('enabled', False)
         time = data.get('time', '02:00')
