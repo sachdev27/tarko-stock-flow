@@ -648,7 +648,42 @@ def create_user():
         # Hash password using Python bcrypt
         password_hash = hash_password(password)
 
-        # Create user with additional fields
+        # Check if a soft-deleted user with this email exists
+        with get_db_cursor() as cursor:
+            cursor.execute("""
+                SELECT id FROM users
+                WHERE email = %s AND deleted_at IS NOT NULL
+            """, (email,))
+            deleted_user = cursor.fetchone()
+
+            if deleted_user:
+                # Reactivate the soft-deleted user with new credentials
+                cursor.execute("""
+                    UPDATE users
+                    SET username = %s, full_name = %s, password_hash = %s,
+                        is_active = true, deleted_at = NULL, updated_at = NOW(),
+                        created_by_user_id = %s
+                    WHERE id = %s
+                    RETURNING id, email, username, full_name
+                """, (username, full_name, password_hash, admin_id, deleted_user['id']))
+                user = cursor.fetchone()
+
+                # Update or create role
+                cursor.execute("DELETE FROM user_roles WHERE user_id = %s", (user['id'],))
+                cursor.execute("""
+                    INSERT INTO user_roles (user_id, role)
+                    VALUES (%s, %s)
+                """, (user['id'], role))
+
+                # Audit log
+                cursor.execute("""
+                    INSERT INTO audit_logs (user_id, action_type, entity_type, entity_id, description)
+                    VALUES (%s, 'REACTIVATE_USER', 'USER', %s, %s)
+                """, (admin_id, user['id'], f"Reactivated user {email} with role {role}"))
+
+                return jsonify({**user, 'role': role, 'reactivated': True}), 201
+
+        # Create new user
         query = """
             INSERT INTO users (email, username, full_name, password_hash, is_active, created_by_user_id)
             VALUES (%s, %s, %s, %s, true, %s)

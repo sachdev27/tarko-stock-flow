@@ -132,6 +132,22 @@ TABLES_WITHOUT_UPDATED_AT = [
     'password_reset_tokens'
 ]
 
+# Tables where soft-deleted records should ALSO be included in backups
+# These tables contain critical historical data for audit/reporting
+# (e.g., production history needs all batches, even fully consumed ones)
+INCLUDE_DELETED_IN_BACKUP = [
+    'batches',               # Production history
+    'transactions',          # Transaction audit trail
+    'inventory_stock',       # Stock history (consumed items)
+    'dispatches',            # Dispatch/invoice history
+    'returns',               # Return history
+    'scraps',                # Scrap/wastage history
+    'hdpe_cut_pieces',       # Cut piece history
+    'sprinkler_spare_pieces', # Spare piece history
+    'customers',             # Customer history for invoices
+    'bill_to',               # Billing entity history
+]
+
 # Columns that are UUID arrays (need explicit casting)
 UUID_ARRAY_COLUMNS = {
     'dispatch_items': ['spare_piece_ids']
@@ -191,8 +207,16 @@ def create_snapshot():
 
             # Capture data from each table
             for table in SNAPSHOT_TABLES:
-                # Add WHERE clause only for tables with soft delete
-                where_clause = "WHERE deleted_at IS NULL" if table in SOFT_DELETE_TABLES else ""
+                # Determine WHERE clause:
+                # - Tables in INCLUDE_DELETED_IN_BACKUP: capture ALL records (including deleted)
+                # - Other soft-delete tables: only non-deleted records
+                # - Tables without soft-delete: all records
+                if table in INCLUDE_DELETED_IN_BACKUP:
+                    where_clause = ""  # Include ALL records for historical tables
+                elif table in SOFT_DELETE_TABLES:
+                    where_clause = "WHERE deleted_at IS NULL"
+                else:
+                    where_clause = ""
 
                 cursor.execute(f"""
                     SELECT json_agg(row_to_json(t.*)) as data
@@ -1077,15 +1101,25 @@ def auto_snapshot_settings():
                 result = cursor.fetchone()
                 interval = result['setting_value'] if result else 'daily'
 
+                # Get next scheduled run time
+                next_run = None
+                try:
+                    from services.scheduler_service import get_next_run_time
+                    next_run = get_next_run_time()
+                except Exception as e:
+                    logger.warning(f"Could not get next run time: {e}")
+
                 return jsonify({
                     'enabled': enabled,
                     'time': time,
-                    'interval': interval
+                    'interval': interval,
+                    'next_run': next_run.isoformat() if next_run else None
                 }), 200
         except Exception as e:
             return jsonify({'error': str(e)}), 500
 
     else:  # POST
+        user_id = get_jwt_identity()
         data = request.json or {}
         enabled = data.get('enabled', False)
         time = data.get('time', '02:00')
@@ -1139,11 +1173,21 @@ def auto_snapshot_settings():
                         ON CONFLICT (policy_name) DO NOTHING
                     """, (user_id, user_id))
 
+                # Update the scheduler with new settings
+                try:
+                    from services.scheduler_service import update_auto_snapshot_schedule, get_next_run_time
+                    update_auto_snapshot_schedule()
+                    next_run = get_next_run_time()
+                except Exception as sched_error:
+                    logger.warning(f"Could not update scheduler: {sched_error}")
+                    next_run = None
+
                 return jsonify({
                     'message': 'Auto-snapshot settings updated',
                     'enabled': enabled,
                     'time': time,
-                    'interval': interval
+                    'interval': interval,
+                    'next_run': next_run.isoformat() if next_run else None
                 }), 200
         except Exception as e:
             return jsonify({'error': str(e)}), 500
@@ -1185,7 +1229,13 @@ def test_auto_snapshot():
 
             # Capture data from each table
             for table in SNAPSHOT_TABLES:
-                where_clause = "WHERE deleted_at IS NULL" if table in SOFT_DELETE_TABLES else ""
+                # Include deleted records for historical tables (batches, transactions)
+                if table in INCLUDE_DELETED_IN_BACKUP:
+                    where_clause = ""
+                elif table in SOFT_DELETE_TABLES:
+                    where_clause = "WHERE deleted_at IS NULL"
+                else:
+                    where_clause = ""
                 cursor.execute(f"""
                     SELECT json_agg(row_to_json(t.*)) as data
                     FROM {table} t
