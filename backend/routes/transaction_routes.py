@@ -217,7 +217,8 @@ def get_transactions():
         LEFT JOIN units u_unit ON pt.unit_id = u_unit.id
         LEFT JOIN customers c ON t.customer_id = c.id
         LEFT JOIN users u ON t.created_by = u.id
-        WHERE t.deleted_at IS NULL""" + date_filter + """
+        WHERE t.deleted_at IS NULL
+        AND (b.status IS NULL OR b.status != 'REVERTED')""" + date_filter + """
 
         UNION ALL
 
@@ -347,7 +348,8 @@ def get_transactions():
         LEFT JOIN units u_unit ON pt.unit_id = u_unit.id
         LEFT JOIN users u ON it.created_by = u.id
         WHERE it.transaction_type IN ('CUT_ROLL', 'SPLIT_BUNDLE', 'COMBINE_SPARES')
-        AND it.reverted_at IS NULL""" + date_filter_inv + """
+        AND it.reverted_at IS NULL
+        AND (b.status IS NULL OR b.status != 'REVERTED')""" + date_filter_inv + """
 
         UNION ALL
 
@@ -1602,6 +1604,17 @@ def revert_transactions():
                         AND created_at >= %s - INTERVAL '1 minute'
                         AND created_at <= %s + INTERVAL '1 minute'
                     """, (transaction['batch_id'], transaction['created_at'], transaction['created_at']))
+
+                    # Mark the batch as reverted (following the foundational model pattern)
+                    # This is the same pattern used by dispatches and returns tables
+                    cursor.execute("""
+                        UPDATE batches
+                        SET status = 'REVERTED',
+                            reverted_at = NOW(),
+                            reverted_by = %s,
+                            updated_at = NOW()
+                        WHERE id = %s
+                    """, (user_id, transaction['batch_id']))
 
                 # Mark transaction as deleted (soft delete)
                 cursor.execute("""

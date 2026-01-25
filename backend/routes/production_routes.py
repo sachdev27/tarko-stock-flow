@@ -520,18 +520,23 @@ def get_production_history():
                     b.total_weight,
                     b.piece_length,
                     b.created_at,
+                    b.status,
+                    b.reverted_at,
+                    b.reverted_by,
                     pt.name as product_type_name,
                     br.name as brand_name,
                     pv.parameters,
                     u.email as created_by_email,
+                    u_reverted.email as reverted_by_email,
                     COUNT(DISTINCT ist.id) as total_items
                 FROM batches b
-                JOIN product_variants pv ON b.product_variant_id = pv.id
-                JOIN product_types pt ON pv.product_type_id = pt.id
-                JOIN brands br ON pv.brand_id = br.id
+                LEFT JOIN product_variants pv ON b.product_variant_id = pv.id AND pv.deleted_at IS NULL
+                LEFT JOIN product_types pt ON pv.product_type_id = pt.id AND pt.deleted_at IS NULL
+                LEFT JOIN brands br ON pv.brand_id = br.id AND br.deleted_at IS NULL
                 LEFT JOIN users u ON b.created_by = u.id
+                LEFT JOIN users u_reverted ON b.reverted_by = u_reverted.id
                 LEFT JOIN inventory_stock ist ON b.id = ist.batch_id
-                GROUP BY b.id, pt.name, br.name, pv.parameters, u.email, b.attachment_url
+                GROUP BY b.id, pt.name, br.name, pv.parameters, u.email, u_reverted.email, b.attachment_url
                 ORDER BY b.created_at DESC
             """)
 
@@ -555,7 +560,10 @@ def get_production_history():
                     'piece_length': float(batch['piece_length']) if batch['piece_length'] else None,
                     'total_items': batch['total_items'],
                     'created_by_email': batch['created_by_email'],
-                    'created_at': batch['created_at'].isoformat() if batch['created_at'] else None
+                    'created_at': batch['created_at'].isoformat() if batch['created_at'] else None,
+                    'status': batch['status'],
+                    'reverted_at': batch['reverted_at'].isoformat() if batch['reverted_at'] else None,
+                    'reverted_by_email': batch['reverted_by_email']
                 })
 
             return jsonify({'batches': result}), 200

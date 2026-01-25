@@ -52,6 +52,9 @@ interface Batch {
   total_items: number;
   created_by_email: string;
   created_at: string;
+  status: 'ACTIVE' | 'CONSUMED' | 'REVERTED';
+  reverted_at?: string;
+  reverted_by_email?: string;
   items?: StockItem[];
 }
 
@@ -74,6 +77,9 @@ interface BatchDetails extends Batch {
   attachment_url?: string;
   updated_at: string;
   items: StockItem[];
+  status: 'ACTIVE' | 'CONSUMED' | 'REVERTED';
+  reverted_at?: string;
+  reverted_by_email?: string;
 }
 
 export const ProductionHistoryTab = () => {
@@ -123,12 +129,15 @@ export const ProductionHistoryTab = () => {
   }, []);
 
   useEffect(() => {
+    // Always filter out reverted batches first
+    const nonRevertedBatches = batches.filter(b => b.status !== 'REVERTED');
+
     if (!searchTerm.trim() && (!startDate || !endDate)) {
-      setFilteredBatches(batches);
+      setFilteredBatches(nonRevertedBatches);
       return;
     }
 
-    let filtered = batches;
+    let filtered = nonRevertedBatches;
 
     // Text search filter
     if (searchTerm.trim()) {
@@ -333,7 +342,13 @@ export const ProductionHistoryTab = () => {
           <CardTitle className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Factory className="h-6 w-6" />
-              Production History
+              <div>
+                <div>Production History</div>
+                <div className="text-sm font-normal text-muted-foreground">
+                  {filteredBatches.length} {filteredBatches.length === 1 ? 'entry' : 'entries'}
+                  {filteredBatches.length !== batches.length && ` (filtered from ${batches.length})`}
+                </div>
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <Button
@@ -546,159 +561,159 @@ export const ProductionHistoryTab = () => {
                   </TableHeader>
                   <TableBody>
                     {paginatedBatches.map((batch) => (
-                    <TableRow
-                      key={batch.id}
-                      className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => fetchBatchDetails(batch.id)}
-                    >
-                      <TableCell className="font-medium">
-                        <div>{batch.batch_code}</div>
-                        <div className="text-xs text-muted-foreground">#{batch.batch_no}</div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="font-medium">{batch.product_type_name}</div>
-                        <div className="text-xs text-gray-500">{batch.brand_name}</div>
-                        {batch.parameters && Object.keys(batch.parameters).length > 0 && (
-                          <div className="text-xs text-gray-500">
-                            {Object.entries(batch.parameters)
-                              .map(([key, value]) => `${key}: ${value}`)
-                              .join(', ')}
-                          </div>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <div>{formatDate(batch.production_date)}</div>
-                        <div className="text-sm text-muted-foreground">
-                          {format(new Date(batch.created_at), 'HH:mm')}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="font-medium">
-                          {(() => {
-                            const spareItem = batch.items?.find(item =>
-                              item.stock_type === 'SPARE' || item.stock_type === 'SPARE_PIECES'
-                            );
-                            if (spareItem) {
-                              const actualCount = spareItem.total_pieces ??
-                                (spareItem.spare_pieces?.[0]?.piece_count) ??
-                                spareItem.quantity ?? 0;
-                              return `${actualCount} pcs`;
-                            }
-                            return `${batch.initial_quantity} ${batch.piece_length ? 'pcs' : 'm'}`;
-                          })()}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {batch.total_weight ? (
-                          <div>
-                            <div className="font-medium">{batch.total_weight.toFixed(2)} kg</div>
-                            {batch.weight_per_meter && (
-                              <div className="text-xs text-gray-500">
-                                {batch.weight_per_meter.toFixed(3)} kg/m
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-gray-400">-</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-sm">{batch.total_items}</div>
-                      </TableCell>
-                      <TableCell>
-                        {batch.attachment_url ? (
-                          <a
-                            href={`${API_URL}${batch.attachment_url}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={(e) => e.stopPropagation()}
-                            className="inline-flex items-center gap-1 text-primary hover:underline"
-                          >
-                            <Paperclip className="h-4 w-4" />
-                          </a>
-                        ) : (
-                          <span className="text-gray-400">-</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-sm">{batch.created_by_email}</div>
-                      </TableCell>
-                      {isAdmin && (
-                        <TableCell onClick={(e) => e.stopPropagation()}>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedBatch(batch);
-                              setEditOpen(true);
-                            }}
-                            className="flex items-center gap-1"
-                          >
-                            <Pencil className="h-3 w-3" />
-                            <span className="hidden sm:inline">Edit</span>
-                          </Button>
+                      <TableRow
+                        key={batch.id}
+                        className="cursor-pointer hover:bg-muted/50"
+                        onClick={() => fetchBatchDetails(batch.id)}
+                      >
+                        <TableCell className="font-medium">
+                          <div>{batch.batch_code}</div>
+                          <div className="text-xs text-muted-foreground">#{batch.batch_no}</div>
                         </TableCell>
-                      )}
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-
-            {/* Pagination Controls */}
-            {totalPages > 1 && (
-              <div className="flex items-center justify-center gap-2 mt-6">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={goToFirstPage}
-                  disabled={currentPage === 1}
-                >
-                  <ChevronsLeft className="h-4 w-4" />
-                  <span className="ml-2 hidden sm:inline">First</span>
-                </Button>
-
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={goToPrevPage}
-                  disabled={currentPage === 1}
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                  <span className="ml-2 hidden sm:inline">Previous</span>
-                </Button>
-
-                <div className="flex items-center gap-2 px-4">
-                  <span className="text-sm">
-                    Page <span className="font-medium">{currentPage}</span> of{' '}
-                    <span className="font-medium">{totalPages}</span>
-                  </span>
-                </div>
-
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={goToNextPage}
-                  disabled={currentPage === totalPages}
-                >
-                  <span className="mr-2 hidden sm:inline">Next</span>
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={goToLastPage}
-                  disabled={currentPage === totalPages}
-                >
-                  <span className="mr-2 hidden sm:inline">Last</span>
-                  <ChevronsRight className="h-4 w-4" />
-                </Button>
+                        <TableCell>
+                          <div className="font-medium">{batch.product_type_name}</div>
+                          <div className="text-xs text-gray-500">{batch.brand_name}</div>
+                          {batch.parameters && Object.keys(batch.parameters).length > 0 && (
+                            <div className="text-xs text-gray-500">
+                              {Object.entries(batch.parameters)
+                                .map(([key, value]) => `${key}: ${value}`)
+                                .join(', ')}
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <div>{formatDate(batch.production_date)}</div>
+                          <div className="text-sm text-muted-foreground">
+                            {format(new Date(batch.created_at), 'HH:mm')}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="font-medium">
+                            {(() => {
+                              const spareItem = batch.items?.find(item =>
+                                item.stock_type === 'SPARE' || item.stock_type === 'SPARE_PIECES'
+                              );
+                              if (spareItem) {
+                                const actualCount = spareItem.total_pieces ??
+                                  (spareItem.spare_pieces?.[0]?.piece_count) ??
+                                  spareItem.quantity ?? 0;
+                                return `${actualCount} pcs`;
+                              }
+                              return `${batch.initial_quantity} ${batch.piece_length ? 'pcs' : 'm'}`;
+                            })()}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {batch.total_weight ? (
+                            <div>
+                              <div className="font-medium">{batch.total_weight.toFixed(2)} kg</div>
+                              {batch.weight_per_meter && (
+                                <div className="text-xs text-gray-500">
+                                  {batch.weight_per_meter.toFixed(3)} kg/m
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-sm">{batch.total_items}</div>
+                        </TableCell>
+                        <TableCell>
+                          {batch.attachment_url ? (
+                            <a
+                              href={`${API_URL}${batch.attachment_url}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="inline-flex items-center gap-1 text-primary hover:underline"
+                            >
+                              <Paperclip className="h-4 w-4" />
+                            </a>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-sm">{batch.created_by_email}</div>
+                        </TableCell>
+                        {isAdmin && (
+                          <TableCell onClick={(e) => e.stopPropagation()}>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedBatch(batch);
+                                setEditOpen(true);
+                              }}
+                              className="flex items-center gap-1"
+                            >
+                              <Pencil className="h-3 w-3" />
+                              <span className="hidden sm:inline">Edit</span>
+                            </Button>
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               </div>
-            )}
-          </>
-        )}
+
+              {/* Pagination Controls */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-center gap-2 mt-6">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={goToFirstPage}
+                    disabled={currentPage === 1}
+                  >
+                    <ChevronsLeft className="h-4 w-4" />
+                    <span className="ml-2 hidden sm:inline">First</span>
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={goToPrevPage}
+                    disabled={currentPage === 1}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    <span className="ml-2 hidden sm:inline">Previous</span>
+                  </Button>
+
+                  <div className="flex items-center gap-2 px-4">
+                    <span className="text-sm">
+                      Page <span className="font-medium">{currentPage}</span> of{' '}
+                      <span className="font-medium">{totalPages}</span>
+                    </span>
+                  </div>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={goToNextPage}
+                    disabled={currentPage === totalPages}
+                  >
+                    <span className="mr-2 hidden sm:inline">Next</span>
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={goToLastPage}
+                    disabled={currentPage === totalPages}
+                  >
+                    <span className="mr-2 hidden sm:inline">Last</span>
+                    <ChevronsRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
+            </>
+          )}
         </CardContent>
       </Card>
 

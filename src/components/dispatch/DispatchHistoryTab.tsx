@@ -322,7 +322,13 @@ export const DispatchHistoryTab = () => {
           <CardTitle className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <TruckIcon className="h-6 w-6" />
-              Dispatch History
+              <div>
+                <div>Dispatch History</div>
+                <div className="text-sm font-normal text-muted-foreground">
+                  {filteredDispatches.length} {filteredDispatches.length === 1 ? 'entry' : 'entries'}
+                  {filteredDispatches.length !== dispatches.length && ` (filtered from ${dispatches.length})`}
+                </div>
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <Button
@@ -527,151 +533,151 @@ export const DispatchHistoryTab = () => {
                   </TableHeader>
                   <TableBody>
                     {paginatedDispatches.map((dispatch) => (
-                    <TableRow
-                      key={dispatch.id}
-                      className="hover:bg-muted/50"
-                    >
-                      <TableCell
-                        className="font-medium cursor-pointer"
-                        onClick={() => fetchDispatchDetails(dispatch.id)}
+                      <TableRow
+                        key={dispatch.id}
+                        className="hover:bg-muted/50"
                       >
-                        {dispatch.dispatch_number}
-                      </TableCell>
-                      <TableCell
-                        className="cursor-pointer"
-                        onClick={() => fetchDispatchDetails(dispatch.id)}
-                      >
-                        <div>
-                          <div>{formatDate(dispatch.dispatch_date)}</div>
-                          <div className="text-sm text-muted-foreground">
-                            {format(new Date(dispatch.created_at), 'HH:mm')}
+                        <TableCell
+                          className="font-medium cursor-pointer"
+                          onClick={() => fetchDispatchDetails(dispatch.id)}
+                        >
+                          {dispatch.dispatch_number}
+                        </TableCell>
+                        <TableCell
+                          className="cursor-pointer"
+                          onClick={() => fetchDispatchDetails(dispatch.id)}
+                        >
+                          <div>
+                            <div>{formatDate(dispatch.dispatch_date)}</div>
+                            <div className="text-sm text-muted-foreground">
+                              {format(new Date(dispatch.created_at), 'HH:mm')}
+                            </div>
                           </div>
-                        </div>
-                      </TableCell>
-                      <TableCell
-                        className="cursor-pointer"
-                        onClick={() => fetchDispatchDetails(dispatch.id)}
-                      >
-                        <div>
-                          <div className="font-medium">{dispatch.customer_name}</div>
-                          {dispatch.customer_city && (
-                            <div className="text-xs text-gray-500">{dispatch.customer_city}</div>
+                        </TableCell>
+                        <TableCell
+                          className="cursor-pointer"
+                          onClick={() => fetchDispatchDetails(dispatch.id)}
+                        >
+                          <div>
+                            <div className="font-medium">{dispatch.customer_name}</div>
+                            {dispatch.customer_city && (
+                              <div className="text-xs text-gray-500">{dispatch.customer_city}</div>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell
+                          className="cursor-pointer"
+                          onClick={() => fetchDispatchDetails(dispatch.id)}
+                        >
+                          <div className="text-sm">
+                            {dispatch.bill_to_name || '-'}
+                          </div>
+                        </TableCell>
+                        <TableCell
+                          className="cursor-pointer"
+                          onClick={() => fetchDispatchDetails(dispatch.id)}
+                        >
+                          <div className="text-sm">
+                            {dispatch.transport_name && (
+                              <div>{dispatch.transport_name}</div>
+                            )}
+                            {dispatch.vehicle_driver && (
+                              <div className="text-xs text-gray-500">{dispatch.vehicle_driver}</div>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell
+                          className="cursor-pointer"
+                          onClick={() => fetchDispatchDetails(dispatch.id)}
+                        >
+                          <div className="text-sm">
+                            <div className="text-xs text-gray-500">Qty: {dispatch.total_quantity}</div>
+                          </div>
+                        </TableCell>
+                        <TableCell
+                          className="cursor-pointer"
+                          onClick={() => fetchDispatchDetails(dispatch.id)}
+                        >
+                          <Badge className={getStatusColor(dispatch.status)}>
+                            {dispatch.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {isAdmin && !['REVERTED', 'CANCELLED'].includes(dispatch.status) && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedDispatch(dispatch);
+                                setEditOpen(true);
+                              }}
+                              className="flex items-center gap-1"
+                            >
+                              <Pencil className="h-3 w-3" />
+                              <span className="hidden sm:inline">Edit</span>
+                            </Button>
                           )}
-                        </div>
-                      </TableCell>
-                      <TableCell
-                        className="cursor-pointer"
-                        onClick={() => fetchDispatchDetails(dispatch.id)}
-                      >
-                        <div className="text-sm">
-                          {dispatch.bill_to_name || '-'}
-                        </div>
-                      </TableCell>
-                      <TableCell
-                        className="cursor-pointer"
-                        onClick={() => fetchDispatchDetails(dispatch.id)}
-                      >
-                        <div className="text-sm">
-                          {dispatch.transport_name && (
-                            <div>{dispatch.transport_name}</div>
-                          )}
-                          {dispatch.vehicle_driver && (
-                            <div className="text-xs text-gray-500">{dispatch.vehicle_driver}</div>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell
-                        className="cursor-pointer"
-                        onClick={() => fetchDispatchDetails(dispatch.id)}
-                      >
-                        <div className="text-sm">
-                          <div className="text-xs text-gray-500">Qty: {dispatch.total_quantity}</div>
-                        </div>
-                      </TableCell>
-                      <TableCell
-                        className="cursor-pointer"
-                        onClick={() => fetchDispatchDetails(dispatch.id)}
-                      >
-                        <Badge className={getStatusColor(dispatch.status)}>
-                          {dispatch.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        {isAdmin && !['REVERTED', 'CANCELLED'].includes(dispatch.status) && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedDispatch(dispatch);
-                              setEditOpen(true);
-                            }}
-                            className="flex items-center gap-1"
-                          >
-                            <Pencil className="h-3 w-3" />
-                            <span className="hidden sm:inline">Edit</span>
-                          </Button>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-
-            {/* Pagination Controls */}
-            {totalPages > 1 && (
-              <div className="flex items-center justify-center gap-2 mt-6">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={goToFirstPage}
-                  disabled={currentPage === 1}
-                >
-                  <ChevronsLeft className="h-4 w-4" />
-                  <span className="ml-2 hidden sm:inline">First</span>
-                </Button>
-
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={goToPrevPage}
-                  disabled={currentPage === 1}
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                  <span className="ml-2 hidden sm:inline">Previous</span>
-                </Button>
-
-                <div className="flex items-center gap-2 px-4">
-                  <span className="text-sm">
-                    Page <span className="font-medium">{currentPage}</span> of{' '}
-                    <span className="font-medium">{totalPages}</span>
-                  </span>
-                </div>
-
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={goToNextPage}
-                  disabled={currentPage === totalPages}
-                >
-                  <span className="mr-2 hidden sm:inline">Next</span>
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={goToLastPage}
-                  disabled={currentPage === totalPages}
-                >
-                  <span className="mr-2 hidden sm:inline">Last</span>
-                  <ChevronsRight className="h-4 w-4" />
-                </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               </div>
-            )}
-          </>
-        )}
+
+              {/* Pagination Controls */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-center gap-2 mt-6">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={goToFirstPage}
+                    disabled={currentPage === 1}
+                  >
+                    <ChevronsLeft className="h-4 w-4" />
+                    <span className="ml-2 hidden sm:inline">First</span>
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={goToPrevPage}
+                    disabled={currentPage === 1}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    <span className="ml-2 hidden sm:inline">Previous</span>
+                  </Button>
+
+                  <div className="flex items-center gap-2 px-4">
+                    <span className="text-sm">
+                      Page <span className="font-medium">{currentPage}</span> of{' '}
+                      <span className="font-medium">{totalPages}</span>
+                    </span>
+                  </div>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={goToNextPage}
+                    disabled={currentPage === totalPages}
+                  >
+                    <span className="mr-2 hidden sm:inline">Next</span>
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={goToLastPage}
+                    disabled={currentPage === totalPages}
+                  >
+                    <span className="mr-2 hidden sm:inline">Last</span>
+                    <ChevronsRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
+            </>
+          )}
         </CardContent>
       </Card>
 
@@ -783,44 +789,44 @@ export const DispatchHistoryTab = () => {
                       </h3>
                       <div className="space-y-2">
                         {groupedItems.map((item: any, idx: number) => (
-                    <div key={idx} className="p-3 border rounded-lg">
-                      <div className="flex justify-between items-start">
-                        <div className="flex-1">
-                          <div className="font-medium">
-                            {item.product_type_name} - {item.brand_name}
-                          </div>
-                          <div className="text-xs text-gray-500 mt-1">
-                            {Object.entries(item.parameters || {}).map(([key, value]) => (
-                              <span key={key} className="mr-3">
-                                {key}: {String(value)}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <Badge variant="outline">{getItemTypeLabel(item.item_type)}</Badge>
-                          <div className="text-sm font-medium mt-1">Qty: {item.quantity}</div>
-                          {item.length_meters && (
-                            item.item_type === 'FULL_ROLL' && item.quantity > 1 ? (
-                              <>
-                                <div className="text-xs text-gray-500">Total: {(item.length_meters * item.quantity).toFixed(1)}m</div>
-                                <div className="text-xs text-gray-500">Per roll: {item.length_meters}m</div>
-                              </>
-                            ) : (
-                              <div className="text-xs text-gray-500">{item.length_meters}m</div>
-                            )
-                          )}
-                          {item.piece_count && (
-                            <div className="text-xs text-gray-500">{item.piece_count} pieces</div>
-                          )}
-                          {item.bundle_size && (
-                            <div className="text-xs text-gray-500">
-                              Bundle: {item.bundle_size} × {item.piece_length_meters}m
+                          <div key={idx} className="p-3 border rounded-lg">
+                            <div className="flex justify-between items-start">
+                              <div className="flex-1">
+                                <div className="font-medium">
+                                  {item.product_type_name} - {item.brand_name}
+                                </div>
+                                <div className="text-xs text-gray-500 mt-1">
+                                  {Object.entries(item.parameters || {}).map(([key, value]) => (
+                                    <span key={key} className="mr-3">
+                                      {key}: {String(value)}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <Badge variant="outline">{getItemTypeLabel(item.item_type)}</Badge>
+                                <div className="text-sm font-medium mt-1">Qty: {item.quantity}</div>
+                                {item.length_meters && (
+                                  item.item_type === 'FULL_ROLL' && item.quantity > 1 ? (
+                                    <>
+                                      <div className="text-xs text-gray-500">Total: {(item.length_meters * item.quantity).toFixed(1)}m</div>
+                                      <div className="text-xs text-gray-500">Per roll: {item.length_meters}m</div>
+                                    </>
+                                  ) : (
+                                    <div className="text-xs text-gray-500">{item.length_meters}m</div>
+                                  )
+                                )}
+                                {item.piece_count && (
+                                  <div className="text-xs text-gray-500">{item.piece_count} pieces</div>
+                                )}
+                                {item.bundle_size && (
+                                  <div className="text-xs text-gray-500">
+                                    Bundle: {item.bundle_size} × {item.piece_length_meters}m
+                                  </div>
+                                )}
+                              </div>
                             </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
+                          </div>
                         ))}
                       </div>
                     </>
