@@ -108,9 +108,16 @@ def init_app():
     logger.info("Initializing database connection pool...")
     init_connection_pool()
 
-    # Initialize scheduler for auto-snapshots (only in main process)
-    # Skip in debug mode with reloader to avoid duplicate schedulers
-    if not os.environ.get('WERKZEUG_RUN_MAIN') or os.environ.get('FLASK_ENV') == 'production':
+    # Initialize scheduler for auto-snapshots
+    # In development with reloader: only initialize in the reloaded child process (WERKZEUG_RUN_MAIN=true)
+    # In production: always initialize
+    should_init_scheduler = (
+        os.environ.get('WERKZEUG_RUN_MAIN') == 'true' or  # Development reloader child process
+        os.environ.get('FLASK_ENV') == 'production' or     # Production
+        not os.environ.get('WERKZEUG_RUN_MAIN')            # Running without reloader
+    )
+
+    if should_init_scheduler:
         try:
             from services.scheduler_service import init_scheduler, shutdown_scheduler
             logger.info("Initializing auto-snapshot scheduler...")
