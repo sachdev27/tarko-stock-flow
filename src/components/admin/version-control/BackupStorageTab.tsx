@@ -262,7 +262,7 @@ export const BackupStorageTab = ({
 
     document.body.appendChild(input);
     setTimeout(() => input.click(), 0);
-  };  return (
+  }; return (
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between">
@@ -311,34 +311,109 @@ export const BackupStorageTab = ({
             </div>
 
             {autoSnapshotEnabled && onUpdateInterval && (
-              <div className="space-y-2 pt-2 border-t">
+              <div className="space-y-3 pt-2 border-t">
                 <Label className="text-sm font-medium">Snapshot Frequency</Label>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+
+                {/* Mode Toggle: Minutes vs Hours vs Days */}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      // Switch to minutes mode with default 30m
+                      const currentValue = parseInt(autoSnapshotInterval) || 30;
+                      onUpdateInterval(`${Math.max(5, Math.min(currentValue, 59))}m`);
+                    }}
+                    className={`px-4 py-2 text-sm rounded-md border transition-colors ${autoSnapshotInterval.endsWith('m')
+                        ? 'bg-primary text-primary-foreground border-primary'
+                        : 'bg-background hover:bg-muted border-input'
+                      }`}
+                  >
+                    Minutes
+                  </button>
+                  <button
+                    onClick={() => {
+                      // Switch to hours mode with default 6h
+                      const currentValue = parseInt(autoSnapshotInterval) || 6;
+                      onUpdateInterval(`${Math.min(currentValue, 48)}h`);
+                    }}
+                    className={`px-4 py-2 text-sm rounded-md border transition-colors ${autoSnapshotInterval.endsWith('h')
+                        ? 'bg-primary text-primary-foreground border-primary'
+                        : 'bg-background hover:bg-muted border-input'
+                      }`}
+                  >
+                    Hours
+                  </button>
+                  <button
+                    onClick={() => {
+                      // Switch to days mode with default 1d
+                      const currentValue = parseInt(autoSnapshotInterval) || 1;
+                      onUpdateInterval(`${Math.min(currentValue, 30)}d`);
+                    }}
+                    className={`px-4 py-2 text-sm rounded-md border transition-colors ${autoSnapshotInterval.endsWith('d')
+                        ? 'bg-primary text-primary-foreground border-primary'
+                        : 'bg-background hover:bg-muted border-input'
+                      }`}
+                  >
+                    Days
+                  </button>
+                </div>
+
+                {/* Custom Value Input */}
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-muted-foreground">Every</span>
+                  <Input
+                    type="number"
+                    min={autoSnapshotInterval.endsWith('m') ? 5 : 1}
+                    max={autoSnapshotInterval.endsWith('m') ? 59 : autoSnapshotInterval.endsWith('d') ? 30 : 48}
+                    value={parseInt(autoSnapshotInterval) || (autoSnapshotInterval.endsWith('m') ? 30 : autoSnapshotInterval.endsWith('d') ? 1 : 6)}
+                    onChange={(e) => {
+                      const value = parseInt(e.target.value) || 1;
+                      const suffix = autoSnapshotInterval.endsWith('m') ? 'm' : autoSnapshotInterval.endsWith('d') ? 'd' : 'h';
+                      const minVal = suffix === 'm' ? 5 : 1;
+                      const maxVal = suffix === 'm' ? 59 : suffix === 'd' ? 30 : 48;
+                      onUpdateInterval(`${Math.max(minVal, Math.min(value, maxVal))}${suffix}`);
+                    }}
+                    className="w-20"
+                  />
+                  <span className="text-sm text-muted-foreground">
+                    {autoSnapshotInterval.endsWith('m') ? 'minute(s)' : autoSnapshotInterval.endsWith('d') ? 'day(s)' : 'hour(s)'}
+                  </span>
+                </div>
+
+                {/* Quick Presets */}
+                <div className="flex flex-wrap gap-2">
+                  <span className="text-xs text-muted-foreground mr-1">Quick:</span>
                   {[
-                    { value: 'every-6h', label: 'Every 6 hours' },
-                    { value: 'every-12h', label: 'Every 12 hours' },
-                    { value: 'daily', label: 'Daily' },
-                    { value: 'every-2d', label: 'Every 2 days' },
-                    { value: 'weekly', label: 'Weekly' },
+                    { value: '15m', label: '15m' },
+                    { value: '30m', label: '30m' },
+                    { value: '6h', label: '6h' },
+                    { value: '12h', label: '12h' },
+                    { value: '1d', label: '1d' },
+                    { value: '7d', label: '7d' },
                   ].map((preset) => (
                     <button
                       key={preset.value}
                       onClick={() => onUpdateInterval(preset.value)}
-                      className={`px-3 py-2 text-sm rounded-md border transition-colors ${
-                        autoSnapshotInterval === preset.value
+                      className={`px-2 py-1 text-xs rounded border transition-colors ${autoSnapshotInterval === preset.value
                           ? 'bg-primary text-primary-foreground border-primary'
-                          : 'bg-background hover:bg-muted border-input'
-                      }`}
+                          : 'bg-muted/50 hover:bg-muted border-input'
+                        }`}
                     >
                       {preset.label}
                     </button>
                   ))}
                 </div>
-                {autoSnapshotInterval === 'daily' && (
-                  <p className="text-xs text-muted-foreground mt-2">
-                    Runs daily at {autoSnapshotTime}
-                  </p>
-                )}
+
+                {/* Schedule Description */}
+                <p className="text-xs text-muted-foreground mt-2">
+                  {autoSnapshotInterval.endsWith('m')
+                    ? `Runs every ${parseInt(autoSnapshotInterval)} minute(s)`
+                    : autoSnapshotInterval.endsWith('h')
+                      ? `Runs every ${parseInt(autoSnapshotInterval)} hour(s)`
+                      : autoSnapshotInterval.endsWith('d')
+                        ? `Runs every ${parseInt(autoSnapshotInterval)} day(s) at ${autoSnapshotTime}`
+                        : `Runs ${autoSnapshotInterval} at ${autoSnapshotTime}`}
+                </p>
+
                 <Button
                   variant="outline"
                   size="sm"
@@ -389,11 +464,10 @@ export const BackupStorageTab = ({
           <div className="flex gap-2 border-b">
             <button
               onClick={() => setActiveSection('local')}
-              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                activeSection === 'local'
-                  ? 'border-primary text-primary'
-                  : 'border-transparent text-muted-foreground hover:text-foreground'
-              }`}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeSection === 'local'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+                }`}
             >
               <Database className="h-4 w-4 inline mr-2" />
               Local Snapshots ({snapshots.length})
@@ -409,11 +483,10 @@ export const BackupStorageTab = ({
                   toast.info('Scanning for backups...');
                 }
               }}
-              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                activeSection === 'external'
-                  ? 'border-primary text-primary'
-                  : 'border-transparent text-muted-foreground hover:text-foreground'
-              }`}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeSection === 'external'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+                }`}
             >
               <FolderOpen className="h-4 w-4 inline mr-2" />
               External Backups {selectedPath && `(${externalSnapshots.length})`}
@@ -485,9 +558,8 @@ export const BackupStorageTab = ({
                 snapshots.map((snapshot) => (
                   <div
                     key={snapshot.id}
-                    className={`flex items-center gap-3 p-4 border rounded-lg hover:bg-muted/50 transition-colors ${
-                      selectedSnapshots.has(snapshot.id) ? 'bg-primary/5 border-primary' : ''
-                    }`}
+                    className={`flex items-center gap-3 p-4 border rounded-lg hover:bg-muted/50 transition-colors ${selectedSnapshots.has(snapshot.id) ? 'bg-primary/5 border-primary' : ''
+                      }`}
                   >
                     <input
                       type="checkbox"

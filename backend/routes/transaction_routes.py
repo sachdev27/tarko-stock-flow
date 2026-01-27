@@ -872,46 +872,10 @@ def get_transactions():
         LIMIT 1000
     """
 
-    print(f"\n=== TRANSACTION QUERY DEBUG ===")
-    print(f"Date filter params: {params if params else 'None'}")
-
     transactions = execute_query(query, tuple(params)) if params else execute_query(query)
 
     # Sort all records by transaction date
     all_records = list(transactions) if transactions else []
-
-    print(f"Total records returned: {len(all_records)}")
-
-    # Debug: Check for duplicate return entries
-    return_records = [r for r in all_records if r['id'].startswith('return_')]
-    return_ids = [r['id'] for r in return_records]
-
-    print(f"Return records found: {len(return_records)}")
-    print(f"Unique return IDs: {len(set(return_ids))}")
-
-    # Debug: Log return calculations
-    for ret in return_records[:3]:  # First 3 returns
-        print(f"Return {ret.get('batch_code', 'N/A')}: roll_length_meters = {ret.get('roll_length_meters', 'N/A')}")
-
-    if len(return_ids) != len(set(return_ids)):
-        print(f"⚠️  WARNING: Duplicate return entries found!")
-        print(f"   Total: {len(return_ids)}, Unique: {len(set(return_ids))}")
-        print(f"   Return IDs: {return_ids}")
-        for ret in return_records:
-            print(f"   - {ret['id']}: {ret.get('notes', 'N/A')}")
-    else:
-        print(f"✓ No duplicate returns detected")
-        if return_records:
-            print(f"Return entries:")
-            for ret in return_records:
-                print(f"   - {ret['id']}: {ret.get('notes', 'N/A')}")
-
-    print(f"=== END DEBUG ===\n")
-
-    if all_records:
-        all_records.sort(key=lambda x: x['transaction_date'], reverse=True)
-        sample_ids = [r['id'] for r in all_records[:3]]
-
     return jsonify(all_records), 200
 
 

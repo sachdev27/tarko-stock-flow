@@ -119,7 +119,27 @@ def _schedule_auto_snapshot_job(time_str: str, interval: str):
         hour, minute = 2, 0  # Default to 2:00 AM
 
     # Create trigger based on interval
-    if interval == 'hourly':
+    # Support custom formats: "30m" (every 30 mins), "6h" (every 6 hours), "2d" (every 2 days)
+    # and legacy formats: "hourly", "daily", "weekly", "monthly"
+    if interval.endswith('m') and interval[:-1].isdigit():
+        # Custom minutes format: "15m", "30m", etc.
+        minutes = int(interval[:-1])
+        minutes = max(5, min(59, minutes))  # Clamp between 5-59 minutes (min 5 to avoid overload)
+        trigger = IntervalTrigger(minutes=minutes)
+        logger.info(f"Using interval trigger: every {minutes} minutes")
+    elif interval.endswith('h') and interval[:-1].isdigit():
+        # Custom hours format: "6h", "12h", etc.
+        hours = int(interval[:-1])
+        hours = max(1, min(48, hours))  # Clamp between 1-48 hours
+        trigger = IntervalTrigger(hours=hours)
+        logger.info(f"Using interval trigger: every {hours} hours")
+    elif interval.endswith('d') and interval[:-1].isdigit():
+        # Custom days format: "2d", "7d", etc.
+        days = int(interval[:-1])
+        days = max(1, min(30, days))  # Clamp between 1-30 days
+        trigger = IntervalTrigger(days=days)
+        logger.info(f"Using interval trigger: every {days} days")
+    elif interval == 'hourly':
         trigger = IntervalTrigger(hours=1)
     elif interval == 'weekly':
         trigger = CronTrigger(day_of_week='sun', hour=hour, minute=minute)
@@ -214,6 +234,32 @@ def _run_auto_snapshot():
                 snapshot_json = json.dumps(snapshot_data)
                 file_size_mb = len(snapshot_json.encode('utf-8')) / (1024 * 1024)
 
+                # Use the dedicated system user for automated tasks
+                # System user UUID is defined in migrations/add_system_seed_data.sql
+                SYSTEM_USER_ID = '00000000-0000-0000-0000-000000000001'
+
+                # Verify system user exists, fallback to first active user if not
+                cursor.execute("""
+                    SELECT id FROM users WHERE id = %s AND deleted_at IS NULL
+                """, (SYSTEM_USER_ID,))
+                system_user = cursor.fetchone()
+
+                if system_user:
+                    system_user_id = SYSTEM_USER_ID
+                else:
+                    # Fallback: get first active user (for backwards compatibility)
+                    cursor.execute("""
+                        SELECT id FROM users
+                        WHERE deleted_at IS NULL AND is_active = true
+                        ORDER BY created_at ASC
+                        LIMIT 1
+                    """)
+                    user_result = cursor.fetchone()
+                    system_user_id = user_result['id'] if user_result else None
+
+                if not system_user_id:
+                    raise Exception("No users found in database for auto-snapshot attribution")
+
                 # Insert snapshot marked as automatic
                 cursor.execute("""
                     INSERT INTO database_snapshots (
@@ -225,12 +271,12 @@ def _run_auto_snapshot():
                 """, (
                     snapshot_name,
                     f'Automatic {interval} backup',
-                    None,  # Don't store in DB, use file storage
+                    '{}',  # Empty JSON - actual data stored in file storage
                     json.dumps(table_counts),
-                    None,  # System generated
+                    system_user_id,  # Use admin/system user for attribution
                     round(file_size_mb, 2),
                     True,
-                    json.dumps(['auto', interval]),
+                    ['auto', interval],
                     str(snapshot_storage.storage_path)
                 ))
 

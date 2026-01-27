@@ -22,6 +22,42 @@ INSERT INTO public.units (id, name, abbreviation, is_system, created_at, updated
 ('77b0cf16-13a5-4606-a3f6-17176bfcf1e9', 'Rolls', 'rolls', TRUE, NOW(), NOW())
 ON CONFLICT (id) DO UPDATE SET is_system = TRUE;
 
+-- Add is_system flag to users table for system accounts
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_schema = 'public'
+                   AND table_name = 'users'
+                   AND column_name = 'is_system') THEN
+        ALTER TABLE public.users ADD COLUMN is_system BOOLEAN DEFAULT FALSE NOT NULL;
+        COMMENT ON COLUMN public.users.is_system IS 'System users are used for automated tasks and cannot be deleted';
+    END IF;
+END $$;
+
+-- Insert system user for automated tasks (auto-snapshots, scheduled jobs, etc.)
+-- This user has a fixed UUID that can be referenced in application code
+INSERT INTO public.users (
+    id,
+    email,
+    username,
+    full_name,
+    password_hash,
+    is_active,
+    is_system,
+    created_at,
+    updated_at
+) VALUES (
+    '00000000-0000-0000-0000-000000000001',
+    'system@tarko.internal',
+    'SYSTEM',
+    'System Account',
+    '$2b$12$system.account.not.for.login.hash',
+    TRUE,
+    TRUE,
+    NOW(),
+    NOW()
+) ON CONFLICT (id) DO UPDATE SET is_system = TRUE, is_active = TRUE;
+
 -- Add is_system flag to product_types table
 DO $$
 BEGIN
