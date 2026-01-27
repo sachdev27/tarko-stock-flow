@@ -6,7 +6,7 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { Cloud, CloudDownload, RotateCcw, Trash2, Settings, RefreshCw, CloudUpload, CheckCircle2, XCircle, Clock, Loader2 } from 'lucide-react';
-import { formatDate } from '@/lib/utils';
+import { formatDate, toISTDateTimeLocal } from '@/lib/utils';
 import { versionControl } from '@/lib/api-typed';
 import { toast } from 'sonner';
 import type * as API from '@/types';
@@ -348,8 +348,8 @@ export const CloudBackupTab = ({
                           <Badge variant="outline" className="text-xs">{snapshot.provider}</Badge>
                         </div>
                         <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
-                          <span>📅 {new Date(snapshot.uploaded_at).toLocaleDateString()}</span>
-                          <span>🕐 {new Date(snapshot.uploaded_at).toLocaleTimeString()}</span>
+                          <span>📅 {formatDate(snapshot.uploaded_at)}</span>
+                          <span>🕐 {(new Date(snapshot.uploaded_at)).toLocaleTimeString()}</span>
                           <span>💾 {snapshot.total_size_mb?.toFixed(2)} MB</span>
                           <span>📂 {snapshot.file_count} files</span>
                         </div>

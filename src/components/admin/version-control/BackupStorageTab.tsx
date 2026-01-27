@@ -514,7 +514,7 @@ export const BackupStorageTab = ({
                         <p className="text-sm text-muted-foreground mt-1">{snapshot.description}</p>
                       )}
                       <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
-                        <span>📅 {new Date(snapshot.created_at).toLocaleDateString()}</span>
+                        <span>📅 {formatDate(snapshot.created_at)}</span>
                         <span>🕐 {new Date(snapshot.created_at).toLocaleTimeString()}</span>
                         <span>👤 {snapshot.created_by_name || snapshot.created_by_username}</span>
                         <span>💾 {parseFloat(snapshot.file_size_mb || 0).toFixed(2)} MB</span>
