@@ -1,5 +1,5 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Activity, Factory, ShoppingCart, TrendingDown, Trash2 } from 'lucide-react';
+import { Activity, Factory, ShoppingCart, TrendingDown, Trash2, BarChart2 } from 'lucide-react';
 
 interface TransactionStatsData {
   total_transactions?: number;
@@ -16,76 +16,94 @@ interface TransactionStatsProps {
 export const TransactionStats = ({ stats }: TransactionStatsProps) => {
   const statItems = [
     {
-      label: 'Total Transactions',
+      label: 'Total',
       value: stats?.total_transactions || 0,
       icon: Activity,
-      gradient: 'from-purple-50 to-purple-100 dark:from-purple-950/30 dark:to-purple-900/30',
-      border: 'border-purple-200 dark:border-purple-900',
-      textColor: 'text-purple-700 dark:text-purple-400',
-      iconColor: 'text-purple-600 dark:text-purple-400',
+      gradient: 'from-indigo-500 to-purple-600',
+      bg: 'bg-indigo-50 dark:bg-indigo-950/40',
     },
     {
       label: 'Production',
       value: stats?.production_count || 0,
       icon: Factory,
-      gradient: 'from-green-50 to-green-100 dark:from-green-950/30 dark:to-green-900/30',
-      border: 'border-green-200 dark:border-green-900',
-      textColor: 'text-green-700 dark:text-green-400',
-      iconColor: 'text-green-600 dark:text-green-400',
+      gradient: 'from-emerald-500 to-green-600',
+      bg: 'bg-emerald-50 dark:bg-emerald-950/40',
     },
     {
-      label: 'Dispatches',
+      label: 'Dispatch',
       value: stats?.sales_count || 0,
       icon: ShoppingCart,
-      gradient: 'from-red-50 to-red-100 dark:from-red-950/30 dark:to-red-900/30',
-      border: 'border-red-200 dark:border-red-900',
-      textColor: 'text-red-700 dark:text-red-400',
-      iconColor: 'text-red-600 dark:text-red-400',
+      gradient: 'from-blue-500 to-cyan-600',
+      bg: 'bg-blue-50 dark:bg-blue-950/40',
     },
     {
       label: 'Returns',
       value: stats?.return_count || 0,
       icon: TrendingDown,
-      gradient: 'from-orange-50 to-orange-100 dark:from-orange-950/30 dark:to-orange-900/30',
-      border: 'border-orange-200 dark:border-orange-900',
-      textColor: 'text-orange-700 dark:text-orange-400',
-      iconColor: 'text-orange-600 dark:text-orange-400',
+      gradient: 'from-amber-500 to-orange-600',
+      bg: 'bg-amber-50 dark:bg-amber-950/40',
     },
     {
       label: 'Scrapped',
       value: stats?.scrap_count || 0,
       icon: Trash2,
-      gradient: 'from-rose-50 to-rose-100 dark:from-rose-950/30 dark:to-rose-900/30',
-      border: 'border-rose-200 dark:border-rose-900',
-      textColor: 'text-rose-700 dark:text-rose-400',
-      iconColor: 'text-rose-600 dark:text-rose-400',
+      gradient: 'from-rose-500 to-red-600',
+      bg: 'bg-rose-50 dark:bg-rose-950/40',
     },
   ];
 
+  // Calculate max for mini bar chart
+  const maxValue = Math.max(...statItems.map(s => s.value), 1);
+
   return (
-    <Card>
+    <Card className="backdrop-blur-sm bg-card/80 border-border/50">
       <CardHeader>
-        <CardTitle>Last 7 Days Activity</CardTitle>
+        <CardTitle className="flex items-center gap-2">
+          <BarChart2 className="h-5 w-5 text-primary" />
+          7-Day Activity
+        </CardTitle>
         <CardDescription>Transaction breakdown by type</CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-5">
-          {statItems.map((item) => (
-            <div
-              key={item.label}
-              className={`p-4 bg-gradient-to-br ${item.gradient} rounded-lg border ${item.border}`}
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-muted-foreground">{item.label}</p>
-                  <p className={`text-3xl font-bold ${item.textColor} mt-1`}>
-                    {item.value}
-                  </p>
+        {/* Horizontal scroll on mobile */}
+        <div className="flex gap-3 overflow-x-auto pb-2 -mx-2 px-2 snap-x snap-mandatory scrollbar-hide">
+          {statItems.map((item) => {
+            const barHeight = (item.value / maxValue) * 100;
+
+            return (
+              <div
+                key={item.label}
+                className={`
+                  flex-shrink-0 snap-center
+                  w-28 sm:w-auto sm:flex-1
+                  p-4 rounded-xl ${item.bg}
+                  border border-border/30
+                `}
+              >
+                {/* Icon with gradient */}
+                <div className={`
+                  w-10 h-10 rounded-lg mb-3
+                  bg-gradient-to-br ${item.gradient}
+                  flex items-center justify-center
+                  shadow-lg
+                `}>
+                  <item.icon className="h-5 w-5 text-white" />
                 </div>
-                <item.icon className={`h-10 w-10 ${item.iconColor} flex-shrink-0`} />
+
+                {/* Value */}
+                <p className="text-2xl font-bold">{item.value}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{item.label}</p>
+
+                {/* Mini bar chart */}
+                <div className="mt-3 h-1.5 bg-border/50 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full bg-gradient-to-r ${item.gradient} transition-all duration-700`}
+                    style={{ width: `${barHeight}%` }}
+                  />
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </CardContent>
     </Card>

@@ -28,18 +28,22 @@ def get_dashboard_stats():
         active_result = execute_query(active_query)
         active_batches = active_result[0]['count'] if active_result else 0
 
-        # Total inventory value (meters/pieces in stock)
+        # Total inventory value - show ROLLS not just meters
         inventory_query = """
             SELECT
                 pt.name as product_type,
-                SUM(b.current_quantity) as total_quantity,
-                COUNT(DISTINCT b.id) as batch_count
+                SUM(b.current_quantity) as total_meters,
+                COUNT(DISTINCT b.id) as batch_count,
+                SUM(CASE WHEN ist.stock_type = 'FULL_ROLL' THEN ist.quantity ELSE 0 END) as full_roll_count,
+                SUM(CASE WHEN ist.stock_type = 'CUT_ROLL' THEN ist.quantity ELSE 0 END) as cut_roll_count,
+                SUM(ist.quantity) as total_rolls
             FROM batches b
             JOIN product_variants pv ON b.product_variant_id = pv.id
             JOIN product_types pt ON pv.product_type_id = pt.id
+            LEFT JOIN inventory_stock ist ON b.id = ist.batch_id AND ist.deleted_at IS NULL
             WHERE b.deleted_at IS NULL AND b.current_quantity > 0
             GROUP BY pt.name
-            ORDER BY total_quantity DESC
+            ORDER BY total_meters DESC
         """
         inventory_by_type = execute_query(inventory_query)
 
@@ -80,32 +84,72 @@ def get_dashboard_stats():
             'inventory_ops_count': 0
         }
 
-        # Low stock alerts (batches with quantity < 100 for HDPE, < 50 pieces for Sprinkler)
+        # Low stock alerts - query by inventory_stock (rolls) not batches (meters)
+        # Get configurable thresholds from system_settings (default: 5 rolls for HDPE, 20 pieces for Sprinkler)
+        threshold_query = """
+            SELECT setting_value FROM system_settings WHERE setting_key = 'low_stock_threshold_hdpe'
+        """
+        threshold_result = execute_query(threshold_query)
+        hdpe_threshold = int(threshold_result[0]['setting_value']) if threshold_result else 5
+
+        sprinkler_threshold_query = """
+            SELECT setting_value FROM system_settings WHERE setting_key = 'low_stock_threshold_sprinkler'
+        """
+        sprinkler_result = execute_query(sprinkler_threshold_query)
+        sprinkler_threshold = int(sprinkler_result[0]['setting_value']) if sprinkler_result else 20
+
         low_stock_query = """
+            -- Full Rolls
             SELECT
                 b.batch_code,
-                b.current_quantity,
+                ist.stock_type,
+                ist.quantity as stock_quantity,
+                ist.length_per_unit as roll_length,
+                SUM(ist.quantity) OVER (PARTITION BY b.id) as batch_total_rolls,
                 pt.name as product_type,
                 br.name as brand,
-                pv.parameters
-            FROM batches b
+                pv.parameters,
+                ist.id as stock_id
+            FROM inventory_stock ist
+            JOIN batches b ON ist.batch_id = b.id
             JOIN product_variants pv ON b.product_variant_id = pv.id
             JOIN product_types pt ON pv.product_type_id = pt.id
             JOIN brands br ON pv.brand_id = br.id
-            WHERE b.deleted_at IS NULL
-            AND b.current_quantity > 0
-            AND (
-                (pt.name LIKE '%%HDPE%%' AND b.current_quantity < 100) OR
-                (pt.name LIKE '%%Sprinkler%%' AND b.current_quantity < 50)
-            )
-            ORDER BY b.current_quantity ASC
-            LIMIT 10
+            WHERE ist.deleted_at IS NULL AND b.deleted_at IS NULL
+            AND ist.quantity > 0
+            AND ist.stock_type = 'FULL_ROLL'
+
+            UNION ALL
+
+            -- Cut Pieces (Individual items)
+            SELECT
+                b.batch_code,
+                'CUT_ROLL' as stock_type,
+                1 as stock_quantity, -- Each piece is 1 unit
+                hcp.length_meters as roll_length,
+                NULL as batch_total_rolls,
+                pt.name as product_type,
+                br.name as brand,
+                pv.parameters,
+                ist.id as stock_id
+            FROM hdpe_cut_pieces hcp
+            JOIN inventory_stock ist ON hcp.stock_id = ist.id
+            JOIN batches b ON ist.batch_id = b.id
+            JOIN product_variants pv ON b.product_variant_id = pv.id
+            JOIN product_types pt ON pv.product_type_id = pt.id
+            JOIN brands br ON pv.brand_id = br.id
+            WHERE hcp.deleted_at IS NULL AND hcp.status = 'IN_STOCK'
+            AND ist.deleted_at IS NULL AND b.deleted_at IS NULL
+            AND ist.stock_type = 'CUT_ROLL'
+
+            ORDER BY stock_quantity ASC, roll_length ASC
         """
         low_stock_items = execute_query(low_stock_query) or []
 
-        # Recent activity (last 20 transactions from all sources)
+
+        # Recent activity - get balanced mix from all sources (top 5 from each type)
         recent_activity_query = """
-            SELECT * FROM (
+            WITH ranked_activity AS (
                 -- Production transactions
                 SELECT
                     CONCAT('prod_', t.id) as id,
@@ -114,7 +158,11 @@ def get_dashboard_stats():
                     t.created_at,
                     COALESCE(u.full_name, u.username, 'Unknown') as user_name,
                     COALESCE(b.batch_code, 'N/A') as batch_code,
-                    COALESCE(pt.name, 'Unknown') as product_type
+                    COALESCE(pt.name, 'Unknown') as product_type,
+                    pv.parameters,
+                    NULL as customer_name,
+                    NULL as total_meters,
+                    ROW_NUMBER() OVER (ORDER BY t.created_at DESC) as rn
                 FROM transactions t
                 LEFT JOIN users u ON t.created_by = u.id
                 LEFT JOIN batches b ON t.batch_id = b.id
@@ -124,27 +172,34 @@ def get_dashboard_stats():
 
                 UNION ALL
 
-                -- Dispatches
+                -- Dispatches with customer and meters
                 SELECT
                     CONCAT('dispatch_', d.id) as id,
                     'DISPATCH' as transaction_type,
-                    -(SELECT COALESCE(SUM(di.quantity), 0) FROM dispatch_items di WHERE di.dispatch_id = d.id) as quantity_change,
+                    -COALESCE(agg.total_qty, 0) as quantity_change,
                     d.created_at,
                     COALESCE(u.full_name, u.username, 'Unknown') as user_name,
                     d.dispatch_number as batch_code,
-                    CASE
-                        WHEN COUNT(DISTINCT pv.product_type_id) > 1 THEN 'Mixed Products'
-                        ELSE MAX(pt.name)
-                    END as product_type
+                    COALESCE(agg.product_type, 'HDPE Pipe') as product_type,
+                    NULL::jsonb as parameters,
+                    c.name as customer_name,
+                    agg.total_meters,
+                    ROW_NUMBER() OVER (ORDER BY d.created_at DESC) as rn
                 FROM dispatches d
-                LEFT JOIN dispatch_items di ON d.id = di.dispatch_id
-                LEFT JOIN inventory_stock ist ON di.stock_id = ist.id
-                LEFT JOIN batches b ON ist.batch_id = b.id
-                LEFT JOIN product_variants pv ON di.product_variant_id = pv.id
-                LEFT JOIN product_types pt ON pv.product_type_id = pt.id
                 LEFT JOIN users u ON d.created_by = u.id
+                LEFT JOIN customers c ON d.customer_id = c.id
+                LEFT JOIN LATERAL (
+                    SELECT
+                        SUM(di.quantity) as total_qty,
+                        SUM(di.quantity * COALESCE(ist.length_per_unit, 0)) as total_meters,
+                        MAX(pt.name) as product_type
+                    FROM dispatch_items di
+                    LEFT JOIN inventory_stock ist ON di.stock_id = ist.id
+                    LEFT JOIN product_variants pv ON di.product_variant_id = pv.id
+                    LEFT JOIN product_types pt ON pv.product_type_id = pt.id
+                    WHERE di.dispatch_id = d.id
+                ) agg ON true
                 WHERE d.deleted_at IS NULL
-                GROUP BY d.id, d.dispatch_number, d.created_at, u.full_name, u.username
 
                 UNION ALL
 
@@ -152,21 +207,26 @@ def get_dashboard_stats():
                 SELECT
                     CONCAT('return_', r.id) as id,
                     'RETURN' as transaction_type,
-                    (SELECT COALESCE(SUM(ri.quantity), 0) FROM return_items ri WHERE ri.return_id = r.id) as quantity_change,
+                    COALESCE(agg.total_qty, 0) as quantity_change,
                     r.created_at,
                     COALESCE(u.full_name, u.username, 'Unknown') as user_name,
                     r.return_number as batch_code,
-                    CASE
-                        WHEN COUNT(DISTINCT pv.product_type_id) > 1 THEN 'Mixed Products'
-                        ELSE MAX(pt.name)
-                    END as product_type
+                    COALESCE(agg.product_type, 'Unknown') as product_type,
+                    NULL::jsonb as parameters,
+                    c.name as customer_name,
+                    NULL as total_meters,
+                    ROW_NUMBER() OVER (ORDER BY r.created_at DESC) as rn
                 FROM returns r
-                LEFT JOIN return_items ri ON r.id = ri.return_id
-                LEFT JOIN product_variants pv ON ri.product_variant_id = pv.id
-                LEFT JOIN product_types pt ON pv.product_type_id = pt.id
                 LEFT JOIN users u ON r.created_by = u.id
+                LEFT JOIN customers c ON r.customer_id = c.id
+                LEFT JOIN LATERAL (
+                    SELECT SUM(ri.quantity) as total_qty, MAX(pt.name) as product_type
+                    FROM return_items ri
+                    LEFT JOIN product_variants pv ON ri.product_variant_id = pv.id
+                    LEFT JOIN product_types pt ON pv.product_type_id = pt.id
+                    WHERE ri.return_id = r.id
+                ) agg ON true
                 WHERE r.deleted_at IS NULL
-                GROUP BY r.id, r.return_number, r.created_at, u.full_name, u.username
 
                 UNION ALL
 
@@ -178,29 +238,30 @@ def get_dashboard_stats():
                     s.created_at,
                     COALESCE(u.full_name, u.username, 'Unknown') as user_name,
                     s.scrap_number as batch_code,
-                    CASE
-                        WHEN COUNT(DISTINCT pv.product_type_id) > 1 THEN 'Mixed Products'
-                        ELSE MAX(pt.name)
-                    END as product_type
+                    'Scrap' as product_type,
+                    NULL::jsonb as parameters,
+                    NULL as customer_name,
+                    NULL as total_meters,
+                    ROW_NUMBER() OVER (ORDER BY s.created_at DESC) as rn
                 FROM scraps s
-                LEFT JOIN scrap_items si ON s.id = si.scrap_id
-                LEFT JOIN product_variants pv ON si.product_variant_id = pv.id
-                LEFT JOIN product_types pt ON pv.product_type_id = pt.id
                 LEFT JOIN users u ON s.created_by = u.id
                 WHERE s.deleted_at IS NULL
-                GROUP BY s.id, s.scrap_number, s.created_at, s.total_quantity, u.full_name, u.username
 
                 UNION ALL
 
-                -- Inventory operations
+                -- Inventory operations (CUT_ROLL, etc.)
                 SELECT
                     CONCAT('inv_', it.id) as id,
                     it.transaction_type::text as transaction_type,
-                    COALESCE(it.to_quantity, 0) - COALESCE(it.from_quantity, 0) as quantity_change,
+                    COALESCE(it.to_length, 0) - COALESCE(it.from_length, 0) as quantity_change,
                     it.created_at,
                     COALESCE(u.full_name, u.username, 'Unknown') as user_name,
                     COALESCE(b.batch_code, 'N/A') as batch_code,
-                    COALESCE(pt.name, 'Unknown') as product_type
+                    COALESCE(pt.name, 'Unknown') as product_type,
+                    pv.parameters,
+                    NULL as customer_name,
+                    NULL as total_meters,
+                    ROW_NUMBER() OVER (PARTITION BY it.transaction_type ORDER BY it.created_at DESC) as rn
                 FROM inventory_transactions it
                 LEFT JOIN inventory_stock ist ON COALESCE(it.to_stock_id, it.from_stock_id) = ist.id
                 LEFT JOIN batches b ON ist.batch_id = b.id
@@ -208,7 +269,11 @@ def get_dashboard_stats():
                 LEFT JOIN product_types pt ON pv.product_type_id = pt.id
                 LEFT JOIN users u ON it.created_by = u.id
                 WHERE it.reverted_at IS NULL
-            ) combined_activity
+            )
+            SELECT id, transaction_type, quantity_change, created_at, user_name,
+                   batch_code, product_type, parameters, customer_name, total_meters
+            FROM ranked_activity
+            WHERE rn <= 5 AND quantity_change != 0
             ORDER BY created_at DESC
             LIMIT 20
         """

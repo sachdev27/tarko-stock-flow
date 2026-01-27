@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Package, TrendingUp, AlertTriangle, Activity } from 'lucide-react';
+import { Package, TrendingUp, AlertTriangle, Activity, RefreshCw } from 'lucide-react';
 import { Layout } from '@/components/Layout';
 import { stats } from '@/lib/api-typed';
-import type * as API from '@/types';
 import { toast } from 'sonner';
 import {
   StatsCard,
@@ -53,6 +52,14 @@ interface DashboardStats {
   }>;
 }
 
+// Get time-based greeting
+const getGreeting = () => {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 17) return 'Good afternoon';
+  return 'Good evening';
+};
+
 const Dashboard = () => {
   const navigate = useNavigate();
   const [statsData, setStatsData] = useState<DashboardStats>({
@@ -68,7 +75,6 @@ const Dashboard = () => {
 
   useEffect(() => {
     fetchStats();
-    // Refresh stats every 30 seconds
     const interval = setInterval(fetchStats, 30000);
     return () => clearInterval(interval);
   }, []);
@@ -76,7 +82,6 @@ const Dashboard = () => {
   const fetchStats = async () => {
     try {
       const response = await stats.getDashboard();
-      // Cast API response to component's DashboardStats interface
       setStatsData(response as any);
     } catch (error) {
       console.error('Error fetching stats:', error);
@@ -91,86 +96,106 @@ const Dashboard = () => {
       title: 'Total Batches',
       value: statsData.totalBatches,
       icon: Package,
-      description: 'All production batches',
+      description: 'Production batches',
       color: 'text-blue-600 dark:text-blue-400',
-      bgColor: 'bg-blue-50 dark:bg-blue-950/30',
+      bgColor: 'bg-blue-100 dark:bg-blue-950/50',
       onClick: () => navigate('/production'),
     },
     {
       title: 'Active Stock',
       value: statsData.activeBatches,
       icon: TrendingUp,
-      description: 'Batches with inventory',
-      color: 'text-green-600 dark:text-green-400',
-      bgColor: 'bg-green-50 dark:bg-green-950/30',
+      description: 'With inventory',
+      color: 'text-emerald-600 dark:text-emerald-400',
+      bgColor: 'bg-emerald-100 dark:bg-emerald-950/50',
       onClick: () => navigate('/inventory'),
     },
     {
-      title: 'Low Stock Alerts',
+      title: 'Low Stock',
       value: statsData.lowStockItems?.length || 0,
       icon: AlertTriangle,
-      description: 'Items need attention',
+      description: 'Need attention',
       color: 'text-orange-600 dark:text-orange-400',
-      bgColor: 'bg-orange-50 dark:bg-orange-950/30',
+      bgColor: 'bg-orange-100 dark:bg-orange-950/50',
     },
     {
-      title: 'Recent Activity',
+      title: 'Transactions',
       value: statsData.transactionsStats?.total_transactions || 0,
       icon: Activity,
       description: 'Last 7 days',
-      color: 'text-purple-600 dark:text-purple-400',
-      bgColor: 'bg-purple-50 dark:bg-purple-950/30',
+      color: 'text-violet-600 dark:text-violet-400',
+      bgColor: 'bg-violet-100 dark:bg-violet-950/50',
       onClick: () => navigate('/transactions'),
     },
   ];
 
   return (
     <Layout>
-      <div className="space-y-6 p-6">
+      <div className="min-h-screen">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
-            <p className="text-muted-foreground">Tarko Inventory Management Overview</p>
+        <div className="sticky top-0 z-10 backdrop-blur-md bg-background/80 border-b border-border/50 px-4 py-4 sm:px-6">
+          <div className="flex items-center justify-between max-w-7xl mx-auto">
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text">
+                {getGreeting()} 👋
+              </h1>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                Tarko Inventory Overview
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                setLoading(true);
+                fetchStats();
+              }}
+              disabled={loading}
+              className={`
+                p-2.5 rounded-xl
+                bg-primary/10 hover:bg-primary/20
+                text-primary
+                transition-all duration-200
+                disabled:opacity-50
+                ${loading ? 'animate-spin' : ''}
+              `}
+              title="Refresh"
+            >
+              <RefreshCw className="h-5 w-5" />
+            </button>
           </div>
-          <button
-            onClick={fetchStats}
-            disabled={loading}
-            className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-          >
-            {loading ? 'Loading...' : 'Refresh'}
-          </button>
         </div>
 
-        {/* Main Stats */}
-        {loading ? (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="h-32 bg-muted animate-pulse rounded-lg"></div>
-            ))}
+        {/* Content */}
+        <div className="px-4 py-6 sm:px-6 max-w-7xl mx-auto space-y-6">
+          {/* Stats Cards */}
+          {loading ? (
+            <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="h-28 sm:h-32 bg-muted/50 animate-pulse rounded-xl" />
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+              {mainStatCards.map((card) => (
+                <StatsCard key={card.title} {...card} />
+              ))}
+            </div>
+          )}
+
+          {/* Quick Actions and Inventory */}
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <QuickActions />
+            <InventoryByType data={statsData.inventoryByType} />
           </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {mainStatCards.map((card) => (
-              <StatsCard key={card.title} {...card} />
-            ))}
+
+          {/* Low Stock and Recent Activity */}
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <LowStockAlerts items={statsData.lowStockItems} />
+            <RecentActivity activities={statsData.recentActivity} />
           </div>
-        )}
 
-        {/* Quick Actions and Inventory */}
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <QuickActions />
-          <InventoryByType data={statsData.inventoryByType} />
+          {/* Transaction Stats */}
+          <TransactionStats stats={statsData.transactionsStats} />
         </div>
-
-        {/* Low Stock Alerts and Recent Activity */}
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <LowStockAlerts items={statsData.lowStockItems} />
-          <RecentActivity activities={statsData.recentActivity} />
-        </div>
-
-        {/* Transaction Stats */}
-        <TransactionStats stats={statsData.transactionsStats} />
       </div>
     </Layout>
   );
