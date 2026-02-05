@@ -84,8 +84,13 @@ export const StockEntryList = ({ stockEntries, onUpdate }: StockEntryListProps) 
       ? entry.piece_ids[0]
       : entry.piece_id;
 
+    // Use piece_stock_map to get the correct stock_id for this piece
+    const pieceStockMap = (entry as any).piece_stock_map || {};
+    const correctStockId = pieceId && pieceStockMap[pieceId] ? pieceStockMap[pieceId] : entry.stock_id;
+
     setSelectedStock({
       ...entry,
+      stock_id: correctStockId,
       piece_id: pieceId
     });
     setCutDialogOpen(true);
@@ -378,9 +383,9 @@ export const StockEntryList = ({ stockEntries, onUpdate }: StockEntryListProps) 
             // spare_ids is an array from backend - convert to individual spare groups
             selectedStock.spare_ids && selectedStock.spare_ids.length > 0
               ? selectedStock.spare_ids.map(spare_id => ({
-                  spare_id: spare_id,
-                  piece_count: 1, // Each spare piece has piece_count=1 in the foundational model
-                }))
+                spare_id: spare_id,
+                piece_count: 1, // Each spare piece has piece_count=1 in the foundational model
+              }))
               : []
           }
           pieceLength={selectedStock.piece_length_meters || 0}
