@@ -3,9 +3,14 @@ Auto-Snapshot Scheduler Service
 
 Provides background scheduling for automatic snapshots based on UI settings.
 Uses APScheduler to run jobs in the Flask application context.
+
+Note: In multi-worker environments (e.g., Gunicorn with multiple workers),
+this uses a file-based lock to ensure only one worker runs the scheduler.
 """
 
 import logging
+import os
+import fcntl
 from datetime import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -16,18 +21,78 @@ logger = logging.getLogger(__name__)
 # Global scheduler instance
 _scheduler = None
 _app = None
+_lock_file = None
+_has_scheduler_lock = False
+
+# Lock file path - use /tmp for Docker containers
+SCHEDULER_LOCK_FILE = '/tmp/tarko_scheduler.lock'
+
+
+def _acquire_scheduler_lock():
+    """
+    Try to acquire an exclusive lock for the scheduler.
+    Returns True if lock acquired, False otherwise.
+    Only one process across all workers will succeed.
+    """
+    global _lock_file, _has_scheduler_lock
+
+    try:
+        _lock_file = open(SCHEDULER_LOCK_FILE, 'w')
+        fcntl.flock(_lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        _lock_file.write(f"{os.getpid()}\n")
+        _lock_file.flush()
+        _has_scheduler_lock = True
+        logger.info(f"Scheduler lock acquired by PID {os.getpid()}")
+        return True
+    except (IOError, OSError) as e:
+        # Another process has the lock
+        if _lock_file:
+            _lock_file.close()
+            _lock_file = None
+        _has_scheduler_lock = False
+        logger.info(f"Scheduler lock not acquired (another worker has it): {e}")
+        return False
+
+
+def _release_scheduler_lock():
+    """Release the scheduler lock if we hold it."""
+    global _lock_file, _has_scheduler_lock
+
+    if _lock_file and _has_scheduler_lock:
+        try:
+            fcntl.flock(_lock_file.fileno(), fcntl.LOCK_UN)
+            _lock_file.close()
+            _lock_file = None
+            _has_scheduler_lock = False
+            # Clean up lock file
+            try:
+                os.remove(SCHEDULER_LOCK_FILE)
+            except OSError:
+                pass
+            logger.info("Scheduler lock released")
+        except Exception as e:
+            logger.warning(f"Error releasing scheduler lock: {e}")
+
 
 def init_scheduler(app):
     """
     Initialize the APScheduler with Flask app context.
     Should be called once during app startup.
+
+    In multi-worker environments, only the worker that acquires
+    the lock will actually run the scheduler.
     """
     global _scheduler, _app
     _app = app
 
     if _scheduler is not None:
-        logger.warning("Scheduler already initialized")
+        logger.warning("Scheduler already initialized in this process")
         return _scheduler
+
+    # Try to acquire the scheduler lock
+    if not _acquire_scheduler_lock():
+        logger.info("This worker will not run the scheduler (lock held by another worker)")
+        return None
 
     _scheduler = BackgroundScheduler(
         timezone='Asia/Kolkata',  # IST timezone
@@ -40,7 +105,7 @@ def init_scheduler(app):
 
     # Start the scheduler
     _scheduler.start()
-    logger.info("APScheduler started successfully")
+    logger.info(f"APScheduler started successfully in worker PID {os.getpid()}")
 
     # Load initial settings and schedule if enabled
     with app.app_context():
@@ -316,13 +381,17 @@ def update_auto_snapshot_schedule():
 
 
 def shutdown_scheduler():
-    """Shutdown the scheduler gracefully"""
-    global _scheduler
+    """Shutdown the scheduler gracefully and release the lock"""
+    global _scheduler, _has_scheduler_lock
 
     if _scheduler is not None:
         _scheduler.shutdown(wait=False)
         logger.info("Scheduler shutdown complete")
         _scheduler = None
+
+    # Release the scheduler lock
+    if _has_scheduler_lock:
+        _release_scheduler_lock()
 
 
 def get_next_run_time():
