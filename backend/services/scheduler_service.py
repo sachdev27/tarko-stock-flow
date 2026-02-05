@@ -346,10 +346,11 @@ def _run_auto_snapshot():
                 ))
 
                 snapshot = cursor.fetchone()
+                snapshot_id = str(snapshot['id'])
 
                 # Save to file storage
-                snapshot_storage.save_snapshot(
-                    snapshot_id=str(snapshot['id']),
+                storage_success = snapshot_storage.save_snapshot(
+                    snapshot_id=snapshot_id,
                     snapshot_data=snapshot_data,
                     metadata={
                         'snapshot_name': snapshot_name,
@@ -360,6 +361,22 @@ def _run_auto_snapshot():
                 )
 
                 logger.info(f"✅ Auto-snapshot created: {snapshot_name} ({file_size_mb:.2f} MB)")
+
+                # Sync to cloud storage if enabled
+                if storage_success:
+                    try:
+                        from storage.cloud_storage import get_cloud_storage
+                        from pathlib import Path
+
+                        cloud_storage = get_cloud_storage()
+                        if cloud_storage.enabled:
+                            logger.info(f"Syncing auto-snapshot {snapshot_id} to cloud...")
+                            local_path = Path(snapshot_storage.storage_path) / snapshot_id
+                            cloud_storage.upload_snapshot(snapshot_id, local_path, encrypt=True)
+                            logger.info(f"✅ Auto-snapshot synced to cloud: {snapshot_id}")
+                    except Exception as cloud_error:
+                        logger.warning(f"Failed to sync auto-snapshot to cloud: {cloud_error}")
+                        # Don't fail the auto-snapshot if cloud sync fails
 
         except Exception as e:
             logger.error(f"❌ Auto-snapshot failed: {e}", exc_info=True)
