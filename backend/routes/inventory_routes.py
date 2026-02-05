@@ -770,14 +770,14 @@ def search_inventory():
                     JOIN brands br ON pv.brand_id = br.id
                     WHERE cp.stock_id IN ({placeholders})
                     AND cp.status = 'IN_STOCK'
-                    GROUP BY cp.length_meters, s.product_variant_id
+                    GROUP BY cp.length_meters, s.product_variant_id, s.id
                     ORDER BY s.product_variant_id, cp.length_meters DESC
                 """, tuple(stock_ids))
 
                 cut_groups = cursor.fetchall()
-                print(f"DEBUG: Found {len(cut_groups)} cut groups")
-                for i, group in enumerate(cut_groups):
-                    print(f"DEBUG: Cut group {i}: length={group['length_meters']}m, count={group['piece_count']}, piece_ids={len(group['piece_ids']) if group['piece_ids'] else 0} pieces")
+                # print(f"DEBUG: Found {len(cut_groups)} cut groups")
+                # for i, group in enumerate(cut_groups):
+                #     print(f"DEBUG: Cut group {i}: length={group['length_meters']}m, count={group['piece_count']}, piece_ids={len(group['piece_ids']) if group['piece_ids'] else 0} pieces")
 
                 for group in cut_groups:
                     expanded_results.append({
