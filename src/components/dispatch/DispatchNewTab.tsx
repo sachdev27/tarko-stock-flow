@@ -155,6 +155,7 @@ export const DispatchNewTab = () => {
       product_variant_id: roll.product_variant_id,
       piece_id: roll.piece_id,
       piece_ids: roll.piece_ids,
+      piece_stock_map: roll.piece_stock_map, // Map of piece_id -> stock_id for cut pieces
       batch_code: roll.batch_code,
       length_meters: roll.length_meters,
       status: roll.status,
@@ -297,8 +298,10 @@ export const DispatchNewTab = () => {
         // Check for piece_ids array (multiple cut pieces) OR single piece_id
         if (roll.piece_ids && Array.isArray(roll.piece_ids) && roll.piece_ids.length > 0) {
           // Multiple cut pieces - create one dispatch item per piece
+          // Use piece_stock_map to get the correct stock_id for each piece
+          const pieceStockMap = (roll as any).piece_stock_map || {};
           return roll.piece_ids.map(pieceId => ({
-            stock_id: roll.id,
+            stock_id: pieceStockMap[pieceId] || roll.id, // Use mapped stock_id or fallback to roll.id
             product_variant_id: roll.product_variant_id,
             quantity: 1,
             item_type: 'CUT_PIECE' as const,

@@ -637,7 +637,18 @@ def rollback_to_snapshot(snapshot_id):
                 # Restore snapshot data (tables are already cleared above)
                 if data and len(data) > 0:
                     # Get columns from first record
-                    columns = list(data[0].keys())
+                    snapshot_columns = list(data[0].keys())
+
+                    # Get current table columns from database schema
+                    cursor.execute("""
+                        SELECT column_name FROM information_schema.columns
+                        WHERE table_schema = 'public' AND table_name = %s
+                    """, (table,))
+                    current_schema_cols = set(row['column_name'] for row in cursor.fetchall())
+
+                    # Filter snapshot columns to only include those that exist in current schema
+                    # This handles schema changes (e.g., dropped columns) between snapshot and restore
+                    columns = [c for c in snapshot_columns if c in current_schema_cols]
 
                     # Filter out columns that might cause issues
                     exclude_cols = ['deleted_at']

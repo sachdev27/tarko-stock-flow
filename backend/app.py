@@ -105,26 +105,24 @@ def internal_error(error):
 
 def init_app():
     """Initialize database and scheduler for production (gunicorn)"""
-    logger.info("Initializing database connection pool...")
+    logger.info(f"Initializing app in worker PID {os.getpid()}...")
     init_connection_pool()
 
     # Initialize scheduler for auto-snapshots
-    # In development with reloader: only initialize in the reloaded child process (WERKZEUG_RUN_MAIN=true)
-    # In production: always initialize
-    should_init_scheduler = (
-        os.environ.get('WERKZEUG_RUN_MAIN') == 'true' or  # Development reloader child process
-        os.environ.get('FLASK_ENV') == 'production' or     # Production
-        not os.environ.get('WERKZEUG_RUN_MAIN')            # Running without reloader
-    )
-
-    if should_init_scheduler:
-        try:
-            from services.scheduler_service import init_scheduler, shutdown_scheduler
-            logger.info("Initializing auto-snapshot scheduler...")
-            init_scheduler(app)
+    # In multi-worker environments (Gunicorn), only one worker will run the scheduler
+    # (controlled by file-based lock in scheduler_service.py)
+    try:
+        from services.scheduler_service import init_scheduler, shutdown_scheduler
+        logger.info("Attempting to initialize auto-snapshot scheduler...")
+        scheduler = init_scheduler(app)
+        if scheduler:
+            # Only register shutdown if we're the worker running the scheduler
             atexit.register(shutdown_scheduler)
-        except Exception as e:
-            logger.warning(f"Could not initialize scheduler: {e}")
+            logger.info("This worker is running the scheduler")
+        else:
+            logger.info("This worker is NOT running the scheduler (another worker has it)")
+    except Exception as e:
+        logger.warning(f"Could not initialize scheduler: {e}")
 
     # Register cleanup
     atexit.register(close_connection_pool)

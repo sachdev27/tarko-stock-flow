@@ -754,7 +754,9 @@ def search_inventory():
                         s.product_variant_id::text as product_variant_id,
                         COUNT(*)::integer as piece_count,
                         array_agg(cp.id::text ORDER BY cp.created_at) as piece_ids,
-                        (array_agg(s.id))[1]::text as stock_id,
+                        -- Include stock_id for each piece to enable correct mapping
+                        jsonb_object_agg(cp.id::text, cp.stock_id::text) as piece_stock_map,
+                        (array_agg(s.id ORDER BY cp.created_at))[1]::text as stock_id,
                         (array_agg(s.batch_id))[1]::text as batch_id,
                         (array_agg(b.batch_code))[1] as batch_code,
                         (array_agg(b.batch_no))[1] as batch_no,
@@ -775,13 +777,19 @@ def search_inventory():
                 """, tuple(stock_ids))
 
                 cut_groups = cursor.fetchall()
-                print(f"DEBUG: Found {len(cut_groups)} cut groups")
-                for i, group in enumerate(cut_groups):
-                    print(f"DEBUG: Cut group {i}: length={group['length_meters']}m, count={group['piece_count']}, piece_ids={len(group['piece_ids']) if group['piece_ids'] else 0} pieces")
+                # print(f"DEBUG: Found {len(cut_groups)} cut groups")
+                # for i, group in enumerate(cut_groups):
+                #     print(f"DEBUG: Cut group {i}: length={group['length_meters']}m, count={group['piece_count']}, piece_ids={len(group['piece_ids']) if group['piece_ids'] else 0} pieces")
 
                 for group in cut_groups:
+                    # For each piece, get its correct stock_id from the mapping
+                    piece_stock_map = group.get('piece_stock_map', {})
+                    first_piece_id = group['piece_ids'][0] if group['piece_ids'] else None
+                    # Use the first piece's stock_id as the primary stock_id
+                    primary_stock_id = piece_stock_map.get(first_piece_id, group['stock_id']) if first_piece_id else group['stock_id']
+
                     expanded_results.append({
-                        'id': group['stock_id'],
+                        'id': primary_stock_id,
                         'batch_id': group['batch_id'],
                         'status': 'IN_STOCK',
                         'stock_type': 'CUT_ROLL',
@@ -800,7 +808,8 @@ def search_inventory():
                         'is_cut_roll': True,
                         'bundle_type': None,
                         'piece_count': None,
-                        'piece_ids': group['piece_ids']
+                        'piece_ids': group['piece_ids'],
+                        'piece_stock_map': piece_stock_map  # Map of piece_id -> stock_id
                     })
 
             # Process non-CUT_ROLL items
