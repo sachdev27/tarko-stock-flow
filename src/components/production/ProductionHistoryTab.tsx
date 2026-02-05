@@ -86,6 +86,7 @@ export const ProductionHistoryTab = () => {
   const { token, user, isAdmin } = useAuth();
   const [batches, setBatches] = useState<Batch[]>([]);
   const [filteredBatches, setFilteredBatches] = useState<Batch[]>([]);
+  const [activeBatchCount, setActiveBatchCount] = useState(0); // Count of non-reverted batches
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(false);
   const [selectedBatch, setSelectedBatch] = useState<BatchDetails | null>(null);
@@ -131,6 +132,7 @@ export const ProductionHistoryTab = () => {
   useEffect(() => {
     // Always filter out reverted batches first
     const nonRevertedBatches = batches.filter(b => b.status !== 'REVERTED');
+    setActiveBatchCount(nonRevertedBatches.length);
 
     if (!searchTerm.trim() && (!startDate || !endDate)) {
       setFilteredBatches(nonRevertedBatches);
@@ -346,7 +348,7 @@ export const ProductionHistoryTab = () => {
                 <div>Production History</div>
                 <div className="text-sm font-normal text-muted-foreground">
                   {filteredBatches.length} {filteredBatches.length === 1 ? 'entry' : 'entries'}
-                  {filteredBatches.length !== batches.length && ` (filtered from ${batches.length})`}
+                  {filteredBatches.length !== activeBatchCount && ` (filtered from ${activeBatchCount})`}
                 </div>
               </div>
             </div>

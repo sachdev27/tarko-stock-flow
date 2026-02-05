@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { Layout } from '@/components/Layout';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Factory, ListIcon } from 'lucide-react';
+import { Factory, ListIcon, Undo2 } from 'lucide-react';
 import { ProductionNewTab } from '@/components/production/ProductionNewTab';
 import { ProductionHistoryTab } from '@/components/production/ProductionHistoryTab';
+import { RevertedProductionTab } from '@/components/production/RevertedProductionTab';
 
 const Production = () => {
   const [activeTab, setActiveTab] = useState('new');
@@ -22,7 +23,7 @@ const Production = () => {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full max-w-md grid-cols-2">
+          <TabsList className="grid w-full max-w-xl grid-cols-3">
             <TabsTrigger value="new" className="flex items-center gap-2">
               <Factory className="h-4 w-4" />
               New Production
@@ -30,6 +31,10 @@ const Production = () => {
             <TabsTrigger value="history" className="flex items-center gap-2">
               <ListIcon className="h-4 w-4" />
               Production History
+            </TabsTrigger>
+            <TabsTrigger value="reverted" className="flex items-center gap-2">
+              <Undo2 className="h-4 w-4" />
+              Reverted
             </TabsTrigger>
           </TabsList>
 
@@ -41,6 +46,10 @@ const Production = () => {
 
           <TabsContent value="history" className="mt-6">
             <ProductionHistoryTab />
+          </TabsContent>
+
+          <TabsContent value="reverted" className="mt-6">
+            <RevertedProductionTab />
           </TabsContent>
         </Tabs>
       </div>
