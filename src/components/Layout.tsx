@@ -28,7 +28,7 @@ interface LayoutProps {
 export const Layout = ({ children }: LayoutProps) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { signOut, userRole, isAdmin } = useAuth();
+  const { signOut, userRole, isAdmin, user } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [currentTime, setCurrentTime] = useState('');
 
@@ -96,9 +96,11 @@ export const Layout = ({ children }: LayoutProps) => {
                 <span className="text-sm font-mono text-foreground">{currentTime}</span>
               </div>
               {isAdmin && <SyncIndicator />}
-              <span className="text-sm text-muted-foreground px-3 py-1 bg-secondary rounded-full">
-                {userRole?.toUpperCase()}
-              </span>
+              <div className="flex items-center gap-2 px-3 py-1 bg-secondary rounded-full">
+                <span className="text-sm text-foreground font-medium">{user?.username || user?.email}</span>
+                <span className="text-xs text-muted-foreground">•</span>
+                <span className="text-sm text-muted-foreground">{userRole?.toUpperCase()}</span>
+              </div>
               <Button variant="ghost" size="sm" onClick={handleSignOut}>
                 <LogOut className="h-4 w-4 mr-2" />
                 Sign Out
@@ -135,9 +137,12 @@ export const Layout = ({ children }: LayoutProps) => {
                 </Button>
               ))}
               <div className="pt-2 border-t border-border mt-2">
-                <div className="flex items-center justify-between px-4 py-2">
-                  <span className="text-sm text-muted-foreground">Role:</span>
-                  <span className="text-sm font-medium">{userRole?.toUpperCase()}</span>
+                <div className="flex flex-col px-4 py-2 space-y-1">
+                  <div className="text-sm font-medium">{user?.name || user?.email}</div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">Role:</span>
+                    <span className="text-xs font-medium bg-primary/10 text-primary px-2 py-0.5 rounded">{userRole?.toUpperCase()}</span>
+                  </div>
                 </div>
                 <Button
                   variant="ghost"
