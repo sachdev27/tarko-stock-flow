@@ -348,10 +348,13 @@ def create_dispatch():
                             cursor.execute("ROLLBACK")
                             return jsonify({'error': f'Item {idx+1}: cut_piece_id required for CUT_PIECE'}), 400
 
+                        # Look up piece by ID only - piece_id is unique
+                        # Get the piece's actual stock_id from the database (don't trust frontend)
                         cursor.execute("""
-                            SELECT status FROM hdpe_cut_pieces
-                            WHERE id = %s AND stock_id = %s AND deleted_at IS NULL
-                        """, (cut_piece_id, stock_id))
+                            SELECT hcp.status, hcp.stock_id as actual_stock_id
+                            FROM hdpe_cut_pieces hcp
+                            WHERE hcp.id = %s AND hcp.deleted_at IS NULL
+                        """, (cut_piece_id,))
 
                         cut_piece = cursor.fetchone()
                         if not cut_piece:
@@ -361,6 +364,9 @@ def create_dispatch():
                         if cut_piece['status'] != 'IN_STOCK':
                             cursor.execute("ROLLBACK")
                             return jsonify({'error': f'Item {idx+1}: Cut piece {cut_piece_id} not available (status: {cut_piece["status"]})'}, 400)
+
+                        # Use the piece's actual stock_id for subsequent operations
+                        item['_actual_stock_id'] = cut_piece['actual_stock_id']
 
                     elif item_type == 'SPARE_PIECES':
                         spare_piece_ids = item.get('spare_piece_ids', [])
@@ -458,6 +464,9 @@ def create_dispatch():
                         cut_piece_id = item.get('cut_piece_id')
                         length_meters = item.get('length_meters')
 
+                        # Use actual stock_id from validation phase (not frontend)
+                        actual_stock_id = item.get('_actual_stock_id', stock_id)
+
                         if not cut_piece_id or not length_meters:
                             cursor.execute("ROLLBACK")
                             return jsonify({'error': 'cut_piece_id and length_meters required for CUT_PIECE'}), 400
@@ -474,7 +483,7 @@ def create_dispatch():
                             cursor.execute("ROLLBACK")
                             return jsonify({'error': f'Cut piece {cut_piece_id} not available'}), 400
 
-                        # Create dispatch item
+                        # Create dispatch item with the actual stock_id
                         cursor.execute("""
                             INSERT INTO dispatch_items (
                                 dispatch_id, stock_id, product_variant_id, item_type,
@@ -483,7 +492,7 @@ def create_dispatch():
                             VALUES (%s, %s, %s, %s, %s, %s, %s)
                             RETURNING id
                         """, (
-                            dispatch_id, stock_id, product_variant_id, item_type,
+                            dispatch_id, actual_stock_id, product_variant_id, item_type,
                             quantity, cut_piece_id, length_meters
                         ))
 
@@ -497,7 +506,7 @@ def create_dispatch():
                             SELECT COUNT(*) as remaining
                             FROM hdpe_cut_pieces
                             WHERE stock_id = %s AND status = 'IN_STOCK' AND deleted_at IS NULL
-                        """, (stock_id,))
+                        """, (actual_stock_id,))
                         remaining = cursor.fetchone()['remaining']
 
                         cursor.execute("""
@@ -505,7 +514,7 @@ def create_dispatch():
                             SET status = CASE WHEN %s <= 0 THEN 'SOLD_OUT' ELSE 'IN_STOCK' END,
                                 updated_at = NOW()
                             WHERE id = %s
-                        """, (remaining, stock_id))
+                        """, (remaining, actual_stock_id))
 
                         # Record in inventory_transactions
                         cursor.execute("""
@@ -514,7 +523,7 @@ def create_dispatch():
                                 dispatch_id, dispatch_item_id, notes, created_by
                             )
                             VALUES ('DISPATCH', %s, %s, %s, %s, %s, %s)
-                        """, (stock_id, quantity, dispatch_id, dispatch_item_id, f'Cut piece dispatched: {length_meters}m', user_id))
+                        """, (actual_stock_id, quantity, dispatch_id, dispatch_item_id, f'Cut piece dispatched: {length_meters}m', user_id))
 
                     elif item_type == 'SPARE_PIECES':
                         # Spare pieces dispatch

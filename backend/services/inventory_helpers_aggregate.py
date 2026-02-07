@@ -193,14 +193,16 @@ class AggregateInventoryHelper:
         created_by: Optional[str] = None
     ) -> Tuple[str, List[str]]:
         """
-        Cut one HDPE roll into multiple pieces
+        Cut one HDPE roll into multiple pieces.
+
+        NEW BEHAVIOR (1:1 model): Each cut piece gets its own CUT_PIECE stock entry.
 
         Args:
             from_stock_id: Stock ID of full rolls
             cut_lengths: List of lengths for cut pieces (e.g., [150, 145])
 
         Returns:
-            (new_stock_id, cut_piece_ids): New CUT_ROLL stock entry and list of piece IDs
+            (first_stock_id, cut_piece_ids): First CUT_PIECE stock entry ID and list of piece IDs
         """
         # Get the source stock details
         cursor.execute("""
@@ -226,66 +228,55 @@ class AggregateInventoryHelper:
             WHERE id = %s
         """, (from_stock_id,))
 
-        # Check if we need to create a new CUT_ROLL stock entry or use existing
-        cursor.execute("""
-            SELECT id FROM inventory_stock
-            WHERE batch_id = %s
-              AND product_variant_id = %s
-              AND stock_type = 'CUT_ROLL'
-              AND parent_stock_id = %s
-              AND deleted_at IS NULL
-        """, (batch_id, product_variant_id, from_stock_id))
-
-        existing_cut_stock = cursor.fetchone()
-
-        if existing_cut_stock:
-            cut_stock_id = existing_cut_stock[0]
-            # NOTE: No manual quantity update needed - trigger handles it
-        else:
-            # Create new CUT_ROLL stock entry
-            cut_stock_id = str(uuid.uuid4())
-            # Initialize with 0 quantity, trigger will update it
-            cursor.execute("""
-                INSERT INTO inventory_stock (
-                    id, batch_id, product_variant_id, status, stock_type,
-                    quantity, parent_stock_id, notes
-                ) VALUES (%s, %s, %s, 'IN_STOCK', 'CUT_ROLL', 0, %s, %s)
-            """, (cut_stock_id, batch_id, product_variant_id, from_stock_id, notes))
-
         # Create transaction record first to get transaction_id
         cursor.execute("""
             INSERT INTO inventory_transactions (
                 transaction_type, from_stock_id, from_quantity, from_length,
-                to_stock_id, to_quantity, notes, created_by
-            ) VALUES ('CUT_ROLL', %s, 1, %s, %s, %s, %s, %s)
+                to_quantity, notes, created_by
+            ) VALUES ('CUT_ROLL', %s, 1, %s, %s, %s, %s)
             RETURNING id
-        """, (from_stock_id, length_per_unit, cut_stock_id, len(cut_lengths), notes, created_by))
+        """, (from_stock_id, length_per_unit, len(cut_lengths), notes, created_by))
 
         transaction_id = cursor.fetchone()['id']
 
-        # Create individual cut piece entries with IMMUTABLE created_by_transaction_id
+        # Create individual CUT_PIECE stock entries and hdpe_cut_pieces records (1:1)
         cut_piece_ids = []
         cut_piece_details = []
+        stock_ids_created = []
 
         for length in cut_lengths:
             piece_id = str(uuid.uuid4())
+            stock_id = str(uuid.uuid4())
+
+            # Create CUT_PIECE stock entry (1:1 with piece)
+            cursor.execute("""
+                INSERT INTO inventory_stock (
+                    id, batch_id, product_variant_id, status, stock_type,
+                    quantity, length_meters, parent_stock_id, piece_id, notes
+                ) VALUES (%s, %s, %s, 'IN_STOCK', 'CUT_PIECE', 1, %s, %s, %s, %s)
+            """, (stock_id, batch_id, product_variant_id, length, from_stock_id, piece_id, notes))
+
+            # Create hdpe_cut_pieces record pointing to its own stock entry
             cursor.execute("""
                 INSERT INTO hdpe_cut_pieces (
                     id, stock_id, length_meters, status, created_by_transaction_id, original_stock_id
                 ) VALUES (%s, %s, %s, 'IN_STOCK', %s, %s)
-            """, (piece_id, cut_stock_id, length, transaction_id, cut_stock_id))
+            """, (piece_id, stock_id, length, transaction_id, stock_id))
 
             cut_piece_ids.append(piece_id)
-            cut_piece_details.append({"length": length, "piece_id": piece_id})
+            stock_ids_created.append(stock_id)
+            cut_piece_details.append({"length": length, "piece_id": piece_id, "stock_id": stock_id})
 
-        # Update transaction with cut_piece_details
+        # Update transaction with cut_piece_details including stock_ids
         cursor.execute("""
             UPDATE inventory_transactions
-            SET cut_piece_details = %s
+            SET cut_piece_details = %s,
+                to_stock_id = %s
             WHERE id = %s
-        """, (json.dumps(cut_piece_details), transaction_id))
+        """, (json.dumps(cut_piece_details), stock_ids_created[0] if stock_ids_created else None, transaction_id))
 
-        return cut_stock_id, cut_piece_ids
+        # Return first stock_id for backward compatibility + all piece_ids
+        return stock_ids_created[0] if stock_ids_created else None, cut_piece_ids
 
     # ==========================================
     # BUNDLE OPERATIONS - SPRINKLER

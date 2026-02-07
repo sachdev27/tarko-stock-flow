@@ -138,7 +138,7 @@ export const Layout = ({ children }: LayoutProps) => {
               ))}
               <div className="pt-2 border-t border-border mt-2">
                 <div className="flex flex-col px-4 py-2 space-y-1">
-                  <div className="text-sm font-medium">{user?.name || user?.email}</div>
+                  <div className="text-sm font-medium">{user?.username || user?.email}</div>
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-muted-foreground">Role:</span>
                     <span className="text-xs font-medium bg-primary/10 text-primary px-2 py-0.5 rounded">{userRole?.toUpperCase()}</span>

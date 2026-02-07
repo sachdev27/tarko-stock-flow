@@ -54,6 +54,7 @@ export interface User {
   id: UUID;
   email: string;
   name?: string;
+  username?: string;
   role: 'admin' | 'user';
   created_at: ISO8601DateTime;
 }
