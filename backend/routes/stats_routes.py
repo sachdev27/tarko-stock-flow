@@ -47,7 +47,7 @@ def get_dashboard_stats():
         """
         inventory_by_type = execute_query(inventory_query)
 
-        # Recent transactions (last 7 days) - including all transaction types
+        # Recent transactions (last 7 days) - using unified view + event tables
         transactions_query = """
             SELECT
                 COUNT(*) as total_transactions,
@@ -57,20 +57,17 @@ def get_dashboard_stats():
                 SUM(CASE WHEN transaction_type = 'SCRAP' THEN 1 ELSE 0 END) as scrap_count,
                 SUM(CASE WHEN transaction_type IN ('CUT_ROLL', 'SPLIT_BUNDLE', 'COMBINE_BUNDLE') THEN 1 ELSE 0 END) as inventory_ops_count
             FROM (
-                -- Old transactions table
-                SELECT transaction_type::text as transaction_type, created_at FROM transactions WHERE deleted_at IS NULL
+                -- Unified transaction history view (combines transactions + inventory_transactions)
+                SELECT transaction_type, created_at FROM unified_transaction_history
                 UNION ALL
-                -- Dispatches (use text literal, not enum)
+                -- Dispatches (standalone events)
                 SELECT 'DISPATCH'::text as transaction_type, created_at FROM dispatches WHERE deleted_at IS NULL
                 UNION ALL
-                -- Returns (use text literal, not enum)
+                -- Returns (standalone events)
                 SELECT 'RETURN'::text as transaction_type, created_at FROM returns WHERE deleted_at IS NULL
                 UNION ALL
-                -- Scraps (use text literal, not enum)
+                -- Scraps (standalone events)
                 SELECT 'SCRAP'::text as transaction_type, created_at FROM scraps WHERE deleted_at IS NULL
-                UNION ALL
-                -- Inventory operations (uses reverted_at, not deleted_at)
-                SELECT transaction_type::text as transaction_type, created_at FROM inventory_transactions WHERE reverted_at IS NULL
             ) all_transactions
             WHERE created_at >= NOW() - INTERVAL '7 days'
         """

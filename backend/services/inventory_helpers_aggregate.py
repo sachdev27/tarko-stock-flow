@@ -195,14 +195,14 @@ class AggregateInventoryHelper:
         """
         Cut one HDPE roll into multiple pieces.
 
-        NEW BEHAVIOR (1:1 model): Each cut piece gets its own CUT_PIECE stock entry.
+        NEW BEHAVIOR (1:1 model): Each cut piece gets its own CUT_ROLL stock entry.
 
         Args:
             from_stock_id: Stock ID of full rolls
             cut_lengths: List of lengths for cut pieces (e.g., [150, 145])
 
         Returns:
-            (first_stock_id, cut_piece_ids): First CUT_PIECE stock entry ID and list of piece IDs
+            (first_stock_id, cut_piece_ids): First CUT_ROLL stock entry ID and list of piece IDs
         """
         # Get the source stock details
         cursor.execute("""
@@ -215,7 +215,10 @@ class AggregateInventoryHelper:
         if not source:
             raise ValueError("Source stock not found or not available for cutting")
 
-        batch_id, product_variant_id, quantity, length_per_unit = source
+        batch_id = source['batch_id']
+        product_variant_id = source['product_variant_id']
+        quantity = source['quantity']
+        length_per_unit = source['length_per_unit']
 
         if quantity < 1:
             raise ValueError("No rolls available to cut")
@@ -239,7 +242,7 @@ class AggregateInventoryHelper:
 
         transaction_id = cursor.fetchone()['id']
 
-        # Create individual CUT_PIECE stock entries and hdpe_cut_pieces records (1:1)
+        # Create individual CUT_ROLL stock entries and hdpe_cut_pieces records (1:1)
         cut_piece_ids = []
         cut_piece_details = []
         stock_ids_created = []
@@ -248,12 +251,12 @@ class AggregateInventoryHelper:
             piece_id = str(uuid.uuid4())
             stock_id = str(uuid.uuid4())
 
-            # Create CUT_PIECE stock entry (1:1 with piece)
+            # Create CUT_ROLL stock entry (1:1 with piece) - using CUT_ROLL for system compatibility
             cursor.execute("""
                 INSERT INTO inventory_stock (
                     id, batch_id, product_variant_id, status, stock_type,
                     quantity, length_meters, parent_stock_id, piece_id, notes
-                ) VALUES (%s, %s, %s, 'IN_STOCK', 'CUT_PIECE', 1, %s, %s, %s, %s)
+                ) VALUES (%s, %s, %s, 'IN_STOCK', 'CUT_ROLL', 1, %s, %s, %s, %s)
             """, (stock_id, batch_id, product_variant_id, length, from_stock_id, piece_id, notes))
 
             # Create hdpe_cut_pieces record pointing to its own stock entry
@@ -266,6 +269,133 @@ class AggregateInventoryHelper:
             cut_piece_ids.append(piece_id)
             stock_ids_created.append(stock_id)
             cut_piece_details.append({"length": length, "piece_id": piece_id, "stock_id": stock_id})
+
+        # Update transaction with cut_piece_details including stock_ids
+        cursor.execute("""
+            UPDATE inventory_transactions
+            SET cut_piece_details = %s,
+                to_stock_id = %s
+            WHERE id = %s
+        """, (json.dumps(cut_piece_details), stock_ids_created[0] if stock_ids_created else None, transaction_id))
+
+        # Return first stock_id for backward compatibility + all piece_ids
+        return stock_ids_created[0] if stock_ids_created else None, cut_piece_ids
+
+    @staticmethod
+    def cut_hdpe_piece(
+        cursor,
+        piece_id: str,
+        cut_lengths: List[float],
+        notes: Optional[str] = None,
+        created_by: Optional[str] = None
+    ) -> Tuple[str, List[str]]:
+        """
+        Cut an existing HDPE cut piece into smaller pieces.
+
+        NEW BEHAVIOR (1:1 model): Each new piece gets its own CUT_ROLL stock entry.
+
+        Args:
+            piece_id: ID of the hdpe_cut_pieces record to cut
+            cut_lengths: List of lengths for new pieces (e.g., [50, 30])
+
+        Returns:
+            (first_stock_id, cut_piece_ids): First new CUT_ROLL stock entry ID and list of piece IDs
+        """
+        # Get the source piece details
+        cursor.execute("""
+            SELECT hcp.id, hcp.length_meters, hcp.stock_id as piece_stock_id,
+                   ist.batch_id, ist.product_variant_id, ist.parent_stock_id
+            FROM hdpe_cut_pieces hcp
+            JOIN inventory_stock ist ON hcp.stock_id = ist.id
+            WHERE hcp.id = %s AND hcp.status = 'IN_STOCK'
+        """, (piece_id,))
+
+        piece = cursor.fetchone()
+        if not piece:
+            raise ValueError("Cut piece not found or not available for cutting")
+
+        piece_length = float(piece['length_meters'])
+        piece_stock_id = piece['piece_stock_id']
+        batch_id = piece['batch_id']
+        product_variant_id = piece['product_variant_id']
+        parent_stock_id = piece['parent_stock_id'] or piece_stock_id
+
+        total_cut_length = sum(cut_lengths)
+        if total_cut_length > piece_length:
+            raise ValueError(f"Total cut length ({total_cut_length}m) exceeds piece length ({piece_length}m)")
+
+        # Mark the original piece as SOLD_OUT (consumed by cutting)
+        cursor.execute("""
+            UPDATE hdpe_cut_pieces
+            SET status = 'SOLD_OUT', updated_at = NOW()
+            WHERE id = %s
+        """, (piece_id,))
+
+        # Mark original piece's stock entry as SOLD_OUT too
+        cursor.execute("""
+            UPDATE inventory_stock
+            SET status = 'SOLD_OUT', updated_at = NOW()
+            WHERE id = %s
+        """, (piece_stock_id,))
+
+        # Calculate remainder
+        remainder = piece_length - total_cut_length
+        all_lengths = list(cut_lengths)
+        if remainder > 0:
+            all_lengths.append(remainder)
+
+        # Create transaction record first to get transaction_id
+        all_pieces_str = ", ".join([f"{l}m" for l in cut_lengths])
+        txn_notes = notes or f'Cut {piece_length}m piece into {len(cut_lengths)} pieces: {all_pieces_str}'
+        if remainder > 0:
+            txn_notes += f'. Remainder: {remainder}m'
+
+        cursor.execute("""
+            INSERT INTO inventory_transactions (
+                transaction_type, from_stock_id, from_quantity, from_length,
+                to_quantity, notes, created_by
+            ) VALUES ('CUT_ROLL', %s, 1, %s, %s, %s, %s)
+            RETURNING id
+        """, (piece_stock_id, piece_length, len(all_lengths), txn_notes, created_by))
+
+        transaction_id = cursor.fetchone()['id']
+
+        # Create individual CUT_ROLL stock entries and hdpe_cut_pieces records (1:1)
+        cut_piece_ids = []
+        cut_piece_details = []
+        stock_ids_created = []
+
+        for idx, length in enumerate(all_lengths):
+            is_remainder = (idx >= len(cut_lengths))
+            new_piece_id = str(uuid.uuid4())
+            new_stock_id = str(uuid.uuid4())
+
+            piece_notes = f'{"Remainder " if is_remainder else ""}Cut {length}m from {piece_length}m piece'
+
+            # Create CUT_ROLL stock entry (1:1 with piece)
+            cursor.execute("""
+                INSERT INTO inventory_stock (
+                    id, batch_id, product_variant_id, status, stock_type,
+                    quantity, length_meters, parent_stock_id, piece_id, notes
+                ) VALUES (%s, %s, %s, 'IN_STOCK', 'CUT_ROLL', 1, %s, %s, %s, %s)
+            """, (new_stock_id, batch_id, product_variant_id,
+                  length, parent_stock_id, new_piece_id, piece_notes))
+
+            # Create hdpe_cut_pieces record pointing to its own stock entry
+            cursor.execute("""
+                INSERT INTO hdpe_cut_pieces (
+                    id, stock_id, length_meters, status, notes, created_by_transaction_id, original_stock_id
+                ) VALUES (%s, %s, %s, 'IN_STOCK', %s, %s, %s)
+            """, (new_piece_id, new_stock_id, length, piece_notes, transaction_id, new_stock_id))
+
+            cut_piece_ids.append(new_piece_id)
+            stock_ids_created.append(new_stock_id)
+            cut_piece_details.append({
+                "length": float(length),
+                "piece_id": new_piece_id,
+                "stock_id": new_stock_id,
+                "is_remainder": is_remainder
+            })
 
         # Update transaction with cut_piece_details including stock_ids
         cursor.execute("""

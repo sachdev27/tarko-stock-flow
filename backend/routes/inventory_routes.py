@@ -345,7 +345,7 @@ def update_stock(stock_id):
 
 @inventory_bp.route('/cut-roll', methods=['POST', 'OPTIONS'])
 def cut_roll():
-    """Cut a full roll or cut roll into smaller pieces"""
+    """Cut a full roll or cut roll into smaller pieces - uses helper functions"""
     print(f"DEBUG: cut_roll endpoint called, method={request.method}")
 
     if request.method == 'OPTIONS':
@@ -380,6 +380,9 @@ def cut_roll():
         if not cut_lengths:
             return jsonify({'error': 'At least one valid cut length is required'}), 400
 
+        # Import the helper
+        from services.inventory_helpers_aggregate import AggregateInventoryHelper
+
         with get_db_cursor() as cursor:
             # Get the stock entry
             cursor.execute("""
@@ -396,7 +399,7 @@ def cut_roll():
             stock_type = stock['stock_type']
 
             if stock_type == 'FULL_ROLL':
-                # Cutting a full roll
+                # Validate before calling helper
                 if stock['quantity'] < 1:
                     return jsonify({'error': 'No rolls available to cut'}), 400
 
@@ -406,106 +409,20 @@ def cut_roll():
                 if total_cut_length > length_per_unit:
                     return jsonify({'error': f'Total cut length ({total_cut_length}m) exceeds roll length ({length_per_unit}m)'}), 400
 
-                # Get actor details for audit log
-                actor = get_user_identity_details(user_id)
-
-                # Reduce full roll quantity by 1
-                cursor.execute("""
-                    UPDATE inventory_stock
-                    SET quantity = quantity - 1, updated_at = NOW()
-                    WHERE id = %s
-                    RETURNING quantity
-                """, (stock_id,))
-
-                # Check if quantity is now 0 and soft delete if needed
-                updated_quantity = cursor.fetchone()
-                if updated_quantity and updated_quantity['quantity'] <= 0:
-                    cursor.execute("""
-                        UPDATE inventory_stock
-                        SET deleted_at = NOW(), status = 'SOLD_OUT'
-                        WHERE id = %s
-                    """, (stock_id,))
-
-                # Create or update CUT_ROLL stock for this batch
-                cursor.execute("""
-                    SELECT id FROM inventory_stock
-                    WHERE batch_id = %s
-                    AND product_variant_id = %s
-                    AND stock_type = 'CUT_ROLL'
-                    AND status = 'IN_STOCK'
-                    AND deleted_at IS NULL
-                """, (stock['batch_id'], stock['product_variant_id']))
-
-                cut_stock = cursor.fetchone()
-
-                if cut_stock:
-                    cut_stock_id = cut_stock['id']
-                    # NOTE: No manual quantity update needed for CUT_ROLL stock
-                    # The auto_update_stock_quantity trigger will handle it when pieces are inserted
-                else:
-                    import uuid
-                    cut_stock_id = str(uuid.uuid4())
-                    # Initialize with 0 quantity, trigger will update it
-                    cursor.execute("""
-                        INSERT INTO inventory_stock (
-                            id, batch_id, product_variant_id, status, stock_type,
-                            quantity, notes, created_at, updated_at
-                        ) VALUES (%s, %s, %s, 'IN_STOCK', 'CUT_ROLL', 0, %s, NOW(), NOW())
-                    """, (cut_stock_id, stock['batch_id'], stock['product_variant_id'],
-                          f'Cut from full roll'))
-
-                # Create transaction first to get transaction_id
-                import json
+                # Use helper function
                 all_pieces_str = ", ".join([f"{l}m" for l in cut_lengths])
                 notes = f'Cut {length_per_unit}m roll into {len(cut_lengths)} pieces: {all_pieces_str}'
 
-                cursor.execute("""
-                    INSERT INTO inventory_transactions (
-                        transaction_type, from_stock_id, from_quantity, from_length,
-                        to_stock_id, to_quantity, notes, created_at, created_by
-                    ) VALUES ('CUT_ROLL', %s, 1, %s, %s, %s, %s, NOW(), %s)
-                    RETURNING id
-                """, (stock_id, length_per_unit, cut_stock_id, len(cut_lengths) + (1 if (length_per_unit - total_cut_length) > 0 else 0), notes, user_id))
-
-                transaction_id = cursor.fetchone()['id']
-
-                # Add individual cut pieces with IMMUTABLE created_by_transaction_id
-                pieces_created = []
-                cut_piece_details = []
-                for length in cut_lengths:
-                    cursor.execute("""
-                        INSERT INTO hdpe_cut_pieces (
-                            stock_id, length_meters, status, notes, created_by_transaction_id, original_stock_id, created_at
-                        ) VALUES (%s, %s, 'IN_STOCK', %s, %s, %s, NOW())
-                        RETURNING id
-                    """, (cut_stock_id, length, f'Cut {length}m from {length_per_unit}m roll', transaction_id, cut_stock_id))
-                    piece_id = cursor.fetchone()['id']
-                    pieces_created.append(length)
-                    cut_piece_details.append({"length": float(length), "piece_id": str(piece_id)})
-
-                # Add remainder piece if there's leftover length
+                # Add remainder to cut_lengths before calling helper
                 remainder = length_per_unit - total_cut_length
+                all_lengths = list(cut_lengths)
                 if remainder > 0:
-                    cursor.execute("""
-                        INSERT INTO hdpe_cut_pieces (
-                            stock_id, length_meters, status, notes, created_by_transaction_id, original_stock_id, created_at
-                        ) VALUES (%s, %s, 'IN_STOCK', %s, %s, %s, NOW())
-                        RETURNING id
-                    """, (cut_stock_id, remainder, f'Remainder {remainder}m from {length_per_unit}m roll', transaction_id, cut_stock_id))
-                    piece_id = cursor.fetchone()['id']
-                    pieces_created.append(remainder)
-                    cut_piece_details.append({"length": float(remainder), "piece_id": str(piece_id), "is_remainder": True})
+                    all_lengths.append(remainder)
                     notes += f'. Remainder: {remainder}m'
 
-                # NOTE: inventory_stock quantity is automatically updated by trigger
-                # No manual update needed here
-
-                # Update transaction with cut_piece_details
-                cursor.execute("""
-                    UPDATE inventory_transactions
-                    SET cut_piece_details = %s, notes = %s
-                    WHERE id = %s
-                """, (json.dumps(cut_piece_details), notes, transaction_id))
+                new_stock_id, piece_ids = AggregateInventoryHelper.cut_hdpe_roll(
+                    cursor, stock_id, all_lengths, notes=notes, created_by=user_id
+                )
 
                 # Audit log
                 cursor.execute("""
@@ -517,94 +434,19 @@ def cut_roll():
                       f"{actor['name']} cut 1 full roll into {len(cut_lengths)} pieces"))
 
             elif stock_type == 'CUT_ROLL':
-                # Cutting existing cut pieces further
-                # piece_id is REQUIRED for CUT_ROLL to enable proper tracking and revert
+                # piece_id is REQUIRED for CUT_ROLL to enable proper tracking
                 if not piece_id:
                     return jsonify({
                         'error': 'piece_id is required when cutting a CUT_ROLL. Please select a specific piece to cut.'
                     }), 400
 
-                # Get actor details for audit log
-                actor = get_user_identity_details(user_id)
-
-                # Get the specific piece
-                cursor.execute("""
-                    SELECT id, length_meters
-                    FROM hdpe_cut_pieces
-                    WHERE id = %s AND stock_id = %s AND status = 'IN_STOCK'
-                """, (piece_id, stock_id))
-
-                piece = cursor.fetchone()
-                if not piece:
-                    return jsonify({'error': 'Cut piece not found or not available'}), 404
-
-                piece_length = float(piece['length_meters'])
-                total_cut_length = sum(cut_lengths)
-
-                if total_cut_length > piece_length:
-                    return jsonify({'error': f'Total cut length ({total_cut_length}m) exceeds piece length ({piece_length}m)'}), 400
-
-                # Mark the original piece as dispatched
-                cursor.execute("""
-                    UPDATE hdpe_cut_pieces
-                    SET status = 'DISPATCHED', updated_at = NOW()
-                    WHERE id = %s
-                """, (piece_id,))
-
-                # Create transaction first to get transaction_id
-                # Note: When cutting a CUT_ROLL piece, both from and to are the same stock
-                # to_stock_id is set to NULL to indicate this is a re-cut operation
-                import json
+                # Use helper function
                 all_pieces_str = ", ".join([f"{l}m" for l in cut_lengths])
-                notes = f'Cut {piece_length}m piece into {len(cut_lengths)} pieces: {all_pieces_str}'
+                notes = f'Cut piece into {len(cut_lengths)} pieces: {all_pieces_str}'
 
-                cursor.execute("""
-                    INSERT INTO inventory_transactions (
-                        transaction_type, from_stock_id, from_quantity, from_length,
-                        to_stock_id, to_quantity, notes, created_at, created_by
-                    ) VALUES ('CUT_ROLL', %s, 1, %s, NULL, %s, %s, NOW(), %s)
-                    RETURNING id
-                """, (stock_id, piece_length, len(cut_lengths) + (1 if (piece_length - total_cut_length) > 0 else 0), notes, user_id))
-
-                transaction_id = cursor.fetchone()['id']
-
-                # Create the cut piece(s) with IMMUTABLE created_by_transaction_id
-                pieces_created = []
-                cut_piece_details = []
-                for length in cut_lengths:
-                    cursor.execute("""
-                        INSERT INTO hdpe_cut_pieces (
-                            stock_id, length_meters, status, notes, created_by_transaction_id, original_stock_id, created_at
-                        ) VALUES (%s, %s, 'IN_STOCK', %s, %s, %s, NOW())
-                        RETURNING id
-                    """, (stock_id, length, f'Cut {length}m from {piece_length}m piece', transaction_id, stock_id))
-                    new_piece_id = cursor.fetchone()['id']
-                    pieces_created.append(length)
-                    cut_piece_details.append({"length": float(length), "piece_id": str(new_piece_id)})
-
-                # Create remainder piece if there's leftover
-                remainder = piece_length - total_cut_length
-                if remainder > 0:
-                    cursor.execute("""
-                        INSERT INTO hdpe_cut_pieces (
-                            stock_id, length_meters, status, notes, created_by_transaction_id, original_stock_id, created_at
-                        ) VALUES (%s, %s, 'IN_STOCK', %s, %s, %s, NOW())
-                        RETURNING id
-                    """, (stock_id, remainder, f'Remainder {remainder}m from {piece_length}m piece', transaction_id, stock_id))
-                    new_piece_id = cursor.fetchone()['id']
-                    pieces_created.append(remainder)
-                    cut_piece_details.append({"length": float(remainder), "piece_id": str(new_piece_id), "is_remainder": True})
-                    notes += f'. Remainder: {remainder}m'
-
-                # NOTE: inventory_stock quantity is automatically updated by trigger
-                # No manual update needed here
-
-                # Update transaction with cut_piece_details
-                cursor.execute("""
-                    UPDATE inventory_transactions
-                    SET cut_piece_details = %s, notes = %s
-                    WHERE id = %s
-                """, (json.dumps(cut_piece_details), notes, transaction_id))
+                new_stock_id, piece_ids = AggregateInventoryHelper.cut_hdpe_piece(
+                    cursor, piece_id, cut_lengths, notes=notes, created_by=user_id
+                )
 
                 # Audit log
                 cursor.execute("""
@@ -613,7 +455,7 @@ def cut_roll():
                         description, created_at
                     ) VALUES (%s, 'CUT_ROLL', 'STOCK', %s, %s, NOW())
                 """, (user_id, str(stock_id),
-                      f"{actor['name']} cut {piece_length}m piece into {len(pieces_created)} pieces"))
+                      f"{actor['name']} cut a piece into {len(cut_lengths)} smaller pieces"))
 
             else:
                 return jsonify({'error': 'Only FULL_ROLL and CUT_ROLL can be cut'}), 400
@@ -623,6 +465,8 @@ def cut_roll():
             'cut_pieces': cut_lengths
         }), 200
 
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
     except Exception as e:
         import traceback
         error_trace = traceback.format_exc()
