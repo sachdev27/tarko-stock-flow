@@ -1,0 +1,20 @@
+# Backend Environment Variables
+DATABASE_URL=postgresql://{{ db_user }}:{{ db_password }}@{{ db_host if db_host is defined else 'postgres' }}:5432/{{ db_name }}
+JWT_SECRET_KEY={{ jwt_secret_key }}
+FLASK_ENV={{ flask_env | default('production') }}
+PYTHONUNBUFFERED=1
+SNAPSHOT_STORAGE_PATH=/app/snapshots
+UPLOAD_STORAGE_PATH=/app/uploads
+BACKUP_RETENTION_DAYS={{ backup_retention_days | default(30) }}
+CORS_ORIGINS={{ cors_origins | default('*') }}
+APP_URL={{ app_url | default('https://tarko-inv.web.app') }}
+
+# Cloud Backup Configuration (Optional)
+{% if enable_cloud_backup | default(false) %}
+ENABLE_CLOUD_BACKUP=true
+CLOUD_STORAGE_PROVIDER={{ cloud_storage_provider }}
+R2_ACCOUNT_ID={{ r2_account_id }}
+R2_ACCESS_KEY_ID={{ r2_access_key_id }}
+R2_SECRET_ACCESS_KEY={{ r2_secret_access_key }}
+R2_BUCKET_NAME={{ r2_bucket_name }}
+{% endif %}

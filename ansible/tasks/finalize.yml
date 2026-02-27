@@ -1,0 +1,26 @@
+---
+# Final setup and status display
+- block:
+    - name: Set up log rotation for Docker containers (Linux)
+      copy:
+        dest: /etc/logrotate.d/docker-containers
+        content: |
+          /var/lib/docker/containers/*/*.log {
+            rotate 7
+            daily
+            compress
+            missingok
+            delaycompress
+            copytruncate
+          }
+        mode: '0644'
+      when: ansible_facts['os_family'] == "Debian"
+
+    - name: Display deployment status
+      debug:
+        msg:
+          - "Deployment completed successfully!"
+          - "Backend: http://{{ ansible_host }}:{{ backend_port }}"
+          - "Frontend: http://{{ ansible_host }}:{{ frontend_port }}"
+          - "Database: {{ db_host }}:{{ db_port }}"
+  tags: [finalize, deploy]

@@ -1,0 +1,33 @@
+---
+# Firebase deployment
+- block:
+    - name: Verify Node.js version before Firebase deployment
+      shell: node --version
+      register: node_version
+      become_user: "{{ ansible_user }}"
+      changed_when: false
+      environment:
+        PATH: "{{ brew_executable | dirname | default('/opt/homebrew/bin') }}:{{ ansible_facts['env']['PATH'] }}"
+
+    - name: Display Node.js version
+      debug:
+        msg: "Node.js version: {{ node_version.stdout }}"
+
+    - name: Run Firebase deployment script
+      shell: |
+        node --version
+        npm --version
+        ./deploy-firebase.sh
+      args:
+        chdir: "{{ app_directory }}"
+      become_user: "{{ ansible_user }}"
+      register: firebase_deploy
+      ignore_errors: yes
+      environment:
+        PATH: "{{ brew_executable | dirname | default('/opt/homebrew/bin') }}:{{ ansible_facts['env']['PATH'] }}"
+
+    - name: Display Firebase deployment result
+      debug:
+        var: firebase_deploy.stdout_lines
+      when: firebase_deploy.stdout is defined
+  tags: [firebase, deploy]

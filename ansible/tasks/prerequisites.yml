@@ -1,0 +1,56 @@
+---
+# Basic system setup and prerequisites
+- block:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+      when: ansible_facts['os_family'] == "Debian"
+
+    - name: Install git and basic packages (always needed)
+      apt:
+        name:
+          - git
+          - curl
+          - python3-pip
+          - ca-certificates
+          - gnupg
+        state: present
+      when: ansible_facts['os_family'] == "Debian"
+
+    # Homebrew Setup (macOS)
+    - name: Install Homebrew (macOS ONLY)
+      shell: |
+        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+      when: ansible_facts['os_family'] == "Darwin" and brew_executable == "not found"
+      become: false
+
+    # - name: Update Homebrew (macOS)
+    #   command: "{{ brew_executable }} update"
+    #   when: ansible_facts['os_family'] == "Darwin" and brew_executable != "not found"
+    #   become: false
+    #   changed_when: false
+
+    - name: Check for basic tools (macOS)
+      shell: |
+        if command -v git >/dev/null && command -v curl >/dev/null && command -v python3 >/dev/null; then
+          echo "present"
+        else
+          echo "missing"
+        fi
+      register: basic_tools_check
+      changed_when: false
+      when: ansible_facts['os_family'] == "Darwin"
+
+    - name: Install basic packages with Homebrew (macOS)
+      homebrew:
+        name:
+          - git
+          - curl
+          - python3
+        state: present
+        update_homebrew: yes
+        path: "{{ brew_executable | dirname if brew_executable != 'not found' else omit }}"
+      when: ansible_facts['os_family'] == "Darwin" and basic_tools_check.stdout == "missing"
+      become: false
+  tags: [prerequisites, setup]

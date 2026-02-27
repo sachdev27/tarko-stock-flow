@@ -1,0 +1,31 @@
+---
+# Application settings
+app_name: tarko-stock-flow
+default_app_directory: /opt/tarko-stock-flow
+
+# Git repository settings
+git_username: sachdev27
+git_repo_url: https://{{ git_username }}:{{ git_token }}@github.com/sachdev27/tarko-stock-flow.git
+git_branch: main
+
+# Docker settings
+pull_images: false
+
+# System settings
+timezone: Asia/Kolkata
+
+# Database settings
+db_name: tarko_inventory
+db_user: tarko_user
+db_port: 5432
+db_host: postgres
+
+# Backend settings
+backend_port: 5500
+flask_env: production
+backup_retention_days: 30
+app_url: https://tarko-inv.web.app
+
+# Frontend settings
+frontend_port: 80
+vite_api_url: http://localhost:5500/api

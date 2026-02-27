@@ -1,0 +1,46 @@
+---
+# Docker container operations
+- block:
+    - name: Stop existing containers
+      command: docker compose down
+      args:
+        chdir: "{{ app_directory }}"
+      become_user: "{{ ansible_user }}"
+      failed_when: false
+      environment:
+        PATH: "{{ docker_executable | dirname if ansible_facts['os_family'] == 'Darwin' and docker_executable != 'not found' else '/usr/bin' }}:{{ ansible_facts['env']['PATH'] }}"
+        TUNNEL_TOKEN: "{{ tunnel_token | default('') }}"
+
+    - name: Pull latest Docker images
+      command: docker compose pull
+      args:
+        chdir: "{{ app_directory }}"
+      become_user: "{{ ansible_user }}"
+      when: pull_images | default(true)
+      environment:
+        PATH: "{{ docker_executable | dirname if ansible_facts['os_family'] == 'Darwin' and docker_executable != 'not found' else '/usr/bin' }}:{{ ansible_facts['env']['PATH'] }}"
+        TUNNEL_TOKEN: "{{ tunnel_token | default('') }}"
+      register: pull_images_result
+      until: pull_images_result.rc == 0
+      retries: 3
+      delay: 5
+
+    - name: Build and start Docker containers
+      command: "docker compose up -d --build {{ '--pull never' if not (pull_images | default(true)) else '' }}"
+      args:
+        chdir: "{{ app_directory }}"
+      become_user: "{{ ansible_user }}"
+      environment:
+        PATH: "{{ docker_executable | dirname if ansible_facts['os_family'] == 'Darwin' and docker_executable != 'not found' else '/usr/bin' }}:{{ ansible_facts['env']['PATH'] }}"
+        TUNNEL_TOKEN: "{{ tunnel_token | default('') }}"
+
+    - name: Wait for backend to be healthy
+      uri:
+        url: "http://localhost:5500/api/health"
+        status_code: 200
+      register: result
+      until: result.status == 200
+      retries: 30
+      delay: 2
+      failed_when: false
+  tags: [containers, deploy]

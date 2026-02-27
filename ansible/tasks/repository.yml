@@ -1,0 +1,34 @@
+---
+# Repository cloning and file permissions setup
+- block:
+    - name: Ensure application directory is owned by user
+      file:
+        path: "{{ app_directory }}"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ 'staff' if ansible_facts['os_family'] == 'Darwin' else ansible_user }}"
+        mode: '0755'
+        recurse: yes
+
+    - name: Clone/Update repository
+      git:
+        repo: "{{ git_repo_url }}"
+        dest: "{{ app_directory }}"
+        version: "{{ git_branch }}"
+        force: yes
+      become: true
+      become_user: "{{ ansible_user }}"
+
+    - name: Make entrypoint scripts executable
+      file:
+        path: "{{ app_directory }}/{{ item }}"
+        mode: '0755'
+      loop:
+        - deploy-backend.sh
+        - deploy-firebase.sh
+        - deploy.sh
+        - run-migrations.sh
+        - setup-production.sh
+        - status.sh
+        - backend/docker-entrypoint.sh
+  tags: [repository, deploy]

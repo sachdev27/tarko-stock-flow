@@ -1,0 +1,80 @@
+---
+- name: Deploy Tarko Stock Flow System
+  hosts: all
+  become: yes
+  vars_files:
+    - vars/main.yml
+    - vars/secrets.yml
+
+  pre_tasks:
+    - name: Detect Homebrew path (macOS)
+      shell: |
+        if [ -f /opt/homebrew/bin/brew ]; then echo "/opt/homebrew/bin/brew";
+        elif [ -f /usr/local/bin/brew ]; then echo "/usr/local/bin/brew";
+        elif command -v brew >/dev/null 2>&1; then which brew;
+        else echo "not found"; fi
+      register: brew_check_result
+      failed_when: false
+      changed_when: false
+      when: ansible_facts['os_family'] == "Darwin"
+      tags: [always]
+
+    - name: Set Homebrew fact (macOS)
+      set_fact:
+        brew_executable: "{{ brew_check_result.stdout }}"
+      when: ansible_facts['os_family'] == "Darwin"
+      tags: [always]
+
+    - name: Detect Docker path
+      shell: |
+        if [ -f /usr/local/bin/docker ]; then echo "/usr/local/bin/docker";
+        elif [ -f /Applications/Docker.app/Contents/Resources/bin/docker ]; then echo "/Applications/Docker.app/Contents/Resources/bin/docker";
+        elif command -v docker >/dev/null 2>&1; then which docker;
+        else echo "not found"; fi
+      register: docker_check_result
+      failed_when: false
+      changed_when: false
+      tags: [always]
+
+    - name: Set Docker fact
+      set_fact:
+        docker_executable: "{{ docker_check_result.stdout }}"
+      tags: [always]
+
+    - name: Set dynamic app_directory fact
+      set_fact:
+        app_directory: "/Users/{{ ansible_user }}/opt/{{ app_name }}"
+      tags: [always]
+
+  tasks:
+    - name: Install system prerequisites
+      include_tasks: tasks/prerequisites.yml
+      tags: [prerequisites, setup]
+
+    - name: Install Node.js 20.x and Firebase CLI
+      include_tasks: tasks/nodejs.yml
+      tags: [nodejs, setup]
+
+    - name: Install and configure Docker
+      include_tasks: tasks/docker.yml
+      tags: [docker, setup]
+
+    - name: Setup repository
+      include_tasks: tasks/repository.yml
+      tags: [repository, deploy]
+
+    - name: Configure environment files
+      include_tasks: tasks/environment.yml
+      tags: [environment, deploy]
+
+    - name: Manage Docker containers
+      include_tasks: tasks/containers.yml
+      tags: [containers, deploy]
+
+    - name: Deploy to Firebase
+      include_tasks: tasks/firebase.yml
+      tags: [firebase, deploy]
+
+    - name: Finalize deployment
+      include_tasks: tasks/finalize.yml
+      tags: [finalize, deploy]

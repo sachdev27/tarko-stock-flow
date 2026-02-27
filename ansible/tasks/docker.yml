@@ -1,0 +1,74 @@
+---
+# Docker installation and configuration
+- block:
+    - name: Display Docker status
+      debug:
+        msg: "Docker is {{ 'already installed at ' + docker_executable if docker_executable != 'not found' else 'not installed - will install now' }}"
+
+    - name: Install Docker prerequisites
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - gnupg
+          - lsb-release
+        state: present
+      when: ansible_facts['os_family'] == "Debian" and docker_executable == "not found"
+
+    - name: Add Docker GPG apt Key
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+      when: ansible_facts['os_family'] == "Debian" and docker_executable == "not found"
+
+    - name: Add Docker Repository
+      apt_repository:
+        repo: deb https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable
+        state: present
+      when: ansible_facts['os_family'] == "Debian" and docker_executable == "not found"
+
+    - name: Install Docker
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-compose-plugin
+        state: present
+      when: ansible_facts['os_family'] == "Debian" and docker_executable == "not found"
+
+    - name: Install Docker Desktop with Homebrew (macOS)
+      homebrew_cask:
+        name: docker
+        state: present
+        path: "{{ brew_executable | dirname if brew_executable != 'not found' else omit }}"
+      when: ansible_facts['os_family'] == "Darwin" and docker_executable == "not found"
+      become: false
+
+    - name: Ensure Docker service is running (Linux)
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+      when: ansible_facts['os_family'] == "Debian"
+
+    - name: Add user to docker group (Linux)
+      user:
+        name: "{{ ansible_user }}"
+        groups: docker
+        append: yes
+      when: ansible_facts['os_family'] == "Debian"
+
+    - name: Check if Docker Compose is installed
+      command: docker compose version
+      register: docker_compose_check
+      failed_when: false
+      changed_when: false
+
+    - name: Install Docker Compose (standalone Linux)
+      get_url:
+        url: https://github.com/docker/compose/releases/download/v2.24.0/docker-compose-linux-{{ ansible_facts['architecture'] }}
+        dest: /usr/local/bin/docker-compose
+        mode: '0755'
+      when: ansible_facts['os_family'] == "Debian" and docker_compose_check.rc != 0
+  tags: [docker, setup]

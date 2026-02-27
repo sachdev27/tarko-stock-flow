@@ -1,0 +1,95 @@
+---
+# Node.js 20.x and Firebase CLI installation
+- block:
+    - name: Create directory for NodeSource GPG key
+      file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
+      when: ansible_facts['os_family'] == "Debian"
+
+    - name: Download and install NodeSource GPG key
+      shell: |
+        curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
+      args:
+        creates: /etc/apt/keyrings/nodesource.gpg
+      when: ansible_facts['os_family'] == "Debian"
+
+    - name: Add NodeSource repository for Node.js 20.x
+      shell: |
+        echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" | tee /etc/apt/sources.list.d/nodesource.list
+      args:
+        creates: /etc/apt/sources.list.d/nodesource.list
+      when: ansible_facts['os_family'] == "Debian"
+
+    - name: Update apt cache after adding NodeSource
+      apt:
+        update_cache: yes
+      when: ansible_facts['os_family'] == "Debian"
+
+    - name: Remove old Node.js and npm packages
+      apt:
+        name:
+          - nodejs
+          - npm
+        state: absent
+        purge: yes
+      when: ansible_facts['os_family'] == "Debian"
+      ignore_errors: yes
+
+    - name: Install Node.js 20.x
+      apt:
+        name: nodejs
+        state: present
+        update_cache: yes
+      when: ansible_facts['os_family'] == "Debian"
+
+    - name: Install Node.js 20.x with Homebrew (macOS)
+      homebrew:
+        name: node@20
+        state: present
+        path: "{{ brew_executable | dirname if brew_executable != 'not found' else omit }}"
+      when: ansible_facts['os_family'] == "Darwin"
+      become: false
+
+    - name: Check if node@20 is already linked (macOS)
+      shell: node --version | grep "v20"
+      register: node_v20_linked
+      failed_when: false
+      changed_when: false
+      when: ansible_facts['os_family'] == "Darwin"
+
+    - name: Link Node.js 20.x (macOS)
+      command: "{{ brew_executable }} link --overwrite --force node@20"
+      when: ansible_facts['os_family'] == "Darwin" and node_v20_linked.rc != 0
+      become: false
+
+    - name: Verify Node.js installation
+      shell: node --version
+      register: node_check
+      changed_when: false
+      environment:
+        PATH: "{{ brew_executable | dirname if ansible_facts['os_family'] == 'Darwin' else '/usr/bin' }}:{{ ansible_facts['env']['PATH'] }}"
+
+    - name: Check if Firebase CLI is already installed
+      command: firebase --version
+      register: firebase_check
+      failed_when: false
+      changed_when: false
+
+    - name: Display installed Node.js version
+      debug:
+        msg: "Installed Node.js version: {{ node_check.stdout }}"
+
+    - name: Install Firebase CLI globally with Node.js 20.x
+      npm:
+        name: firebase-tools
+        global: yes
+        state: present
+        executable: "{{ brew_executable | dirname }}/npm"
+      become: yes
+      when: firebase_check.rc != 0
+      environment:
+        PATH: "{{ brew_executable | dirname }}:{{ ansible_facts['env']['PATH'] }}"
+      ignore_errors: yes
+  tags: [nodejs, setup]

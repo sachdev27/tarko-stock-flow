@@ -1,0 +1,35 @@
+---
+# Environment file configuration
+- block:
+    - name: Ensure app root directory exists
+      file:
+        path: "{{ app_directory }}"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ 'staff' if ansible_facts['os_family'] == 'Darwin' else ansible_user }}"
+        mode: '0755'
+
+    - name: Create root .env file from template
+      template:
+        src: templates/frontend-env.j2
+        dest: "{{ app_directory }}/.env"
+        owner: "{{ ansible_user }}"
+        group: "{{ 'staff' if ansible_facts['os_family'] == 'Darwin' else ansible_user }}"
+        mode: '0600'
+
+    - name: Ensure backend directory exists
+      file:
+        path: "{{ app_directory }}/backend"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ 'staff' if ansible_facts['os_family'] == 'Darwin' else ansible_user }}"
+        mode: '0755'
+
+    - name: Create backend .env file from template
+      template:
+        src: templates/backend-env.j2
+        dest: "{{ app_directory }}/backend/.env"
+        owner: "{{ ansible_user }}"
+        group: "{{ 'staff' if ansible_facts['os_family'] == 'Darwin' else ansible_user }}"
+        mode: '0600'
+  tags: [environment, deploy]
