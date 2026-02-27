@@ -27,7 +27,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: tarko-backend
-    restart: unless-stopped
+    restart: always
     environment:
       DATABASE_URL: postgresql://tarko_user:${DB_PASSWORD:-changeme123}@${DB_HOST:-host.docker.internal}:${DB_PORT:-5432}/tarko_inventory
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-this-secret-in-production}
@@ -60,7 +60,7 @@ services:
       context: .
       dockerfile: Dockerfile.frontend
     container_name: tarko-frontend
-    restart: unless-stopped
+    restart: always
     environment:
       VITE_API_URL: ${VITE_API_URL:-http://backend:5500}
     ports:
