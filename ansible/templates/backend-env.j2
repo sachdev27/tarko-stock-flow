@@ -1,5 +1,5 @@
 # Backend Environment Variables
-DATABASE_URL=postgresql://{{ db_user }}:{{ db_password }}@{{ db_host if db_host is defined else 'postgres' }}:5432/{{ db_name }}
+DATABASE_URL=postgresql://{{ db_user }}:{{ db_password }}@{{ db_host if db_host is defined else 'host.docker.internal' }}:{{ db_port | default(5432) }}/{{ db_name }}
 JWT_SECRET_KEY={{ jwt_secret_key }}
 FLASK_ENV={{ flask_env | default('production') }}
 PYTHONUNBUFFERED=1

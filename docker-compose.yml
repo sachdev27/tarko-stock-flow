@@ -1,27 +1,4 @@
 services:
-  postgres:
-    image: postgres:15-alpine
-    container_name: tarko-postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: tarko_inventory
-      POSTGRES_USER: tarko_user
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme123}
-      PGDATA: /var/lib/postgresql/data/pgdata
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./backend/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
-      - ./backups:/backups
-    ports:
-      - "5444:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U tarko_user -d tarko_inventory"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - tarko-network
-
   backend:
     build:
       context: ./backend
@@ -29,7 +6,7 @@ services:
     container_name: tarko-backend
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://tarko_user:${DB_PASSWORD:-changeme123}@postgres:5432/tarko_inventory
+      DATABASE_URL: postgresql://tarko_user:${DB_PASSWORD:-changeme123}@${DB_HOST:-host.docker.internal}:${DB_PORT:-5432}/tarko_inventory
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-this-secret-in-production}
       FLASK_ENV: production
       PYTHONUNBUFFERED: 1
@@ -44,9 +21,8 @@ services:
       - ./backups:/backups
     ports:
       - "5500:5500"
-    depends_on:
-      postgres:
-        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - tarko-network
     healthcheck:
