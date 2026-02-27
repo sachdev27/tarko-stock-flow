@@ -1,6 +1,17 @@
----
 # Docker container operations
 - block:
+    - name: Create temporary Docker config directory to bypass Keychain
+      file:
+        path: "/tmp/.docker_ansible_{{ ansible_user }}"
+        state: directory
+        mode: '0700'
+
+    - name: Create empty Docker config file
+      copy:
+        content: "{}"
+        dest: "/tmp/.docker_ansible_{{ ansible_user }}/config.json"
+        mode: '0600'
+
     - name: Stop existing containers
       command: docker compose down
       args:
@@ -10,6 +21,7 @@
       environment:
         PATH: "{{ docker_executable | dirname if ansible_facts['os_family'] == 'Darwin' and docker_executable != 'not found' else '/usr/bin' }}:{{ ansible_facts['env']['PATH'] }}"
         TUNNEL_TOKEN: "{{ tunnel_token | default('') }}"
+        DOCKER_CONFIG: "/tmp/.docker_ansible_{{ ansible_user }}"
 
     - name: Pull latest Docker images
       command: docker compose pull
@@ -20,6 +32,7 @@
       environment:
         PATH: "{{ docker_executable | dirname if ansible_facts['os_family'] == 'Darwin' and docker_executable != 'not found' else '/usr/bin' }}:{{ ansible_facts['env']['PATH'] }}"
         TUNNEL_TOKEN: "{{ tunnel_token | default('') }}"
+        DOCKER_CONFIG: "/tmp/.docker_ansible_{{ ansible_user }}"
       register: pull_images_result
       until: pull_images_result.rc == 0
       retries: 3
@@ -33,6 +46,7 @@
       environment:
         PATH: "{{ docker_executable | dirname if ansible_facts['os_family'] == 'Darwin' and docker_executable != 'not found' else '/usr/bin' }}:{{ ansible_facts['env']['PATH'] }}"
         TUNNEL_TOKEN: "{{ tunnel_token | default('') }}"
+        DOCKER_CONFIG: "/tmp/.docker_ansible_{{ ansible_user }}"
 
     - name: Wait for backend to be healthy
       uri:
