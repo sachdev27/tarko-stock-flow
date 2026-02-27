@@ -17,7 +17,7 @@ timezone: Asia/Kolkata
 # Database settings
 db_name: tarko_inventory
 db_user: tarko_user
-db_port: 5432
+db_port: 5444
 db_host: postgres
 
 # Backend settings
