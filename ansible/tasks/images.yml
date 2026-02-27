@@ -1,0 +1,18 @@
+---
+# Pre-pull base images to avoid Keychain errors during build
+- name: Pull base images
+  shell: "docker pull {{ item }}"
+  loop:
+    - "node:20-slim"
+    - "python:3.11-slim"
+    - "nginx:alpine"
+    - "postgres:15-alpine"
+    - "cloudflare/cloudflared:latest"
+  become_user: "{{ ansible_user }}"
+  environment:
+    PATH: "{{ docker_executable | dirname if ansible_facts['os_family'] == 'Darwin' and docker_executable != 'not found' else '/usr/bin' }}:{{ ansible_facts['env']['PATH'] }}"
+  register: pull_result
+  until: pull_result.rc == 0
+  retries: 3
+  delay: 5
+  tags: [images, deploy]
