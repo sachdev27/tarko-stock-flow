@@ -312,7 +312,7 @@ export const ProInventoryGrid = ({
       {/* Floating Action Command Bar */}
       {selectedCount > 0 && (
         <div 
-          className="fixed bottom-4 sm:bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1 sm:gap-4 bg-background/80 backdrop-blur-xl border border-primary/20 p-2 sm:p-3 px-4 sm:px-6 rounded-full shadow-[0_20px_50px_rgba(0,0,0,0.2),0_0_20px_rgba(var(--primary),0.1)] ring-1 ring-white/10 animate-in slide-in-from-bottom-8 duration-500 ease-out"
+          className="fixed bottom-[84px] sm:bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1 sm:gap-4 bg-background/80 backdrop-blur-xl border border-primary/20 p-2 sm:p-3 px-4 sm:px-6 rounded-full shadow-[0_20px_50px_rgba(0,0,0,0.2),0_0_20px_rgba(var(--primary),0.1)] ring-1 ring-white/10 animate-in slide-in-from-bottom-8 duration-500 ease-out"
         >
           <div className="flex items-center gap-1 sm:gap-2 pr-1.5 sm:pr-4 border-r">
             <span className="flex h-5 w-5 sm:h-6 sm:w-6 items-center justify-center rounded-full bg-primary text-[10px] sm:text-[11px] font-bold text-primary-foreground">
