@@ -1,43 +1,17 @@
 import { useState } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronUp, Box, Scissors, Package, Layers } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { StockEntryList } from './StockEntryList';
 
-interface Batch {
-  id: string;
-  batch_code: string;
-  batch_no: string;
-  current_quantity: number;
-  production_date: string;
-  product_type_name: string;
-  brand_name: string;
-  parameters: Record<string, unknown>;
-  stock_entries: StockEntry[];
-}
-
-interface StockEntry {
-  stock_id: string;
-  piece_ids?: string[];
-  stock_type: 'FULL_ROLL' | 'CUT_ROLL' | 'BUNDLE' | 'SPARE';
-  quantity: number;
-  status: string;
-  length_per_unit?: number;
-  pieces_per_bundle?: number;
-  piece_length_meters?: number;
-  piece_count?: number;
-  total_available: number;
-  product_type_name: string;
-  batch_id?: string;
-  batch_code?: string;
-}
+import { InventoryBatchUI, StockEntry } from '@/types/inventory-ui';
 
 interface ProductVariantCardProps {
   productTypeName: string;
   brandName: string;
   parameters: Record<string, unknown>;
-  batches: Batch[];
+  batches: InventoryBatchUI[];
   productVariantId: string;
   onUpdate: () => void;
 }
@@ -64,9 +38,9 @@ export const ProductVariantCard = ({
   // Group stock entries by type
   const stockByType = {
     FULL_ROLL: allStockEntries.filter(e => e.stock_type === 'FULL_ROLL'),
-    CUT_ROLL: allStockEntries.filter(e => e.stock_type === 'CUT_ROLL'),
+    CUT_ROLL: allStockEntries.filter(e => e.stock_type === 'CUT_ROLL' || e.stock_type === 'CUT_PIECE'),
     BUNDLE: allStockEntries.filter(e => e.stock_type === 'BUNDLE'),
-    SPARE: allStockEntries.filter(e => e.stock_type === 'SPARE')
+    SPARE: allStockEntries.filter(e => e.stock_type === 'SPARE' || e.stock_type === 'SPARE_PIECES')
   };
 
   // Calculate totals
@@ -76,64 +50,65 @@ export const ProductVariantCard = ({
   const totalSparePieces = stockByType.SPARE.reduce((sum, e) => sum + (e.piece_count || e.total_available), 0);
 
   return (
-    <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setExpanded(!expanded)}>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div className="flex-1">
-            {/* Single line with all info */}
-            <div className="flex items-center gap-3 flex-wrap">
-              <Badge variant={productTypeName === 'HDPE Pipe' ? 'default' : 'secondary'} className="text-base px-4 py-1.5">
-                {productTypeName}
-              </Badge>
-              <span className="text-lg font-bold">{brandName}</span>
-              {/* Sort parameters: OD first, then PN, then PE, rest alphabetically */}
+    <Card 
+      className={cn(
+        "cursor-pointer hover:shadow-md transition-all border-l-4",
+        productTypeName === 'HDPE Pipe' ? "border-l-primary" : "border-l-secondary",
+        expanded && "shadow-inner bg-accent/5"
+      )} 
+      onClick={() => setExpanded(!expanded)}
+    >
+      <CardHeader className="p-2 sm:p-4 pb-1.5">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex-1 min-w-0">
+            {/* Header Line: Brand + Stock */}
+            <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="font-extrabold text-[#111827] text-sm truncate uppercase tracking-tight">{brandName}</span>
+                <span className="text-[10px] text-muted-foreground font-bold opacity-60 uppercase">{productTypeName}</span>
+              </div>
+              
+              {/* Compact Stock on right */}
+              <div className="flex items-center gap-2 shrink-0 ml-2">
+                {totalFullRolls > 0 && (
+                  <div className="flex items-center gap-0.5 text-green-700">
+                    <Box className="h-3 w-3" />
+                    <span className="text-[10px] font-bold">{totalFullRolls}</span>
+                  </div>
+                )}
+                {totalCutPieces > 0 && (
+                  <div className="flex items-center gap-0.5 text-orange-700">
+                    <Scissors className="h-3 w-3" />
+                    <span className="text-[10px] font-bold">{totalCutPieces}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Parameters Line */}
+            <div className="flex items-center gap-2 text-[10px] font-bold text-muted-foreground/80 overflow-x-auto no-scrollbar whitespace-nowrap">
               {Object.entries(parameters)
                 .sort(([keyA], [keyB]) => {
                   const order = ['OD', 'PN', 'PE'];
                   const indexA = order.indexOf(keyA);
                   const indexB = order.indexOf(keyB);
                   if (indexA !== -1 && indexB !== -1) return indexA - indexB;
-                  if (indexA !== -1) return -1;
-                  if (indexB !== -1) return 1;
-                  return keyA.localeCompare(keyB);
+                  return indexA !== -1 ? -1 : indexB !== -1 ? 1 : keyA.localeCompare(keyB);
                 })
-                .map(([key, value]) => (
-                  <Badge key={key} variant="outline" className="text-base font-mono px-3 py-1">
-                    {key}: {String(value)}
-                  </Badge>
+                .map(([key, value], idx, arr) => (
+                  <span key={key} className="flex items-center gap-0.5 border border-muted-foreground/20 px-1 rounded bg-muted/30">
+                    <span className="opacity-60">{key}</span>
+                    <span className="text-foreground">{String(value)}</span>
+                  </span>
                 ))}
-            </div>
-
-            {/* Stock Summary on second line */}
-            <div className="flex items-center gap-2 flex-wrap mt-3">
-              {totalFullRolls > 0 && (
-                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-300">
-                  {totalFullRolls} Full Rolls
-                </Badge>
-              )}
-              {totalCutPieces > 0 && (
-                <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-300">
-                  {totalCutPieces} Cut Pieces
-                </Badge>
-              )}
-              {totalBundles > 0 && (
-                <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-300">
-                  {totalBundles} Bundles
-                </Badge>
-              )}
-              {totalSparePieces > 0 && (
-                <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300">
-                  {totalSparePieces} Spare Pieces
-                </Badge>
-              )}
             </div>
           </div>
 
-          <div className="flex items-center gap-2 ml-4 shrink-0">
-            {expanded ? (
-              <ChevronUp className="h-5 w-5 text-muted-foreground" />
+          <div className="shrink-0 flex flex-col items-end gap-1">
+             {expanded ? (
+              <ChevronUp className="h-4 w-4 text-muted-foreground/40" />
             ) : (
-              <ChevronDown className="h-5 w-5 text-muted-foreground" />
+              <ChevronDown className="h-4 w-4 text-muted-foreground/40" />
             )}
           </div>
         </div>

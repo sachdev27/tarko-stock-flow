@@ -5,34 +5,10 @@ import { Button } from '@/components/ui/button';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { StockEntryList } from './StockEntryList';
 
-interface Batch {
-  id: string;
-  batch_code: string;
-  batch_no: string;
-  current_quantity: number;
-  production_date: string;
-  product_type_name: string;
-  brand_name: string;
-  parameters: Record<string, unknown>;
-  stock_entries: StockEntry[];
-}
-
-interface StockEntry {
-  stock_id: string;
-  piece_ids?: string[];
-  stock_type: 'FULL_ROLL' | 'CUT_ROLL' | 'BUNDLE' | 'SPARE';
-  quantity: number;
-  status: string;
-  length_per_unit?: number;
-  pieces_per_bundle?: number;
-  piece_length_meters?: number;
-  piece_count?: number;
-  total_available: number;
-  product_type_name: string;
-}
+import { InventoryBatchUI, StockEntry } from '@/types/inventory-ui';
 
 interface BatchStockCardProps {
-  batch: Batch;
+  batch: InventoryBatchUI;
   onUpdate: () => void;
 }
 

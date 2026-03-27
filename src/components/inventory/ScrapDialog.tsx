@@ -20,26 +20,7 @@ import {
 import { Trash2, AlertCircle, Box, Scissors, Package } from 'lucide-react';
 import { scrap } from '@/lib/api-typed';
 import { toast } from 'sonner';
-import type * as API from '@/types';
-
-interface StockEntry {
-  stock_id: string;
-  piece_id?: string;
-  piece_ids?: string[];
-  spare_id?: string;
-  spare_ids?: string[]; // Array of spare piece IDs from backend
-  stock_type: 'FULL_ROLL' | 'CUT_ROLL' | 'BUNDLE' | 'SPARE';
-  quantity: number;
-  status: string;
-  length_per_unit?: number;
-  pieces_per_bundle?: number;
-  piece_length_meters?: number;
-  piece_count?: number;
-  total_available: number;
-  product_type_name: string;
-  batch_id?: string;
-  batch_code?: string;
-}
+import { StockEntry } from '@/types/inventory-ui';
 
 interface ScrapDialogProps {
   open: boolean;
@@ -120,7 +101,7 @@ export const ScrapDialog = ({
 
   // Group Cut Rolls by length
   const cutRollsByLength: Record<number, StockEntry[]> = {};
-  stockEntries.filter(e => e.stock_type === 'CUT_ROLL').forEach(entry => {
+  stockEntries.filter(e => e.stock_type === 'CUT_ROLL' || e.stock_type === 'CUT_PIECE').forEach(entry => {
     const length = Number(entry.length_per_unit || 0);
     if (!cutRollsByLength[length]) cutRollsByLength[length] = [];
     cutRollsByLength[length].push(entry);
@@ -165,14 +146,13 @@ export const ScrapDialog = ({
 
   // Group Spares by piece length - allow selection by PIECE count, not bundle count
   const sparesByLength: Record<number, StockEntry[]> = {};
-  stockEntries.filter(e => e.stock_type === 'SPARE').forEach(entry => {
+  stockEntries.filter(e => e.stock_type === 'SPARE' || e.stock_type === 'SPARE_PIECES').forEach(entry => {
     const length = Number(entry.piece_length_meters || 0);
     if (!sparesByLength[length]) sparesByLength[length] = [];
     sparesByLength[length].push(entry);
   });
 
   Object.entries(sparesByLength).forEach(([length, entries]) => {
-    const totalBundles = entries.length; // Each entry is one spare bundle
     const totalPieces = entries.reduce((sum, e) => sum + (e.piece_count || 0), 0);
     groupedStock.push({
       key: `SPARE-${length}`,

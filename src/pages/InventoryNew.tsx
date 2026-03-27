@@ -18,33 +18,13 @@ import { AdvancedFilters } from '@/components/inventory/AdvancedFilters';
 import { KeyboardShortcutsDialog } from '@/components/inventory/KeyboardShortcutsDialog';
 import ScrapHistory from '@/components/inventory/ScrapHistory';
 import { useAuth } from '@/contexts/AuthContext';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { InventoryBatchUI, StockEntry } from '@/types/inventory-ui';
+import { ProInventoryGrid } from '@/components/inventory/ProInventoryGrid';
+import { LayoutGrid, List } from 'lucide-react';
 
-interface Batch {
-  id: string;
-  batch_code: string;
-  batch_no: string;
-  current_quantity: number;
-  production_date: string;
-  product_type_name: string;
-  brand_name: string;
-  parameters: Record<string, unknown>;
-  product_variant_id: string;
-  stock_entries: StockEntry[];
-}
-
-interface StockEntry {
-  stock_id: string;
-  piece_ids?: string[];
-  stock_type: 'FULL_ROLL' | 'CUT_ROLL' | 'BUNDLE' | 'SPARE';
-  quantity: number;
-  status: string;
-  length_per_unit?: number;
-  pieces_per_bundle?: number;
-  piece_length_meters?: number;
-  piece_count?: number;
-  total_available: number;
-  product_type_name: string;
-}
+// Type aliases for easier use in this file
+type Batch = InventoryBatchUI;
 
 const InventoryNew = () => {
   const { user } = useAuth();
@@ -57,6 +37,14 @@ const InventoryNew = () => {
   const [selectedStockType, setSelectedStockType] = useState<string>('all');
   const [parameterFilters, setParameterFilters] = useState<Record<string, string>>({});
   const [activeTab, setActiveTab] = useState('stock');
+  const [viewType, setViewType] = useState<'cards' | 'grid'>('grid'); // Default to grid
+
+  // Initial view type detection
+  useEffect(() => {
+    const isMobile = window.innerWidth < 640;
+    setViewType(isMobile ? 'cards' : 'grid');
+  }, []);
+  const [selectedRows, setSelectedRows] = useState<Record<string, boolean>>({});
 
   // Product types and brands
   const [productTypes, setProductTypes] = useState<Array<{ id: string; name: string }>>([]);
@@ -74,9 +62,8 @@ const InventoryNew = () => {
     if (searchTerm) {
       const search = searchTerm.toLowerCase();
       filtered = filtered.filter(batch =>
-        batch.batch_code.toLowerCase().includes(search) ||
-        batch.batch_no.toLowerCase().includes(search) ||
-        batch.brand_name.toLowerCase().includes(search)
+        (batch.batch_no || '').toLowerCase().includes(search) ||
+        (batch.brand_name || '').toLowerCase().includes(search)
       );
     }
 
@@ -352,8 +339,22 @@ const InventoryNew = () => {
           spare_pieces: b.spare_piece_count
         }))
       });
-      setBatches(response || []);
       console.log('[InventoryNew] State updated with', response?.length, 'batches');
+      const normalizedBatches = (response || []).map((b: any) => {
+        const rawEntries = b.stock_entries || b.stock || [];
+        return {
+          ...b,
+          stock_entries: rawEntries.map((s: any) => ({
+            ...s,
+            stock_id: s.stock_id || s.id,
+            length_per_unit: s.length_per_unit ?? s.length_meters,
+            piece_count: s.piece_count ?? (s.spare_pieces ? s.spare_pieces.length : 0),
+            total_available: s.total_available ?? s.quantity,
+            product_type_name: s.product_type_name || b.product_type_name
+          }))
+        };
+      });
+      setBatches(normalizedBatches);
     } catch (error) {
       const err = error as { response?: { data?: { details?: string } }; message: string };
       console.error('[InventoryNew] Error fetching batches:', err);
@@ -481,7 +482,11 @@ const InventoryNew = () => {
     }
     acc[key].batches.push(batch);
     return acc;
-  }, {} as Record<string, { productTypeName: string; brandName: string; parameters: Record<string, unknown>; batches: Batch[] }>);
+  }, {} as Record<string, { productTypeName: string; brandName: string; parameters: Record<string, unknown>; batches: InventoryBatchUI[] }>);
+
+  const selectedBatches = Object.entries(groupedByProductVariant)
+    .filter(([key]) => selectedRows[key])
+    .flatMap(([, variant]) => variant.batches);
 
   const isAdmin = user?.role === 'admin';
 
@@ -543,14 +548,35 @@ const InventoryNew = () => {
     }
   };
 
+  const handleBulkWhatsApp = () => {
+    const selectedVariants = Object.entries(groupedByProductVariant)
+      .filter(([key]) => selectedRows[key])
+      .map(([, variant]) => variant);
+    
+    // Flatten all batches from selected variants
+    const allSelectedBatches = selectedVariants.flatMap(v => v.batches);
+    
+    if (allSelectedBatches.length === 0) {
+      toast.error('No items selected');
+      return;
+    }
+
+    console.log('[InventoryNew] Bulk WhatsApp for', allSelectedBatches.length, 'batches');
+    setWhatsappDialogOpen(true);
+  };
+
+  const handleBulkExport = () => {
+    toast.info('Exporting selected items...');
+  };
+
   return (
     <Layout>
-      <div className="space-y-4 md:space-y-6 p-4 md:p-6">
+      <div className="space-y-3 sm:space-y-4 p-2 sm:p-6 pb-24 sm:pb-6">
         {/* Header */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Inventory</h1>
-            <p className="text-muted-foreground mt-1">
+            <h1 className="text-xl sm:text-3xl font-bold tracking-tight">Inventory</h1>
+            <p className="hidden sm:block text-muted-foreground mt-1">
               Manage and track your stock inventory
             </p>
           </div>
@@ -573,23 +599,38 @@ const InventoryNew = () => {
                 Import/Export
               </Button>
             )}
-            <Button
-              variant="outline"
+            <Button 
               onClick={() => {
-                console.log('[InventoryNew] Opening WhatsApp dialog, filteredBatches:', {
-                  count: filteredBatches.length,
-                  sample: filteredBatches.slice(0, 1)
-                });
+                if (filteredBatches.length === 0) return;
                 setWhatsappDialogOpen(true);
               }}
-              className="bg-green-50 hover:bg-green-100 border-green-200"
+              size="sm"
+              className="bg-green-50 hover:bg-green-100 border-green-200 h-8 sm:h-10 text-xs sm:text-sm"
             >
-              <MessageCircle className="h-4 w-4 mr-2 text-green-600" />
+              <MessageCircle className="h-4 w-4 mr-1.5 text-green-600" />
               <span className="text-green-700">WhatsApp</span>
             </Button>
-            <Button onClick={fetchBatches} disabled={loading}>
+            <Button onClick={fetchBatches} disabled={loading} size="sm" className="h-8 sm:h-10 text-xs sm:text-sm">
               {loading ? 'Refreshing...' : 'Refresh'}
             </Button>
+            
+            <div className="flex items-center ml-auto sm:ml-2 sm:border-l sm:pl-4">
+              <ToggleGroup 
+                type="single" 
+                value={viewType} 
+                onValueChange={(value) => value && setViewType(value as 'cards' | 'grid')}
+                className="bg-muted/50 p-1 rounded-lg"
+              >
+                <ToggleGroupItem value="cards" aria-label="Card View" className="px-2 sm:px-3 h-8 sm:h-9">
+                  <LayoutGrid className="h-4 w-4 sm:mr-2" />
+                  <span className="hidden sm:inline text-xs font-semibold">Cards</span>
+                </ToggleGroupItem>
+                <ToggleGroupItem value="grid" aria-label="Grid View" className="px-2 sm:px-3 h-8 sm:h-9">
+                  <List className="h-4 w-4 sm:mr-2" />
+                  <span className="hidden sm:inline text-xs font-semibold">Pro Grid</span>
+                </ToggleGroupItem>
+              </ToggleGroup>
+            </div>
           </div>
         </div>
 
@@ -603,16 +644,17 @@ const InventoryNew = () => {
             <TabsTrigger value="scrap-history">Scrap History</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="stock" className="space-y-6 mt-6">
-            {/* Filters */}
-            <Card>
-              <CardHeader className="pb-3">
+          <TabsContent value="stock">
+            <div className="space-y-3 sm:space-y-6">
+            {/* Search and Filters Section */}
+            <Card className="border-none sm:border shadow-none sm:shadow bg-accent/5 sm:bg-card">
+              <CardHeader className="p-3 sm:p-6 pb-2">
                 <CardTitle className="flex items-center gap-2 text-base">
                   <Search className="h-4 w-4" />
                   Search & Filters
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
+              <CardContent className="space-y-2 sm:space-y-3 px-2 sm:px-6">
                 {/* Search Bar */}
                 <Input
                   placeholder="Search by batch code, batch no, or brand..."
@@ -669,21 +711,58 @@ const InventoryNew = () => {
                   </div>
                 </CardContent>
               </Card>
-            ) : (
-              <div className="space-y-4">
-                {Object.entries(groupedByProductVariant).map(([key, variant]) => (
-                  <ProductVariantCard
-                    key={key}
-                    productTypeName={variant.productTypeName}
-                    brandName={variant.brandName}
-                    parameters={variant.parameters}
-                    batches={variant.batches}
-                    productVariantId={getProductVariantId(variant.batches)}
-                    onUpdate={fetchBatches}
-                  />
-                ))}
-              </div>
-            )}
+            ) : (() => {
+              // Convert to sorted array for rendering
+              const sortedVariants = Object.entries(groupedByProductVariant).sort(([, a], [, b]) => {
+                const paramsA = a.parameters as Record<string, any>;
+                const paramsB = b.parameters as Record<string, any>;
+                
+                // OD Sort
+                const odA = parseFloat(String(paramsA.OD || 0));
+                const odB = parseFloat(String(paramsB.OD || 0));
+                if (odA !== odB) return odA - odB;
+                
+                // PN Sort
+                const pnA = parseFloat(String(paramsA.PN || 0));
+                const pnB = parseFloat(String(paramsB.PN || 0));
+                if (pnA !== pnB) return pnA - pnB;
+                
+                // PE Sort
+                const peA = parseFloat(String(paramsA.PE || 0));
+                const peB = parseFloat(String(paramsB.PE || 0));
+                if (peA !== peB) return peA - peB;
+                
+                // Brand Sort
+                return (a.brandName || '').localeCompare(b.brandName || '');
+              });
+
+              return viewType === 'grid' ? (
+                <ProInventoryGrid 
+                  groupedByProductVariant={Object.fromEntries(sortedVariants)}
+                  selectedRows={selectedRows}
+                  onSelectedRowsChange={setSelectedRows}
+                  onBulkWhatsApp={handleBulkWhatsApp}
+                  onBulkExport={handleBulkExport}
+                  onUpdate={fetchBatches}
+                  onRefresh={fetchBatches}
+                />
+              ) : (
+                <div className="space-y-2 sm:space-y-4">
+                  {sortedVariants.map(([key, variant]) => (
+                    <ProductVariantCard
+                      key={key}
+                      productTypeName={variant.productTypeName}
+                      brandName={variant.brandName}
+                      parameters={variant.parameters}
+                      batches={variant.batches}
+                      productVariantId={getProductVariantId(variant.batches)}
+                      onUpdate={fetchBatches}
+                    />
+                  ))}
+                </div>
+              );
+            })()}
+            </div>
           </TabsContent>
 
           <TabsContent value="scrap-history" className="mt-6">
@@ -696,7 +775,7 @@ const InventoryNew = () => {
       <WhatsAppShareDialog
         open={whatsappDialogOpen}
         onOpenChange={setWhatsappDialogOpen}
-        batches={filteredBatches}
+        batches={selectedBatches.length > 0 ? selectedBatches : filteredBatches}
       />
 
       <ImportExportDialog

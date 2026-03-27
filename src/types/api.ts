@@ -466,6 +466,7 @@ export interface ScrapReason {
 export interface InventoryBatch {
   id: UUID;
   batch_no: string;
+  batch_code?: string;
   product_variant_id: UUID;
   product_type_id: UUID;
   product_type_name: string;
@@ -477,17 +478,25 @@ export interface InventoryBatch {
   production_date?: ISO8601DateTime;
   created_at: ISO8601DateTime;
   created_by_name: string;
-  stock: InventoryStock[];
+  stock?: InventoryStock[];
+  stock_entries?: InventoryStock[];
 }
 
 export interface InventoryStock {
   id: UUID;
+  stock_id?: string;
   stock_type: StockType;
   quantity: number;
   status: StockStatus;
+  length_per_unit?: number;
   length_meters?: number;
   pieces_per_bundle?: number;
   piece_length_meters?: number;
+  total_available?: number;
+  product_type_name?: string;
+  piece_ids?: string[];
+  spare_ids?: string[];
+  piece_count?: number;
 
   // For CUT_ROLL
   cut_pieces?: {
