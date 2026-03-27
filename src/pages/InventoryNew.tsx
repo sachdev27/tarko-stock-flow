@@ -37,13 +37,7 @@ const InventoryNew = () => {
   const [selectedStockType, setSelectedStockType] = useState<string>('all');
   const [parameterFilters, setParameterFilters] = useState<Record<string, string>>({});
   const [activeTab, setActiveTab] = useState('stock');
-  const [viewType, setViewType] = useState<'cards' | 'grid'>('grid'); // Default to grid
-
-  // Initial view type detection
-  useEffect(() => {
-    const isMobile = window.innerWidth < 640;
-    setViewType(isMobile ? 'cards' : 'grid');
-  }, []);
+  const [viewType, setViewType] = useState<'cards' | 'grid'>('grid'); // Default to grid for all devices
   const [selectedRows, setSelectedRows] = useState<Record<string, boolean>>({});
 
   // Product types and brands

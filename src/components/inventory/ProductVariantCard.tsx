@@ -64,8 +64,8 @@ export const ProductVariantCard = ({
             {/* Header Line: Brand + Stock */}
             <div className="flex items-center justify-between mb-1">
               <div className="flex items-center gap-2 min-w-0">
-                <span className="font-extrabold text-[#111827] text-sm truncate uppercase tracking-tight">{brandName}</span>
-                <span className="text-[10px] text-muted-foreground font-bold opacity-60 uppercase">{productTypeName}</span>
+                <span className="font-extrabold text-[#111827] text-base truncate uppercase tracking-tight leading-none">{brandName}</span>
+                <span className="text-[10px] text-muted-foreground/70 font-bold uppercase tracking-widest shrink-0 ml-1 opacity-80 leading-none">• {productTypeName}</span>
               </div>
               
               {/* Compact Stock on right */}
@@ -86,7 +86,7 @@ export const ProductVariantCard = ({
             </div>
 
             {/* Parameters Line */}
-            <div className="flex items-center gap-2 text-[10px] font-bold text-muted-foreground/80 overflow-x-auto no-scrollbar whitespace-nowrap">
+            <div className="flex items-center gap-2 text-xs font-bold text-muted-foreground/80 overflow-x-auto no-scrollbar whitespace-nowrap mt-2">
               {Object.entries(parameters)
                 .sort(([keyA], [keyB]) => {
                   const order = ['OD', 'PN', 'PE'];
@@ -96,8 +96,8 @@ export const ProductVariantCard = ({
                   return indexA !== -1 ? -1 : indexB !== -1 ? 1 : keyA.localeCompare(keyB);
                 })
                 .map(([key, value], idx, arr) => (
-                  <span key={key} className="flex items-center gap-0.5 border border-muted-foreground/20 px-1 rounded bg-muted/30">
-                    <span className="opacity-60">{key}</span>
+                  <span key={key} className="flex items-center gap-1 border border-border/40 px-1.5 h-6 rounded bg-muted/30">
+                    <span className="opacity-60 text-[10px]">{key}</span>
                     <span className="text-foreground">{String(value)}</span>
                   </span>
                 ))}

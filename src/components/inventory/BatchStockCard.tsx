@@ -28,13 +28,14 @@ export const BatchStockCard = ({ batch, onUpdate }: BatchStockCardProps) => {
       <CardHeader>
         <div className="flex items-center justify-between">
           <div className="flex-1">
-            {/* Single line with all info */}
-            <div className="flex items-center gap-3 flex-wrap">
-              <Badge variant={batch.product_type_name === 'HDPE Pipe' ? 'default' : 'secondary'} className="text-base px-4 py-1.5">
-                {batch.product_type_name}
-              </Badge>
-              <span className="text-lg font-bold">{batch.brand_name}</span>
-              {/* Sort parameters: OD first, then PN, then PE, rest alphabetically */}
+            {/* Line 1: Ultra-Compact Header */}
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <span className="font-extrabold text-[#111827] text-base truncate uppercase tracking-tight leading-none">{batch.brand_name}</span>
+              <span className="text-[10px] text-muted-foreground/70 font-bold uppercase tracking-widest shrink-0 ml-1 opacity-80 leading-none">• {batch.product_type_name}</span>
+              <span className="text-[10px] font-mono font-bold text-muted-foreground/40 ml-auto bg-muted/10 px-1.5 rounded-sm shrink-0">{batch.batch_code || batch.batch_no}</span>
+            </div>
+            {/* Sort parameters: OD first, then PN, then PE, rest alphabetically */}
+            <div className="flex items-center gap-1.5 flex-wrap">
               {Object.entries(batch.parameters)
                 .sort(([keyA], [keyB]) => {
                   const order = ['OD', 'PN', 'PE'];

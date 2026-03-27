@@ -215,80 +215,82 @@ export const ProInventoryGrid = ({
               <div 
                 key={key}
                 className={cn(
-                  "p-2 sm:p-4 flex flex-col gap-1.5 active:bg-accent/20 transition-colors",
+                  "px-3 py-2.5 flex flex-col transition-all active:bg-accent/20",
                   isSelected && "bg-primary/5",
                   isExpanded && "bg-accent/5"
                 )}
                 onClick={() => toggleRow(key)}
               >
-                {/* Line 1: Checkbox + Brand + Product + Expansion */}
-                <div className="flex items-center gap-2">
-                <div onClick={(e) => e.stopPropagation()} className="pt-0.5">
-                  <Checkbox 
-                    checked={isSelected} 
-                    onCheckedChange={() => toggleSelection(key)}
-                    className="scale-75 origin-left"
-                  />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <span className="font-extrabold text-[#111827] text-sm truncate uppercase tracking-tight">{variant.brandName}</span>
-                    <div className="flex items-center gap-1.5 ml-1">
-                      {isExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-3 w-3 text-muted-foreground/50" />}
+                {/* Line 1: Header (Checkbox + Brand + Type) */}
+                <div className="flex items-center gap-2 min-w-0">
+                  <div onClick={(e) => e.stopPropagation()} className="shrink-0 flex items-center">
+                    <Checkbox 
+                      checked={isSelected} 
+                      onCheckedChange={() => toggleSelection(key)}
+                      className="h-3 w-3 rounded-[2px] border-muted-foreground/40 shadow-none"
+                    />
+                  </div>
+                  <div className="flex-1 min-w-0 flex items-center gap-2">
+                    <span className="font-extrabold text-[#111827] text-base truncate uppercase tracking-tight leading-none">{variant.brandName}</span>
+                    <span className="text-[10px] text-muted-foreground/70 font-bold uppercase tracking-widest shrink-0 ml-1 opacity-80 leading-none">• {variant.productTypeName}</span>
+                    <div className="ml-auto flex items-center">
+                      {isExpanded ? <ChevronUp className="h-4 w-4 text-primary" /> : <ChevronDown className="h-4 w-4 text-muted-foreground/30" />}
                     </div>
                   </div>
-                  <div className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider leading-none">{variant.productTypeName}</div>
                 </div>
-              </div>
 
-              {/* Line 2: Parameters OD/PN/PE */}
-              <div className="flex items-center gap-3 pl-6 text-[10px] border-t border-dashed border-border/40 pt-1 mt-1 overflow-x-auto no-scrollbar whitespace-nowrap">
-                {variant.parameters.OD && (
-                  <div className="flex items-center gap-1 border border-border/30 px-1 rounded bg-accent/5">
-                    <span className="text-muted-foreground">OD</span>
-                    <span className="font-bold text-foreground">{String(variant.parameters.OD)}</span>
-                  </div>
-                )}
-                {variant.parameters.PN && (
-                  <div className="flex items-center gap-1 border border-border/30 px-1 rounded bg-accent/5">
-                    <span className="text-muted-foreground">PN</span>
-                    <span className="font-bold text-foreground">{String(variant.parameters.PN)}</span>
-                  </div>
-                )}
-                {variant.parameters.PE && (
-                  <div className="flex items-center gap-1 border border-border/30 px-1 rounded bg-accent/5">
-                    <span className="text-muted-foreground">PE</span>
-                    <span className="font-bold text-foreground">{String(variant.parameters.PE)}</span>
-                  </div>
-                )}
-              </div>
+              {/* Line 2: Unified Parameters & Stock (Aligned with Brand text exactly) */}
+              <div className="flex items-center gap-2 pl-[30px] overflow-x-auto no-scrollbar whitespace-nowrap mt-2">
+                {/* Parameters Badges */}
+                <div className="flex items-center gap-1.5">
+                  {variant.parameters.OD && (
+                    <div className="flex items-center bg-muted/40 border border-border/40 rounded px-1.5 h-5 font-bold text-xs">
+                      <span className="text-muted-foreground/60 mr-1 text-[10px]">OD</span>
+                      <span className="text-foreground">{String(variant.parameters.OD)}</span>
+                    </div>
+                  )}
+                  {variant.parameters.PN && (
+                    <div className="flex items-center bg-muted/40 border border-border/40 rounded px-1.5 h-5 font-bold text-xs">
+                      <span className="text-muted-foreground/60 mr-1 text-[10px]">PN</span>
+                      <span className="text-foreground">{String(variant.parameters.PN)}</span>
+                    </div>
+                  )}
+                  {variant.parameters.PE && (
+                    <div className="flex items-center bg-muted/40 border border-border/40 rounded px-1.5 h-5 font-bold text-xs">
+                      <span className="text-muted-foreground/60 mr-1 text-[10px]">PE</span>
+                      <span className="text-foreground">{String(variant.parameters.PE)}</span>
+                    </div>
+                  )}
+                </div>
 
-                <div className="flex items-center gap-4 pl-6 pt-0.5">
+                {/* Stock Icons - Side by side on the same line */}
+                <div className="flex items-center gap-2 pl-2 border-l border-primary/10 py-0.5">
                   {(totals.FULL_ROLL > 0) && (
-                    <div className="flex items-center gap-1">
-                      <Box className="h-3 w-3 text-green-600" />
-                      <span className="text-[10px] font-bold text-green-700">{totals.FULL_ROLL}</span>
+                    <div className="flex items-center gap-1 text-green-700">
+                      <Box className="h-4 w-4" />
+                      <span className="text-xs font-black">{totals.FULL_ROLL}</span>
                     </div>
                   )}
                   {(totals.CUT_ROLL > 0) && (
-                    <div className="flex items-center gap-1">
-                      <Scissors className="h-3 w-3 text-orange-600" />
-                      <span className="text-[10px] font-bold text-orange-700">{totals.CUT_ROLL}</span>
+                    <div className="flex items-center gap-1 text-orange-700">
+                      <Scissors className="h-4 w-4" />
+                      <span className="text-xs font-black">{totals.CUT_ROLL}</span>
                     </div>
                   )}
                   {(totals.BUNDLE > 0) && (
-                    <div className="flex items-center gap-1">
-                      <Layers className="h-3 w-3 text-purple-600" />
-                      <span className="text-[10px] font-bold text-purple-700">{totals.BUNDLE}</span>
+                    <div className="flex items-center gap-0.5 text-purple-700">
+                      <Layers className="h-2.5 w-2.5" />
+                      <span className="text-[10px] font-black">{totals.BUNDLE}</span>
                     </div>
                   )}
                   {(totals.SPARE > 0) && (
-                    <div className="flex items-center gap-1">
-                      <Package className="h-3 w-3 text-amber-600" />
-                      <span className="text-[10px] font-bold text-amber-700">{totals.SPARE}</span>
+                    <div className="flex items-center gap-0.5 text-amber-700">
+                      <Package className="h-2.5 w-2.5" />
+                      <span className="text-[10px] font-black">{totals.SPARE}</span>
                     </div>
                   )}
                 </div>
+              </div>
 
                 {/* Expansion Content */}
                 {isExpanded && (
@@ -310,7 +312,7 @@ export const ProInventoryGrid = ({
       {/* Floating Action Command Bar */}
       {selectedCount > 0 && (
         <div 
-          className="fixed bottom-4 sm:bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1 sm:gap-4 bg-background/95 backdrop-blur-md border border-primary/20 p-1.5 sm:p-3 px-3 sm:px-6 rounded-full shadow-2xl ring-1 ring-black/5 animate-in slide-in-from-bottom-4 duration-300"
+          className="fixed bottom-4 sm:bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1 sm:gap-4 bg-background/80 backdrop-blur-xl border border-primary/20 p-2 sm:p-3 px-4 sm:px-6 rounded-full shadow-[0_20px_50px_rgba(0,0,0,0.2),0_0_20px_rgba(var(--primary),0.1)] ring-1 ring-white/10 animate-in slide-in-from-bottom-8 duration-500 ease-out"
         >
           <div className="flex items-center gap-1 sm:gap-2 pr-1.5 sm:pr-4 border-r">
             <span className="flex h-5 w-5 sm:h-6 sm:w-6 items-center justify-center rounded-full bg-primary text-[10px] sm:text-[11px] font-bold text-primary-foreground">
