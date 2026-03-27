@@ -5,35 +5,14 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { MessageCircle, ChevronDown, ChevronUp } from 'lucide-react';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 
-interface Batch {
-  id: string;
-  batch_code: string;
-  batch_no: string;
-  current_quantity: number;
-  production_date: string;
-  product_type_name: string;
-  brand_name: string;
-  parameters: Record<string, unknown>;
-  stock_entries: StockEntry[];
-}
-
-interface StockEntry {
-  stock_id: string;
-  piece_ids?: string[];
-  stock_type: 'FULL_ROLL' | 'CUT_ROLL' | 'BUNDLE' | 'SPARE';
-  quantity: number;
-  length_per_unit?: number;
-  pieces_per_bundle?: number;
-  piece_length_meters?: number;
-  piece_count?: number;
-  total_available: number;
-}
+import { InventoryBatchUI, StockEntry } from '@/types/inventory-ui';
 
 interface WhatsAppShareDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  batches: Batch[];
+  batches: InventoryBatchUI[];
 }
 
 export const WhatsAppShareDialog = ({ open, onOpenChange, batches }: WhatsAppShareDialogProps) => {
@@ -335,7 +314,7 @@ export const WhatsAppShareDialog = ({ open, onOpenChange, batches }: WhatsAppSha
                       <Checkbox
                         checked={allSelected}
                         onCheckedChange={() => toggleProduct(productKey)}
-                        className={someSelected && !allSelected ? 'opacity-50' : ''}
+                        className={cn(someSelected && !allSelected ? 'opacity-50' : '', "scale-75 sm:scale-100")}
                       />
                       <div className="flex items-center gap-2 flex-wrap flex-1">
                         <Badge variant="secondary" className="text-sm">{product.brand}</Badge>
@@ -403,6 +382,7 @@ export const WhatsAppShareDialog = ({ open, onOpenChange, batches }: WhatsAppSha
                                       });
                                       setSelectedStockIds(newSelected);
                                     }}
+                                    className="scale-75 sm:scale-100"
                                   />
                                   <span className="text-sm">
                                     {group.totalQty} rolls × {Number(firstEntry.length_per_unit || 0).toFixed(0)}m = {group.totalMeters.toFixed(2)}m
@@ -430,7 +410,7 @@ export const WhatsAppShareDialog = ({ open, onOpenChange, batches }: WhatsAppSha
                           <div className="space-y-1">
                             <p className="text-xs font-medium text-muted-foreground">Cut Rolls</p>
                             {Array.from(cutGroups.entries())
-                              .sort(([a], [b]) => b - a) // Sort by length descending
+                              .sort(([a], [b]) => b - a)
                               .map(([cutLength, group], idx) => {
                                 const allStockIds = group.entries.map(e => e.stock_id);
                                 const allSelected = allStockIds.every(id => selectedStockIds.has(id));
@@ -450,6 +430,7 @@ export const WhatsAppShareDialog = ({ open, onOpenChange, batches }: WhatsAppSha
                                         });
                                         setSelectedStockIds(newSelected);
                                       }}
+                                      className="scale-75 sm:scale-100"
                                     />
                                     <span className="text-sm">
                                       {group.count} {group.count === 1 ? 'roll' : 'rolls'} × {cutLength.toFixed(0)}m = {group.totalMeters.toFixed(0)}m
@@ -497,6 +478,7 @@ export const WhatsAppShareDialog = ({ open, onOpenChange, batches }: WhatsAppSha
                                       });
                                       setSelectedStockIds(newSelected);
                                     }}
+                                    className="scale-75 sm:scale-100"
                                   />
                                   <span className="text-sm">
                                     {group.totalQty} bundles × {firstEntry.pieces_per_bundle || 0} pcs ({firstEntry.piece_length_meters || 0}m each) = {group.totalPieces} pcs
@@ -541,6 +523,7 @@ export const WhatsAppShareDialog = ({ open, onOpenChange, batches }: WhatsAppSha
                                       });
                                       setSelectedStockIds(newSelected);
                                     }}
+                                    className="scale-75 sm:scale-100"
                                   />
                                   <span className="text-sm">
                                     {group.totalPieces} pcs × {length}m

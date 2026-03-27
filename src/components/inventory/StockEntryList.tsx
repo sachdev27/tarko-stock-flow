@@ -8,22 +8,7 @@ import { CombineSparesDialog } from './CombineSparesDialog';
 import { ScrapDialog } from './ScrapDialog';
 import { useAuth } from '@/contexts/AuthContext';
 
-interface StockEntry {
-  stock_id: string;
-  piece_id?: string;
-  piece_ids?: string[];
-  spare_id?: string;
-  spare_ids?: string[]; // Array of spare piece IDs from backend
-  stock_type: 'FULL_ROLL' | 'CUT_ROLL' | 'BUNDLE' | 'SPARE';
-  quantity: number;
-  status: string;
-  length_per_unit?: number;
-  pieces_per_bundle?: number;
-  piece_length_meters?: number;
-  piece_count?: number;
-  total_available: number;
-  product_type_name: string;
-}
+import { StockEntry } from '@/types/inventory-ui';
 
 interface StockEntryListProps {
   batchId: string;
@@ -42,9 +27,9 @@ export const StockEntryList = ({ stockEntries, onUpdate }: StockEntryListProps) 
 
   // Group by stock type
   const fullRolls = stockEntries.filter(e => e.stock_type === 'FULL_ROLL');
-  const cutRolls = stockEntries.filter(e => e.stock_type === 'CUT_ROLL');
+  const cutRolls = stockEntries.filter(e => e.stock_type === 'CUT_ROLL' || e.stock_type === 'CUT_PIECE');
   const bundles = stockEntries.filter(e => e.stock_type === 'BUNDLE');
-  const spares = stockEntries.filter(e => e.stock_type === 'SPARE');
+  const spares = stockEntries.filter(e => e.stock_type === 'SPARE' || e.stock_type === 'SPARE_PIECES');
 
   // Group full rolls by length (normalize to handle 500 vs 500.0)
   const fullRollsByLength = fullRolls.reduce((acc, entry) => {
@@ -120,6 +105,11 @@ export const StockEntryList = ({ stockEntries, onUpdate }: StockEntryListProps) 
 
   return (
     <div className="space-y-3">
+      {stockEntries.length === 0 && (
+        <div className="text-center py-4 bg-muted/20 rounded-lg border border-dashed border-muted">
+          <p className="text-sm text-muted-foreground">No active stock entries for this variant</p>
+        </div>
+      )}
       {/* Full Rolls - Grouped by length */}
       {Object.entries(fullRollsByLength)
         .sort(([a], [b]) => Number(b) - Number(a)) // Sort by length descending
@@ -130,12 +120,12 @@ export const StockEntryList = ({ stockEntries, onUpdate }: StockEntryListProps) 
           const firstRoll = rollGroup[0];
 
           return (
-            <div key={`roll-${length}`} className="flex items-center justify-between p-3 bg-green-50 rounded-lg border border-green-200">
-              <div className="flex items-center gap-3">
-                <Box className="h-5 w-5 text-green-600" />
+            <div key={`roll-${length}`} className="flex items-center justify-between p-2 sm:p-3 bg-green-50 rounded-lg border border-green-200">
+              <div className="flex items-center gap-2 sm:gap-3">
+                <Box className="h-4 w-4 sm:h-5 sm:w-5 text-green-600 shrink-0" />
                 <div>
-                  <div className="font-medium">{totalQuantity} Full Rolls</div>
-                  <div className="text-sm text-muted-foreground">
+                  <div className="text-sm font-semibold">{totalQuantity} Full Rolls</div>
+                  <div className="text-xs text-muted-foreground">
                     {length}m each • {totalMeters}m total
                   </div>
                 </div>
@@ -153,7 +143,7 @@ export const StockEntryList = ({ stockEntries, onUpdate }: StockEntryListProps) 
                     className="gap-1 text-destructive hover:text-destructive hover:bg-destructive/10"
                   >
                     <Trash2 className="h-4 w-4" />
-                    Scrap
+                    <span className="hidden sm:inline">Scrap</span>
                   </Button>
                 )}
                 <Button
@@ -163,10 +153,10 @@ export const StockEntryList = ({ stockEntries, onUpdate }: StockEntryListProps) 
                     e.stopPropagation();
                     handleCutRoll(firstRoll);
                   }}
-                  className="gap-1"
+                  className="gap-1 h-7 sm:h-9 text-xs sm:text-sm px-2 sm:px-3"
                 >
-                  <Scissors className="h-4 w-4" />
-                  Cut Roll
+                  <Scissors className="h-3 w-3 sm:h-4 sm:w-4" />
+                  <span>Cut</span>
                 </Button>
               </div>
             </div>
@@ -184,13 +174,13 @@ export const StockEntryList = ({ stockEntries, onUpdate }: StockEntryListProps) 
           const firstCut = cutGroup[0];
 
           return (
-            <div key={`cut-${length}`} className="flex items-center justify-between p-3 bg-orange-50 rounded-lg border border-orange-200">
-              <div className="flex items-center gap-3">
-                <Scissors className="h-5 w-5 text-orange-600" />
+            <div key={`cut-${length}`} className="flex items-center justify-between p-2 sm:p-3 bg-orange-50 rounded-lg border border-orange-200">
+              <div className="flex items-center gap-2 sm:gap-3">
+                <Scissors className="h-4 w-4 sm:h-5 sm:w-5 text-orange-600 shrink-0" />
                 <div>
-                  <div className="font-medium">{totalQuantity} Cut {totalQuantity === 1 ? 'Piece' : 'Pieces'}</div>
-                  <div className="text-sm font-mono font-semibold">
-                    {length}m each • {totalMeters.toFixed(2)}m total
+                  <div className="text-sm font-semibold">{totalQuantity} Cut Pieces</div>
+                  <div className="text-xs font-mono font-medium text-muted-foreground">
+                    {length}m each • {totalMeters.toFixed(1)}m total
                   </div>
                 </div>
               </div>
@@ -220,7 +210,7 @@ export const StockEntryList = ({ stockEntries, onUpdate }: StockEntryListProps) 
                   className="gap-1"
                 >
                   <Scissors className="h-4 w-4" />
-                  Cut Further
+                  <span className="hidden sm:inline">Cut Further</span>
                 </Button>
               </div>
             </div>
@@ -241,13 +231,13 @@ export const StockEntryList = ({ stockEntries, onUpdate }: StockEntryListProps) 
           const totalBundles = bundleGroup.reduce((sum, b) => sum + b.quantity, 0);
 
           return (
-            <div key={`bundle-${key}`} className="flex items-center justify-between p-3 bg-purple-50 rounded-lg border border-purple-200">
-              <div className="flex items-center gap-3">
-                <Package className="h-5 w-5 text-purple-600" />
+            <div key={`bundle-${key}`} className="flex items-center justify-between p-2 sm:p-3 bg-purple-50 rounded-lg border border-purple-200">
+              <div className="flex items-center gap-2 sm:gap-3">
+                <Package className="h-4 w-4 sm:h-5 sm:w-5 text-purple-600 shrink-0" />
                 <div>
-                  <div className="font-medium">{totalBundles} Bundles</div>
-                  <div className="text-sm text-muted-foreground">
-                    {size} pieces each • {length}m per piece
+                  <div className="text-sm font-semibold">{totalBundles} Bundles</div>
+                  <div className="text-xs text-muted-foreground">
+                    {size}pcs each • {length}m per piece
                   </div>
                 </div>
               </div>
@@ -277,7 +267,7 @@ export const StockEntryList = ({ stockEntries, onUpdate }: StockEntryListProps) 
                   className="gap-1"
                 >
                   <Scissors className="h-4 w-4" />
-                  Split Bundle
+                  <span className="hidden sm:inline">Split Bundle</span>
                 </Button>
               </div>
             </div>
@@ -302,13 +292,13 @@ export const StockEntryList = ({ stockEntries, onUpdate }: StockEntryListProps) 
             const totalSpares = spareGroup.reduce((sum, s) => sum + (s.piece_count || 0), 0);
 
             return (
-              <div key={`spare-${length}`} className="flex items-center justify-between p-3 bg-amber-50 rounded-lg border border-amber-200">
-                <div className="flex items-center gap-3">
-                  <Box className="h-5 w-5 text-amber-600" />
+              <div key={`spare-${length}`} className="flex items-center justify-between p-2 sm:p-3 bg-amber-50 rounded-lg border border-amber-200">
+                <div className="flex items-center gap-2 sm:gap-3">
+                  <Box className="h-4 w-4 sm:h-5 sm:w-5 text-amber-600 shrink-0" />
                   <div>
-                    <div className="font-medium">{totalSpares} Spare Pieces</div>
-                    <div className="text-sm text-muted-foreground">
-                      {length}m per piece
+                    <div className="text-sm sm:font-medium font-semibold">{totalSpares} Spares</div>
+                    <div className="text-[10px] sm:text-sm text-muted-foreground whitespace-nowrap">
+                      {length}m each
                     </div>
                   </div>
                 </div>
@@ -338,7 +328,7 @@ export const StockEntryList = ({ stockEntries, onUpdate }: StockEntryListProps) 
                     className="gap-1"
                   >
                     <Package2 className="h-4 w-4" />
-                    Bundle Spares
+                    <span className="hidden sm:inline">Bundle Spares</span>
                   </Button>
                 </div>
               </div>

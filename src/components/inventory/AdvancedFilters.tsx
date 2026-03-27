@@ -6,8 +6,9 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { X, Check } from 'lucide-react';
+import { X, Check, Filter } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger, SheetFooter } from '@/components/ui/sheet';
 
 interface AdvancedFiltersProps {
   productTypes: Array<{ id: string; name: string }>;
@@ -57,15 +58,126 @@ export const AdvancedFilters = ({
   // Parameter order: OD, PN, then PE (HDPE) or Type (Sprinkler)
   const parameterOrder = ['OD', 'PN', isHDPE ? 'PE' : isSprinkler ? 'Type' : 'PE'];
 
+  const FilterContent = ({ isMobile = false }) => (
+    <div className={cn("space-y-4", isMobile ? "pb-6" : "flex items-end gap-2 flex-wrap")}>
+      {/* Product Type */}
+      <div className={cn("space-y-1", isMobile ? "" : "min-w-[140px]")}>
+        <Label className="text-xs">Product Type</Label>
+        <Select value={selectedProductType} onValueChange={onProductTypeChange}>
+          <SelectTrigger className="h-9 sm:h-9 text-sm">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Types</SelectItem>
+            {productTypes.map(pt => (
+              <SelectItem key={pt.id} value={pt.id}>
+                {pt.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Brand */}
+      <div className={cn("space-y-1", isMobile ? "" : "min-w-[120px]")} data-brand-filter>
+        <Label className="text-xs">Brand</Label>
+        <Select value={selectedBrand} onValueChange={onBrandChange}>
+          <SelectTrigger className="h-9 sm:h-9 text-sm">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Brands</SelectItem>
+            {brands.map(brand => (
+              <SelectItem key={brand.id} value={brand.id}>
+                {brand.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Parameter Filters */}
+      {parameterOrder.map(param => {
+        const values = availableParameterValues[param] || [];
+        const selectedValue = parameterFilters[param] || '';
+
+        return (
+          <div key={param} className={cn("space-y-1", isMobile ? "" : "min-w-[100px]")} data-param-filters>
+            <Label className="text-xs">{param}</Label>
+            <Popover
+              open={openPopovers[param]}
+              onOpenChange={(open) => setOpenPopovers(prev => ({ ...prev, [param]: open }))}
+            >
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  className="h-9 sm:h-9 text-sm w-full justify-between font-normal"
+                >
+                  {selectedValue || `Select ${param}...`}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[200px] p-0" align={isMobile ? "center" : "start"}>
+                <Command>
+                  <CommandInput placeholder={`Search ${param}...`} />
+                  <CommandList>
+                    <CommandEmpty>No values found.</CommandEmpty>
+                    <CommandGroup>
+                      {values.map((value) => (
+                        <CommandItem
+                          key={value}
+                          value={value}
+                          onSelect={() => {
+                            onParameterFilterChange(param, value === selectedValue ? '' : value);
+                            if (!isMobile) setOpenPopovers(prev => ({ ...prev, [param]: false }));
+                          }}
+                        >
+                          <Check
+                            className={cn(
+                              "mr-2 h-4 w-4",
+                              selectedValue === value ? "opacity-100" : "opacity-0"
+                            )}
+                          />
+                          {value}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+          </div>
+        );
+      })}
+
+      {/* Stock Type */}
+      <div className={cn("space-y-1", isMobile ? "" : "min-w-[120px]")}>
+        <Label className="text-xs">Stock Type</Label>
+        <Select value={selectedStockType} onValueChange={onStockTypeChange}>
+          <SelectTrigger className="h-9 sm:h-9 text-sm">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {stockTypes.map(type => (
+              <SelectItem key={type.value} value={type.value}>
+                {type.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
+  );
+
   return (
-    <div className="space-y-3">
-      {/* Compact single row filters */}
-      <div className="flex items-end gap-2 flex-wrap">
+    <div className="space-y-4">
+      {/* Inline Filters for Mobile & Desktop */}
+      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-6 gap-2 sm:gap-4 p-0.5">
         {/* Product Type */}
-        <div className="space-y-1 min-w-[140px]">
-          <Label className="text-xs">Product Type</Label>
+        <div className="space-y-1">
+          <Label className="text-[10px] sm:text-xs uppercase font-bold text-muted-foreground/70">Type</Label>
           <Select value={selectedProductType} onValueChange={onProductTypeChange}>
-            <SelectTrigger className="h-9 text-sm">
+            <SelectTrigger className="h-8 sm:h-9 text-xs sm:text-sm bg-background border-muted-foreground/20">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -80,10 +192,10 @@ export const AdvancedFilters = ({
         </div>
 
         {/* Brand */}
-        <div className="space-y-1 min-w-[120px]" data-brand-filter>
-          <Label className="text-xs">Brand</Label>
+        <div className="space-y-1">
+          <Label className="text-[10px] sm:text-xs uppercase font-bold text-muted-foreground/70">Brand</Label>
           <Select value={selectedBrand} onValueChange={onBrandChange}>
-            <SelectTrigger className="h-9 text-sm">
+            <SelectTrigger className="h-8 sm:h-9 text-xs sm:text-sm bg-background border-muted-foreground/20">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -97,14 +209,14 @@ export const AdvancedFilters = ({
           </Select>
         </div>
 
-        {/* Parameter Filters with Autocomplete */}
+        {/* Parameter Filters */}
         {parameterOrder.map(param => {
           const values = availableParameterValues[param] || [];
           const selectedValue = parameterFilters[param] || '';
 
           return (
-            <div key={param} className="space-y-1 min-w-[100px]" data-param-filters>
-              <Label className="text-xs">{param}</Label>
+            <div key={param} className="space-y-1">
+              <Label className="text-[10px] sm:text-xs uppercase font-bold text-muted-foreground/70">{param}</Label>
               <Popover
                 open={openPopovers[param]}
                 onOpenChange={(open) => setOpenPopovers(prev => ({ ...prev, [param]: open }))}
@@ -113,14 +225,14 @@ export const AdvancedFilters = ({
                   <Button
                     variant="outline"
                     role="combobox"
-                    className="h-9 text-sm w-full justify-between font-normal"
+                    className="h-8 sm:h-9 text-xs sm:text-sm w-full justify-between font-normal bg-background border-muted-foreground/20"
                   >
-                    {selectedValue || `Select ${param}...`}
+                    {selectedValue || `All ${param}`}
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-[200px] p-0" align="start">
+                <PopoverContent className="w-[180px] p-0" align="start">
                   <Command>
-                    <CommandInput placeholder={`Search ${param}...`} />
+                    <CommandInput placeholder={`Search ${param}...`} className="h-8 text-xs" />
                     <CommandList>
                       <CommandEmpty>No values found.</CommandEmpty>
                       <CommandGroup>
@@ -152,10 +264,10 @@ export const AdvancedFilters = ({
         })}
 
         {/* Stock Type */}
-        <div className="space-y-1 min-w-[120px]">
-          <Label className="text-xs">Stock Type</Label>
+        <div className="space-y-1">
+          <Label className="text-[10px] sm:text-xs uppercase font-bold text-muted-foreground/70">Stock</Label>
           <Select value={selectedStockType} onValueChange={onStockTypeChange}>
-            <SelectTrigger className="h-9 text-sm">
+            <SelectTrigger className="h-8 sm:h-9 text-xs sm:text-sm bg-background border-muted-foreground/20">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -167,19 +279,6 @@ export const AdvancedFilters = ({
             </SelectContent>
           </Select>
         </div>
-
-        {/* Clear Button */}
-        {activeFiltersCount > 0 && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onClearFilters}
-            className="h-9"
-          >
-            <X className="h-3 w-3 mr-1" />
-            Clear ({activeFiltersCount})
-          </Button>
-        )}
       </div>
 
       {/* Active Filters Display */}

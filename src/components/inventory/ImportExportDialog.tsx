@@ -9,33 +9,12 @@ import { toast } from 'sonner';
 import { production as productionAPI } from '@/lib/api-typed';
 import type * as API from '@/types';
 
-interface Batch {
-  id: string;
-  batch_code: string;
-  batch_no: string;
-  current_quantity: number;
-  production_date: string;
-  product_type_name: string;
-  brand_name: string;
-  parameters: Record<string, unknown>;
-  stock_entries: StockEntry[];
-}
-
-interface StockEntry {
-  stock_id: string;
-  stock_type: 'FULL_ROLL' | 'CUT_ROLL' | 'BUNDLE' | 'SPARE';
-  quantity: number;
-  length_per_unit?: number;
-  pieces_per_bundle?: number;
-  piece_length_meters?: number;
-  piece_count?: number;
-  total_available: number;
-}
+import { InventoryBatchUI, StockEntry } from '@/types/inventory-ui';
 
 interface ImportExportDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  batches: Batch[];
+  batches: InventoryBatchUI[];
   productTypes: Array<{ id: string; name: string }>;
   brands: Array<{ id: string; name: string }>;
   onImportComplete: () => void;
@@ -396,7 +375,7 @@ export const ImportExportDialog = ({
       const baseData = {
         'Product Type': batch.product_type_name,
         'Brand': batch.brand_name,
-        'Batch Code': batch.batch_code,
+        'Batch Code': batch.batch_code || batch.batch_no,
         'Batch No': batch.batch_no,
         'Production Date': new Date(batch.production_date).toLocaleDateString('en-IN'),
         ...(batch.parameters as Record<string, string>)

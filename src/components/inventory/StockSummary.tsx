@@ -60,22 +60,24 @@ export const StockSummary = ({ stats, onCardClick }: StockSummaryProps) => {
   ];
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+    <div className="grid grid-cols-3 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-4">
       {statCards.map((stat) => (
         <Card
           key={stat.label}
           className="cursor-pointer hover:shadow-md transition-shadow"
           onClick={() => onCardClick?.(stat.filterType)}
         >
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">
-                  {stat.label}
-                </p>
-                <p className="text-2xl font-bold mt-1">{stat.value}</p>
-              </div>
-              <stat.icon className={`h-8 w-8 ${stat.color}`} />
+          <CardContent className="p-2 sm:pt-6">
+            <div className="flex items-center justify-between gap-1">
+                <div className="flex flex-col">
+                  <span className="text-xl font-bold bg-gradient-to-br from-foreground to-foreground/70 bg-clip-text text-transparent">
+                    {stat.value}
+                  </span>
+                  <span className="text-[11px] sm:text-xs text-muted-foreground font-medium uppercase tracking-tight">
+                    {stat.label}
+                  </span>
+                </div>
+              <stat.icon className={`h-4 w-4 sm:h-8 sm:w-8 ${stat.color} shrink-0`} />
             </div>
           </CardContent>
         </Card>

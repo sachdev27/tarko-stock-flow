@@ -209,9 +209,9 @@ def create_scrap():
                         cursor.execute("""
                             INSERT INTO scrap_pieces (
                                 scrap_item_id, original_piece_id, piece_type,
-                                length_meters
+                                piece_count, length_meters
                             )
-                            VALUES (%s, %s, 'CUT_PIECE', %s)
+                            VALUES (%s, %s, 'CUT_PIECE', 1, %s)
                         """, (scrap_item_id, piece['id'], piece['length_meters']))
 
                     total_quantity += len(pieces)
@@ -593,11 +593,11 @@ def get_scrap_details(scrap_id):
                 item_dict = dict(item)
                 item_dict['id'] = str(item_dict['id'])
                 item_dict['stock_id'] = str(item_dict['stock_id'])
-                item_dict['quantity_scrapped'] = float(item_dict['quantity_scrapped']) if item_dict['quantity_scrapped'] else 0
-                item_dict['length_per_unit'] = float(item_dict['length_per_unit']) if item_dict['length_per_unit'] else None
-                item_dict['piece_length_meters'] = float(item_dict['piece_length_meters']) if item_dict['piece_length_meters'] else None
-                item_dict['original_quantity'] = float(item_dict['original_quantity']) if item_dict['original_quantity'] else 0
-                item_dict['estimated_value'] = float(item_dict['estimated_value']) if item_dict['estimated_value'] else None
+                item_dict['quantity_scrapped'] = float(item_dict['quantity_scrapped'] or 0)
+                item_dict['length_per_unit'] = float(item_dict['length_per_unit']) if item_dict['length_per_unit'] is not None else None
+                item_dict['piece_length_meters'] = float(item_dict['piece_length_meters']) if item_dict['piece_length_meters'] is not None else None
+                item_dict['original_quantity'] = float(item_dict['original_quantity'] or 0)
+                item_dict['estimated_value'] = float(item_dict['estimated_value']) if item_dict['estimated_value'] is not None else None
 
                 # Get associated pieces if CUT_ROLL or SPARE
                 if item['stock_type'] in ['CUT_ROLL', 'SPARE']:
@@ -605,7 +605,7 @@ def get_scrap_details(scrap_id):
                         SELECT
                             piece_type,
                             length_meters,
-                            SUM(piece_count) as total_piece_count,
+                            COALESCE(SUM(piece_count), 0) as total_piece_count,
                             piece_length_meters
                         FROM scrap_pieces
                         WHERE scrap_item_id = %s
@@ -617,9 +617,9 @@ def get_scrap_details(scrap_id):
                     item_dict['pieces'] = [
                         {
                             'piece_type': p['piece_type'],
-                            'length_meters': float(p['length_meters']) if p['length_meters'] else None,
-                            'piece_count': int(p['total_piece_count']),
-                            'piece_length_meters': float(p['piece_length_meters']) if p['piece_length_meters'] else None
+                            'length_meters': float(p['length_meters']) if p['length_meters'] is not None else None,
+                            'piece_count': int(p['total_piece_count'] or 0),
+                            'piece_length_meters': float(p['piece_length_meters']) if p['piece_length_meters'] is not None else None
                         }
                         for p in pieces
                     ]
