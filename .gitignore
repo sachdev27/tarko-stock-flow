@@ -92,6 +92,17 @@ overview.json
 .firebase/
 .firebaserc.backup
 
+# Terraform local state and secrets
+terraform/.terraform/
+terraform/.terraform.lock.hcl
+terraform/terraform.tfstate
+terraform/terraform.tfstate.*
+terraform/terraform.tfvars
+terraform/*.pem
+terraform/*.key
+terraform/*.key.pub
+terraform/fix-docker-compose.sh
+
 # Images and pdf
 *.png
 *.jpg

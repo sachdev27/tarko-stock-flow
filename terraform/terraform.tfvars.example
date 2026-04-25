@@ -1,0 +1,49 @@
+# ─── OCI Credentials ──────────────────────────────────────────────────────────
+# Get these from OCI Console > Profile > API Keys > Add API Key
+tenancy_ocid     = "ocid1.tenancy.oc1..REPLACE"
+user_ocid        = "ocid1.user.oc1..REPLACE"
+fingerprint      = "aa:bb:cc:dd:ee:ff:00:11:22:33:44:55:66:77:88:99"
+private_key_path = "~/.oci/oci_api_key.pem"
+
+# OCI region — pick the one closest to your users:
+#   ap-mumbai-1, ap-hyderabad-1, us-ashburn-1, eu-frankfurt-1, etc.
+region = "ap-mumbai-1"
+
+# ─── Compartment ──────────────────────────────────────────────────────────────
+# Use your tenancy OCID here to deploy in the root compartment (fine for personal use)
+# Or create a dedicated compartment in OCI Console > Identity > Compartments
+compartment_ocid = "ocid1.compartment.oc1..REPLACE"
+
+# ─── Compute Image ────────────────────────────────────────────────────────────
+# Find the correct OCID for Ubuntu 22.04 x86_64 (amd64) in your region:
+#   OCI Console > Compute > Instances > Create Instance > Change Image
+#   Select "Canonical Ubuntu" 22.04, shape = E2.1.Micro, copy the OCID.
+# Image build 2026.03.31-0 was visible in the console — grab the OCID from there.
+instance_image_ocid = "ocid1.image.oc1.ap-mumbai-1.REPLACE"
+
+# ─── Instance sizing ─────────────────────────────────────────────────────────
+# E2.1.Micro is a fixed shape (1 OCPU, 1 GB RAM) — no ocpu/memory vars needed.
+# Always Free: up to 2 x E2.1.Micro instances per tenancy.
+block_volume_size_gb = 50
+
+# ─── SSH ──────────────────────────────────────────────────────────────────────
+ssh_public_key_path  = "~/.ssh/id_rsa.pub"
+ssh_private_key_path = "~/.ssh/id_rsa"
+
+# ─── Secrets (use environment variables or a secrets manager in production) ───
+# You can also export these as:
+#   export TF_VAR_db_password="..."
+#   export TF_VAR_jwt_secret_key="..."
+db_password    = "CHANGE_ME_strong_password_here"
+jwt_secret_key = "CHANGE_ME_min_32_chars_long_secret_key_here"
+
+# ─── Application ──────────────────────────────────────────────────────────────
+app_url      = "https://tarko-inv.web.app"
+cors_origins = "*"
+
+# Cloudflare Tunnel token — leave empty ("") to disable cloudflared service
+tunnel_token = ""
+
+# GitHub PAT to clone the repo on the VM (needed if repo is private)
+# Scope required: repo (read)
+git_token = ""
