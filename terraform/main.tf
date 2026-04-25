@@ -87,10 +87,10 @@ resource "oci_core_security_list" "tarko_sl" {
     }
   }
 
-  # PostgreSQL exposed for external clients (limited to ISP range 223.0.0.0/24)
+  # PostgreSQL exposed for external clients (limited to ISP range 223.185.0.0/16)
   ingress_security_rules {
     protocol  = "6"
-    source    = "223.0.0.0/24"
+    source    = "223.185.0.0/16"
     stateless = false
     tcp_options {
       min = 5432
