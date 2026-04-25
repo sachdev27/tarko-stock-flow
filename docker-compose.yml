@@ -1,26 +1,26 @@
 services:
-  # postgres:
-  #   image: postgres:15-alpine
-  #   container_name: tarko-postgres
-  #   restart: unless-stopped
-  #   environment:
-  #     POSTGRES_DB: tarko_inventory
-  #     POSTGRES_USER: tarko_user
-  #     POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme123}
-  #     PGDATA: /var/lib/postgresql/data/pgdata
-  #   volumes:
-  #     - postgres_data:/var/lib/postgresql/data
-  #     - ./backend/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
-  #     - ./backups:/backups
-  #   ports:
-  #     - "5444:5432"
-  #   healthcheck:
-  #     test: ["CMD-SHELL", "pg_isready -U tarko_user -d tarko_inventory"]
-  #     interval: 10s
-  #     timeout: 5s
-  #     retries: 5
-  #   networks:
-  #     - tarko-network
+  postgres:
+    image: postgres:15-alpine
+    container_name: tarko-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: tarko_inventory
+      POSTGRES_USER: tarko_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme123}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./backups:/backups
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tarko_user -d tarko_inventory"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - tarko-network
 
   backend:
     build:
@@ -55,37 +55,37 @@ services:
       retries: 3
       start_period: 40s
 
-  frontend:
-    build:
-      context: .
-      dockerfile: Dockerfile.frontend
-    container_name: tarko-frontend
-    restart: always
-    environment:
-      VITE_API_URL: ${VITE_API_URL:-http://backend:5500}
-    ports:
-      - "80:80"
-    depends_on:
-      - backend
-    networks:
-      - tarko-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:80"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+  # frontend:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile.frontend
+  #   container_name: tarko-frontend
+  #   restart: always
+  #   environment:
+  #     VITE_API_URL: ${VITE_API_URL:-http://backend:5500}
+  #   ports:
+  #     - "80:80"
+  #   depends_on:
+  #     - backend
+  #   networks:
+  #     - tarko-network
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:80"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
 
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    container_name: tarko-cloudflared
-    restart: unless-stopped
-    command: tunnel run
-    environment:
-      TUNNEL_TOKEN: ${TUNNEL_TOKEN}
-    depends_on:
-      - backend
-    networks:
-      - tarko-network
+  # cloudflared:
+  #   image: cloudflare/cloudflared:latest
+  #   container_name: tarko-cloudflared
+  #   restart: unless-stopped
+  #   command: tunnel run
+  #   environment:
+  #     TUNNEL_TOKEN: ${TUNNEL_TOKEN}
+  #   depends_on:
+  #     - backend
+  #   networks:
+  #     - tarko-network
 
 volumes:
   postgres_data:
