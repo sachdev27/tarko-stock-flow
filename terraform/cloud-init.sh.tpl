@@ -79,7 +79,7 @@ chown -R ubuntu:ubuntu "$APP_DIR"
 cat > "$APP_DIR/.env" <<EOF
 DB_PASSWORD=${db_password}
 JWT_SECRET_KEY=${jwt_secret_key}
-DB_HOST=host.docker.internal
+DB_HOST=postgres
 DB_PORT=5432
 FLASK_ENV=production
 CORS_ORIGINS=${cors_origins}
