@@ -93,17 +93,21 @@ services:
   #     timeout: 10s
   #     retries: 3
 
-  # cloudflared:
-  #   image: cloudflare/cloudflared:latest
-  #   container_name: tarko-cloudflared
-  #   restart: unless-stopped
-  #   command: tunnel run
-  #   environment:
-  #     TUNNEL_TOKEN: ${TUNNEL_TOKEN}
-  #   depends_on:
-  #     - backend
-  #   networks:
-  #     - tarko-network
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: tarko-cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${TUNNEL_TOKEN}
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - tarko-network
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
 
 volumes:
   postgres_data:
