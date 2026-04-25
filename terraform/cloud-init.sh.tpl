@@ -118,6 +118,8 @@ netfilter-persistent save
 
 # ─── Start application ────────────────────────────────────────────────────────
 cd "$APP_DIR"
+export BUILDX_NO_DEFAULT_ATTESTATIONS=1
+export COMPOSE_PARALLEL_LIMIT=1
 docker compose pull --quiet postgres backend || true
 docker compose up -d --build postgres backend
 
