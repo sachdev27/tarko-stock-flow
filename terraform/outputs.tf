@@ -15,7 +15,7 @@ output "instance_ocid" {
 
 output "ssh_command" {
   description = "SSH command to connect to the instance"
-  value       = "ssh -i ${var.ssh_private_key_path} ubuntu@${oci_core_instance.tarko_vm.public_ip}"
+  value       = "ssh -i ${var.ssh_private_key_path} opc@${oci_core_instance.tarko_vm.public_ip}"
 }
 
 output "app_url" {

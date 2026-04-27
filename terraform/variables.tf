@@ -34,20 +34,29 @@ variable "compartment_ocid" {
 
 # ─── Compute ──────────────────────────────────────────────────────────────────
 variable "instance_shape" {
-  description = "OCI compute shape — E2.1.Micro is x86 and Always Free (2 per tenancy)"
+  description = "OCI compute shape — VM.Standard.A1.Flex is Ampere ARM and Always Free eligible"
   type        = string
-  default     = "VM.Standard.E2.1.Micro"
+  default     = "VM.Standard.A1.Flex"
 }
 
-# Ubuntu 22.04 x86_64 — Canonical Ubuntu 22.04 (amd64).
-# Find the OCID for your region:
-#   OCI Console > Compute > Instances > Create Instance > Change Image
-#   Select "Canonical Ubuntu" 22.04, shape = E2.1.Micro, copy the OCID.
+variable "instance_ocpus" {
+  description = "Number of OCPUs for A1 Flex (Always Free target: 1)"
+  type        = number
+  default     = 1
+}
+
+variable "instance_memory_in_gbs" {
+  description = "Memory in GB for A1 Flex (Always Free target: 6)"
+  type        = number
+  default     = 6
+}
+
+# Optional Oracle Linux 9 image OCID override.
+# Leave empty to auto-select latest Oracle Linux 9 image for the chosen shape.
 variable "instance_image_ocid" {
-  description = "OCID of the OS image (x86_64 Ubuntu 22.04 for E2.1.Micro)."
+  description = "Optional OCID of OS image. Empty uses latest Oracle Linux 9 image for the selected shape."
   type        = string
-  # Set this in terraform.tfvars — get it from OCI Console as described above
-  default     = "ocid1.image.oc1.ap-mumbai-1.REPLACE_WITH_YOUR_REGION_IMAGE_OCID"
+  default     = ""
 }
 
 # ─── SSH ──────────────────────────────────────────────────────────────────────
