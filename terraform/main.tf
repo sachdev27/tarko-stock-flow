@@ -22,7 +22,7 @@ data "oci_identity_availability_domains" "ads" {
   compartment_id = var.tenancy_ocid
 }
 
-data "oci_core_images" "oracle_linux_9_a1" {
+data "oci_core_images" "oracle_linux_9" {
   compartment_id           = var.tenancy_ocid
   operating_system         = "Oracle Linux"
   operating_system_version = "9"
@@ -133,21 +133,17 @@ resource "oci_core_subnet" "tarko_subnet" {
   prohibit_public_ip_on_vnic = false
 }
 
-# ─── Compute Instance (Ampere A1 Flex — Always Free eligible) ─────────────────
+# ─── Compute Instance (x86 E2.1.Micro — Always Free) ─────────────────────────
 resource "oci_core_instance" "tarko_vm" {
   compartment_id      = var.compartment_ocid
   availability_domain = local.availability_domain
   display_name        = "tarko-app"
   shape               = var.instance_shape
-
-  shape_config {
-    ocpus         = var.instance_ocpus
-    memory_in_gbs = var.instance_memory_in_gbs
-  }
+  # E2.1.Micro is a fixed shape — no shape_config block required
 
   source_details {
     source_type             = "image"
-    source_id               = var.instance_image_ocid != "" ? var.instance_image_ocid : data.oci_core_images.oracle_linux_9_a1.images[0].id
+    source_id               = var.instance_image_ocid != "" ? var.instance_image_ocid : data.oci_core_images.oracle_linux_9.images[0].id
     boot_volume_size_in_gbs = 50 # free tier includes up to 200 GB total
   }
 
