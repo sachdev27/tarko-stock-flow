@@ -3,9 +3,9 @@ services:
     image: postgres:15-alpine
     container_name: tarko-postgres
     restart: unless-stopped
-    cpus: "${POSTGRES_CPUS:-0.35}"
-    mem_limit: "${POSTGRES_MEM_LIMIT:-256m}"
-    mem_reservation: "${POSTGRES_MEM_RESERVATION:-128m}"
+    cpus: "${POSTGRES_CPUS:-0.30}"
+    mem_limit: "${POSTGRES_MEM_LIMIT:-512m}"
+    mem_reservation: "${POSTGRES_MEM_RESERVATION:-256m}"
     pids_limit: 100
     environment:
       POSTGRES_DB: tarko_inventory
@@ -37,9 +37,9 @@ services:
       dockerfile: Dockerfile
     container_name: tarko-backend
     restart: always
-    cpus: "${BACKEND_CPUS:-0.65}"
-    mem_limit: "${BACKEND_MEM_LIMIT:-448m}"
-    mem_reservation: "${BACKEND_MEM_RESERVATION:-256m}"
+    cpus: "${BACKEND_CPUS:-0.60}"
+    mem_limit: "${BACKEND_MEM_LIMIT:-1024m}"
+    mem_reservation: "${BACKEND_MEM_RESERVATION:-512m}"
     pids_limit: 200
     environment:
       DATABASE_URL: postgresql://tarko_user:${DB_PASSWORD:-changeme123}@${DB_HOST:-postgres}:${DB_PORT:-5432}/tarko_inventory
@@ -97,6 +97,10 @@ services:
     image: cloudflare/cloudflared:latest
     container_name: tarko-cloudflared
     restart: unless-stopped
+    cpus: "${CLOUDFLARED_CPUS:-0.10}"
+    mem_limit: "${CLOUDFLARED_MEM_LIMIT:-128m}"
+    mem_reservation: "${CLOUDFLARED_MEM_RESERVATION:-64m}"
+    pids_limit: 100
     command: tunnel --no-autoupdate run --token ${TUNNEL_TOKEN}
     depends_on:
       backend:
