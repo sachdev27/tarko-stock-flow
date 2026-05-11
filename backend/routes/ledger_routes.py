@@ -70,7 +70,7 @@ def _build_base_ledger_events_cte(product_variant_id, include_reverted, is_lengt
             -- Batch-level transactions (PRODUCTION, SALE, etc.)
             SELECT
                 CONCAT('txn_', t.id) AS event_id,
-                t.created_at AS event_time,
+                COALESCE(t.transaction_date, t.created_at) AS event_time,
                 t.transaction_type::text AS event_type,
                 'transactions'::text AS source_table,
                 t.id::text AS source_id,
@@ -96,6 +96,7 @@ def _build_base_ledger_events_cte(product_variant_id, include_reverted, is_lengt
             LEFT JOIN users u ON t.created_by = u.id
             WHERE t.deleted_at IS NULL
               AND b.product_variant_id = %s
+              AND b.status != 'REVERTED'
 
             UNION ALL
 
@@ -141,6 +142,7 @@ def _build_base_ledger_events_cte(product_variant_id, include_reverted, is_lengt
             LEFT JOIN users u ON it.created_by = u.id
             WHERE it.transaction_type IN ('CUT_ROLL', 'SPLIT_BUNDLE', 'COMBINE_SPARES')
               AND b.product_variant_id = %s
+              AND b.status != 'REVERTED'
               AND (%s OR it.reverted_at IS NULL)
 
             UNION ALL
@@ -148,7 +150,7 @@ def _build_base_ledger_events_cte(product_variant_id, include_reverted, is_lengt
             -- Dispatch movement (outgoing)
             SELECT
                 CONCAT('dispatch_item_', di.id) AS event_id,
-                d.created_at AS event_time,
+                COALESCE(d.dispatch_date, d.created_at) AS event_time,
                 CASE
                     WHEN d.reverted_at IS NOT NULL THEN 'DISPATCH_REVERTED'
                     ELSE 'DISPATCH'
@@ -196,6 +198,7 @@ def _build_base_ledger_events_cte(product_variant_id, include_reverted, is_lengt
                 d.dispatch_number::text AS reference_no,
                 COALESCE(u.full_name, u.username, u.email) AS actor_name,
                 jsonb_build_object(
+                    'dispatch_item_id', di.id,
                     'dispatch_status', d.status,
                     'dispatch_date', d.dispatch_date,
                     'item_type', di.item_type,
@@ -229,6 +232,7 @@ def _build_base_ledger_events_cte(product_variant_id, include_reverted, is_lengt
             LEFT JOIN users u ON d.created_by = u.id
             WHERE d.deleted_at IS NULL
               AND di.product_variant_id = %s
+              AND (b.status IS NULL OR b.status != 'REVERTED')
               AND (%s OR d.reverted_at IS NULL)
 
             UNION ALL
@@ -236,7 +240,7 @@ def _build_base_ledger_events_cte(product_variant_id, include_reverted, is_lengt
             -- Return movement (incoming)
             SELECT
                 CONCAT('return_item_', ri.id) AS event_id,
-                r.created_at AS event_time,
+                COALESCE(r.return_date, r.created_at) AS event_time,
                 CASE
                     WHEN r.reverted_at IS NOT NULL THEN 'RETURN_REVERTED'
                     ELSE 'RETURN'
@@ -308,7 +312,7 @@ def _build_base_ledger_events_cte(product_variant_id, include_reverted, is_lengt
             -- Scrap movement (outgoing)
             SELECT
                 CONCAT('scrap_item_', si.id) AS event_id,
-                s.created_at AS event_time,
+                COALESCE(s.scrap_date, s.created_at) AS event_time,
                 CASE
                     WHEN COALESCE(s.status, 'SCRAPPED') = 'REVERTED' THEN 'SCRAP_REVERTED'
                     ELSE 'SCRAP'
@@ -373,6 +377,7 @@ def _build_base_ledger_events_cte(product_variant_id, include_reverted, is_lengt
             LEFT JOIN users u ON s.created_by = u.id
             WHERE s.deleted_at IS NULL
               AND si.product_variant_id = %s
+              AND (b.status IS NULL OR b.status != 'REVERTED')
               AND (%s OR COALESCE(s.status, 'SCRAPPED') != 'REVERTED')
         )
     """, [
@@ -1018,6 +1023,7 @@ def get_product_current_stock(product_variant_id):
                       AND b.deleted_at IS NULL
                       AND ist.deleted_at IS NULL
                       AND ist.quantity > 0
+                      AND COALESCE(ist.status, 'IN_STOCK') = 'IN_STOCK'
                 """,
                 (product_variant_id_str,)
             )
@@ -1056,8 +1062,10 @@ def get_product_current_stock(product_variant_id):
                     JOIN batches b ON ist.batch_id = b.id
                     WHERE b.product_variant_id = %s
                       AND b.deleted_at IS NULL
+                      AND b.status != 'REVERTED'
                       AND ist.deleted_at IS NULL
                       AND ist.quantity > 0
+                      AND COALESCE(ist.status, 'IN_STOCK') = 'IN_STOCK'
                 """,
                 (product_variant_id_str,)
             )
@@ -1078,8 +1086,10 @@ def get_product_current_stock(product_variant_id):
                 JOIN batches b ON ist.batch_id = b.id
                 WHERE b.product_variant_id = %s
                   AND b.deleted_at IS NULL
+                  AND b.status != 'REVERTED'
                   AND ist.deleted_at IS NULL
                   AND ist.quantity > 0
+                  AND COALESCE(ist.status, 'IN_STOCK') = 'IN_STOCK'
             """,
             (product_variant_id_str,)
         )
@@ -1096,6 +1106,7 @@ def get_product_current_stock(product_variant_id):
                   AND hcp.status = 'IN_STOCK'
                   AND ist.deleted_at IS NULL
                   AND b.deleted_at IS NULL
+                  AND b.status != 'REVERTED'
             """,
             (product_variant_id_str,)
         )

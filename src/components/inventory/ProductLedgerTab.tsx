@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
-import { Activity, ArrowDownCircle, ArrowUpCircle, Eye, RefreshCw, TrendingUp } from 'lucide-react';
+import { Activity, ArrowDownCircle, ArrowUpCircle, Eye, RefreshCw, TrendingUp, ChevronDown } from 'lucide-react';
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 import { ledger as ledgerAPI } from '@/lib/api-typed';
@@ -13,7 +13,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
 
@@ -26,6 +25,11 @@ interface LedgerVariantOption {
 
 interface ProductLedgerTabProps {
   variants: LedgerVariantOption[];
+}
+
+interface DateRangeState {
+  startDate: string;
+  endDate: string;
 }
 
 const chartColors = {
@@ -72,6 +76,42 @@ const formatWithUnit = (value: number | string | undefined | null, unit: string)
   return `${formatNumber(n)} ${pluralizeUnit(unit, n)}`;
 };
 
+const LENGTH_SCALES = [
+  { unit: 'm', factor: 1 },
+  { unit: 'km', factor: 1000 },
+  { unit: 'Mm', factor: 1_000_000 },
+];
+
+const formatAdaptiveWithUnit = (
+  value: number | string | undefined | null,
+  unit: string,
+  options?: { showBaseForScaled?: boolean }
+) => {
+  const n = Number(value || 0);
+  if (!Number.isFinite(n)) return `0 ${unit}`;
+
+  if (unit !== 'm') {
+    return formatWithUnit(n, unit);
+  }
+
+  const abs = Math.abs(n);
+  let selected = LENGTH_SCALES[0];
+  for (const scale of LENGTH_SCALES) {
+    if (abs >= scale.factor) {
+      selected = scale;
+    }
+  }
+
+  const scaledValue = n / selected.factor;
+  const scaledText = `${formatNumber(scaledValue)} ${selected.unit}`;
+
+  if (selected.unit !== 'm' && options?.showBaseForScaled) {
+    return `${scaledText} (${formatNumber(n)} m)`;
+  }
+
+  return scaledText;
+};
+
 const getRangeDefaults = () => {
   const end = new Date();
   const start = new Date();
@@ -88,6 +128,19 @@ const toRangeISO = (date: string, endOfDay = false) => {
   const suffix = endOfDay ? 'T23:59:59' : 'T00:00:00';
   return `${date}${suffix}`;
 };
+
+const paddedDomain: [(dataMin: number) => number, (dataMax: number) => number] = [
+  (dataMin: number) => {
+    const min = Number.isFinite(dataMin) ? dataMin : 0;
+    const pad = Math.max(10, Math.abs(min) * 0.1);
+    return Math.min(0, min - pad);
+  },
+  (dataMax: number) => {
+    const max = Number.isFinite(dataMax) ? dataMax : 0;
+    const pad = Math.max(10, Math.abs(max) * 0.1);
+    return max + pad;
+  },
+];
 
 const LEDGER_VARIANT_STORAGE_KEY = 'inventory-ledger:selected-variant-id';
 
@@ -111,19 +164,19 @@ const ProductLedgerTab = ({ variants }: ProductLedgerTabProps) => {
     return (window.localStorage.getItem(LEDGER_VARIANT_STORAGE_KEY) || '') as API.UUID;
   });
   const [granularity, setGranularity] = useState<API.LedgerGranularity>('day');
-  const [includeReverted, setIncludeReverted] = useState(false);
   const [events, setEvents] = useState<API.ProductLedgerEvent[]>([]);
   const [timeseries, setTimeseries] = useState<API.ProductLedgerTimeseriesPoint[]>([]);
   const [summary, setSummary] = useState<API.ProductLedgerEventsResponse['summary'] | null>(null);
   const [currentStock, setCurrentStock] = useState<API.ProductLedgerCurrentStockResponse | null>(null);
   const [baseUnit, setBaseUnit] = useState<'m' | 'pcs'>('m');
   const [loading, setLoading] = useState(false);
-  const [range, setRange] = useState(getRangeDefaults);
+  const [range, setRange] = useState<DateRangeState>(getRangeDefaults);
   const [selectedEvent, setSelectedEvent] = useState<API.ProductLedgerEvent | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [eventDetails, setEventDetails] = useState<API.ProductLedgerEventDetailsResponse | null>(null);
   const [eventDetailsCache, setEventDetailsCache] = useState<Record<string, API.ProductLedgerEventDetailsResponse>>({});
+  const [dispatchDestinationsExpanded, setDispatchDestinationsExpanded] = useState(false);
 
   const variantComboboxOptions = useMemo(() => {
     return variants
@@ -185,6 +238,23 @@ const ProductLedgerTab = ({ variants }: ProductLedgerTabProps) => {
     [variants, selectedVariantId]
   );
 
+  const chartData = useMemo(
+    () =>
+      (timeseries || []).map((point) => ({
+        ...point,
+        total_in: Number(point.total_in || 0),
+        total_out: Number(point.total_out || 0),
+        net_change: Number(point.net_change || 0),
+        produced: Number(point.produced || 0),
+        dispatched: Number(point.dispatched || 0),
+        returned: Number(point.returned || 0),
+        scrapped: Number(point.scrapped || 0),
+        transformed_out: Number(point.transformed_out || 0),
+        running_balance: Number(point.running_balance || 0),
+      })),
+    [timeseries]
+  );
+
   const formatVariantLabel = (option: { id: string; productTypeName: string; brandName: string; parameters: Record<string, unknown> }) => {
     return `${option.productTypeName} | ${option.brandName} | ${Object.entries(option.parameters)
       .map(([k, v]) => `${k}:${String(v)}`)
@@ -214,7 +284,7 @@ const ProductLedgerTab = ({ variants }: ProductLedgerTabProps) => {
       if (customerName) shortParts.push(`Customer: ${customerName}`);
       if (invoiceNo) shortParts.push(`Invoice: ${invoiceNo}`);
     } else if (eventType.includes('PRODUCTION')) {
-      shortParts.push(`Produced ${formatWithUnit(event.quantity_in, inferBaseUnit(selectedVariant?.productTypeName))}`);
+      shortParts.push(`Produced ${formatAdaptiveWithUnit(event.quantity_in, inferBaseUnit(selectedVariant?.productTypeName), { showBaseForScaled: true })}`);
     } else if (eventType.includes('CUT_ROLL')) {
       const fromStockType = asText(meta.from_stock_type);
       const toStockType = asText(meta.to_stock_type);
@@ -271,29 +341,29 @@ const ProductLedgerTab = ({ variants }: ProductLedgerTabProps) => {
       outUnit = mapStockUnit(fromType);
     }
 
-    const inText = Number(event.quantity_in || 0) > 0 ? formatWithUnit(event.quantity_in, inUnit) : '-';
-    const outText = Number(event.quantity_out || 0) > 0 ? formatWithUnit(event.quantity_out, outUnit) : '-';
+    const inText = Number(event.quantity_in || 0) > 0 ? formatAdaptiveWithUnit(event.quantity_in, inUnit, { showBaseForScaled: true }) : '-';
+    const outText = Number(event.quantity_out || 0) > 0 ? formatAdaptiveWithUnit(event.quantity_out, outUnit, { showBaseForScaled: true }) : '-';
 
     const changeValue = Number(event.signed_change || 0);
     let changeText = '-';
     if (changeValue > 0 && Number(event.quantity_out || 0) > 0 && inUnit !== outUnit) {
-      changeText = `+${formatWithUnit(event.quantity_in, inUnit)} / -${formatWithUnit(event.quantity_out, outUnit)}`;
+      changeText = `+${formatAdaptiveWithUnit(event.quantity_in, inUnit, { showBaseForScaled: true })} / -${formatAdaptiveWithUnit(event.quantity_out, outUnit, { showBaseForScaled: true })}`;
     } else if (changeValue > 0) {
-      changeText = `+${formatWithUnit(changeValue, inUnit)}`;
+      changeText = `+${formatAdaptiveWithUnit(changeValue, inUnit, { showBaseForScaled: true })}`;
     } else if (changeValue < 0) {
-      changeText = `-${formatWithUnit(Math.abs(changeValue), outUnit)}`;
+      changeText = `-${formatAdaptiveWithUnit(Math.abs(changeValue), outUnit, { showBaseForScaled: true })}`;
     }
 
     const baseChange = Number(event.base_signed_change || 0);
     const baseAbs = Math.abs(baseChange);
-    const baseText = baseAbs > 0 ? `${baseChange > 0 ? '+' : '-'}${formatWithUnit(baseAbs, baseUnit)}` : '-';
+    const baseText = baseAbs > 0 ? `${baseChange > 0 ? '+' : '-'}${formatAdaptiveWithUnit(baseAbs, baseUnit, { showBaseForScaled: true })}` : '-';
 
     let outWithBase = outText;
     let changeWithBase = changeText;
 
     if (eventType.includes('DISPATCH') || eventType.includes('RETURN') || eventType.includes('SCRAP')) {
       if (baseAbs > 0) {
-        outWithBase = outText === '-' ? '-' : `${outText} (${formatWithUnit(baseAbs, baseUnit)})`;
+        outWithBase = outText === '-' ? '-' : `${outText} (${formatAdaptiveWithUnit(baseAbs, baseUnit, { showBaseForScaled: true })})`;
         changeWithBase = changeText === '-' ? baseText : `${changeText} (${baseText})`;
       }
     }
@@ -322,7 +392,7 @@ const ProductLedgerTab = ({ variants }: ProductLedgerTabProps) => {
       const itemType = String(meta.item_type || '').toUpperCase();
       const qty = Number(meta.quantity || 0);
       const pieceCount = Number(meta.piece_count || 0);
-      const lengthMeters = Number(meta.length_meters || 0);
+      const lengthMeters = Number(meta.length_meters_total || meta.length_meters || 0);
 
       const current = destinationMap.get(name) || {
         name,
@@ -393,25 +463,24 @@ const ProductLedgerTab = ({ variants }: ProductLedgerTabProps) => {
     }
   };
 
-  const fetchLedger = async () => {
+  const fetchLedger = async (rangeOverride?: DateRangeState) => {
     if (!selectedVariantId) return;
 
     try {
       setLoading(true);
-      const startDate = toRangeISO(range.startDate, false);
-      const endDate = toRangeISO(range.endDate, true);
+      const effectiveRange = rangeOverride || range;
+      const startDate = toRangeISO(effectiveRange.startDate, false);
+      const endDate = toRangeISO(effectiveRange.endDate, true);
 
       const [eventsResponse, timeseriesResponse, currentStockResponse] = await Promise.all([
         ledgerAPI.getProductEvents(selectedVariantId, {
           start_date: startDate,
           end_date: endDate,
-          include_reverted: includeReverted,
           limit: 300,
         }),
         ledgerAPI.getProductTimeseries(selectedVariantId, {
           start_date: startDate,
           end_date: endDate,
-          include_reverted: includeReverted,
           granularity,
         }),
         ledgerAPI.getCurrentStock(selectedVariantId),
@@ -432,10 +501,25 @@ const ProductLedgerTab = ({ variants }: ProductLedgerTabProps) => {
     }
   };
 
+  const drillDownToDate = async (bucketTime: string) => {
+    const parsed = new Date(bucketTime);
+    if (Number.isNaN(parsed.getTime())) return;
+
+    const day = format(parsed, 'yyyy-MM-dd');
+    const sameDayRange: DateRangeState = {
+      startDate: day,
+      endDate: day,
+    };
+
+    setRange(sameDayRange);
+    await fetchLedger(sameDayRange);
+    toast.info(`Showing ledger for ${format(parsed, 'dd MMM yyyy')}`);
+  };
+
   useEffect(() => {
     fetchLedger();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedVariantId, granularity, includeReverted]);
+  }, [selectedVariantId, granularity]);
 
   if (variants.length === 0) {
     return (
@@ -550,14 +634,9 @@ const ProductLedgerTab = ({ variants }: ProductLedgerTabProps) => {
             </div>
           </div>
 
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
             <div className="flex items-center gap-2">
-              <Switch id="include-reverted" checked={includeReverted} onCheckedChange={setIncludeReverted} />
-              <Label htmlFor="include-reverted">Include reverted records</Label>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Button variant="outline" onClick={fetchLedger} disabled={loading}>
+              <Button variant="outline" onClick={() => { void fetchLedger(); }} disabled={loading}>
                 <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
                 Apply
               </Button>
@@ -581,31 +660,31 @@ const ProductLedgerTab = ({ variants }: ProductLedgerTabProps) => {
             <Card>
               <CardContent className="p-4">
                 <div className="text-xs text-muted-foreground">Opening ({baseUnit})</div>
-                <div className="text-lg font-semibold">{formatWithUnit(summary.opening_balance, baseUnit)}</div>
+                <div className="text-lg font-semibold">{formatAdaptiveWithUnit(summary.opening_balance, baseUnit, { showBaseForScaled: true })}</div>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
                 <div className="text-xs text-muted-foreground">Inflow ({baseUnit})</div>
-                <div className="text-lg font-semibold text-emerald-600">+{formatWithUnit(summary.total_in, baseUnit)}</div>
+                <div className="text-lg font-semibold text-emerald-600">+{formatAdaptiveWithUnit(summary.total_in, baseUnit, { showBaseForScaled: true })}</div>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
                 <div className="text-xs text-muted-foreground">Outflow ({baseUnit})</div>
-                <div className="text-lg font-semibold text-red-600">-{formatWithUnit(summary.total_out, baseUnit)}</div>
+                <div className="text-lg font-semibold text-red-600">-{formatAdaptiveWithUnit(summary.total_out, baseUnit, { showBaseForScaled: true })}</div>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
                 <div className="text-xs text-muted-foreground">Net ({baseUnit})</div>
-                <div className="text-lg font-semibold">{formatWithUnit(summary.net_change, baseUnit)}</div>
+                <div className="text-lg font-semibold">{formatAdaptiveWithUnit(summary.net_change, baseUnit, { showBaseForScaled: true })}</div>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
                 <div className="text-xs text-muted-foreground">Closing ({baseUnit})</div>
-                <div className="text-lg font-semibold">{formatWithUnit(summary.closing_balance, baseUnit)}</div>
+                <div className="text-lg font-semibold">{formatAdaptiveWithUnit(summary.closing_balance, baseUnit, { showBaseForScaled: true })}</div>
               </CardContent>
             </Card>
             <Card>
@@ -618,7 +697,7 @@ const ProductLedgerTab = ({ variants }: ProductLedgerTabProps) => {
 
           <Card>
             <CardContent className="p-3 text-xs text-muted-foreground">
-              Reconciliation: {formatWithUnit(summary.opening_balance, baseUnit)} + {formatWithUnit(summary.total_in, baseUnit)} - {formatWithUnit(summary.total_out, baseUnit)} = {formatWithUnit(summary.closing_balance, baseUnit)}
+              Reconciliation: {formatAdaptiveWithUnit(summary.opening_balance, baseUnit, { showBaseForScaled: true })} + {formatAdaptiveWithUnit(summary.total_in, baseUnit, { showBaseForScaled: true })} - {formatAdaptiveWithUnit(summary.total_out, baseUnit, { showBaseForScaled: true })} = {formatAdaptiveWithUnit(summary.closing_balance, baseUnit, { showBaseForScaled: true })}
             </CardContent>
           </Card>
         </div>
@@ -633,7 +712,7 @@ const ProductLedgerTab = ({ variants }: ProductLedgerTabProps) => {
             <div className="grid grid-cols-2 gap-3 md:grid-cols-6">
               <div className="rounded border p-2">
                 <div className="text-[11px] text-muted-foreground">{(currentStock.base_unit || baseUnit) === 'm' ? 'Current Length' : 'Current Qty'}</div>
-                <div className="text-sm font-semibold">{formatWithUnit(currentStock.total_quantity, currentStock.base_unit || baseUnit)}</div>
+                <div className="text-sm font-semibold">{formatAdaptiveWithUnit(currentStock.total_quantity, currentStock.base_unit || baseUnit, { showBaseForScaled: true })}</div>
               </div>
               <div className="rounded border p-2">
                 <div className="text-[11px] text-muted-foreground">Full Roll</div>
@@ -670,12 +749,12 @@ const ProductLedgerTab = ({ variants }: ProductLedgerTabProps) => {
               return (
                 <div className="mt-2 rounded border bg-muted/20 p-2 text-[11px]">
                   <span className="text-muted-foreground">Ledger closing vs live now: </span>
-                  <span className="font-medium">{formatWithUnit(ledgerClosing, liveUnit)}</span>
+                  <span className="font-medium">{formatAdaptiveWithUnit(ledgerClosing, liveUnit, { showBaseForScaled: true })}</span>
                   <span className="text-muted-foreground"> vs </span>
-                  <span className="font-medium">{formatWithUnit(liveNow, liveUnit)}</span>
+                  <span className="font-medium">{formatAdaptiveWithUnit(liveNow, liveUnit, { showBaseForScaled: true })}</span>
                   <span className="text-muted-foreground"> (gap: </span>
                   <span className={`font-medium ${gap > 0 ? 'text-emerald-600' : gap < 0 ? 'text-red-600' : ''}`}>
-                    {gap > 0 ? '+' : gap < 0 ? '-' : ''}{formatWithUnit(gapAbs, liveUnit)}
+                    {gap > 0 ? '+' : gap < 0 ? '-' : ''}{formatAdaptiveWithUnit(gapAbs, liveUnit, { showBaseForScaled: true })}
                   </span>
                   <span className="text-muted-foreground">)</span>
                 </div>
@@ -696,15 +775,15 @@ const ProductLedgerTab = ({ variants }: ProductLedgerTabProps) => {
           <CardContent>
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={timeseries}>
+                <LineChart data={chartData} margin={{ top: 12, right: 16, left: 16, bottom: 8 }}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="bucket_time" tickFormatter={(value) => format(new Date(value), 'dd MMM')} />
-                  <YAxis />
+                  <XAxis dataKey="bucket_time" tickFormatter={(value) => format(new Date(value), 'dd MMM')} interval="preserveStartEnd" />
+                  <YAxis width={72} domain={paddedDomain} allowDataOverflow={false} tickFormatter={(value) => formatNumber(Number(value))} />
                   <Tooltip
                     formatter={(value: number, name: string) => [formatNumber(value), name]}
                     labelFormatter={(value) => format(new Date(value), 'dd MMM yyyy HH:mm')}
                   />
-                  <Line type="monotone" dataKey="running_balance" stroke={chartColors.balance} strokeWidth={2} dot={false} />
+                  <Line type="linear" dataKey="running_balance" stroke={chartColors.balance} strokeWidth={2} dot={{ r: 2 }} connectNulls />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -716,12 +795,22 @@ const ProductLedgerTab = ({ variants }: ProductLedgerTabProps) => {
             <CardTitle className="text-base">Produced / Dispatched / Returned / Scrapped</CardTitle>
           </CardHeader>
           <CardContent>
+            <div className="mb-2 text-[11px] text-muted-foreground">Tip: click any bar/date bucket to filter ledger to that specific day.</div>
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={timeseries}>
+                <BarChart
+                  data={chartData}
+                  margin={{ top: 12, right: 16, left: 16, bottom: 8 }}
+                  onClick={(state) => {
+                    const activeLabel = state?.activeLabel;
+                    if (typeof activeLabel === 'string' && activeLabel.trim()) {
+                      void drillDownToDate(activeLabel);
+                    }
+                  }}
+                >
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="bucket_time" tickFormatter={(value) => format(new Date(value), 'dd MMM')} />
-                  <YAxis />
+                  <XAxis dataKey="bucket_time" tickFormatter={(value) => format(new Date(value), 'dd MMM')} interval="preserveStartEnd" />
+                  <YAxis width={72} domain={paddedDomain} allowDataOverflow={false} tickFormatter={(value) => formatNumber(Number(value))} />
                   <Tooltip
                     formatter={(value: number, name: string) => [formatNumber(value), name]}
                     labelFormatter={(value) => format(new Date(value), 'dd MMM yyyy HH:mm')}
@@ -738,33 +827,40 @@ const ProductLedgerTab = ({ variants }: ProductLedgerTabProps) => {
       </div>
 
       <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm">Dispatch Destinations (Compact)</CardTitle>
+        <CardHeader className="pb-2 cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => setDispatchDestinationsExpanded(!dispatchDestinationsExpanded)}>
+          <CardTitle className="text-sm flex items-center gap-2">
+            <ChevronDown
+              className={`h-4 w-4 transition-transform ${dispatchDestinationsExpanded ? 'rotate-0' : '-rotate-90'}`}
+            />
+            Dispatch Destinations (Compact)
+          </CardTitle>
         </CardHeader>
-        <CardContent>
-          {dispatchDestinations.length === 0 ? (
-            <div className="text-sm text-muted-foreground">No dispatches in selected range.</div>
-          ) : (
-            <div className="space-y-1.5">
-              {dispatchDestinations.map((destination) => (
-                <div key={destination.name} className="rounded-md border px-2.5 py-2">
-                  <div className="grid grid-cols-1 gap-1 md:grid-cols-6 md:items-center">
-                    <div className="font-medium md:col-span-2 truncate" title={destination.name}>{destination.name}</div>
-                    <div className="text-xs text-muted-foreground">{destination.eventCount} dispatches</div>
-                    <div className="text-xs text-muted-foreground">{formatNumber(destination.totalRolls)} rolls</div>
-                    <div className="text-xs text-muted-foreground">{formatNumber(destination.totalLengthMeters)} m</div>
-                    <div className="text-xs text-muted-foreground">
-                      {destination.lastDispatchAt ? format(new Date(destination.lastDispatchAt), 'dd MMM HH:mm') : '-'}
+        {dispatchDestinationsExpanded && (
+          <CardContent>
+            {dispatchDestinations.length === 0 ? (
+              <div className="text-sm text-muted-foreground">No dispatches in selected range.</div>
+            ) : (
+              <div className="space-y-1.5">
+                {dispatchDestinations.map((destination) => (
+                  <div key={destination.name} className="rounded-md border px-2.5 py-2">
+                    <div className="grid grid-cols-1 gap-1 md:grid-cols-6 md:items-center">
+                      <div className="font-medium md:col-span-2 truncate" title={destination.name}>{destination.name}</div>
+                      <div className="text-xs text-muted-foreground">{destination.eventCount} dispatches</div>
+                      <div className="text-xs text-muted-foreground">{formatNumber(destination.totalRolls)} rolls</div>
+                      <div className="text-xs text-muted-foreground">{formatNumber(destination.totalLengthMeters)} m</div>
+                      <div className="text-xs text-muted-foreground">
+                        {destination.lastDispatchAt ? format(new Date(destination.lastDispatchAt), 'dd MMM HH:mm') : '-'}
+                      </div>
+                    </div>
+                    <div className="mt-1 text-[11px] text-muted-foreground line-clamp-1" title={destination.references.join(', ')}>
+                      {destination.references.join(', ')}
                     </div>
                   </div>
-                  <div className="mt-1 text-[11px] text-muted-foreground line-clamp-1" title={destination.references.join(', ')}>
-                    {destination.references.join(', ')}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        )}
       </Card>
 
       <Card>
@@ -830,7 +926,7 @@ const ProductLedgerTab = ({ variants }: ProductLedgerTabProps) => {
                             {displayValues.changeText}
                           </span>
                         </TableCell>
-                        <TableCell className="text-right font-medium">{formatWithUnit(event.balance_after, baseUnit)}</TableCell>
+                        <TableCell className="text-right font-medium">{formatAdaptiveWithUnit(event.balance_after, baseUnit, { showBaseForScaled: true })}</TableCell>
                         <TableCell className="max-w-[180px] truncate" title={event.actor_name || '-'}>
                           {event.actor_name || '-'}
                         </TableCell>
@@ -910,7 +1006,7 @@ const ProductLedgerTab = ({ variants }: ProductLedgerTabProps) => {
                     <div>Out: <span className="font-medium text-red-600">{displayValues.outText}</span></div>
                     <div>Change: <span className="font-medium">{displayValues.changeText}</span></div>
                     <div>Base change ({baseUnit}): <span className="font-medium">{displayValues.baseText}</span></div>
-                    <div>Balance after: <span className="font-medium">{formatWithUnit(selectedEvent.balance_after, baseUnit)}</span></div>
+                    <div>Balance after: <span className="font-medium">{formatAdaptiveWithUnit(selectedEvent.balance_after, baseUnit, { showBaseForScaled: true })}</span></div>
                   </div>
                 </div>
 
@@ -955,34 +1051,58 @@ const ProductLedgerTab = ({ variants }: ProductLedgerTabProps) => {
                     {items.length > 0 ? (
                       <div className="mt-3 space-y-2">
                         <div className="text-xs text-muted-foreground">Dispatch items</div>
-                        {items.map((item, idx) => (
-                          <div
-                            key={`${selectedEvent.event_id}-dispatch-item-${idx}`}
-                            className={`rounded border p-2 ${
-                              String(item.item_type || '').toUpperCase() === String(meta.item_type || '').toUpperCase() &&
-                              Number(item.quantity || 0) === Number(meta.quantity || 0) &&
-                              Number(item.length_meters || 0) === Number(meta.length_meters || 0)
-                                ? 'border-emerald-500 bg-emerald-50/40'
-                                : ''
-                            }`}
-                          >
-                            <div className="font-medium">{String(item.item_type || 'Item')}</div>
-                            <div className="text-xs text-muted-foreground">
-                              Qty: {formatNumber(Number(item.quantity || 0))} | Length: {item.length_meters ? `${formatNumber(Number(item.length_meters))} m` : '-'} | Pieces: {formatNumber(Number(item.piece_count || 0))}
+                        {(() => {
+                          const selectedDispatchItemId = String(meta.dispatch_item_id || '').trim();
+                          const isMatch = (item: Record<string, unknown>) => (
+                            selectedDispatchItemId
+                              ? String(item.id || '').trim() === selectedDispatchItemId
+                              : (
+                                  String(item.item_type || '').toUpperCase() === String(meta.item_type || '').toUpperCase() &&
+                                  Number(item.quantity || 0) === Number(meta.quantity || 0) &&
+                                  Number(item.length_meters || 0) === Number(meta.length_meters || 0)
+                                )
+                          );
+
+                          const matchedItems = items.filter(isMatch);
+                          const otherItems = items.filter((item) => !isMatch(item));
+
+                          const renderItem = (item: Record<string, unknown>, key: string, highlight = false) => (
+                            <div key={key} className={`rounded border p-2 ${highlight ? 'border-emerald-500 bg-emerald-50/40' : ''}`}>
+                              <div className="font-medium">{String(item.item_type || 'Item')}</div>
+                              <div className="text-xs text-muted-foreground">
+                                Qty: {formatNumber(Number(item.quantity || 0))} | Length: {item.length_meters ? `${formatNumber(Number(item.length_meters))} m` : '-'} | Pieces: {formatNumber(Number(item.piece_count || 0))}
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                Bundle size: {formatNumber(Number(item.bundle_size || 0))} | Pieces per bundle: {formatNumber(Number(item.pieces_per_bundle || 0))} | Piece length: {item.piece_length_meters ? `${formatNumber(Number(item.piece_length_meters))} m` : '-'}
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                Spec: {String(item.product_type_name || '-')} | {String(item.brand_name || '-')} | {Object.entries((item.parameters || {}) as Record<string, unknown>).map(([k, v]) => `${k}:${String(v)}`).join(', ') || '-'}
+                              </div>
                             </div>
-                            <div className="text-xs text-muted-foreground">
-                              Bundle size: {formatNumber(Number(item.bundle_size || 0))} | Pieces per bundle: {formatNumber(Number(item.pieces_per_bundle || 0))} | Piece length: {item.piece_length_meters ? `${formatNumber(Number(item.piece_length_meters))} m` : '-'}
+                          );
+
+                          return (
+                            <div className="space-y-2">
+                              {matchedItems.length > 0 ? (
+                                <div className="space-y-2">
+                                  <div className="text-[11px] font-medium text-emerald-700">This ledger row corresponds to:</div>
+                                  {matchedItems.map((item, idx) => renderItem(item, `${selectedEvent.event_id}-dispatch-match-${idx}`, true))}
+                                </div>
+                              ) : null}
+
+                              {otherItems.length > 0 ? (
+                                <details className="rounded border p-2">
+                                  <summary className="cursor-pointer text-[11px] text-muted-foreground">
+                                    Other items in same dispatch ({otherItems.length})
+                                  </summary>
+                                  <div className="mt-2 space-y-2">
+                                    {otherItems.map((item, idx) => renderItem(item, `${selectedEvent.event_id}-dispatch-other-${idx}`))}
+                                  </div>
+                                </details>
+                              ) : null}
                             </div>
-                            <div className="text-xs text-muted-foreground">
-                              Spec: {String(item.product_type_name || '-')} | {String(item.brand_name || '-')} | {Object.entries((item.parameters || {}) as Record<string, unknown>).map(([k, v]) => `${k}:${String(v)}`).join(', ') || '-'}
-                            </div>
-                            {String(item.item_type || '').toUpperCase() === String(meta.item_type || '').toUpperCase() &&
-                              Number(item.quantity || 0) === Number(meta.quantity || 0) &&
-                              Number(item.length_meters || 0) === Number(meta.length_meters || 0) ? (
-                              <div className="mt-1 text-[11px] font-medium text-emerald-700">Matches selected ledger row</div>
-                            ) : null}
-                          </div>
-                        ))}
+                          );
+                        })()}
                       </div>
                     ) : null}
                   </div>
@@ -1005,6 +1125,18 @@ const ProductLedgerTab = ({ variants }: ProductLedgerTabProps) => {
                             <div className="text-xs text-muted-foreground">
                               Quantity: {formatNumber(Number(entry.quantity || 0))} | Length per unit: {entry.length_per_unit ? `${formatNumber(Number(entry.length_per_unit))} m` : '-'}
                             </div>
+                            {entry.total_cut_length ? (
+                              <div className="text-xs text-muted-foreground">
+                                Total cut length: {formatAdaptiveWithUnit(Number(entry.total_cut_length || 0), 'm', { showBaseForScaled: true })}
+                              </div>
+                            ) : null}
+                            {Array.isArray(entry.cut_piece_lengths) && entry.cut_piece_lengths.length > 0 ? (
+                              <div className="text-xs text-muted-foreground">
+                                Cut piece lengths: {(entry.cut_piece_lengths as unknown[])
+                                  .map((len) => `${formatNumber(Number(len || 0))} m`)
+                                  .join(', ')}
+                              </div>
+                            ) : null}
                             <div className="text-xs text-muted-foreground">
                               Pieces per bundle: {formatNumber(Number(entry.pieces_per_bundle || 0))} | Piece length: {entry.piece_length_meters ? `${formatNumber(Number(entry.piece_length_meters))} m` : '-'}
                             </div>

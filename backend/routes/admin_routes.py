@@ -1,10 +1,11 @@
 from flask import Blueprint, request, jsonify, make_response
 from flask_jwt_extended import jwt_required
 from database import execute_query, execute_insert, get_db_cursor
-from services.auth import jwt_required_with_role, hash_password
+from services.auth import jwt_required_with_role, hash_password, get_user_identity_details
 import json
 import csv
 import io
+import uuid
 
 admin_bp = Blueprint('admin', __name__, url_prefix='/api/admin')
 
@@ -1033,3 +1034,163 @@ def get_database_stats():
 
     except Exception as e:
         return jsonify({'error': 'Failed to get database stats', 'details': str(e)}), 500
+
+
+@admin_bp.route('/diagnose-orphaned-stock', methods=['GET'])
+@jwt_required_with_role('admin')
+def diagnose_orphaned_stock():
+    """
+    Diagnose orphaned inventory_stock rows:
+    - Rows with status='SOLD_OUT' and quantity > 0 but NOT soft-deleted (deleted_at IS NULL)
+    - These occur when batch reverts are incomplete or when revert logic changes
+    """
+    try:
+        with get_db_cursor() as cursor:
+            # Find orphaned rows: SOLD_OUT with quantity > 0 but not deleted
+            cursor.execute("""
+                SELECT
+                    ist.id,
+                    ist.batch_id,
+                    b.batch_code,
+                    ist.stock_type,
+                    ist.quantity,
+                    ist.length_per_unit,
+                    ist.status,
+                    ist.created_at,
+                    ist.updated_at,
+                    b.status as batch_status,
+                    b.deleted_at as batch_deleted_at,
+                    (SELECT COUNT(*) FROM hdpe_cut_pieces WHERE stock_id = ist.id AND deleted_at IS NULL) as cut_pieces_count,
+                    (SELECT COUNT(*) FROM sprinkler_spare_pieces WHERE stock_id = ist.id AND deleted_at IS NULL) as spare_pieces_count
+                FROM inventory_stock ist
+                JOIN batches b ON ist.batch_id = b.id
+                WHERE ist.quantity > 0
+                AND COALESCE(ist.status, 'IN_STOCK') = 'SOLD_OUT'
+                AND ist.deleted_at IS NULL
+                AND b.deleted_at IS NULL
+                ORDER BY ist.updated_at DESC
+            """)
+
+            orphans = cursor.fetchall()
+
+            # Calculate total impact
+            total_rows = len(orphans)
+            total_orphan_qty = sum(row['quantity'] if row['stock_type'] == 'FULL_ROLL' else 0 for row in orphans)
+            total_orphan_length = sum(
+                row['quantity'] * (row['length_per_unit'] or 0)
+                if row['stock_type'] == 'FULL_ROLL' and row['length_per_unit']
+                else 0
+                for row in orphans
+            )
+            total_child_pieces = sum(row['cut_pieces_count'] + row['spare_pieces_count'] for row in orphans)
+
+            return jsonify({
+                'status': 'orphaned_stock_found' if orphans else 'no_orphans',
+                'total_orphan_rows': total_rows,
+                'total_full_rolls': total_orphan_qty,
+                'total_orphan_length_meters': total_orphan_length,
+                'total_child_pieces': total_child_pieces,
+                'orphaned_rows': [
+                    {
+                        'id': row['id'],
+                        'batch_code': row['batch_code'],
+                        'stock_type': row['stock_type'],
+                        'quantity': row['quantity'],
+                        'length_per_unit': row['length_per_unit'],
+                        'batch_status': row['batch_status'],
+                        'cut_pieces': row['cut_pieces_count'],
+                        'spare_pieces': row['spare_pieces_count'],
+                        'created_at': row['created_at'].isoformat() if row['created_at'] else None,
+                        'updated_at': row['updated_at'].isoformat() if row['updated_at'] else None,
+                    }
+                    for row in orphans
+                ]
+            }), 200
+
+    except Exception as e:
+        return jsonify({'error': 'Failed to diagnose orphaned stock', 'details': str(e)}), 500
+
+
+@admin_bp.route('/cleanup-orphaned-stock', methods=['POST'])
+@jwt_required_with_role('admin')
+def cleanup_orphaned_stock():
+    """
+    Clean up orphaned inventory_stock rows by soft-deleting them along with child pieces.
+    This safely removes rows that should have been deleted during batch reverts but weren't.
+    """
+    try:
+        user_id = get_jwt_identity()
+        user = get_user_identity_details(user_id)
+
+        with get_db_cursor() as cursor:
+            # Find orphaned rows
+            cursor.execute("""
+                SELECT ist.id, ist.batch_id, ist.stock_type
+                FROM inventory_stock ist
+                JOIN batches b ON ist.batch_id = b.id
+                WHERE ist.quantity > 0
+                AND COALESCE(ist.status, 'IN_STOCK') = 'SOLD_OUT'
+                AND ist.deleted_at IS NULL
+                AND b.deleted_at IS NULL
+            """)
+
+            orphans = cursor.fetchall()
+
+            if not orphans:
+                return jsonify({
+                    'success': True,
+                    'message': 'No orphaned stock found',
+                    'cleaned_rows': 0,
+                    'cleaned_pieces': 0
+                }), 200
+
+            orphan_ids = [row['id'] for row in orphans]
+
+            # Cascade: soft-delete all child pieces
+            cursor.execute("""
+                UPDATE hdpe_cut_pieces
+                SET deleted_at = NOW(), updated_at = NOW()
+                WHERE stock_id = ANY(%s::uuid[]) AND deleted_at IS NULL
+            """, (orphan_ids,))
+            cut_pieces_deleted = cursor.rowcount
+
+            cursor.execute("""
+                UPDATE sprinkler_spare_pieces
+                SET deleted_at = NOW(), updated_at = NOW()
+                WHERE stock_id = ANY(%s::uuid[]) AND deleted_at IS NULL
+            """, (orphan_ids,))
+            spare_pieces_deleted = cursor.rowcount
+
+            # Soft-delete the orphaned stock rows
+            cursor.execute("""
+                UPDATE inventory_stock
+                SET deleted_at = NOW(), updated_at = NOW()
+                WHERE id = ANY(%s::uuid[])
+            """, (orphan_ids,))
+            stock_deleted = cursor.rowcount
+
+            # Audit log
+            cursor.execute("""
+                INSERT INTO audit_logs (id, user_id, action, table_name, record_id, old_values, new_values, created_at)
+                VALUES (%s, %s, 'CLEANUP_ORPHANED_STOCK', 'inventory_stock',
+                        array_to_string(%s::uuid[], ','),
+                        'status=SOLD_OUT deleted_at=NULL',
+                        'deleted_at=NOW()',
+                        NOW())
+            """, (str(uuid.uuid4()), user_id, orphan_ids))
+
+            cursor.connection.commit()
+
+            return jsonify({
+                'success': True,
+                'message': f'Cleaned {stock_deleted} orphaned stock rows and {cut_pieces_deleted + spare_pieces_deleted} child pieces',
+                'cleaned_rows': stock_deleted,
+                'cleaned_cut_pieces': cut_pieces_deleted,
+                'cleaned_spare_pieces': spare_pieces_deleted,
+                'total_cleaned_pieces': cut_pieces_deleted + spare_pieces_deleted
+            }), 200
+
+    except Exception as e:
+        import traceback
+        print(f"Error cleaning orphaned stock: {traceback.format_exc()}")
+        return jsonify({'error': 'Failed to cleanup orphaned stock', 'details': str(e)}), 500

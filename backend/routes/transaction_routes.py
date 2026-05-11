@@ -1573,17 +1573,53 @@ def revert_transactions():
 
                 new_batch_qty = cursor.fetchone()
 
-                # For PRODUCTION, soft-delete associated inventory stock entries
+                # For PRODUCTION, soft-delete associated inventory stock entries and their children
                 if transaction['transaction_type'] == 'PRODUCTION':
-                    # Soft delete inventory stock
+                    # First, identify ALL stock rows for this batch (use batch_id as sole constraint)
+                    # Do NOT use created_at time windows—batches can be recreated/reopened
                     cursor.execute("""
-                        UPDATE inventory_stock
-                        SET deleted_at = NOW(), status = 'SOLD_OUT'
+                        SELECT id, stock_type
+                        FROM inventory_stock
                         WHERE batch_id = %s
                         AND deleted_at IS NULL
-                        AND created_at >= %s - INTERVAL '1 minute'
-                        AND created_at <= %s + INTERVAL '1 minute'
-                    """, (transaction['batch_id'], transaction['created_at'], transaction['created_at']))
+                    """, (transaction['batch_id'],))
+
+                    stock_to_delete = cursor.fetchall()
+                    stock_ids = [s['id'] for s in stock_to_delete]
+
+                    # CASCADE: soft-delete child pieces (CUT_ROLL → hdpe_cut_pieces, SPARE → sprinkler_spare_pieces)
+                    if stock_ids:
+                        cursor.execute("""
+                            UPDATE hdpe_cut_pieces
+                            SET deleted_at = NOW(), updated_at = NOW()
+                            WHERE stock_id = ANY(%s::uuid[]) AND deleted_at IS NULL
+                        """, (stock_ids,))
+
+                        cursor.execute("""
+                            UPDATE sprinkler_spare_pieces
+                            SET deleted_at = NOW(), updated_at = NOW()
+                            WHERE stock_id = ANY(%s::uuid[]) AND deleted_at IS NULL
+                        """, (stock_ids,))
+
+                    # Soft delete inventory stock: use ONLY batch_id, no time-window constraint
+                    cursor.execute("""
+                        UPDATE inventory_stock
+                        SET deleted_at = NOW(), updated_at = NOW()
+                        WHERE batch_id = %s
+                        AND deleted_at IS NULL
+                    """, (transaction['batch_id'],))
+
+                    deleted_count = cursor.rowcount
+
+                    # VALIDATION: Ensure deletion succeeded before marking batch as REVERTED
+                    # This prevents silent failures where batch gets marked REVERTED but stock rows remain
+                    if stock_ids and deleted_count != len(stock_ids):
+                        failed_transactions.append({
+                            'id': transaction_id,
+                            'error': f"Stock cleanup failed: {len(stock_ids)} stock rows exist but only {deleted_count} were deleted. Revert aborted to prevent data inconsistency."
+                        })
+                        continue
+
 
                     # Mark the batch as reverted (following the foundational model pattern)
                     # This is the same pattern used by dispatches and returns tables
