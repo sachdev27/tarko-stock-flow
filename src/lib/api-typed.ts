@@ -420,14 +420,18 @@ export const transactions = {
           .post<API.RevertTransactionResponse>('/transactions/revert', { transaction_ids: otherIds })
           .then(unwrapResponse);
       } catch (error: any) {
+        const backendFailed = error.response?.data?.failed_transactions;
+
         // If the entire request fails, mark all as failed
         otherResult = {
           reverted_count: 0,
           total_requested: otherIds.length,
-          failed_transactions: otherIds.map(id => ({
-            id,
-            error: error.response?.data?.error || error.message || 'Unknown error'
-          }))
+          failed_transactions: Array.isArray(backendFailed) && backendFailed.length > 0
+            ? backendFailed
+            : otherIds.map(id => ({
+                id,
+                error: error.response?.data?.error || error.message || 'Unknown error'
+              }))
         };
       }
     }

@@ -1527,18 +1527,7 @@ def revert_transactions():
                 # Calculate revert quantity (opposite of original change)
                 revert_quantity = -float(transaction['quantity_change'])
 
-                # Update batch quantity
-                cursor.execute("""
-                    UPDATE batches
-                    SET current_quantity = current_quantity + %s,
-                        updated_at = NOW()
-                    WHERE id = %s
-                    RETURNING current_quantity
-                """, (revert_quantity, transaction['batch_id']))
-
-                new_batch_qty = cursor.fetchone()
-
-                # For PRODUCTION, validate and soft-delete associated inventory stock entries
+                # For PRODUCTION: run all validations BEFORE touching the batch
                 if transaction['transaction_type'] == 'PRODUCTION':
                     # Check if any stock from this production was dispatched
                     cursor.execute("""
@@ -1559,6 +1548,33 @@ def revert_transactions():
                         })
                         continue
 
+                # Guard: ensure the batch quantity won't go negative before issuing the UPDATE
+                # (avoids a hard constraint violation from batches_current_quantity_check)
+                current_qty = float(transaction['batch_current_quantity'])
+                if current_qty + revert_quantity < 0:
+                    failed_transactions.append({
+                        'id': transaction_id,
+                        'error': (
+                            f"Cannot revert: batch quantity would go negative "
+                            f"(current={current_qty}, revert={revert_quantity}). "
+                            f"Some items from this batch may have already been dispatched."
+                        )
+                    })
+                    continue
+
+                # Update batch quantity
+                cursor.execute("""
+                    UPDATE batches
+                    SET current_quantity = current_quantity + %s,
+                        updated_at = NOW()
+                    WHERE id = %s
+                    RETURNING current_quantity
+                """, (revert_quantity, transaction['batch_id']))
+
+                new_batch_qty = cursor.fetchone()
+
+                # For PRODUCTION, soft-delete associated inventory stock entries
+                if transaction['transaction_type'] == 'PRODUCTION':
                     # Soft delete inventory stock
                     cursor.execute("""
                         UPDATE inventory_stock

@@ -8,29 +8,56 @@ exec > >(tee /var/log/tarko-init.log | logger -t tarko-init) 2>&1
 
 echo "=== Tarko Stock Flow — OCI bootstrap starting ==="
 
+if id -u opc >/dev/null 2>&1; then
+  APP_USER="opc"
+elif id -u ubuntu >/dev/null 2>&1; then
+  APP_USER="ubuntu"
+else
+  APP_USER="$(id -un)"
+fi
+
+if command -v apt-get >/dev/null 2>&1; then
+  OS_FAMILY="debian"
+elif command -v dnf >/dev/null 2>&1; then
+  OS_FAMILY="rhel"
+else
+  echo "Unsupported OS: neither apt-get nor dnf found"
+  exit 1
+fi
+
 # ─── System update ─────────────────────────────────────────────────────────────
-export DEBIAN_FRONTEND=noninteractive
-apt-get update -y
-apt-get upgrade -y
+if [ "$OS_FAMILY" = "debian" ]; then
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update -y
+  apt-get upgrade -y
+else
+  dnf -y makecache
+  dnf -y upgrade
+fi
 
 # ─── Docker ───────────────────────────────────────────────────────────────────
-apt-get install -y ca-certificates curl gnupg lsb-release git
+if [ "$OS_FAMILY" = "debian" ]; then
+  apt-get install -y ca-certificates curl gnupg lsb-release git
 
-install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
-  | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-chmod a+r /etc/apt/keyrings/docker.gpg
+  install -m 0755 -d /etc/apt/keyrings
+  curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+    | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+  chmod a+r /etc/apt/keyrings/docker.gpg
 
-echo \
-  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
-  https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" \
-  > /etc/apt/sources.list.d/docker.list
+  echo \
+    "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+    https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" \
+    > /etc/apt/sources.list.d/docker.list
 
-apt-get update -y
-apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+  apt-get update -y
+  apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+else
+  dnf install -y dnf-plugins-core git curl ca-certificates
+  dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+  dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+fi
 
-# Add ubuntu user to docker group
-usermod -aG docker ubuntu
+usermod -aG docker "$APP_USER" || true
 
 systemctl enable --now docker
 
@@ -73,7 +100,7 @@ else
   git -C "$APP_DIR" pull --ff-only
 fi
 
-chown -R ubuntu:ubuntu "$APP_DIR"
+chown -R "$APP_USER":"$APP_USER" "$APP_DIR"
 
 # ─── Environment file ─────────────────────────────────────────────────────────
 cat > "$APP_DIR/.env" <<EOF
@@ -113,8 +140,14 @@ OVERRIDE
 # ─── OCI iptables — open backend API port ─────────────────────────────────────
 iptables -I INPUT 6 -m state --state NEW -p tcp --dport 5500 -j ACCEPT
 # Persist iptables rules
-apt-get install -y iptables-persistent
-netfilter-persistent save
+if [ "$OS_FAMILY" = "debian" ]; then
+  apt-get install -y iptables-persistent
+  netfilter-persistent save
+else
+  dnf install -y iptables-services || true
+  service iptables save || true
+  systemctl enable iptables || true
+fi
 
 # ─── Start application ────────────────────────────────────────────────────────
 cd "$APP_DIR"
