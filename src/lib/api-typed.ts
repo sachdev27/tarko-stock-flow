@@ -420,14 +420,18 @@ export const transactions = {
           .post<API.RevertTransactionResponse>('/transactions/revert', { transaction_ids: otherIds })
           .then(unwrapResponse);
       } catch (error: any) {
+        const backendFailed = error.response?.data?.failed_transactions;
+
         // If the entire request fails, mark all as failed
         otherResult = {
           reverted_count: 0,
           total_requested: otherIds.length,
-          failed_transactions: otherIds.map(id => ({
-            id,
-            error: error.response?.data?.error || error.message || 'Unknown error'
-          }))
+          failed_transactions: Array.isArray(backendFailed) && backendFailed.length > 0
+            ? backendFailed
+            : otherIds.map(id => ({
+                id,
+                error: error.response?.data?.error || error.message || 'Unknown error'
+              }))
         };
       }
     }
@@ -439,6 +443,46 @@ export const transactions = {
       failed_transactions: [...scrapResult.failed_transactions, ...otherResult.failed_transactions]
     };
   },
+};
+
+// ============================================================================
+// LEDGER API
+// ============================================================================
+
+export const ledger = {
+  getProductEvents: (
+    productVariantId: API.UUID,
+    params?: API.ProductLedgerEventsParams
+  ): Promise<API.ProductLedgerEventsResponse> =>
+    apiClient
+      .get<API.ProductLedgerEventsResponse>(`/ledger/product/${productVariantId}/events`, { params })
+      .then(unwrapResponse),
+
+  getProductTimeseries: (
+    productVariantId: API.UUID,
+    params?: API.ProductLedgerTimeseriesParams
+  ): Promise<API.ProductLedgerTimeseriesResponse> =>
+    apiClient
+      .get<API.ProductLedgerTimeseriesResponse>(`/ledger/product/${productVariantId}/timeseries`, { params })
+      .then(unwrapResponse),
+
+  getCurrentStock: (productVariantId: API.UUID): Promise<API.ProductLedgerCurrentStockResponse> =>
+    apiClient
+      .get<API.ProductLedgerCurrentStockResponse>(`/ledger/product/${productVariantId}/current-stock`)
+      .then(unwrapResponse),
+
+  getEventDetails: (
+    sourceTable: string,
+    sourceId: string
+  ): Promise<API.ProductLedgerEventDetailsResponse> =>
+    apiClient
+      .get<API.ProductLedgerEventDetailsResponse>('/ledger/event-details', {
+        params: {
+          source_table: sourceTable,
+          source_id: sourceId,
+        },
+      })
+      .then(unwrapResponse),
 };
 
 // ============================================================================

@@ -1324,6 +1324,161 @@ def test_auto_snapshot():
         return jsonify({'error': f'Failed to create test snapshot: {str(e)}'}), 500
 
 
+# ==================== ORPHAN CLEANUP SETTINGS ====================
+
+@version_control_bp.route('/settings/orphan-cleanup', methods=['GET', 'POST'])
+@jwt_required_with_role('admin')
+def manage_orphan_cleanup_settings():
+    """Get or update orphan cleanup scheduler settings"""
+    user_id = get_jwt_identity()
+
+    try:
+        with get_db_cursor() as cursor:
+            if request.method == 'GET':
+                # Get current settings
+                cursor.execute("""
+                    SELECT setting_key, setting_value FROM system_settings
+                    WHERE setting_key IN ('auto_cleanup_orphans_enabled', 'auto_cleanup_orphans_interval')
+                    ORDER BY setting_key
+                """)
+                results = cursor.fetchall()
+
+                settings = {row['setting_key']: row['setting_value'] for row in results}
+
+                next_run = None
+                if settings.get('auto_cleanup_orphans_enabled') == 'true':
+                    try:
+                        from services.scheduler_service import get_orphan_cleanup_next_run_time
+                        next_run = get_orphan_cleanup_next_run_time()
+                    except Exception:
+                        pass
+                enabled = data.get('enabled', False)
+                interval = data.get('interval', 'weekly')
+
+                # Validate interval
+                valid_intervals = ['hourly', 'daily', 'weekly', 'monthly', '15m', '30m', '6h', '12h', '2d', '7d']
+                if interval not in valid_intervals:
+                    return jsonify({'error': f'Invalid interval. Must be one of: {", ".join(valid_intervals)}'}), 400
+
+                # Update settings
+                cursor.execute("""
+                    INSERT INTO system_settings (setting_key, setting_value, updated_at)
+                    VALUES ('auto_cleanup_orphans_enabled', %s, NOW())
+                    ON CONFLICT (setting_key)
+                    DO UPDATE SET setting_value = %s, updated_at = NOW()
+                """, ('true' if enabled else 'false', 'true' if enabled else 'false'))
+
+                cursor.execute("""
+                    INSERT INTO system_settings (setting_key, setting_value, updated_at)
+                    VALUES ('auto_cleanup_orphans_interval', %s, NOW())
+                    ON CONFLICT (setting_key)
+                    DO UPDATE SET setting_value = %s, updated_at = NOW()
+                """, (interval, interval))
+
+                # Update the scheduler with new settings
+                try:
+                    from services.scheduler_service import update_orphan_cleanup_schedule, get_orphan_cleanup_next_run_time
+                    update_orphan_cleanup_schedule()
+
+                    # Get next cleanup time
+                    next_run = get_orphan_cleanup_next_run_time() if enabled else None
+                except Exception as sched_error:
+                    logger.warning(f"Could not update scheduler: {sched_error}")
+                    next_run = None
+
+                return jsonify({
+                    'message': 'Orphan cleanup settings updated',
+                    'enabled': enabled,
+                    'interval': interval,
+                    'next_run': next_run.isoformat() if next_run else None
+                }), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@version_control_bp.route('/settings/orphan-cleanup/test', methods=['POST'])
+@jwt_required_with_role('admin')
+def test_orphan_cleanup():
+    """Manually trigger orphan cleanup for testing purposes"""
+    user_id = get_jwt_identity()
+
+    try:
+        from database import get_db_cursor
+        import uuid
+
+        with get_db_cursor() as cursor:
+            # Find orphaned rows
+            cursor.execute("""
+                SELECT ist.id, ist.batch_id, ist.stock_type, COALESCE(ist.quantity, 0) as quantity
+                FROM inventory_stock ist
+                JOIN batches b ON ist.batch_id = b.id
+                WHERE ist.quantity > 0
+                AND COALESCE(ist.status, 'IN_STOCK') = 'SOLD_OUT'
+                AND ist.deleted_at IS NULL
+                AND b.deleted_at IS NULL
+            """)
+
+            orphans = cursor.fetchall()
+
+            if not orphans:
+                return jsonify({
+                    'message': 'No orphaned stock found',
+                    'cleaned_rows': 0,
+                    'cleaned_pieces': 0
+                }), 200
+
+            orphan_ids = [row['id'] for row in orphans]
+            total_quantity = sum(row['quantity'] for row in orphans)
+
+            # Cascade: soft-delete all child pieces
+            cursor.execute("""
+                UPDATE hdpe_cut_pieces
+                SET deleted_at = NOW(), updated_at = NOW()
+                WHERE stock_id = ANY(%s::uuid[]) AND deleted_at IS NULL
+            """, (orphan_ids,))
+            cut_pieces_deleted = cursor.rowcount
+
+            cursor.execute("""
+                UPDATE sprinkler_spare_pieces
+                SET deleted_at = NOW(), updated_at = NOW()
+                WHERE stock_id = ANY(%s::uuid[]) AND deleted_at IS NULL
+            """, (orphan_ids,))
+            spare_pieces_deleted = cursor.rowcount
+
+            # Soft-delete the orphaned stock rows
+            cursor.execute("""
+                UPDATE inventory_stock
+                SET deleted_at = NOW(), updated_at = NOW()
+                WHERE id = ANY(%s::uuid[])
+            """, (orphan_ids,))
+            stock_deleted = cursor.rowcount
+
+            # Audit log
+            cursor.execute("""
+                INSERT INTO audit_logs (id, user_id, action, table_name, record_id, old_values, new_values, created_at)
+                VALUES (%s, %s, 'CLEANUP_ORPHANED_STOCK', 'inventory_stock',
+                        array_to_string(%s::uuid[], ','),
+                        'status=SOLD_OUT deleted_at=NULL',
+                        'deleted_at=NOW()',
+                        NOW())
+            """, (str(uuid.uuid4()), user_id, orphan_ids))
+
+            cursor.connection.commit()
+
+            return jsonify({
+                'message': f'Cleaned {stock_deleted} orphaned stock rows and {cut_pieces_deleted + spare_pieces_deleted} child pieces',
+                'cleaned_rows': stock_deleted,
+                'cleaned_cut_pieces': cut_pieces_deleted,
+                'cleaned_spare_pieces': spare_pieces_deleted,
+                'total_cleaned_pieces': cut_pieces_deleted + spare_pieces_deleted,
+                'total_quantity_meters': total_quantity
+            }), 200
+
+    except Exception as e:
+        return jsonify({'error': f'Failed to clean orphaned stock: {str(e)}'}), 500
+
+
 # ==================== CLOUD STORAGE ROUTES ====================
 
 @version_control_bp.route('/cloud/status', methods=['GET'])

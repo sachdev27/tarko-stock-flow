@@ -17,7 +17,7 @@ services:
       - ./backend/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
       - ./backups:/backups
     ports:
-      - "5432:5432"
+      - "5433:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U tarko_user -d tarko_inventory"]
       interval: 10s
@@ -93,25 +93,25 @@ services:
   #     timeout: 10s
   #     retries: 3
 
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    container_name: tarko-cloudflared
-    restart: unless-stopped
-    cpus: "${CLOUDFLARED_CPUS:-0.10}"
-    mem_limit: "${CLOUDFLARED_MEM_LIMIT:-128m}"
-    mem_reservation: "${CLOUDFLARED_MEM_RESERVATION:-64m}"
-    pids_limit: 100
-    command: tunnel --no-autoupdate run --token ${TUNNEL_TOKEN}
-    depends_on:
-      backend:
-        condition: service_healthy
-    networks:
-      - tarko-network
-    logging:
-      driver: json-file
-      options:
-        max-size: "5m"
-        max-file: "2"
+  # cloudflared:
+  #   image: cloudflare/cloudflared:latest
+  #   container_name: tarko-cloudflared
+  #   restart: unless-stopped
+  #   cpus: "${CLOUDFLARED_CPUS:-0.10}"
+  #   mem_limit: "${CLOUDFLARED_MEM_LIMIT:-128m}"
+  #   mem_reservation: "${CLOUDFLARED_MEM_RESERVATION:-64m}"
+  #   pids_limit: 100
+  #   command: tunnel --no-autoupdate run --token ${TUNNEL_TOKEN}
+  #   depends_on:
+  #     backend:
+  #       condition: service_healthy
+  #   networks:
+  #     - tarko-network
+  #   logging:
+  #     driver: json-file
+  #     options:
+  #       max-size: "5m"
+  #       max-file: "2"
 
 volumes:
   postgres_data:

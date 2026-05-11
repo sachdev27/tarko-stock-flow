@@ -11,7 +11,8 @@ this uses a file-based lock to ensure only one worker runs the scheduler.
 import logging
 import os
 import fcntl
-from datetime import datetime
+from datetime import datetime, timedelta
+import pytz
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
@@ -110,6 +111,7 @@ def init_scheduler(app):
     # Load initial settings and schedule if enabled
     with app.app_context():
         _load_and_schedule_auto_snapshot()
+        _load_and_schedule_orphan_cleanup()
 
     return _scheduler
 
@@ -397,6 +399,203 @@ def update_auto_snapshot_schedule():
         _load_and_schedule_auto_snapshot()
 
 
+def _load_and_schedule_orphan_cleanup():
+    """Load settings from database and schedule the orphan cleanup job"""
+    from database import get_db_cursor
+
+    try:
+        with get_db_cursor() as cursor:
+            # Get enabled setting
+            cursor.execute("""
+                SELECT setting_value FROM system_settings
+                WHERE setting_key = 'auto_cleanup_orphans_enabled'
+            """)
+            result = cursor.fetchone()
+            enabled = result and result['setting_value'] == 'true'
+
+            if not enabled:
+                logger.info("Auto orphan cleanup is disabled")
+                _remove_orphan_cleanup_job()
+                return
+
+            # Get interval setting
+            cursor.execute("""
+                SELECT setting_value FROM system_settings
+                WHERE setting_key = 'auto_cleanup_orphans_interval'
+            """)
+            result = cursor.fetchone()
+            interval = result['setting_value'] if result else 'weekly'
+
+            # Schedule the job
+            _schedule_orphan_cleanup_job(interval)
+
+    except Exception as e:
+        logger.error(f"Failed to load orphan cleanup settings: {e}")
+
+
+def _schedule_orphan_cleanup_job(interval: str):
+    """
+    Schedule or reschedule the orphan cleanup job.
+
+    Args:
+        interval: One of "hourly", "daily", "weekly", "monthly", or custom formats like "6h", "2d"
+    """
+    global _scheduler
+
+    if _scheduler is None:
+        logger.error("Scheduler not initialized")
+        return
+
+    # Remove existing job if any
+    _remove_orphan_cleanup_job()
+
+    # Create trigger based on interval
+    if interval == 'hourly':
+        trigger = IntervalTrigger(hours=1)
+    elif interval == 'daily':
+        trigger = IntervalTrigger(hours=24)
+    elif interval == 'weekly':
+        trigger = CronTrigger(day_of_week='sun', hour=3, minute=0)  # Sunday at 3 AM
+    elif interval == 'monthly':
+        trigger = CronTrigger(day=1, hour=3, minute=0)  # 1st of month at 3 AM
+    elif interval.endswith('m') and interval[:-1].isdigit():
+        # Custom minutes format: "15m", "30m", etc.
+        minutes = int(interval[:-1])
+        minutes = max(5, min(59, minutes))  # Clamp between 5-59 minutes
+        trigger = IntervalTrigger(minutes=minutes)
+    elif interval.endswith('h') and interval[:-1].isdigit():
+        # Custom hours format: "6h", "12h", etc.
+        hours = int(interval[:-1])
+        hours = max(1, min(48, hours))  # Clamp between 1-48 hours
+        trigger = IntervalTrigger(hours=hours)
+    elif interval.endswith('d') and interval[:-1].isdigit():
+        # Custom days format: "2d", "7d", etc.
+        days = int(interval[:-1])
+        days = max(1, min(30, days))  # Clamp between 1-30 days
+        trigger = IntervalTrigger(days=days)
+    else:  # default to weekly
+        trigger = CronTrigger(day_of_week='sun', hour=3, minute=0)
+
+    # Add the job
+    _scheduler.add_job(
+        func=_run_orphan_cleanup,
+        trigger=trigger,
+        id='orphan_cleanup',
+        name='Automatic Orphan Stock Cleanup',
+        replace_existing=True
+    )
+
+    next_run = _scheduler.get_job('orphan_cleanup').next_run_time
+    logger.info(f"Orphan cleanup scheduled: interval={interval}, next_run={next_run}")
+
+
+def _remove_orphan_cleanup_job():
+    """Remove the orphan cleanup job if it exists"""
+    global _scheduler
+
+    if _scheduler is None:
+        return
+
+    try:
+        _scheduler.remove_job('orphan_cleanup')
+        logger.info("Orphan cleanup job removed")
+    except Exception:
+        pass  # Job doesn't exist
+
+
+def _run_orphan_cleanup():
+    """Execute orphan cleanup within Flask app context"""
+    global _app
+
+    if _app is None:
+        logger.error("Flask app not available for orphan cleanup")
+        return
+
+    with _app.app_context():
+        try:
+            logger.info("Starting scheduled orphan cleanup...")
+
+            from database import get_db_cursor
+            import uuid
+
+            with get_db_cursor() as cursor:
+                # Find orphaned rows
+                cursor.execute("""
+                    SELECT ist.id, ist.batch_id, ist.stock_type
+                    FROM inventory_stock ist
+                    JOIN batches b ON ist.batch_id = b.id
+                    WHERE ist.quantity > 0
+                    AND COALESCE(ist.status, 'IN_STOCK') = 'SOLD_OUT'
+                    AND ist.deleted_at IS NULL
+                    AND b.deleted_at IS NULL
+                """)
+
+                orphans = cursor.fetchall()
+
+                if not orphans:
+                    logger.info("✅ Orphan cleanup: No orphaned stock found")
+                    return
+
+                orphan_ids = [row['id'] for row in orphans]
+                logger.info(f"Found {len(orphan_ids)} orphaned stock rows to clean up")
+
+                # Cascade: soft-delete all child pieces
+                cursor.execute("""
+                    UPDATE hdpe_cut_pieces
+                    SET deleted_at = NOW(), updated_at = NOW()
+                    WHERE stock_id = ANY(%s::uuid[]) AND deleted_at IS NULL
+                """, (orphan_ids,))
+                cut_pieces_deleted = cursor.rowcount
+
+                cursor.execute("""
+                    UPDATE sprinkler_spare_pieces
+                    SET deleted_at = NOW(), updated_at = NOW()
+                    WHERE stock_id = ANY(%s::uuid[]) AND deleted_at IS NULL
+                """, (orphan_ids,))
+                spare_pieces_deleted = cursor.rowcount
+
+                # Soft-delete the orphaned stock rows
+                cursor.execute("""
+                    UPDATE inventory_stock
+                    SET deleted_at = NOW(), updated_at = NOW()
+                    WHERE id = ANY(%s::uuid[])
+                """, (orphan_ids,))
+                stock_deleted = cursor.rowcount
+
+                # Audit log (use system user)
+                SYSTEM_USER_ID = '00000000-0000-0000-0000-000000000001'
+                cursor.execute("""
+                    INSERT INTO audit_logs (id, user_id, action, table_name, record_id, old_values, new_values, created_at)
+                    VALUES (%s, %s, 'AUTO_CLEANUP_ORPHANED_STOCK', 'inventory_stock',
+                            array_to_string(%s::uuid[], ','),
+                            'status=SOLD_OUT deleted_at=NULL',
+                            'deleted_at=NOW()',
+                            NOW())
+                """, (str(uuid.uuid4()), SYSTEM_USER_ID, orphan_ids))
+
+                cursor.connection.commit()
+
+                logger.info(f"✅ Orphan cleanup completed: {stock_deleted} orphaned rows + {cut_pieces_deleted + spare_pieces_deleted} child pieces deleted")
+
+        except Exception as e:
+            logger.error(f"❌ Orphan cleanup failed: {e}", exc_info=True)
+
+
+def update_orphan_cleanup_schedule():
+    """
+    Called when UI settings change to reschedule the orphan cleanup job.
+    Should be called from the version_control_routes when settings are updated.
+    """
+    global _app
+
+    if _app is None or _scheduler is None:
+        logger.warning("Scheduler not available for orphan cleanup update")
+        return
+
+    with _app.app_context():
+        _load_and_schedule_orphan_cleanup()
+
+
 def shutdown_scheduler():
     """Shutdown the scheduler gracefully and release the lock"""
     global _scheduler, _has_scheduler_lock
@@ -411,14 +610,212 @@ def shutdown_scheduler():
         _release_scheduler_lock()
 
 
-def get_next_run_time():
-    """Get the next scheduled run time for auto-snapshot"""
-    global _scheduler
+def _get_scheduler_settings():
+    """Get scheduler settings from database without app context"""
+    try:
+        from database import get_db_cursor
+        with get_db_cursor() as cursor:
+            # Get enabled setting
+            cursor.execute("""
+                SELECT setting_value FROM system_settings
+                WHERE setting_key = 'auto_snapshot_enabled'
+            """)
+            enabled_result = cursor.fetchone()
+            enabled = enabled_result and enabled_result['setting_value'] == 'true'
 
-    if _scheduler is None:
+            # Get time setting
+            cursor.execute("""
+                SELECT setting_value FROM system_settings
+                WHERE setting_key = 'auto_snapshot_time'
+            """)
+            time_result = cursor.fetchone()
+            time_str = time_result['setting_value'] if time_result else '02:00'
+
+            # Get interval setting
+            cursor.execute("""
+                SELECT setting_value FROM system_settings
+                WHERE setting_key = 'auto_snapshot_interval'
+            """)
+            interval_result = cursor.fetchone()
+            interval = interval_result['setting_value'] if interval_result else 'daily'
+
+            return enabled, time_str, interval
+    except Exception as e:
+        logger.warning(f"Could not load scheduler settings: {e}")
+        return False, '02:00', 'daily'
+
+
+def get_next_run_time():
+    """
+    Get the next scheduled run time for auto-snapshot.
+
+    This is calculated deterministically based on the scheduled settings
+    and current time, NOT from APScheduler's dynamic calculation.
+    This ensures the next run time doesn't shift when the server restarts.
+    """
+    try:
+        enabled, time_str, interval = _get_scheduler_settings()
+
+        if not enabled:
+            return None
+
+        # Parse the scheduled time
+        try:
+            hour, minute = map(int, time_str.split(':'))
+        except ValueError:
+            hour, minute = 2, 0
+
+        # Use IST timezone as configured in scheduler
+        tz = pytz.timezone('Asia/Kolkata')
+        now = datetime.now(tz)
+
+        # Calculate next run based on interval type
+        if interval == 'hourly':
+            # Next run is in 1 hour from now
+            next_run = now + timedelta(hours=1)
+
+        elif interval == 'daily':
+            # Next run is at scheduled time (hour:minute) today or tomorrow
+            next_run = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            if next_run <= now:
+                # Scheduled time has passed today, schedule for tomorrow
+                next_run += timedelta(days=1)
+
+        elif interval == 'weekly':
+            # Next run is on Sunday at scheduled time
+            days_until_sunday = (6 - now.weekday()) % 7  # 0=Mon, 6=Sun
+            next_run = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            next_run += timedelta(days=days_until_sunday)
+            if next_run <= now:
+                # If we're already past that time on Sunday, schedule for next Sunday
+                next_run += timedelta(days=7)
+
+        elif interval == 'monthly':
+            # Next run is on the 1st of the month at scheduled time
+            next_run = now.replace(day=1, hour=hour, minute=minute, second=0, microsecond=0)
+            if next_run <= now:
+                # If we're already past that time on the 1st, schedule for next month
+                if now.month == 12:
+                    next_run = next_run.replace(year=now.year + 1, month=1)
+                else:
+                    next_run = next_run.replace(month=now.month + 1)
+
+        elif interval.endswith('m') and interval[:-1].isdigit():
+            # Custom minutes: next run is interval minutes from now
+            minutes = int(interval[:-1])
+            minutes = max(5, min(59, minutes))
+            next_run = now + timedelta(minutes=minutes)
+
+        elif interval.endswith('h') and interval[:-1].isdigit():
+            # Custom hours: next run is interval hours from now
+            hours = int(interval[:-1])
+            hours = max(1, min(48, hours))
+            next_run = now + timedelta(hours=hours)
+
+        elif interval.endswith('d') and interval[:-1].isdigit():
+            # Custom days: next run is interval days from now
+            days = int(interval[:-1])
+            days = max(1, min(30, days))
+            next_run = now + timedelta(days=days)
+
+        else:  # fallback to daily
+            next_run = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            if next_run <= now:
+                next_run += timedelta(days=1)
+
+        # Return as UTC datetime for API response
+        return next_run.astimezone(pytz.UTC)
+
+    except Exception as e:
+        logger.error(f"Error calculating next run time: {e}")
         return None
 
-    job = _scheduler.get_job('auto_snapshot')
-    if job:
-        return job.next_run_time
-    return None
+def get_orphan_cleanup_next_run_time():
+    """
+    Get the next scheduled run time for orphan cleanup.
+
+    This is calculated deterministically based on the scheduled settings
+    and current time, NOT from APScheduler's dynamic calculation.
+    """
+    try:
+        from database import get_db_cursor
+
+        with get_db_cursor() as cursor:
+            # Get enabled setting
+            cursor.execute("""
+                SELECT setting_value FROM system_settings
+                WHERE setting_key = 'auto_cleanup_orphans_enabled'
+            """)
+            enabled_result = cursor.fetchone()
+            enabled = enabled_result and enabled_result['setting_value'] == 'true'
+
+            if not enabled:
+                return None
+
+            # Get interval setting
+            cursor.execute("""
+                SELECT setting_value FROM system_settings
+                WHERE setting_key = 'auto_cleanup_orphans_interval'
+            """)
+            interval_result = cursor.fetchone()
+            interval = interval_result['setting_value'] if interval_result else 'weekly'
+
+        # Use IST timezone
+        tz = pytz.timezone('Asia/Kolkata')
+        now = datetime.now(tz)
+
+        # Calculate next run based on interval type
+        if interval == 'hourly':
+            next_run = now + timedelta(hours=1)
+
+        elif interval == 'daily':
+            # Default to 3 AM for daily cleanup
+            next_run = now.replace(hour=3, minute=0, second=0, microsecond=0)
+            if next_run <= now:
+                next_run += timedelta(days=1)
+
+        elif interval == 'weekly':
+            # Sunday at 3 AM
+            days_until_sunday = (6 - now.weekday()) % 7
+            next_run = now.replace(hour=3, minute=0, second=0, microsecond=0)
+            next_run += timedelta(days=days_until_sunday)
+            if next_run <= now:
+                next_run += timedelta(days=7)
+
+        elif interval == 'monthly':
+            # 1st of month at 3 AM
+            next_run = now.replace(day=1, hour=3, minute=0, second=0, microsecond=0)
+            if next_run <= now:
+                if now.month == 12:
+                    next_run = next_run.replace(year=now.year + 1, month=1)
+                else:
+                    next_run = next_run.replace(month=now.month + 1)
+
+        elif interval.endswith('m') and interval[:-1].isdigit():
+            minutes = int(interval[:-1])
+            minutes = max(5, min(59, minutes))
+            next_run = now + timedelta(minutes=minutes)
+
+        elif interval.endswith('h') and interval[:-1].isdigit():
+            hours = int(interval[:-1])
+            hours = max(1, min(48, hours))
+            next_run = now + timedelta(hours=hours)
+
+        elif interval.endswith('d') and interval[:-1].isdigit():
+            days = int(interval[:-1])
+            days = max(1, min(30, days))
+            next_run = now + timedelta(days=days)
+
+        else:  # default to weekly
+            days_until_sunday = (6 - now.weekday()) % 7
+            next_run = now.replace(hour=3, minute=0, second=0, microsecond=0)
+            next_run += timedelta(days=days_until_sunday)
+            if next_run <= now:
+                next_run += timedelta(days=7)
+
+        # Return as UTC datetime for API response
+        return next_run.astimezone(pytz.UTC)
+
+    except Exception as e:
+        logger.error(f"Error calculating orphan cleanup next run time: {e}")
+        return None

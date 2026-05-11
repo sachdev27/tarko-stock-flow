@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { ChevronDown, ChevronUp, Box, Scissors, Package, Layers } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { StockEntryList } from './StockEntryList';
@@ -14,6 +15,7 @@ interface ProductVariantCardProps {
   batches: InventoryBatchUI[];
   productVariantId: string;
   onUpdate: () => void;
+  onOpenLedger: (productVariantId: string, mode?: 'tab' | 'modal') => void;
 }
 
 export const ProductVariantCard = ({
@@ -22,7 +24,8 @@ export const ProductVariantCard = ({
   parameters,
   batches,
   productVariantId,
-  onUpdate
+  onUpdate,
+  onOpenLedger
 }: ProductVariantCardProps) => {
   const [expanded, setExpanded] = useState(false);
 
@@ -50,12 +53,12 @@ export const ProductVariantCard = ({
   const totalSparePieces = stockByType.SPARE.reduce((sum, e) => sum + (e.piece_count || e.total_available), 0);
 
   return (
-    <Card 
+    <Card
       className={cn(
         "cursor-pointer hover:shadow-md transition-all border-l-4",
         productTypeName === 'HDPE Pipe' ? "border-l-primary" : "border-l-secondary",
         expanded && "shadow-inner bg-accent/5"
-      )} 
+      )}
       onClick={() => setExpanded(!expanded)}
     >
       <CardHeader className="p-2 sm:p-4 pb-1.5">
@@ -67,7 +70,7 @@ export const ProductVariantCard = ({
                 <span className="font-extrabold text-[#111827] text-base truncate uppercase tracking-tight leading-none">{brandName}</span>
                 <span className="text-[10px] text-muted-foreground/70 font-bold uppercase tracking-widest shrink-0 ml-1 opacity-80 leading-none">• {productTypeName}</span>
               </div>
-              
+
               {/* Compact Stock on right */}
               <div className="flex items-center gap-2 shrink-0 ml-2">
                 {totalFullRolls > 0 && (
@@ -105,6 +108,32 @@ export const ProductVariantCard = ({
           </div>
 
           <div className="shrink-0 flex flex-col items-end gap-1">
+            <div className="flex items-center gap-1">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-7 px-2 text-xs"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenLedger(productVariantId, 'tab');
+                }}
+              >
+                Ledger
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-7 px-2 text-xs"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenLedger(productVariantId, 'modal');
+                }}
+              >
+                Modal
+              </Button>
+            </div>
              {expanded ? (
               <ChevronUp className="h-4 w-4 text-muted-foreground/40" />
             ) : (

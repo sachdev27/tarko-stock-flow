@@ -10,12 +10,12 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { 
-  ChevronDown, 
-  ChevronUp, 
-  Box, 
-  Scissors, 
-  Layers, 
+import {
+  ChevronDown,
+  ChevronUp,
+  Box,
+  Scissors,
+  Layers,
   Package,
   MessageCircle,
   Download
@@ -40,16 +40,18 @@ interface ProInventoryGridProps {
   onBulkExport: () => void;
   onUpdate: () => void;
   onRefresh: () => void;
+  onOpenLedger: (productVariantId: string, mode?: 'tab' | 'modal') => void;
 }
 
-export const ProInventoryGrid = ({ 
-  groupedByProductVariant, 
+export const ProInventoryGrid = ({
+  groupedByProductVariant,
   selectedRows,
   onSelectedRowsChange,
   onBulkWhatsApp,
   onBulkExport,
-  onUpdate, 
-  onRefresh 
+  onUpdate,
+  onRefresh,
+  onOpenLedger
 }: ProInventoryGridProps) => {
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
   const selectedCount = Object.values(selectedRows).filter(Boolean).length;
@@ -101,6 +103,7 @@ export const ProInventoryGrid = ({
             {Object.entries(groupedByProductVariant).map(([key, variant]) => {
               const isExpanded = !!expandedRows[key];
               const isSelected = !!selectedRows[key];
+              const productVariantId = variant.batches[0]?.product_variant_id || '';
               const allStockEntries = variant.batches.flatMap(b => b.stock_entries);
               const totals = {
                 FULL_ROLL: allStockEntries.filter(e => e.stock_type === 'FULL_ROLL').reduce((s, e) => s + e.quantity, 0),
@@ -111,7 +114,7 @@ export const ProInventoryGrid = ({
 
               return (
                 <React.Fragment key={key}>
-                  <TableRow 
+                  <TableRow
                     className={cn(
                       "group hover:bg-accent/30 transition-all cursor-pointer border-b last:border-0",
                       isSelected && "bg-primary/5",
@@ -120,8 +123,8 @@ export const ProInventoryGrid = ({
                     onClick={() => toggleRow(key)}
                   >
                     <TableCell onClick={(e) => e.stopPropagation()} className="p-4 text-center">
-                      <Checkbox 
-                        checked={isSelected} 
+                      <Checkbox
+                        checked={isSelected}
                         onCheckedChange={() => toggleSelection(key)}
                       />
                     </TableCell>
@@ -173,7 +176,27 @@ export const ProInventoryGrid = ({
                       ) : <span className="text-muted-foreground/20">-</span>}
                     </TableCell>
                     <TableCell>
-                      <div className="flex justify-center">
+                      <div className="flex items-center justify-center gap-2" onClick={(e) => e.stopPropagation()}>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-7 px-2 text-xs"
+                          disabled={!productVariantId}
+                          onClick={() => onOpenLedger(productVariantId, 'tab')}
+                        >
+                          Ledger
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-7 px-2 text-xs"
+                          disabled={!productVariantId}
+                          onClick={() => onOpenLedger(productVariantId, 'modal')}
+                        >
+                          Modal
+                        </Button>
                         {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                       </div>
                     </TableCell>
@@ -203,6 +226,7 @@ export const ProInventoryGrid = ({
           {Object.entries(groupedByProductVariant).map(([key, variant]) => {
             const isExpanded = !!expandedRows[key];
             const isSelected = !!selectedRows[key];
+            const productVariantId = variant.batches[0]?.product_variant_id || '';
             const allStockEntries = variant.batches.flatMap(b => b.stock_entries);
             const totals = {
               FULL_ROLL: allStockEntries.filter(e => e.stock_type === 'FULL_ROLL').reduce((s, e) => s + e.quantity, 0),
@@ -212,7 +236,7 @@ export const ProInventoryGrid = ({
             };
 
             return (
-              <div 
+              <div
                 key={key}
                 className={cn(
                   "px-3 py-2.5 flex flex-col transition-all active:bg-accent/20",
@@ -224,8 +248,8 @@ export const ProInventoryGrid = ({
                 {/* Line 1: Header (Checkbox + Brand + Type) */}
                 <div className="flex items-center gap-2 min-w-0">
                   <div onClick={(e) => e.stopPropagation()} className="shrink-0 flex items-center">
-                    <Checkbox 
-                      checked={isSelected} 
+                    <Checkbox
+                      checked={isSelected}
                       onCheckedChange={() => toggleSelection(key)}
                       className="h-3 w-3 rounded-[2px] border-muted-foreground/40 shadow-none"
                     />
@@ -293,6 +317,30 @@ export const ProInventoryGrid = ({
               </div>
 
                 {/* Expansion Content */}
+                <div className="pl-[30px] mt-2 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-7 px-2 text-xs"
+                    disabled={!productVariantId}
+                    onClick={() => onOpenLedger(productVariantId, 'tab')}
+                  >
+                    Ledger
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-7 px-2 text-xs"
+                    disabled={!productVariantId}
+                    onClick={() => onOpenLedger(productVariantId, 'modal')}
+                  >
+                    Modal
+                  </Button>
+                </div>
+
+                {/* Expansion Content */}
                 {isExpanded && (
                   <div className="pl-0 pt-2 border-t mt-2 animate-in fade-in slide-in-from-top-1 duration-200">
                     <StockEntryList
@@ -311,7 +359,7 @@ export const ProInventoryGrid = ({
 
       {/* Floating Action Command Bar */}
       {selectedCount > 0 && (
-        <div 
+        <div
           className="fixed bottom-[84px] sm:bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1 sm:gap-4 bg-background/80 backdrop-blur-xl border border-primary/20 p-2 sm:p-3 px-4 sm:px-6 rounded-full shadow-[0_20px_50px_rgba(0,0,0,0.2),0_0_20px_rgba(var(--primary),0.1)] ring-1 ring-white/10 animate-in slide-in-from-bottom-8 duration-500 ease-out"
         >
           <div className="flex items-center gap-1 sm:gap-2 pr-1.5 sm:pr-4 border-r">
@@ -321,18 +369,18 @@ export const ProInventoryGrid = ({
             <span className="text-[11px] sm:text-sm font-medium whitespace-nowrap hidden xs:inline">Selected</span>
           </div>
           <div className="flex items-center gap-1 sm:gap-2">
-            <Button 
-              size="sm" 
+            <Button
+              size="sm"
               className="bg-green-600 hover:bg-green-700 text-white border-none h-8 sm:h-10 px-3 sm:px-4"
               onClick={onBulkWhatsApp}
             >
               <MessageCircle className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
               <span className="text-xs sm:text-sm font-semibold">WhatsApp</span>
             </Button>
-            
-            <Button 
-              size="sm" 
-              variant="ghost" 
+
+            <Button
+              size="sm"
+              variant="ghost"
               onClick={() => onSelectedRowsChange({})}
               className="h-8 sm:h-9 text-muted-foreground px-2"
             >
