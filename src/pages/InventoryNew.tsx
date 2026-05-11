@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Layout } from '@/components/Layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -17,6 +17,7 @@ import { ImportExportDialog } from '@/components/inventory/ImportExportDialog';
 import { AdvancedFilters } from '@/components/inventory/AdvancedFilters';
 import { KeyboardShortcutsDialog } from '@/components/inventory/KeyboardShortcutsDialog';
 import ScrapHistory from '@/components/inventory/ScrapHistory';
+import ProductLedgerTab from '@/components/inventory/ProductLedgerTab';
 import { useAuth } from '@/contexts/AuthContext';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { InventoryBatchUI, StockEntry } from '@/types/inventory-ui';
@@ -478,6 +479,29 @@ const InventoryNew = () => {
     return acc;
   }, {} as Record<string, { productTypeName: string; brandName: string; parameters: Record<string, unknown>; batches: InventoryBatchUI[] }>);
 
+  const ledgerVariantOptions = useMemo(() => {
+    const source = Object.values(groupedByProductVariant);
+
+    return source
+      .map((variant) => {
+        const firstBatch = variant.batches[0];
+        if (!firstBatch?.product_variant_id) return null;
+
+        return {
+          productVariantId: firstBatch.product_variant_id,
+          productTypeName: variant.productTypeName,
+          brandName: variant.brandName,
+          parameters: variant.parameters,
+        };
+      })
+      .filter((variant): variant is {
+        productVariantId: string;
+        productTypeName: string;
+        brandName: string;
+        parameters: Record<string, unknown>;
+      } => Boolean(variant));
+  }, [groupedByProductVariant]);
+
   const selectedBatches = Object.entries(groupedByProductVariant)
     .filter(([key]) => selectedRows[key])
     .flatMap(([, variant]) => variant.batches);
@@ -546,10 +570,10 @@ const InventoryNew = () => {
     const selectedVariants = Object.entries(groupedByProductVariant)
       .filter(([key]) => selectedRows[key])
       .map(([, variant]) => variant);
-    
+
     // Flatten all batches from selected variants
     const allSelectedBatches = selectedVariants.flatMap(v => v.batches);
-    
+
     if (allSelectedBatches.length === 0) {
       toast.error('No items selected');
       return;
@@ -593,7 +617,7 @@ const InventoryNew = () => {
                 Import/Export
               </Button>
             )}
-            <Button 
+            <Button
               onClick={() => {
                 if (filteredBatches.length === 0) return;
                 setWhatsappDialogOpen(true);
@@ -607,11 +631,11 @@ const InventoryNew = () => {
             <Button onClick={fetchBatches} disabled={loading} size="sm" className="h-8 sm:h-10 text-xs sm:text-sm">
               {loading ? 'Refreshing...' : 'Refresh'}
             </Button>
-            
+
             <div className="flex items-center ml-auto sm:ml-2 sm:border-l sm:pl-4">
-              <ToggleGroup 
-                type="single" 
-                value={viewType} 
+              <ToggleGroup
+                type="single"
+                value={viewType}
                 onValueChange={(value) => value && setViewType(value as 'cards' | 'grid')}
                 className="bg-muted/50 p-1 rounded-lg"
               >
@@ -633,8 +657,9 @@ const InventoryNew = () => {
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full max-w-md grid-cols-2">
+          <TabsList className="grid w-full max-w-2xl grid-cols-3">
             <TabsTrigger value="stock">Stock Inventory</TabsTrigger>
+            <TabsTrigger value="ledger">Product Ledger</TabsTrigger>
             <TabsTrigger value="scrap-history">Scrap History</TabsTrigger>
           </TabsList>
 
@@ -710,28 +735,28 @@ const InventoryNew = () => {
               const sortedVariants = Object.entries(groupedByProductVariant).sort(([, a], [, b]) => {
                 const paramsA = a.parameters as Record<string, any>;
                 const paramsB = b.parameters as Record<string, any>;
-                
+
                 // OD Sort
                 const odA = parseFloat(String(paramsA.OD || 0));
                 const odB = parseFloat(String(paramsB.OD || 0));
                 if (odA !== odB) return odA - odB;
-                
+
                 // PN Sort
                 const pnA = parseFloat(String(paramsA.PN || 0));
                 const pnB = parseFloat(String(paramsB.PN || 0));
                 if (pnA !== pnB) return pnA - pnB;
-                
+
                 // PE Sort
                 const peA = parseFloat(String(paramsA.PE || 0));
                 const peB = parseFloat(String(paramsB.PE || 0));
                 if (peA !== peB) return peA - peB;
-                
+
                 // Brand Sort
                 return (a.brandName || '').localeCompare(b.brandName || '');
               });
 
               return viewType === 'grid' ? (
-                <ProInventoryGrid 
+                <ProInventoryGrid
                   groupedByProductVariant={Object.fromEntries(sortedVariants)}
                   selectedRows={selectedRows}
                   onSelectedRowsChange={setSelectedRows}
@@ -757,6 +782,10 @@ const InventoryNew = () => {
               );
             })()}
             </div>
+          </TabsContent>
+
+          <TabsContent value="ledger">
+            <ProductLedgerTab variants={ledgerVariantOptions} />
           </TabsContent>
 
           <TabsContent value="scrap-history" className="mt-6">

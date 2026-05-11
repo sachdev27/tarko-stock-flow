@@ -607,6 +607,106 @@ export interface RevertTransactionResponse {
 }
 
 // ============================================================================
+// LEDGER API TYPES
+// ============================================================================
+
+export type LedgerGranularity = 'hour' | 'day' | 'week' | 'month';
+
+export interface ProductLedgerEventsParams {
+  start_date?: ISO8601DateTime;
+  end_date?: ISO8601DateTime;
+  batch_id?: UUID;
+  include_reverted?: boolean;
+  limit?: number;
+}
+
+export interface ProductLedgerTimeseriesParams {
+  start_date?: ISO8601DateTime;
+  end_date?: ISO8601DateTime;
+  include_reverted?: boolean;
+  granularity?: LedgerGranularity;
+}
+
+export interface ProductLedgerEvent {
+  event_id: string;
+  event_time: ISO8601DateTime;
+  event_type: string;
+  source_table: string;
+  source_id: string;
+  batch_id?: UUID;
+  batch_code?: string;
+  product_variant_id: UUID;
+  quantity_in: number;
+  quantity_out: number;
+  signed_change: number;
+  base_quantity_in: number;
+  base_quantity_out: number;
+  base_signed_change: number;
+  balance_after: number;
+  notes?: string;
+  reference_no?: string;
+  actor_name?: string;
+  meta?: Record<string, unknown>;
+}
+
+export interface ProductLedgerEventsResponse {
+  product_variant_id: UUID;
+  base_unit: string;
+  summary: {
+    event_count: number;
+    opening_balance: number;
+    total_in: number;
+    total_out: number;
+    net_change: number;
+    closing_balance: number;
+  };
+  events: ProductLedgerEvent[];
+}
+
+export interface ProductLedgerTimeseriesPoint {
+  bucket_time: ISO8601DateTime;
+  total_in: number;
+  total_out: number;
+  net_change: number;
+  produced: number;
+  dispatched: number;
+  returned: number;
+  scrapped: number;
+  transformed_out: number;
+  running_balance: number;
+}
+
+export interface ProductLedgerTimeseriesResponse {
+  product_variant_id: UUID;
+  base_unit: string;
+  granularity: LedgerGranularity;
+  points: ProductLedgerTimeseriesPoint[];
+}
+
+export interface ProductLedgerEventDetailsResponse {
+  source_table: string;
+  source_id: string;
+  details: Record<string, unknown>;
+}
+
+export interface ProductLedgerCurrentStockResponse {
+  product_variant_id: UUID;
+  base_unit: string;
+  total_quantity: number;
+  is_quantity_based?: boolean;
+  is_bundle_based?: boolean;
+  product_type_name?: string;
+  stock_counts: {
+    full_roll_count: number;
+    cut_roll_count: number;
+    bundle_count: number;
+    spare_count: number;
+    cut_piece_count: number;
+  };
+  as_of: string;
+}
+
+// ============================================================================
 // ADMIN API TYPES
 // ============================================================================
 

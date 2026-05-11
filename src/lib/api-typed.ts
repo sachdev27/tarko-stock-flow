@@ -446,6 +446,46 @@ export const transactions = {
 };
 
 // ============================================================================
+// LEDGER API
+// ============================================================================
+
+export const ledger = {
+  getProductEvents: (
+    productVariantId: API.UUID,
+    params?: API.ProductLedgerEventsParams
+  ): Promise<API.ProductLedgerEventsResponse> =>
+    apiClient
+      .get<API.ProductLedgerEventsResponse>(`/ledger/product/${productVariantId}/events`, { params })
+      .then(unwrapResponse),
+
+  getProductTimeseries: (
+    productVariantId: API.UUID,
+    params?: API.ProductLedgerTimeseriesParams
+  ): Promise<API.ProductLedgerTimeseriesResponse> =>
+    apiClient
+      .get<API.ProductLedgerTimeseriesResponse>(`/ledger/product/${productVariantId}/timeseries`, { params })
+      .then(unwrapResponse),
+
+  getCurrentStock: (productVariantId: API.UUID): Promise<API.ProductLedgerCurrentStockResponse> =>
+    apiClient
+      .get<API.ProductLedgerCurrentStockResponse>(`/ledger/product/${productVariantId}/current-stock`)
+      .then(unwrapResponse),
+
+  getEventDetails: (
+    sourceTable: string,
+    sourceId: string
+  ): Promise<API.ProductLedgerEventDetailsResponse> =>
+    apiClient
+      .get<API.ProductLedgerEventDetailsResponse>('/ledger/event-details', {
+        params: {
+          source_table: sourceTable,
+          source_id: sourceId,
+        },
+      })
+      .then(unwrapResponse),
+};
+
+// ============================================================================
 // ADMIN API
 // ============================================================================
 

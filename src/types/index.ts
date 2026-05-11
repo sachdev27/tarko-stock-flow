@@ -62,6 +62,14 @@ export type {
   Transaction,
   RevertTransactionRequest,
 
+  // Ledger
+  ProductLedgerEventsParams,
+  ProductLedgerTimeseriesParams,
+  ProductLedgerEventsResponse,
+  ProductLedgerTimeseriesResponse,
+  ProductLedgerEvent,
+  ProductLedgerTimeseriesPoint,
+
   // Admin
   Brand,
   ProductType,

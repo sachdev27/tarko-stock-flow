@@ -1,0 +1,1076 @@
+import { useEffect, useMemo, useState } from 'react';
+import { format } from 'date-fns';
+import { Activity, ArrowDownCircle, ArrowUpCircle, Eye, RefreshCw, TrendingUp } from 'lucide-react';
+import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+
+import { ledger as ledgerAPI } from '@/lib/api-typed';
+import type * as API from '@/types';
+import { SearchableCombobox } from '@/components/dispatch/SearchableCombobox';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { toast } from 'sonner';
+
+interface LedgerVariantOption {
+  productVariantId: API.UUID;
+  productTypeName: string;
+  brandName: string;
+  parameters: Record<string, unknown>;
+}
+
+interface ProductLedgerTabProps {
+  variants: LedgerVariantOption[];
+}
+
+const chartColors = {
+  balance: '#2563eb',
+  produced: '#16a34a',
+  dispatched: '#dc2626',
+  returned: '#7c3aed',
+  scrapped: '#ea580c',
+};
+
+const formatNumber = (value: number | string | undefined | null) => {
+  const num = Number(value ?? 0);
+  if (!Number.isFinite(num)) return '0';
+  return num.toLocaleString(undefined, { maximumFractionDigits: 2 });
+};
+
+const inferBaseUnit = (productTypeName?: string) => {
+  const label = (productTypeName || '').toLowerCase();
+  return label.includes('hdpe') ? 'm' : 'pcs';
+};
+
+const dispatchUnitByItemType = (itemType: string) => {
+  switch ((itemType || '').toUpperCase()) {
+    case 'FULL_ROLL':
+    case 'CUT_ROLL':
+      return 'roll';
+    case 'BUNDLE':
+      return 'bundle';
+    case 'SPARE_PIECES':
+    case 'CUT_PIECE':
+      return 'pcs';
+    default:
+      return 'unit';
+  }
+};
+
+const pluralizeUnit = (unit: string, value: number) => {
+  if (unit === 'm') return 'm';
+  return Math.abs(value) === 1 ? unit : `${unit}s`;
+};
+
+const formatWithUnit = (value: number | string | undefined | null, unit: string) => {
+  const n = Number(value || 0);
+  return `${formatNumber(n)} ${pluralizeUnit(unit, n)}`;
+};
+
+const getRangeDefaults = () => {
+  const end = new Date();
+  const start = new Date();
+  start.setDate(end.getDate() - 30);
+
+  return {
+    startDate: format(start, 'yyyy-MM-dd'),
+    endDate: format(end, 'yyyy-MM-dd'),
+  };
+};
+
+const toRangeISO = (date: string, endOfDay = false) => {
+  if (!date) return undefined;
+  const suffix = endOfDay ? 'T23:59:59' : 'T00:00:00';
+  return `${date}${suffix}`;
+};
+
+const LEDGER_VARIANT_STORAGE_KEY = 'inventory-ledger:selected-variant-id';
+
+const readParamValue = (parameters: Record<string, unknown>, key: string) => {
+  const direct = parameters[key];
+  if (direct !== undefined && direct !== null) return String(direct).trim();
+  const alt = parameters[key.toLowerCase()];
+  if (alt !== undefined && alt !== null) return String(alt).trim();
+  return '';
+};
+
+const toNumberIfPossible = (value: string) => {
+  if (!value) return Number.POSITIVE_INFINITY;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : Number.POSITIVE_INFINITY;
+};
+
+const ProductLedgerTab = ({ variants }: ProductLedgerTabProps) => {
+  const [selectedVariantId, setSelectedVariantId] = useState<API.UUID>(() => {
+    if (typeof window === 'undefined') return '';
+    return (window.localStorage.getItem(LEDGER_VARIANT_STORAGE_KEY) || '') as API.UUID;
+  });
+  const [granularity, setGranularity] = useState<API.LedgerGranularity>('day');
+  const [includeReverted, setIncludeReverted] = useState(false);
+  const [events, setEvents] = useState<API.ProductLedgerEvent[]>([]);
+  const [timeseries, setTimeseries] = useState<API.ProductLedgerTimeseriesPoint[]>([]);
+  const [summary, setSummary] = useState<API.ProductLedgerEventsResponse['summary'] | null>(null);
+  const [currentStock, setCurrentStock] = useState<API.ProductLedgerCurrentStockResponse | null>(null);
+  const [baseUnit, setBaseUnit] = useState<'m' | 'pcs'>('m');
+  const [loading, setLoading] = useState(false);
+  const [range, setRange] = useState(getRangeDefaults);
+  const [selectedEvent, setSelectedEvent] = useState<API.ProductLedgerEvent | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+  const [eventDetails, setEventDetails] = useState<API.ProductLedgerEventDetailsResponse | null>(null);
+  const [eventDetailsCache, setEventDetailsCache] = useState<Record<string, API.ProductLedgerEventDetailsResponse>>({});
+
+  const variantComboboxOptions = useMemo(() => {
+    return variants
+      .map((variant) => ({
+        id: variant.productVariantId,
+        productTypeName: variant.productTypeName,
+        brandName: variant.brandName,
+        parameters: variant.parameters,
+      }))
+      .sort((a, b) => {
+        const typeCmp = a.productTypeName.localeCompare(b.productTypeName, undefined, { sensitivity: 'base' });
+        if (typeCmp !== 0) return typeCmp;
+
+        const brandCmp = a.brandName.localeCompare(b.brandName, undefined, { sensitivity: 'base' });
+        if (brandCmp !== 0) return brandCmp;
+
+        const aOd = readParamValue(a.parameters, 'OD');
+        const bOd = readParamValue(b.parameters, 'OD');
+        const odNumCmp = toNumberIfPossible(aOd) - toNumberIfPossible(bOd);
+        if (odNumCmp !== 0 && Number.isFinite(odNumCmp)) return odNumCmp;
+        const odCmp = aOd.localeCompare(bOd, undefined, { sensitivity: 'base' });
+        if (odCmp !== 0) return odCmp;
+
+        const aPn = readParamValue(a.parameters, 'PN');
+        const bPn = readParamValue(b.parameters, 'PN');
+        const pnNumCmp = toNumberIfPossible(aPn) - toNumberIfPossible(bPn);
+        if (pnNumCmp !== 0 && Number.isFinite(pnNumCmp)) return pnNumCmp;
+        const pnCmp = aPn.localeCompare(bPn, undefined, { sensitivity: 'base' });
+        if (pnCmp !== 0) return pnCmp;
+
+        const aPe = readParamValue(a.parameters, 'PE');
+        const bPe = readParamValue(b.parameters, 'PE');
+        const peNumCmp = toNumberIfPossible(aPe) - toNumberIfPossible(bPe);
+        if (peNumCmp !== 0 && Number.isFinite(peNumCmp)) return peNumCmp;
+        return aPe.localeCompare(bPe, undefined, { sensitivity: 'base' });
+      });
+  }, [variants]);
+
+  useEffect(() => {
+    if (variants.length === 0) {
+      setSelectedVariantId('');
+      return;
+    }
+
+    const exists = variants.some((v) => v.productVariantId === selectedVariantId);
+    if (!exists) {
+      const fallbackId = variantComboboxOptions[0]?.id || variants[0].productVariantId;
+      setSelectedVariantId(fallbackId as API.UUID);
+    }
+  }, [variants, variantComboboxOptions, selectedVariantId]);
+
+  useEffect(() => {
+    if (!selectedVariantId || typeof window === 'undefined') return;
+    window.localStorage.setItem(LEDGER_VARIANT_STORAGE_KEY, selectedVariantId);
+  }, [selectedVariantId]);
+
+  const selectedVariant = useMemo(
+    () => variants.find((variant) => variant.productVariantId === selectedVariantId),
+    [variants, selectedVariantId]
+  );
+
+  const formatVariantLabel = (option: { id: string; productTypeName: string; brandName: string; parameters: Record<string, unknown> }) => {
+    return `${option.productTypeName} | ${option.brandName} | ${Object.entries(option.parameters)
+      .map(([k, v]) => `${k}:${String(v)}`)
+      .join(', ')}`;
+  };
+
+  const getEventSummaryText = (event: API.ProductLedgerEvent) => {
+    const meta = (event.meta || {}) as Record<string, unknown>;
+    const eventType = (event.event_type || '').toUpperCase();
+
+    const asText = (value: unknown) => (value === null || value === undefined ? '' : String(value));
+    const itemType = asText(meta.item_type);
+    const customerName = asText(meta.customer_name);
+    const invoiceNo = asText(meta.invoice_number);
+    const noteText = asText(event.notes);
+    const mixedProducts = Boolean(meta.mixed_products);
+
+    const shortParts: string[] = [];
+
+    if (eventType.includes('DISPATCH')) {
+      const dispatchUnit = dispatchUnitByItemType(itemType);
+      const dispatchQty = Number(meta.piece_count || meta.quantity || event.quantity_out || 0);
+      shortParts.push(`Dispatched ${formatWithUnit(dispatchQty, dispatchUnit)}`);
+      if (mixedProducts) shortParts.push('Mixed dispatch');
+      const totalLength = Number(meta.length_meters_total || meta.length_meters || 0);
+      if (totalLength) shortParts.push(`length=${formatNumber(totalLength)} m`);
+      if (customerName) shortParts.push(`Customer: ${customerName}`);
+      if (invoiceNo) shortParts.push(`Invoice: ${invoiceNo}`);
+    } else if (eventType.includes('PRODUCTION')) {
+      shortParts.push(`Produced ${formatWithUnit(event.quantity_in, inferBaseUnit(selectedVariant?.productTypeName))}`);
+    } else if (eventType.includes('CUT_ROLL')) {
+      const fromStockType = asText(meta.from_stock_type);
+      const toStockType = asText(meta.to_stock_type);
+      shortParts.push(`Cut roll: +${formatNumber(event.quantity_in)} (${toStockType || 'to'}) / -${formatNumber(event.quantity_out)} (${fromStockType || 'from'})`);
+    } else if (eventType.includes('SPLIT_BUNDLE')) {
+      shortParts.push(`Split bundle: +${formatNumber(event.quantity_in)} / -${formatNumber(event.quantity_out)}`);
+    } else if (eventType.includes('COMBINE_SPARES')) {
+      shortParts.push(`Combined spares: +${formatNumber(event.quantity_in)} / -${formatNumber(event.quantity_out)}`);
+    } else if (eventType.includes('RETURN')) {
+      const returnUnit = itemType ? dispatchUnitByItemType(itemType) : inferBaseUnit(selectedVariant?.productTypeName);
+      shortParts.push(`Returned ${formatWithUnit(event.quantity_in, returnUnit)}`);
+      if (customerName) shortParts.push(`From: ${customerName}`);
+    } else if (eventType.includes('SCRAP')) {
+      const scrapUnit = itemType ? dispatchUnitByItemType(itemType) : inferBaseUnit(selectedVariant?.productTypeName);
+      shortParts.push(`Scrapped ${formatWithUnit(event.quantity_out, scrapUnit)}`);
+      const reason = asText(meta.reason);
+      if (reason) shortParts.push(`Reason: ${reason}`);
+    }
+
+    if (noteText) {
+      shortParts.push(noteText.length > 80 ? `${noteText.slice(0, 80)}...` : noteText);
+    }
+
+    if (shortParts.length === 0) {
+      return event.source_table || '-';
+    }
+
+    return shortParts.join(' | ');
+  };
+
+  const getEventDisplayValues = (event: API.ProductLedgerEvent) => {
+    const meta = (event.meta || {}) as Record<string, unknown>;
+    const eventType = (event.event_type || '').toUpperCase();
+    const baseUnit = inferBaseUnit(selectedVariant?.productTypeName);
+    const itemType = String(meta.item_type || meta.stock_type || '');
+
+    let inUnit = baseUnit;
+    let outUnit = baseUnit;
+
+    if (eventType.includes('DISPATCH') || eventType.includes('RETURN') || eventType.includes('SCRAP')) {
+      const itemUnit = itemType ? dispatchUnitByItemType(itemType) : baseUnit;
+      inUnit = itemUnit;
+      outUnit = itemUnit;
+    } else if (eventType.includes('CUT_ROLL') || eventType.includes('SPLIT_BUNDLE') || eventType.includes('COMBINE_SPARES')) {
+      const fromType = String(meta.from_stock_type || '').toUpperCase();
+      const toType = String(meta.to_stock_type || '').toUpperCase();
+      const mapStockUnit = (stockType: string) => {
+        if (stockType === 'FULL_ROLL' || stockType === 'CUT_ROLL') return 'roll';
+        if (stockType === 'BUNDLE') return 'bundle';
+        if (stockType === 'SPARE') return 'pcs';
+        return 'unit';
+      };
+      inUnit = mapStockUnit(toType);
+      outUnit = mapStockUnit(fromType);
+    }
+
+    const inText = Number(event.quantity_in || 0) > 0 ? formatWithUnit(event.quantity_in, inUnit) : '-';
+    const outText = Number(event.quantity_out || 0) > 0 ? formatWithUnit(event.quantity_out, outUnit) : '-';
+
+    const changeValue = Number(event.signed_change || 0);
+    let changeText = '-';
+    if (changeValue > 0 && Number(event.quantity_out || 0) > 0 && inUnit !== outUnit) {
+      changeText = `+${formatWithUnit(event.quantity_in, inUnit)} / -${formatWithUnit(event.quantity_out, outUnit)}`;
+    } else if (changeValue > 0) {
+      changeText = `+${formatWithUnit(changeValue, inUnit)}`;
+    } else if (changeValue < 0) {
+      changeText = `-${formatWithUnit(Math.abs(changeValue), outUnit)}`;
+    }
+
+    const baseChange = Number(event.base_signed_change || 0);
+    const baseAbs = Math.abs(baseChange);
+    const baseText = baseAbs > 0 ? `${baseChange > 0 ? '+' : '-'}${formatWithUnit(baseAbs, baseUnit)}` : '-';
+
+    let outWithBase = outText;
+    let changeWithBase = changeText;
+
+    if (eventType.includes('DISPATCH') || eventType.includes('RETURN') || eventType.includes('SCRAP')) {
+      if (baseAbs > 0) {
+        outWithBase = outText === '-' ? '-' : `${outText} (${formatWithUnit(baseAbs, baseUnit)})`;
+        changeWithBase = changeText === '-' ? baseText : `${changeText} (${baseText})`;
+      }
+    }
+
+    return { inText, outText: outWithBase, changeText: changeWithBase, baseText };
+  };
+
+  const dispatchDestinations = useMemo(() => {
+    const destinationMap = new Map<string, {
+      name: string;
+      eventCount: number;
+      references: string[];
+      totalRolls: number;
+      totalPieces: number;
+      totalLengthMeters: number;
+      firstDispatchAt?: string;
+      lastDispatchAt?: string;
+    }>();
+
+    events.forEach((event) => {
+      const eventType = (event.event_type || '').toUpperCase();
+      if (!eventType.includes('DISPATCH')) return;
+
+      const meta = (event.meta || {}) as Record<string, unknown>;
+      const name = String(meta.customer_name || 'Unknown customer');
+      const itemType = String(meta.item_type || '').toUpperCase();
+      const qty = Number(meta.quantity || 0);
+      const pieceCount = Number(meta.piece_count || 0);
+      const lengthMeters = Number(meta.length_meters || 0);
+
+      const current = destinationMap.get(name) || {
+        name,
+        eventCount: 0,
+        references: [],
+        totalRolls: 0,
+        totalPieces: 0,
+        totalLengthMeters: 0,
+      };
+      current.eventCount += 1;
+      current.totalLengthMeters += Number.isFinite(lengthMeters) ? lengthMeters : 0;
+
+      if (itemType === 'FULL_ROLL' || itemType === 'CUT_ROLL') {
+        current.totalRolls += Number.isFinite(qty) ? qty : 0;
+      } else if (itemType === 'SPARE_PIECES' || itemType === 'CUT_PIECE') {
+        current.totalPieces += Number.isFinite(pieceCount || qty) ? (pieceCount || qty) : 0;
+      }
+
+      if (!current.firstDispatchAt || new Date(event.event_time) < new Date(current.firstDispatchAt)) {
+        current.firstDispatchAt = event.event_time;
+      }
+      if (!current.lastDispatchAt || new Date(event.event_time) > new Date(current.lastDispatchAt)) {
+        current.lastDispatchAt = event.event_time;
+      }
+
+      const reference = String(event.reference_no || event.source_id || '').trim();
+      if (reference && !current.references.includes(reference)) {
+        current.references.push(reference);
+      }
+
+      destinationMap.set(name, current);
+    });
+
+    return Array.from(destinationMap.values())
+      .sort((a, b) => b.eventCount - a.eventCount)
+      .slice(0, 8);
+  }, [events]);
+
+  const openEventDetails = async (event: API.ProductLedgerEvent) => {
+    const cacheKey = `${event.source_table}:${event.source_id}`;
+    setSelectedEvent(event);
+    setDetailsOpen(true);
+    setEventDetails(null);
+
+    if (!event.source_table || !event.source_id) {
+      setEventDetails(null);
+      return;
+    }
+
+    if (eventDetailsCache[cacheKey]) {
+      setEventDetails(eventDetailsCache[cacheKey]);
+      return;
+    }
+
+    setDetailsLoading(true);
+    try {
+      const details = await ledgerAPI.getEventDetails(event.source_table, event.source_id);
+      setEventDetails(details);
+      setEventDetailsCache((prev) => ({ ...prev, [cacheKey]: details }));
+    } catch (error) {
+      const err = error as { response?: { data?: { error?: string } }; message?: string };
+      setEventDetails(null);
+      toast.error('Failed to load ledger event details', {
+        description: err.response?.data?.error || err.message || 'Unknown error',
+      });
+    } finally {
+      setDetailsLoading(false);
+    }
+  };
+
+  const fetchLedger = async () => {
+    if (!selectedVariantId) return;
+
+    try {
+      setLoading(true);
+      const startDate = toRangeISO(range.startDate, false);
+      const endDate = toRangeISO(range.endDate, true);
+
+      const [eventsResponse, timeseriesResponse, currentStockResponse] = await Promise.all([
+        ledgerAPI.getProductEvents(selectedVariantId, {
+          start_date: startDate,
+          end_date: endDate,
+          include_reverted: includeReverted,
+          limit: 300,
+        }),
+        ledgerAPI.getProductTimeseries(selectedVariantId, {
+          start_date: startDate,
+          end_date: endDate,
+          include_reverted: includeReverted,
+          granularity,
+        }),
+        ledgerAPI.getCurrentStock(selectedVariantId),
+      ]);
+
+      setEvents(eventsResponse.events || []);
+      setSummary(eventsResponse.summary || null);
+      setBaseUnit(eventsResponse.base_unit === 'pcs' ? 'pcs' : 'm');
+      setTimeseries(timeseriesResponse.points || []);
+      setCurrentStock(currentStockResponse || null);
+    } catch (error) {
+      const err = error as { response?: { data?: { error?: string } }; message?: string };
+      toast.error('Failed to load product ledger', {
+        description: err.response?.data?.error || err.message || 'Unknown error',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchLedger();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedVariantId, granularity, includeReverted]);
+
+  if (variants.length === 0) {
+    return (
+      <Card className="mt-6">
+        <CardContent className="py-12 text-center text-muted-foreground">
+          No product variants found for current filters.
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="mt-6 space-y-4 sm:space-y-6">
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+            <Activity className="h-4 w-4" />
+            Product Ledger
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
+            <div className="space-y-1 xl:col-span-2">
+              <Label>Product Variant</Label>
+              <SearchableCombobox
+                value={selectedVariantId}
+                onChange={(value) => setSelectedVariantId(value as API.UUID)}
+                options={variantComboboxOptions}
+                placeholder="Search product variant (product, brand, OD, PN, PE, UUID)..."
+                displayFormat={formatVariantLabel}
+                searchFields={['id', 'productTypeName', 'brandName']}
+                filterFn={(item, search) => {
+                  const searchLower = search.toLowerCase().trim();
+                  if (!searchLower) return true;
+
+                  const rawTokens = searchLower.split(',').map((token) => token.trim()).filter(Boolean);
+                  const parameters = item.parameters || {};
+                  const od = String(parameters.OD ?? parameters.od ?? '').toLowerCase();
+                  const pn = String(parameters.PN ?? parameters.pn ?? '').toLowerCase();
+                  const pe = String(parameters.PE ?? parameters.pe ?? '').toLowerCase();
+
+                  const paramText = Object.entries(item.parameters || {})
+                    .map(([k, v]) => `${k}:${String(v)}`)
+                    .join(' ')
+                    .toLowerCase();
+
+                  if (searchLower.includes(',') && rawTokens.length > 0) {
+                    const [tokenOd, tokenPn, tokenPe, ...rest] = rawTokens;
+                    if (tokenOd && !od.includes(tokenOd)) return false;
+                    if (tokenPn && !pn.includes(tokenPn)) return false;
+                    if (tokenPe && !pe.includes(tokenPe)) return false;
+
+                    if (rest.length > 0) {
+                      const fullText = `${item.id} ${item.productTypeName} ${item.brandName} ${paramText}`.toLowerCase();
+                      return rest.every((token) => fullText.includes(token));
+                    }
+
+                    return true;
+                  }
+
+                  return (
+                    item.id.toLowerCase().includes(searchLower) ||
+                    item.productTypeName.toLowerCase().includes(searchLower) ||
+                    item.brandName.toLowerCase().includes(searchLower) ||
+                    paramText.includes(searchLower)
+                  );
+                }}
+              />
+            </div>
+
+            <div className="space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <Label>Start Date</Label>
+                <button
+                  type="button"
+                  onClick={() => setRange((prev) => ({ ...prev, startDate: '' }))}
+                  className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                >
+                  From beginning
+                </button>
+              </div>
+              <Input
+                type="date"
+                value={range.startDate}
+                onChange={(e) => setRange((prev) => ({ ...prev, startDate: e.target.value }))}
+              />
+              <div className="text-[11px] text-muted-foreground">Suggestion: keep this empty to load ledger from the beginning.</div>
+            </div>
+
+            <div className="space-y-1">
+              <Label>End Date</Label>
+              <Input
+                type="date"
+                value={range.endDate}
+                onChange={(e) => setRange((prev) => ({ ...prev, endDate: e.target.value }))}
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label>Granularity</Label>
+              <Select value={granularity} onValueChange={(value) => setGranularity(value as API.LedgerGranularity)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="hour">Hourly</SelectItem>
+                  <SelectItem value="day">Daily</SelectItem>
+                  <SelectItem value="week">Weekly</SelectItem>
+                  <SelectItem value="month">Monthly</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2">
+              <Switch id="include-reverted" checked={includeReverted} onCheckedChange={setIncludeReverted} />
+              <Label htmlFor="include-reverted">Include reverted records</Label>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Button variant="outline" onClick={fetchLedger} disabled={loading}>
+                <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                Apply
+              </Button>
+            </div>
+          </div>
+
+          {selectedVariant && (
+            <div className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
+              Showing ledger for <span className="font-medium text-foreground">{selectedVariant.productTypeName}</span>
+              {' '}| {selectedVariant.brandName} | {Object.entries(selectedVariant.parameters)
+                .map(([k, v]) => `${k}:${String(v)}`)
+                .join(', ')}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {summary && (
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+            <Card>
+              <CardContent className="p-4">
+                <div className="text-xs text-muted-foreground">Opening ({baseUnit})</div>
+                <div className="text-lg font-semibold">{formatWithUnit(summary.opening_balance, baseUnit)}</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <div className="text-xs text-muted-foreground">Inflow ({baseUnit})</div>
+                <div className="text-lg font-semibold text-emerald-600">+{formatWithUnit(summary.total_in, baseUnit)}</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <div className="text-xs text-muted-foreground">Outflow ({baseUnit})</div>
+                <div className="text-lg font-semibold text-red-600">-{formatWithUnit(summary.total_out, baseUnit)}</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <div className="text-xs text-muted-foreground">Net ({baseUnit})</div>
+                <div className="text-lg font-semibold">{formatWithUnit(summary.net_change, baseUnit)}</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <div className="text-xs text-muted-foreground">Closing ({baseUnit})</div>
+                <div className="text-lg font-semibold">{formatWithUnit(summary.closing_balance, baseUnit)}</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <div className="text-xs text-muted-foreground">Events</div>
+                <div className="text-lg font-semibold">{summary.event_count}</div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card>
+            <CardContent className="p-3 text-xs text-muted-foreground">
+              Reconciliation: {formatWithUnit(summary.opening_balance, baseUnit)} + {formatWithUnit(summary.total_in, baseUnit)} - {formatWithUnit(summary.total_out, baseUnit)} = {formatWithUnit(summary.closing_balance, baseUnit)}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {currentStock && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Current Inventory Snapshot (Now)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-6">
+              <div className="rounded border p-2">
+                <div className="text-[11px] text-muted-foreground">{(currentStock.base_unit || baseUnit) === 'm' ? 'Current Length' : 'Current Qty'}</div>
+                <div className="text-sm font-semibold">{formatWithUnit(currentStock.total_quantity, currentStock.base_unit || baseUnit)}</div>
+              </div>
+              <div className="rounded border p-2">
+                <div className="text-[11px] text-muted-foreground">Full Roll</div>
+                <div className="text-sm font-semibold">{formatNumber(currentStock.stock_counts.full_roll_count)}</div>
+              </div>
+              <div className="rounded border p-2">
+                <div className="text-[11px] text-muted-foreground">Cut Roll</div>
+                <div className="text-sm font-semibold">{formatNumber(currentStock.stock_counts.cut_roll_count)}</div>
+              </div>
+              <div className="rounded border p-2">
+                <div className="text-[11px] text-muted-foreground">Bundle</div>
+                <div className="text-sm font-semibold">{formatNumber(currentStock.stock_counts.bundle_count)}</div>
+              </div>
+              <div className="rounded border p-2">
+                <div className="text-[11px] text-muted-foreground">Spare</div>
+                <div className="text-sm font-semibold">{formatNumber(currentStock.stock_counts.spare_count)}</div>
+              </div>
+              <div className="rounded border p-2">
+                <div className="text-[11px] text-muted-foreground">Cut Pieces</div>
+                <div className="text-sm font-semibold">{formatNumber(currentStock.stock_counts.cut_piece_count)}</div>
+              </div>
+            </div>
+            <div className="mt-2 text-[11px] text-muted-foreground">
+              Ledger summary is date-range based. Snapshot shows live stock as of {format(new Date(currentStock.as_of), 'dd MMM yyyy HH:mm')}. {(currentStock.base_unit || baseUnit) === 'm' ? 'Length is derived from current stock composition (rolls/cut pieces).' : 'Quantity is derived from current stock composition.'}
+            </div>
+
+            {summary ? (() => {
+              const liveUnit = currentStock.base_unit || baseUnit;
+              const ledgerClosing = Number(summary.closing_balance || 0);
+              const liveNow = Number(currentStock.total_quantity || 0);
+              const gap = liveNow - ledgerClosing;
+              const gapAbs = Math.abs(gap);
+
+              return (
+                <div className="mt-2 rounded border bg-muted/20 p-2 text-[11px]">
+                  <span className="text-muted-foreground">Ledger closing vs live now: </span>
+                  <span className="font-medium">{formatWithUnit(ledgerClosing, liveUnit)}</span>
+                  <span className="text-muted-foreground"> vs </span>
+                  <span className="font-medium">{formatWithUnit(liveNow, liveUnit)}</span>
+                  <span className="text-muted-foreground"> (gap: </span>
+                  <span className={`font-medium ${gap > 0 ? 'text-emerald-600' : gap < 0 ? 'text-red-600' : ''}`}>
+                    {gap > 0 ? '+' : gap < 0 ? '-' : ''}{formatWithUnit(gapAbs, liveUnit)}
+                  </span>
+                  <span className="text-muted-foreground">)</span>
+                </div>
+              );
+            })() : null}
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <TrendingUp className="h-4 w-4" />
+              Running Balance
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={timeseries}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="bucket_time" tickFormatter={(value) => format(new Date(value), 'dd MMM')} />
+                  <YAxis />
+                  <Tooltip
+                    formatter={(value: number, name: string) => [formatNumber(value), name]}
+                    labelFormatter={(value) => format(new Date(value), 'dd MMM yyyy HH:mm')}
+                  />
+                  <Line type="monotone" dataKey="running_balance" stroke={chartColors.balance} strokeWidth={2} dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Produced / Dispatched / Returned / Scrapped</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={timeseries}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="bucket_time" tickFormatter={(value) => format(new Date(value), 'dd MMM')} />
+                  <YAxis />
+                  <Tooltip
+                    formatter={(value: number, name: string) => [formatNumber(value), name]}
+                    labelFormatter={(value) => format(new Date(value), 'dd MMM yyyy HH:mm')}
+                  />
+                  <Bar dataKey="produced" fill={chartColors.produced} />
+                  <Bar dataKey="dispatched" fill={chartColors.dispatched} />
+                  <Bar dataKey="returned" fill={chartColors.returned} />
+                  <Bar dataKey="scrapped" fill={chartColors.scrapped} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm">Dispatch Destinations (Compact)</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {dispatchDestinations.length === 0 ? (
+            <div className="text-sm text-muted-foreground">No dispatches in selected range.</div>
+          ) : (
+            <div className="space-y-1.5">
+              {dispatchDestinations.map((destination) => (
+                <div key={destination.name} className="rounded-md border px-2.5 py-2">
+                  <div className="grid grid-cols-1 gap-1 md:grid-cols-6 md:items-center">
+                    <div className="font-medium md:col-span-2 truncate" title={destination.name}>{destination.name}</div>
+                    <div className="text-xs text-muted-foreground">{destination.eventCount} dispatches</div>
+                    <div className="text-xs text-muted-foreground">{formatNumber(destination.totalRolls)} rolls</div>
+                    <div className="text-xs text-muted-foreground">{formatNumber(destination.totalLengthMeters)} m</div>
+                    <div className="text-xs text-muted-foreground">
+                      {destination.lastDispatchAt ? format(new Date(destination.lastDispatchAt), 'dd MMM HH:mm') : '-'}
+                    </div>
+                  </div>
+                  <div className="mt-1 text-[11px] text-muted-foreground line-clamp-1" title={destination.references.join(', ')}>
+                    {destination.references.join(', ')}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Ledger Events</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="mb-3 text-xs text-muted-foreground">
+            Values are shown in their stored units per event type (for example, production in meters and dispatch in rolls/pieces/bundles).
+          </div>
+          {events.length === 0 ? (
+            <div className="py-8 text-center text-sm text-muted-foreground">No ledger events found for this range.</div>
+          ) : (
+            <div className="overflow-auto max-h-[520px] border rounded-md">
+              <Table>
+                <TableHeader className="sticky top-0 bg-background">
+                  <TableRow>
+                    <TableHead>Time</TableHead>
+                    <TableHead>Event</TableHead>
+                    <TableHead>Reference</TableHead>
+                    <TableHead>Details</TableHead>
+                    <TableHead className="text-right">In (stored)</TableHead>
+                    <TableHead className="text-right">Out (stored)</TableHead>
+                    <TableHead className="text-right">Change</TableHead>
+                    <TableHead className="text-right">Balance</TableHead>
+                    <TableHead>Actor</TableHead>
+                    <TableHead className="text-right">More</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {events.map((event) => {
+                    const change = Number(event.signed_change || 0);
+                    const positive = change > 0;
+                    const negative = change < 0;
+                    const displayValues = getEventDisplayValues(event);
+
+                    return (
+                      <TableRow
+                        key={event.event_id}
+                        className="cursor-pointer"
+                        onClick={() => {
+                          void openEventDetails(event);
+                        }}
+                      >
+                        <TableCell className="whitespace-nowrap">
+                          {format(new Date(event.event_time), 'dd MMM yyyy HH:mm')}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline">{event.event_type}</Badge>
+                        </TableCell>
+                        <TableCell className="max-w-[260px] truncate" title={event.reference_no || event.source_id}>
+                          {event.reference_no || event.source_id}
+                        </TableCell>
+                        <TableCell className="max-w-[360px] truncate" title={getEventSummaryText(event)}>
+                          {getEventSummaryText(event)}
+                        </TableCell>
+                        <TableCell className="text-right text-emerald-600">{displayValues.inText}</TableCell>
+                        <TableCell className="text-right text-red-600">{displayValues.outText}</TableCell>
+                        <TableCell className="text-right">
+                          <span className={`inline-flex items-center gap-1 ${positive ? 'text-emerald-600' : negative ? 'text-red-600' : 'text-muted-foreground'}`}>
+                            {positive ? <ArrowUpCircle className="h-3.5 w-3.5" /> : null}
+                            {negative ? <ArrowDownCircle className="h-3.5 w-3.5" /> : null}
+                            {displayValues.changeText}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-right font-medium">{formatWithUnit(event.balance_after, baseUnit)}</TableCell>
+                        <TableCell className="max-w-[180px] truncate" title={event.actor_name || '-'}>
+                          {event.actor_name || '-'}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void openEventDetails(event);
+                            }}
+                            className="h-8 px-2"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Dialog
+        open={detailsOpen}
+        onOpenChange={(open) => {
+          setDetailsOpen(open);
+          if (!open) {
+            setSelectedEvent(null);
+            setEventDetails(null);
+          }
+        }}
+      >
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Ledger Event Details</DialogTitle>
+          </DialogHeader>
+
+          {selectedEvent && (() => {
+            const meta = (selectedEvent.meta || {}) as Record<string, unknown>;
+            const eventType = (selectedEvent.event_type || '').toUpperCase();
+            const displayValues = getEventDisplayValues(selectedEvent);
+            const lazyDetails = (eventDetails?.details || {}) as Record<string, unknown>;
+            const parameters = (lazyDetails.parameters || (lazyDetails.product as Record<string, unknown> | undefined)?.parameters || {}) as Record<string, unknown>;
+            const items = Array.isArray(lazyDetails.items) ? (lazyDetails.items as Record<string, unknown>[]) : [];
+            const stockEntries = Array.isArray(lazyDetails.stock_entries) ? (lazyDetails.stock_entries as Record<string, unknown>[]) : [];
+            const cutPieces = Array.isArray(lazyDetails.cut_pieces) ? (lazyDetails.cut_pieces as Record<string, unknown>[]) : [];
+
+            return (
+              <div className="space-y-4 text-sm">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <div className="text-xs text-muted-foreground">Time</div>
+                    <div className="font-medium">{format(new Date(selectedEvent.event_time), 'dd MMM yyyy HH:mm:ss')}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">Event</div>
+                    <div className="font-medium">{selectedEvent.event_type}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">Reference</div>
+                    <div className="font-medium break-all">{selectedEvent.reference_no || selectedEvent.source_id}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">Actor</div>
+                    <div className="font-medium">{selectedEvent.actor_name || '-'}</div>
+                  </div>
+                </div>
+
+                <div className="rounded-md border p-3">
+                  <div className="text-xs text-muted-foreground mb-1">Stored movement</div>
+                  <div className="space-y-1">
+                    <div>In: <span className="font-medium text-emerald-600">{displayValues.inText}</span></div>
+                    <div>Out: <span className="font-medium text-red-600">{displayValues.outText}</span></div>
+                    <div>Change: <span className="font-medium">{displayValues.changeText}</span></div>
+                    <div>Base change ({baseUnit}): <span className="font-medium">{displayValues.baseText}</span></div>
+                    <div>Balance after: <span className="font-medium">{formatWithUnit(selectedEvent.balance_after, baseUnit)}</span></div>
+                  </div>
+                </div>
+
+                {detailsLoading ? (
+                  <div className="rounded-md border p-3 text-muted-foreground flex items-center gap-2">
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    Loading detailed information...
+                  </div>
+                ) : null}
+
+                {!detailsLoading && Object.keys(lazyDetails).length > 0 ? (
+                  <div className="rounded-md border p-3">
+                    <div className="text-xs text-muted-foreground mb-2">Detailed specification</div>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      <div>Product type: <span className="font-medium">{String(lazyDetails.product_type_name || (lazyDetails.product as Record<string, unknown> | undefined)?.product_type_name || '-')}</span></div>
+                      <div>Brand: <span className="font-medium">{String(lazyDetails.brand_name || (lazyDetails.product as Record<string, unknown> | undefined)?.brand_name || '-')}</span></div>
+                      <div>Batch code: <span className="font-medium">{String(lazyDetails.batch_code || (lazyDetails.batch as Record<string, unknown> | undefined)?.batch_code || selectedEvent.batch_code || '-')}</span></div>
+                      <div>Created by: <span className="font-medium">{String(lazyDetails.created_by || '-')}</span></div>
+                    </div>
+                    {Object.keys(parameters).length > 0 ? (
+                      <div className="mt-2 text-xs text-muted-foreground">
+                        {Object.entries(parameters).map(([key, value]) => `${key}:${String(value)}`).join(' | ')}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {eventType.includes('DISPATCH') && (
+                  <div className="rounded-md border p-3">
+                    <div className="text-xs text-muted-foreground mb-1">Dispatch info</div>
+                    <div className="space-y-1">
+                      <div>Dispatched to: <span className="font-medium">{String(lazyDetails.customer_name || meta.customer_name || 'Unknown customer')}</span></div>
+                      <div>Item type: <span className="font-medium">{String(meta.item_type || '-')}</span></div>
+                      <div>Invoice: <span className="font-medium">{String(lazyDetails.invoice_number || meta.invoice_number || '-')}</span></div>
+                      <div>Status: <span className="font-medium">{String(lazyDetails.status || meta.dispatch_status || '-')}</span></div>
+                      <div>Transport: <span className="font-medium">{String(lazyDetails.transport_name || '-')}</span></div>
+                      <div>Vehicle: <span className="font-medium">{String(lazyDetails.vehicle_number || '-')}</span></div>
+                      <div>Driver: <span className="font-medium">{String(lazyDetails.driver_name || '-')}</span></div>
+                      <div>Bill To: <span className="font-medium">{String(lazyDetails.bill_to_name || '-')}</span></div>
+                      {meta.mixed_products ? <div className="text-amber-600 font-medium">Mixed dispatch (multiple product variants)</div> : null}
+                    </div>
+                    {items.length > 0 ? (
+                      <div className="mt-3 space-y-2">
+                        <div className="text-xs text-muted-foreground">Dispatch items</div>
+                        {items.map((item, idx) => (
+                          <div
+                            key={`${selectedEvent.event_id}-dispatch-item-${idx}`}
+                            className={`rounded border p-2 ${
+                              String(item.item_type || '').toUpperCase() === String(meta.item_type || '').toUpperCase() &&
+                              Number(item.quantity || 0) === Number(meta.quantity || 0) &&
+                              Number(item.length_meters || 0) === Number(meta.length_meters || 0)
+                                ? 'border-emerald-500 bg-emerald-50/40'
+                                : ''
+                            }`}
+                          >
+                            <div className="font-medium">{String(item.item_type || 'Item')}</div>
+                            <div className="text-xs text-muted-foreground">
+                              Qty: {formatNumber(Number(item.quantity || 0))} | Length: {item.length_meters ? `${formatNumber(Number(item.length_meters))} m` : '-'} | Pieces: {formatNumber(Number(item.piece_count || 0))}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              Bundle size: {formatNumber(Number(item.bundle_size || 0))} | Pieces per bundle: {formatNumber(Number(item.pieces_per_bundle || 0))} | Piece length: {item.piece_length_meters ? `${formatNumber(Number(item.piece_length_meters))} m` : '-'}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              Spec: {String(item.product_type_name || '-')} | {String(item.brand_name || '-')} | {Object.entries((item.parameters || {}) as Record<string, unknown>).map(([k, v]) => `${k}:${String(v)}`).join(', ') || '-'}
+                            </div>
+                            {String(item.item_type || '').toUpperCase() === String(meta.item_type || '').toUpperCase() &&
+                              Number(item.quantity || 0) === Number(meta.quantity || 0) &&
+                              Number(item.length_meters || 0) === Number(meta.length_meters || 0) ? (
+                              <div className="mt-1 text-[11px] font-medium text-emerald-700">Matches selected ledger row</div>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+
+                {eventType.includes('PRODUCTION') && (
+                  <div className="rounded-md border p-3">
+                    <div className="text-xs text-muted-foreground mb-1">Production info</div>
+                    <div className="space-y-1">
+                      <div>Produced quantity: <span className="font-medium">{displayValues.inText}</span></div>
+                      <div>Batch code: <span className="font-medium">{String(lazyDetails.batch_code || (lazyDetails.batch as Record<string, unknown> | undefined)?.batch_code || selectedEvent.batch_code || '-')}</span></div>
+                      <div>Transaction date: <span className="font-medium">{String(lazyDetails.transaction_date || meta.transaction_date || '-')}</span></div>
+                    </div>
+                    {stockEntries.length > 0 ? (
+                      <div className="mt-3 space-y-2">
+                        <div className="text-xs text-muted-foreground">Produced rolls / pieces breakdown</div>
+                        {stockEntries.map((entry, idx) => (
+                          <div key={`${selectedEvent.event_id}-stock-entry-${idx}`} className="rounded border p-2">
+                            <div className="font-medium">{String(entry.stock_type || 'Stock')}</div>
+                            <div className="text-xs text-muted-foreground">
+                              Quantity: {formatNumber(Number(entry.quantity || 0))} | Length per unit: {entry.length_per_unit ? `${formatNumber(Number(entry.length_per_unit))} m` : '-'}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              Pieces per bundle: {formatNumber(Number(entry.pieces_per_bundle || 0))} | Piece length: {entry.piece_length_meters ? `${formatNumber(Number(entry.piece_length_meters))} m` : '-'}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+
+                {eventType.includes('CUT_ROLL') && (
+                  <div className="rounded-md border p-3">
+                    <div className="text-xs text-muted-foreground mb-1">Cut roll info</div>
+                    <div className="space-y-1">
+                      <div>From stock type: <span className="font-medium">{String(lazyDetails.from_stock_type || meta.from_stock_type || '-')}</span></div>
+                      <div>To stock type: <span className="font-medium">{String(lazyDetails.to_stock_type || meta.to_stock_type || '-')}</span></div>
+                      <div>From qty: <span className="font-medium">{String(lazyDetails.from_quantity ?? meta.from_quantity ?? '-')}</span></div>
+                      <div>To qty: <span className="font-medium">{String(lazyDetails.to_quantity ?? meta.to_quantity ?? '-')}</span></div>
+                      <div>From length: <span className="font-medium">{lazyDetails.from_length ? `${formatNumber(Number(lazyDetails.from_length))} m` : meta.from_length ? `${formatNumber(Number(meta.from_length))} m` : '-'}</span></div>
+                      <div>To length: <span className="font-medium">{lazyDetails.to_length ? `${formatNumber(Number(lazyDetails.to_length))} m` : meta.to_length ? `${formatNumber(Number(meta.to_length))} m` : '-'}</span></div>
+                    </div>
+                    {cutPieces.length > 0 ? (
+                      <div className="mt-3 space-y-2">
+                        <div className="text-xs text-muted-foreground">Generated cut pieces</div>
+                        {cutPieces.map((piece, idx) => (
+                          <div key={`${selectedEvent.event_id}-cut-piece-${idx}`} className="rounded border p-2 text-xs text-muted-foreground">
+                            Piece #{idx + 1} | Length: {piece.length_meters ? `${formatNumber(Number(piece.length_meters))} m` : '-'} | Status: {String(piece.status || '-')}
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+
+                {eventType.includes('SCRAP') && items.length > 0 ? (
+                  <div className="rounded-md border p-3">
+                    <div className="text-xs text-muted-foreground mb-1">Scrap details</div>
+                    <div className="space-y-2">
+                      {items.map((item, idx) => (
+                        <div key={`${selectedEvent.event_id}-scrap-item-${idx}`} className="rounded border p-2">
+                          <div className="font-medium">{String(item.stock_type || item.item_type || 'Scrap item')}</div>
+                          <div className="text-xs text-muted-foreground">
+                            Quantity scrapped: {formatNumber(Number(item.quantity_scrapped || item.quantity || 0))} | Length/unit: {item.length_per_unit ? `${formatNumber(Number(item.length_per_unit))} m` : '-'}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            Pieces per bundle: {formatNumber(Number(item.pieces_per_bundle || 0))} | Piece length: {item.piece_length_meters ? `${formatNumber(Number(item.piece_length_meters))} m` : '-'}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {selectedEvent.notes ? (
+                  <div className="rounded-md border p-3">
+                    <div className="text-xs text-muted-foreground mb-1">Notes</div>
+                    <div>{selectedEvent.notes}</div>
+                  </div>
+                ) : null}
+              </div>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+};
+
+export default ProductLedgerTab;

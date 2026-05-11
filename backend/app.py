@@ -27,6 +27,7 @@ from routes.password_reset_routes import password_reset_bp
 from routes.smtp_config_routes import smtp_config_bp
 from routes.sync_routes import sync_bp
 from routes.swagger_routes import swagger_bp
+from routes.ledger_routes import ledger_bp
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -89,6 +90,7 @@ app.register_blueprint(password_reset_bp)
 app.register_blueprint(smtp_config_bp)
 app.register_blueprint(sync_bp)
 app.register_blueprint(swagger_bp)
+app.register_blueprint(ledger_bp)
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
