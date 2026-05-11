@@ -29,6 +29,7 @@ import { toast } from 'sonner';
 import { Search, Eye, TruckIcon, Package, Filter, X, Download, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Pencil } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { DispatchAPI } from '@/components/dispatch/dispatchAPI';
+import { SearchableCombobox } from '@/components/dispatch/SearchableCombobox';
 import { EditDispatchDialog } from '@/components/dispatch/EditDispatchDialog';
 import { format } from 'date-fns';
 
@@ -91,10 +92,26 @@ export const DispatchHistoryTab = () => {
   const [timePreset, setTimePreset] = useState('all');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [dispatchNumberFilter, setDispatchNumberFilter] = useState('');
+  const [customerFilter, setCustomerFilter] = useState('');
+  const [billToFilter, setBillToFilter] = useState('');
+  const [transportFilter, setTransportFilter] = useState('');
+  const [driverFilter, setDriverFilter] = useState('');
 
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 50;
+
+  // Generate suggestions from dispatches
+  const suggestions = useMemo(() => {
+    return {
+      dispatchNumbers: [...new Set(dispatches.map(d => d.dispatch_number))],
+      customers: [...new Set(dispatches.map(d => d.customer_name).filter(Boolean))],
+      billTos: [...new Set(dispatches.map(d => d.bill_to_name).filter(Boolean))],
+      transports: [...new Set(dispatches.map(d => d.transport_name).filter(Boolean))],
+      drivers: [...new Set(dispatches.map(d => d.vehicle_driver).filter(Boolean))],
+    };
+  }, [dispatches]);
 
   const totalPages = Math.ceil((filteredDispatches?.length || 0) / itemsPerPage);
 
@@ -144,7 +161,11 @@ export const DispatchHistoryTab = () => {
   }, [token, fetchDispatches]);
 
   useEffect(() => {
-    if (!searchTerm.trim() && (!startDate || !endDate)) {
+    const hasActiveFilters = searchTerm.trim() || startDate || endDate ||
+                             dispatchNumberFilter || customerFilter || billToFilter ||
+                             transportFilter || driverFilter;
+
+    if (!hasActiveFilters) {
       setFilteredDispatches(dispatches);
       return;
     }
@@ -163,6 +184,41 @@ export const DispatchHistoryTab = () => {
       );
     }
 
+    // Dispatch number filter
+    if (dispatchNumberFilter) {
+      filtered = filtered.filter(d =>
+        d.dispatch_number.toLowerCase().includes(dispatchNumberFilter.toLowerCase())
+      );
+    }
+
+    // Customer filter
+    if (customerFilter) {
+      filtered = filtered.filter(d =>
+        d.customer_name.toLowerCase().includes(customerFilter.toLowerCase())
+      );
+    }
+
+    // Bill To filter
+    if (billToFilter) {
+      filtered = filtered.filter(d =>
+        d.bill_to_name?.toLowerCase().includes(billToFilter.toLowerCase())
+      );
+    }
+
+    // Transport filter
+    if (transportFilter) {
+      filtered = filtered.filter(d =>
+        d.transport_name?.toLowerCase().includes(transportFilter.toLowerCase())
+      );
+    }
+
+    // Driver filter
+    if (driverFilter) {
+      filtered = filtered.filter(d =>
+        d.vehicle_driver?.toLowerCase().includes(driverFilter.toLowerCase())
+      );
+    }
+
     // Date range filter
     if (startDate && endDate) {
       const start = new Date(startDate);
@@ -175,7 +231,7 @@ export const DispatchHistoryTab = () => {
 
     setFilteredDispatches(filtered);
     setCurrentPage(1); // Reset to first page on filter change
-  }, [searchTerm, dispatches, startDate, endDate]);
+  }, [searchTerm, dispatches, startDate, endDate, dispatchNumberFilter, customerFilter, billToFilter, transportFilter, driverFilter]);
 
   // Handle time preset changes
   useEffect(() => {
@@ -368,13 +424,19 @@ export const DispatchHistoryTab = () => {
               >
                 <Filter className="h-4 w-4" />
                 <span className="hidden sm:inline">Filters</span>
-                {(timePreset !== 'all' || startDate || endDate) && (
+                {(timePreset !== 'all' || startDate || endDate || dispatchNumberFilter || customerFilter || billToFilter || transportFilter || driverFilter) && (
                   <span className="ml-1 rounded-full bg-primary px-2 py-0.5 text-xs text-primary-foreground">
-                    {(timePreset !== 'all' ? 1 : 0) + (startDate && endDate ? 1 : 0)}
+                    {(timePreset !== 'all' ? 1 : 0) +
+                     (startDate && endDate ? 1 : 0) +
+                     (dispatchNumberFilter ? 1 : 0) +
+                     (customerFilter ? 1 : 0) +
+                     (billToFilter ? 1 : 0) +
+                     (transportFilter ? 1 : 0) +
+                     (driverFilter ? 1 : 0)}
                   </span>
                 )}
               </Button>
-              {(timePreset !== 'all' || startDate || endDate) && (
+              {(timePreset !== 'all' || startDate || endDate || dispatchNumberFilter || customerFilter || billToFilter || transportFilter || driverFilter) && (
                 <Button
                   variant="ghost"
                   size="sm"
@@ -382,6 +444,11 @@ export const DispatchHistoryTab = () => {
                     setTimePreset('all');
                     setStartDate('');
                     setEndDate('');
+                    setDispatchNumberFilter('');
+                    setCustomerFilter('');
+                    setBillToFilter('');
+                    setTransportFilter('');
+                    setDriverFilter('');
                   }}
                   className="flex items-center gap-2"
                 >
@@ -394,7 +461,7 @@ export const DispatchHistoryTab = () => {
             {/* Expanded Filters Panel */}
             {showFilters && (
               <div className="rounded-lg border bg-card p-4 space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {/* Time Period Filter */}
                   <div className="space-y-2">
                     <Label htmlFor="time-filter">Time Period</Label>
@@ -441,6 +508,91 @@ export const DispatchHistoryTab = () => {
                         if (timePreset !== 'all') setTimePreset('all');
                       }}
                     />
+                  </div>
+
+                  {/* Dispatch Number Filter */}
+                  <div className="space-y-2">
+                    <Label htmlFor="dispatch-filter">Dispatch #</Label>
+                    <Input
+                      id="dispatch-filter"
+                      placeholder="Search dispatch number..."
+                      value={dispatchNumberFilter}
+                      onChange={(e) => setDispatchNumberFilter(e.target.value)}
+                      list="dispatch-numbers"
+                    />
+                    <datalist id="dispatch-numbers">
+                      {suggestions.dispatchNumbers.map((num) => (
+                        <option key={num} value={num} />
+                      ))}
+                    </datalist>
+                  </div>
+
+                  {/* Customer Filter */}
+                  <div className="space-y-2">
+                    <Label htmlFor="customer-filter">Customer</Label>
+                    <Input
+                      id="customer-filter"
+                      placeholder="Search customer..."
+                      value={customerFilter}
+                      onChange={(e) => setCustomerFilter(e.target.value)}
+                      list="customers"
+                    />
+                    <datalist id="customers">
+                      {suggestions.customers.map((customer) => (
+                        <option key={customer} value={customer} />
+                      ))}
+                    </datalist>
+                  </div>
+
+                  {/* Bill To Filter */}
+                  <div className="space-y-2">
+                    <Label htmlFor="billto-filter">Bill To</Label>
+                    <Input
+                      id="billto-filter"
+                      placeholder="Search bill to..."
+                      value={billToFilter}
+                      onChange={(e) => setBillToFilter(e.target.value)}
+                      list="billtos"
+                    />
+                    <datalist id="billtos">
+                      {suggestions.billTos.map((billto) => (
+                        <option key={billto} value={billto} />
+                      ))}
+                    </datalist>
+                  </div>
+
+                  {/* Transport Filter */}
+                  <div className="space-y-2">
+                    <Label htmlFor="transport-filter">Transport</Label>
+                    <Input
+                      id="transport-filter"
+                      placeholder="Search transport..."
+                      value={transportFilter}
+                      onChange={(e) => setTransportFilter(e.target.value)}
+                      list="transports"
+                    />
+                    <datalist id="transports">
+                      {suggestions.transports.map((transport) => (
+                        <option key={transport} value={transport} />
+                      ))}
+                    </datalist>
+                  </div>
+
+                  {/* Driver Filter */}
+                  <div className="space-y-2">
+                    <Label htmlFor="driver-filter">Driver</Label>
+                    <Input
+                      id="driver-filter"
+                      placeholder="Search driver..."
+                      value={driverFilter}
+                      onChange={(e) => setDriverFilter(e.target.value)}
+                      list="drivers"
+                    />
+                    <datalist id="drivers">
+                      {suggestions.drivers.map((driver) => (
+                        <option key={driver} value={driver} />
+                      ))}
+                    </datalist>
                   </div>
                 </div>
               </div>

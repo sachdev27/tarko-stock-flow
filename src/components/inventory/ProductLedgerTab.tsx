@@ -963,9 +963,9 @@ const ProductLedgerTab = ({ variants }: ProductLedgerTabProps) => {
           }
         }}
       >
-        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+        <DialogContent className="w-full max-h-[90vh] overflow-y-auto sm:max-h-[85vh] sm:max-w-2xl mx-auto px-4 sm:px-6">
           <DialogHeader>
-            <DialogTitle>Ledger Event Details</DialogTitle>
+            <DialogTitle className="text-base sm:text-lg truncate">Ledger Event Details</DialogTitle>
           </DialogHeader>
 
           {selectedEvent && (() => {
@@ -979,74 +979,125 @@ const ProductLedgerTab = ({ variants }: ProductLedgerTabProps) => {
             const cutPieces = Array.isArray(lazyDetails.cut_pieces) ? (lazyDetails.cut_pieces as Record<string, unknown>[]) : [];
 
             return (
-              <div className="space-y-4 text-sm">
+              <div className="space-y-3 sm:space-y-4 text-xs sm:text-sm">
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div>
+                  <div className="min-w-0">
                     <div className="text-xs text-muted-foreground">Time</div>
-                    <div className="font-medium">{format(new Date(selectedEvent.event_time), 'dd MMM yyyy HH:mm:ss')}</div>
+                    <div className="font-medium truncate">{format(new Date(selectedEvent.event_time), 'dd MMM yyyy HH:mm:ss')}</div>
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <div className="text-xs text-muted-foreground">Event</div>
-                    <div className="font-medium">{selectedEvent.event_type}</div>
+                    <div className="font-medium truncate">{selectedEvent.event_type}</div>
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <div className="text-xs text-muted-foreground">Reference</div>
-                    <div className="font-medium break-all">{selectedEvent.reference_no || selectedEvent.source_id}</div>
+                    <div className="font-medium break-all text-xs sm:text-sm">{selectedEvent.reference_no || selectedEvent.source_id}</div>
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <div className="text-xs text-muted-foreground">Actor</div>
-                    <div className="font-medium">{selectedEvent.actor_name || '-'}</div>
+                    <div className="font-medium truncate">{selectedEvent.actor_name || '-'}</div>
                   </div>
                 </div>
 
-                <div className="rounded-md border p-3">
+                <div className="rounded-md border p-2 sm:p-3">
                   <div className="text-xs text-muted-foreground mb-1">Stored movement</div>
-                  <div className="space-y-1">
-                    <div>In: <span className="font-medium text-emerald-600">{displayValues.inText}</span></div>
-                    <div>Out: <span className="font-medium text-red-600">{displayValues.outText}</span></div>
-                    <div>Change: <span className="font-medium">{displayValues.changeText}</span></div>
-                    <div>Base change ({baseUnit}): <span className="font-medium">{displayValues.baseText}</span></div>
-                    <div>Balance after: <span className="font-medium">{formatAdaptiveWithUnit(selectedEvent.balance_after, baseUnit, { showBaseForScaled: true })}</span></div>
+                  <div className="space-y-1 text-xs sm:text-sm">
+                    <div className="flex justify-between gap-2">
+                      <span>In:</span>
+                      <span className="font-medium text-emerald-600 text-right">{displayValues.inText}</span>
+                    </div>
+                    <div className="flex justify-between gap-2">
+                      <span>Out:</span>
+                      <span className="font-medium text-red-600 text-right">{displayValues.outText}</span>
+                    </div>
+                    <div className="flex justify-between gap-2">
+                      <span>Change:</span>
+                      <span className="font-medium text-right">{displayValues.changeText}</span>
+                    </div>
+                    <div className="flex justify-between gap-2">
+                      <span>Base change ({baseUnit}):</span>
+                      <span className="font-medium text-right">{displayValues.baseText}</span>
+                    </div>
+                    <div className="flex justify-between gap-2">
+                      <span>Balance after:</span>
+                      <span className="font-medium text-right">{formatAdaptiveWithUnit(selectedEvent.balance_after, baseUnit, { showBaseForScaled: true })}</span>
+                    </div>
                   </div>
                 </div>
 
                 {detailsLoading ? (
-                  <div className="rounded-md border p-3 text-muted-foreground flex items-center gap-2">
-                    <RefreshCw className="h-4 w-4 animate-spin" />
+                  <div className="rounded-md border p-2 sm:p-3 text-muted-foreground flex items-center gap-2 text-xs sm:text-sm">
+                    <RefreshCw className="h-4 w-4 animate-spin flex-shrink-0" />
                     Loading detailed information...
                   </div>
                 ) : null}
 
                 {!detailsLoading && Object.keys(lazyDetails).length > 0 ? (
-                  <div className="rounded-md border p-3">
+                  <div className="rounded-md border p-2 sm:p-3">
                     <div className="text-xs text-muted-foreground mb-2">Detailed specification</div>
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                      <div>Product type: <span className="font-medium">{String(lazyDetails.product_type_name || (lazyDetails.product as Record<string, unknown> | undefined)?.product_type_name || '-')}</span></div>
-                      <div>Brand: <span className="font-medium">{String(lazyDetails.brand_name || (lazyDetails.product as Record<string, unknown> | undefined)?.brand_name || '-')}</span></div>
-                      <div>Batch code: <span className="font-medium">{String(lazyDetails.batch_code || (lazyDetails.batch as Record<string, unknown> | undefined)?.batch_code || selectedEvent.batch_code || '-')}</span></div>
-                      <div>Created by: <span className="font-medium">{String(lazyDetails.created_by || '-')}</span></div>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 text-xs sm:text-sm">
+                      <div className="min-w-0">
+                        <span className="text-muted-foreground">Product type:</span>
+                        <div className="font-medium truncate">{String(lazyDetails.product_type_name || (lazyDetails.product as Record<string, unknown> | undefined)?.product_type_name || '-')}</div>
+                      </div>
+                      <div className="min-w-0">
+                        <span className="text-muted-foreground">Brand:</span>
+                        <div className="font-medium truncate">{String(lazyDetails.brand_name || (lazyDetails.product as Record<string, unknown> | undefined)?.brand_name || '-')}</div>
+                      </div>
+                      <div className="min-w-0">
+                        <span className="text-muted-foreground">Batch code:</span>
+                        <div className="font-medium truncate">{String(lazyDetails.batch_code || (lazyDetails.batch as Record<string, unknown> | undefined)?.batch_code || selectedEvent.batch_code || '-')}</div>
+                      </div>
+                      <div className="min-w-0">
+                        <span className="text-muted-foreground">Created by:</span>
+                        <div className="font-medium truncate">{String(lazyDetails.created_by || '-')}</div>
+                      </div>
                     </div>
                     {Object.keys(parameters).length > 0 ? (
-                      <div className="mt-2 text-xs text-muted-foreground">
-                        {Object.entries(parameters).map(([key, value]) => `${key}:${String(value)}`).join(' | ')}
+                      <div className="mt-2 text-xs text-muted-foreground overflow-x-auto">
+                        <div className="whitespace-nowrap">{Object.entries(parameters).map(([key, value]) => `${key}:${String(value)}`).join(' | ')}</div>
                       </div>
                     ) : null}
                   </div>
                 ) : null}
 
                 {eventType.includes('DISPATCH') && (
-                  <div className="rounded-md border p-3">
-                    <div className="text-xs text-muted-foreground mb-1">Dispatch info</div>
-                    <div className="space-y-1">
-                      <div>Dispatched to: <span className="font-medium">{String(lazyDetails.customer_name || meta.customer_name || 'Unknown customer')}</span></div>
-                      <div>Item type: <span className="font-medium">{String(meta.item_type || '-')}</span></div>
-                      <div>Invoice: <span className="font-medium">{String(lazyDetails.invoice_number || meta.invoice_number || '-')}</span></div>
-                      <div>Status: <span className="font-medium">{String(lazyDetails.status || meta.dispatch_status || '-')}</span></div>
-                      <div>Transport: <span className="font-medium">{String(lazyDetails.transport_name || '-')}</span></div>
-                      <div>Vehicle: <span className="font-medium">{String(lazyDetails.vehicle_number || '-')}</span></div>
-                      <div>Driver: <span className="font-medium">{String(lazyDetails.driver_name || '-')}</span></div>
-                      <div>Bill To: <span className="font-medium">{String(lazyDetails.bill_to_name || '-')}</span></div>
-                      {meta.mixed_products ? <div className="text-amber-600 font-medium">Mixed dispatch (multiple product variants)</div> : null}
+                  <div className="rounded-md border p-2 sm:p-3">
+                    <div className="text-xs text-muted-foreground mb-2">Dispatch info</div>
+                    <div className="space-y-1 text-xs sm:text-sm">
+                      <div className="flex flex-col sm:flex-row sm:gap-2">
+                        <span className="text-muted-foreground">Dispatched to:</span>
+                        <span className="font-medium truncate">{String(lazyDetails.customer_name || meta.customer_name || 'Unknown customer')}</span>
+                      </div>
+                      <div className="flex flex-col sm:flex-row sm:gap-2">
+                        <span className="text-muted-foreground">Item type:</span>
+                        <span className="font-medium">{String(meta.item_type || '-')}</span>
+                      </div>
+                      <div className="flex flex-col sm:flex-row sm:gap-2">
+                        <span className="text-muted-foreground">Invoice:</span>
+                        <span className="font-medium truncate">{String(lazyDetails.invoice_number || meta.invoice_number || '-')}</span>
+                      </div>
+                      <div className="flex flex-col sm:flex-row sm:gap-2">
+                        <span className="text-muted-foreground">Status:</span>
+                        <span className="font-medium">{String(lazyDetails.status || meta.dispatch_status || '-')}</span>
+                      </div>
+                      <div className="flex flex-col sm:flex-row sm:gap-2">
+                        <span className="text-muted-foreground">Transport:</span>
+                        <span className="font-medium truncate">{String(lazyDetails.transport_name || '-')}</span>
+                      </div>
+                      <div className="flex flex-col sm:flex-row sm:gap-2">
+                        <span className="text-muted-foreground">Vehicle:</span>
+                        <span className="font-medium truncate">{String(lazyDetails.vehicle_number || '-')}</span>
+                      </div>
+                      <div className="flex flex-col sm:flex-row sm:gap-2">
+                        <span className="text-muted-foreground">Driver:</span>
+                        <span className="font-medium truncate">{String(lazyDetails.driver_name || '-')}</span>
+                      </div>
+                      <div className="flex flex-col sm:flex-row sm:gap-2">
+                        <span className="text-muted-foreground">Bill To:</span>
+                        <span className="font-medium truncate">{String(lazyDetails.bill_to_name || '-')}</span>
+                      </div>
+                      {meta.mixed_products ? <div className="text-amber-600 font-medium text-xs">Mixed dispatch (multiple product variants)</div> : null}
                     </div>
                     {items.length > 0 ? (
                       <div className="mt-3 space-y-2">
@@ -1067,16 +1118,22 @@ const ProductLedgerTab = ({ variants }: ProductLedgerTabProps) => {
                           const otherItems = items.filter((item) => !isMatch(item));
 
                           const renderItem = (item: Record<string, unknown>, key: string, highlight = false) => (
-                            <div key={key} className={`rounded border p-2 ${highlight ? 'border-emerald-500 bg-emerald-50/40' : ''}`}>
-                              <div className="font-medium">{String(item.item_type || 'Item')}</div>
-                              <div className="text-xs text-muted-foreground">
-                                Qty: {formatNumber(Number(item.quantity || 0))} | Length: {item.length_meters ? `${formatNumber(Number(item.length_meters))} m` : '-'} | Pieces: {formatNumber(Number(item.piece_count || 0))}
+                            <div key={key} className={`rounded border p-2 text-xs sm:text-sm ${highlight ? 'border-emerald-500 bg-emerald-50/40' : ''}`}>
+                              <div className="font-medium text-sm">{String(item.item_type || 'Item')}</div>
+                              <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
+                                <div>Qty: <span className="font-medium">{formatNumber(Number(item.quantity || 0))}</span></div>
+                                <div>Length: <span className="font-medium">{item.length_meters ? `${formatNumber(Number(item.length_meters))} m` : '-'}</span></div>
+                                <div>Pieces: <span className="font-medium">{formatNumber(Number(item.piece_count || 0))}</span></div>
                               </div>
-                              <div className="text-xs text-muted-foreground">
-                                Bundle size: {formatNumber(Number(item.bundle_size || 0))} | Pieces per bundle: {formatNumber(Number(item.pieces_per_bundle || 0))} | Piece length: {item.piece_length_meters ? `${formatNumber(Number(item.piece_length_meters))} m` : '-'}
+                              <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
+                                <div>Bundle size: <span className="font-medium">{formatNumber(Number(item.bundle_size || 0))}</span></div>
+                                <div>Per bundle: <span className="font-medium">{formatNumber(Number(item.pieces_per_bundle || 0))}</span></div>
+                                <div>Piece length: <span className="font-medium">{item.piece_length_meters ? `${formatNumber(Number(item.piece_length_meters))} m` : '-'}</span></div>
                               </div>
-                              <div className="text-xs text-muted-foreground">
-                                Spec: {String(item.product_type_name || '-')} | {String(item.brand_name || '-')} | {Object.entries((item.parameters || {}) as Record<string, unknown>).map(([k, v]) => `${k}:${String(v)}`).join(', ') || '-'}
+                              <div className="text-xs text-muted-foreground mt-1">
+                                <div className="truncate">Type: <span className="font-medium">{String(item.product_type_name || '-')}</span></div>
+                                <div className="truncate">Brand: <span className="font-medium">{String(item.brand_name || '-')}</span></div>
+                                <div className="text-xs break-words">Params: <span className="font-medium">{Object.entries((item.parameters || {}) as Record<string, unknown>).map(([k, v]) => `${k}:${String(v)}`).join(', ') || '-'}</span></div>
                               </div>
                             </div>
                           );
@@ -1109,37 +1166,45 @@ const ProductLedgerTab = ({ variants }: ProductLedgerTabProps) => {
                 )}
 
                 {eventType.includes('PRODUCTION') && (
-                  <div className="rounded-md border p-3">
-                    <div className="text-xs text-muted-foreground mb-1">Production info</div>
-                    <div className="space-y-1">
-                      <div>Produced quantity: <span className="font-medium">{displayValues.inText}</span></div>
-                      <div>Batch code: <span className="font-medium">{String(lazyDetails.batch_code || (lazyDetails.batch as Record<string, unknown> | undefined)?.batch_code || selectedEvent.batch_code || '-')}</span></div>
-                      <div>Transaction date: <span className="font-medium">{String(lazyDetails.transaction_date || meta.transaction_date || '-')}</span></div>
+                  <div className="rounded-md border p-2 sm:p-3">
+                    <div className="text-xs text-muted-foreground mb-2">Production info</div>
+                    <div className="space-y-1 text-xs sm:text-sm">
+                      <div className="flex flex-col sm:flex-row sm:gap-2">
+                        <span className="text-muted-foreground">Produced quantity:</span>
+                        <span className="font-medium">{displayValues.inText}</span>
+                      </div>
+                      <div className="flex flex-col sm:flex-row sm:gap-2">
+                        <span className="text-muted-foreground">Batch code:</span>
+                        <span className="font-medium truncate">{String(lazyDetails.batch_code || (lazyDetails.batch as Record<string, unknown> | undefined)?.batch_code || selectedEvent.batch_code || '-')}</span>
+                      </div>
+                      <div className="flex flex-col sm:flex-row sm:gap-2">
+                        <span className="text-muted-foreground">Transaction date:</span>
+                        <span className="font-medium">{String(lazyDetails.transaction_date || meta.transaction_date || '-')}</span>
+                      </div>
                     </div>
                     {stockEntries.length > 0 ? (
                       <div className="mt-3 space-y-2">
                         <div className="text-xs text-muted-foreground">Produced rolls / pieces breakdown</div>
                         {stockEntries.map((entry, idx) => (
-                          <div key={`${selectedEvent.event_id}-stock-entry-${idx}`} className="rounded border p-2">
-                            <div className="font-medium">{String(entry.stock_type || 'Stock')}</div>
-                            <div className="text-xs text-muted-foreground">
-                              Quantity: {formatNumber(Number(entry.quantity || 0))} | Length per unit: {entry.length_per_unit ? `${formatNumber(Number(entry.length_per_unit))} m` : '-'}
+                          <div key={`${selectedEvent.event_id}-stock-entry-${idx}`} className="rounded border p-2 text-xs sm:text-sm">
+                            <div className="font-medium text-sm">{String(entry.stock_type || 'Stock')}</div>
+                            <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
+                              <div>Qty: <span className="font-medium">{formatNumber(Number(entry.quantity || 0))}</span></div>
+                              <div>Length/unit: <span className="font-medium">{entry.length_per_unit ? `${formatNumber(Number(entry.length_per_unit))} m` : '-'}</span></div>
+                              {entry.total_cut_length ? (
+                                <div>Total cut: <span className="font-medium">{formatAdaptiveWithUnit(Number(entry.total_cut_length || 0), 'm', { showBaseForScaled: true })}</span></div>
+                              ) : null}
+                              <div>Per bundle: <span className="font-medium">{formatNumber(Number(entry.pieces_per_bundle || 0))}</span></div>
+                              <div>Piece length: <span className="font-medium">{entry.piece_length_meters ? `${formatNumber(Number(entry.piece_length_meters))} m` : '-'}</span></div>
                             </div>
-                            {entry.total_cut_length ? (
-                              <div className="text-xs text-muted-foreground">
-                                Total cut length: {formatAdaptiveWithUnit(Number(entry.total_cut_length || 0), 'm', { showBaseForScaled: true })}
-                              </div>
-                            ) : null}
                             {Array.isArray(entry.cut_piece_lengths) && entry.cut_piece_lengths.length > 0 ? (
-                              <div className="text-xs text-muted-foreground">
-                                Cut piece lengths: {(entry.cut_piece_lengths as unknown[])
+                              <div className="text-xs text-muted-foreground mt-1">
+                                <div>Cut pieces:</div>
+                                <div className="break-words">{(entry.cut_piece_lengths as unknown[])
                                   .map((len) => `${formatNumber(Number(len || 0))} m`)
-                                  .join(', ')}
+                                  .join(', ')}</div>
                               </div>
                             ) : null}
-                            <div className="text-xs text-muted-foreground">
-                              Pieces per bundle: {formatNumber(Number(entry.pieces_per_bundle || 0))} | Piece length: {entry.piece_length_meters ? `${formatNumber(Number(entry.piece_length_meters))} m` : '-'}
-                            </div>
                           </div>
                         ))}
                       </div>
@@ -1148,41 +1213,66 @@ const ProductLedgerTab = ({ variants }: ProductLedgerTabProps) => {
                 )}
 
                 {eventType.includes('CUT_ROLL') && (
-                  <div className="rounded-md border p-3">
-                    <div className="text-xs text-muted-foreground mb-1">Cut roll info</div>
-                    <div className="space-y-1">
-                      <div>From stock type: <span className="font-medium">{String(lazyDetails.from_stock_type || meta.from_stock_type || '-')}</span></div>
-                      <div>To stock type: <span className="font-medium">{String(lazyDetails.to_stock_type || meta.to_stock_type || '-')}</span></div>
-                      <div>From qty: <span className="font-medium">{String(lazyDetails.from_quantity ?? meta.from_quantity ?? '-')}</span></div>
-                      <div>To qty: <span className="font-medium">{String(lazyDetails.to_quantity ?? meta.to_quantity ?? '-')}</span></div>
-                      <div>From length: <span className="font-medium">{lazyDetails.from_length ? `${formatNumber(Number(lazyDetails.from_length))} m` : meta.from_length ? `${formatNumber(Number(meta.from_length))} m` : '-'}</span></div>
-                      <div>To length: <span className="font-medium">{lazyDetails.to_length ? `${formatNumber(Number(lazyDetails.to_length))} m` : meta.to_length ? `${formatNumber(Number(meta.to_length))} m` : '-'}</span></div>
+                  <div className="rounded-md border p-2 sm:p-3">
+                    <div className="text-xs text-muted-foreground mb-2">Cut roll info</div>
+                    <div className="space-y-1 text-xs sm:text-sm">
+                      <div className="flex flex-col sm:flex-row sm:gap-2">
+                        <span className="text-muted-foreground">From stock:</span>
+                        <span className="font-medium truncate">{String(lazyDetails.from_stock_type || meta.from_stock_type || '-')}</span>
+                      </div>
+                      <div className="flex flex-col sm:flex-row sm:gap-2">
+                        <span className="text-muted-foreground">To stock:</span>
+                        <span className="font-medium truncate">{String(lazyDetails.to_stock_type || meta.to_stock_type || '-')}</span>
+                      </div>
+                      <div className="flex flex-col sm:flex-row sm:gap-2">
+                        <span className="text-muted-foreground">From qty:</span>
+                        <span className="font-medium">{String(lazyDetails.from_quantity ?? meta.from_quantity ?? '-')}</span>
+                      </div>
+                      <div className="flex flex-col sm:flex-row sm:gap-2">
+                        <span className="text-muted-foreground">To qty:</span>
+                        <span className="font-medium">{String(lazyDetails.to_quantity ?? meta.to_quantity ?? '-')}</span>
+                      </div>
+                      <div className="flex flex-col sm:flex-row sm:gap-2">
+                        <span className="text-muted-foreground">From length:</span>
+                        <span className="font-medium">{lazyDetails.from_length ? `${formatNumber(Number(lazyDetails.from_length))} m` : meta.from_length ? `${formatNumber(Number(meta.from_length))} m` : '-'}</span>
+                      </div>
+                      <div className="flex flex-col sm:flex-row sm:gap-2">
+                        <span className="text-muted-foreground">To length:</span>
+                        <span className="font-medium">{lazyDetails.to_length ? `${formatNumber(Number(lazyDetails.to_length))} m` : meta.to_length ? `${formatNumber(Number(meta.to_length))} m` : '-'}</span>
+                      </div>
                     </div>
                     {cutPieces.length > 0 ? (
                       <div className="mt-3 space-y-2">
-                        <div className="text-xs text-muted-foreground">Generated cut pieces</div>
-                        {cutPieces.map((piece, idx) => (
-                          <div key={`${selectedEvent.event_id}-cut-piece-${idx}`} className="rounded border p-2 text-xs text-muted-foreground">
-                            Piece #{idx + 1} | Length: {piece.length_meters ? `${formatNumber(Number(piece.length_meters))} m` : '-'} | Status: {String(piece.status || '-')}
+                        <div className="text-xs text-muted-foreground">Generated cut pieces ({cutPieces.length})</div>
+                        <details className="rounded border p-2">
+                          <summary className="cursor-pointer text-xs text-muted-foreground">Show pieces</summary>
+                          <div className="mt-2 space-y-1">
+                            {cutPieces.map((piece, idx) => (
+                              <div key={`${selectedEvent.event_id}-cut-piece-${idx}`} className="text-xs text-muted-foreground flex justify-between gap-2">
+                                <span>Piece #{idx + 1}</span>
+                                <span className="font-medium">{piece.length_meters ? `${formatNumber(Number(piece.length_meters))} m` : '-'}</span>
+                                <span className="font-medium">{String(piece.status || '-')}</span>
+                              </div>
+                            ))}
                           </div>
-                        ))}
+                        </details>
                       </div>
                     ) : null}
                   </div>
                 )}
 
                 {eventType.includes('SCRAP') && items.length > 0 ? (
-                  <div className="rounded-md border p-3">
-                    <div className="text-xs text-muted-foreground mb-1">Scrap details</div>
-                    <div className="space-y-2">
+                  <div className="rounded-md border p-2 sm:p-3">
+                    <div className="text-xs text-muted-foreground mb-2">Scrap details</div>
+                    <div className="space-y-2 text-xs sm:text-sm">
                       {items.map((item, idx) => (
                         <div key={`${selectedEvent.event_id}-scrap-item-${idx}`} className="rounded border p-2">
-                          <div className="font-medium">{String(item.stock_type || item.item_type || 'Scrap item')}</div>
-                          <div className="text-xs text-muted-foreground">
-                            Quantity scrapped: {formatNumber(Number(item.quantity_scrapped || item.quantity || 0))} | Length/unit: {item.length_per_unit ? `${formatNumber(Number(item.length_per_unit))} m` : '-'}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            Pieces per bundle: {formatNumber(Number(item.pieces_per_bundle || 0))} | Piece length: {item.piece_length_meters ? `${formatNumber(Number(item.piece_length_meters))} m` : '-'}
+                          <div className="font-medium text-sm">{String(item.stock_type || item.item_type || 'Scrap item')}</div>
+                          <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
+                            <div>Qty scrapped: <span className="font-medium">{formatNumber(Number(item.quantity_scrapped || item.quantity || 0))}</span></div>
+                            <div>Length/unit: <span className="font-medium">{item.length_per_unit ? `${formatNumber(Number(item.length_per_unit))} m` : '-'}</span></div>
+                            <div>Per bundle: <span className="font-medium">{formatNumber(Number(item.pieces_per_bundle || 0))}</span></div>
+                            <div>Piece length: <span className="font-medium">{item.piece_length_meters ? `${formatNumber(Number(item.piece_length_meters))} m` : '-'}</span></div>
                           </div>
                         </div>
                       ))}
@@ -1191,9 +1281,9 @@ const ProductLedgerTab = ({ variants }: ProductLedgerTabProps) => {
                 ) : null}
 
                 {selectedEvent.notes ? (
-                  <div className="rounded-md border p-3">
+                  <div className="rounded-md border p-2 sm:p-3">
                     <div className="text-xs text-muted-foreground mb-1">Notes</div>
-                    <div>{selectedEvent.notes}</div>
+                    <div className="text-xs sm:text-sm break-words">{selectedEvent.notes}</div>
                   </div>
                 ) : null}
               </div>
