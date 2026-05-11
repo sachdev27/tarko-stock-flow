@@ -25,6 +25,8 @@ interface LedgerVariantOption {
 
 interface ProductLedgerTabProps {
   variants: LedgerVariantOption[];
+  initialVariantId?: API.UUID;
+  embedded?: boolean;
 }
 
 interface DateRangeState {
@@ -158,7 +160,7 @@ const toNumberIfPossible = (value: string) => {
   return Number.isFinite(numeric) ? numeric : Number.POSITIVE_INFINITY;
 };
 
-const ProductLedgerTab = ({ variants }: ProductLedgerTabProps) => {
+const ProductLedgerTab = ({ variants, initialVariantId, embedded = false }: ProductLedgerTabProps) => {
   const [selectedVariantId, setSelectedVariantId] = useState<API.UUID>(() => {
     if (typeof window === 'undefined') return '';
     return (window.localStorage.getItem(LEDGER_VARIANT_STORAGE_KEY) || '') as API.UUID;
@@ -232,6 +234,13 @@ const ProductLedgerTab = ({ variants }: ProductLedgerTabProps) => {
     if (!selectedVariantId || typeof window === 'undefined') return;
     window.localStorage.setItem(LEDGER_VARIANT_STORAGE_KEY, selectedVariantId);
   }, [selectedVariantId]);
+
+  useEffect(() => {
+    if (!initialVariantId) return;
+    if (!variants.some((variant) => variant.productVariantId === initialVariantId)) return;
+    if (initialVariantId === selectedVariantId) return;
+    setSelectedVariantId(initialVariantId);
+  }, [initialVariantId, variants, selectedVariantId]);
 
   const selectedVariant = useMemo(
     () => variants.find((variant) => variant.productVariantId === selectedVariantId),
@@ -532,7 +541,7 @@ const ProductLedgerTab = ({ variants }: ProductLedgerTabProps) => {
   }
 
   return (
-    <div className="mt-6 space-y-4 sm:space-y-6">
+    <div className={`${embedded ? 'mt-0' : 'mt-6'} space-y-4 sm:space-y-6`}>
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base sm:text-lg">

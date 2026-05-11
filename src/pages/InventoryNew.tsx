@@ -23,6 +23,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { InventoryBatchUI, StockEntry } from '@/types/inventory-ui';
 import { ProInventoryGrid } from '@/components/inventory/ProInventoryGrid';
 import { LayoutGrid, List } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 // Type aliases for easier use in this file
 type Batch = InventoryBatchUI;
@@ -49,6 +50,8 @@ const InventoryNew = () => {
   const [whatsappDialogOpen, setWhatsappDialogOpen] = useState(false);
   const [importExportDialogOpen, setImportExportDialogOpen] = useState(false);
   const [keyboardShortcutsOpen, setKeyboardShortcutsOpen] = useState(false);
+  const [ledgerModalOpen, setLedgerModalOpen] = useState(false);
+  const [selectedLedgerVariantId, setSelectedLedgerVariantId] = useState<API.UUID>('');
 
   const filterBatches = () => {
     let filtered = [...batches];
@@ -587,6 +590,22 @@ const InventoryNew = () => {
     toast.info('Exporting selected items...');
   };
 
+  const openVariantLedger = (productVariantId: string, mode: 'tab' | 'modal' = 'tab') => {
+    if (!productVariantId) {
+      toast.error('Unable to open ledger for this variant');
+      return;
+    }
+
+    setSelectedLedgerVariantId(productVariantId as API.UUID);
+
+    if (mode === 'modal') {
+      setLedgerModalOpen(true);
+      return;
+    }
+
+    setActiveTab('ledger');
+  };
+
   return (
     <Layout>
       <div className="space-y-3 sm:space-y-4 p-2 sm:p-6 pb-24 sm:pb-6">
@@ -764,6 +783,7 @@ const InventoryNew = () => {
                   onBulkExport={handleBulkExport}
                   onUpdate={fetchBatches}
                   onRefresh={fetchBatches}
+                  onOpenLedger={(productVariantId, mode) => openVariantLedger(productVariantId, mode || 'tab')}
                 />
               ) : (
                 <div className="space-y-2 sm:space-y-4">
@@ -776,6 +796,7 @@ const InventoryNew = () => {
                       batches={variant.batches}
                       productVariantId={getProductVariantId(variant.batches)}
                       onUpdate={fetchBatches}
+                      onOpenLedger={(productVariantId, mode) => openVariantLedger(productVariantId, mode || 'tab')}
                     />
                   ))}
                 </div>
@@ -785,7 +806,28 @@ const InventoryNew = () => {
           </TabsContent>
 
           <TabsContent value="ledger">
-            <ProductLedgerTab variants={ledgerVariantOptions} />
+            <div className="space-y-3">
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    if (!selectedLedgerVariantId) {
+                      toast.info('Choose a variant from Stock Inventory first');
+                      return;
+                    }
+                    setLedgerModalOpen(true);
+                  }}
+                >
+                  Open In Modal
+                </Button>
+              </div>
+              <ProductLedgerTab
+                variants={ledgerVariantOptions}
+                initialVariantId={selectedLedgerVariantId}
+              />
+            </div>
           </TabsContent>
 
           <TabsContent value="scrap-history" className="mt-6">
@@ -822,6 +864,21 @@ const InventoryNew = () => {
         onStockTypeChange={setSelectedStockType}
         onParameterFilterChange={handleParameterFilterChange}
       />
+
+      <Dialog open={ledgerModalOpen} onOpenChange={setLedgerModalOpen}>
+        <DialogContent className="w-[99vw] max-w-[99vw] h-[96vh] max-h-[96vh] p-0 overflow-hidden">
+          <DialogHeader className="px-4 sm:px-6 py-3 border-b">
+            <DialogTitle>Product Ledger</DialogTitle>
+          </DialogHeader>
+          <div className="h-[calc(96vh-64px)] overflow-y-auto px-4 sm:px-6 pb-4">
+            <ProductLedgerTab
+              variants={ledgerVariantOptions}
+              initialVariantId={selectedLedgerVariantId}
+              embedded
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
     </Layout>
   );
 };
