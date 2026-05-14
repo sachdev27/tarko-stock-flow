@@ -459,9 +459,10 @@ class AggregateInventoryHelper:
             UPDATE inventory_stock
             SET quantity = quantity - %s,
                 status = CASE WHEN quantity - %s = 0 THEN 'SOLD_OUT' ELSE status END,
+                deleted_at = CASE WHEN quantity - %s = 0 THEN NOW() ELSE NULL END,
                 updated_at = NOW()
             WHERE id = %s
-        """, (quantity, quantity, stock_id))
+        """, (quantity, quantity, quantity, stock_id))
 
         # Create transaction
         cursor.execute("""
@@ -507,9 +508,13 @@ class AggregateInventoryHelper:
                 WHEN (SELECT COUNT(*) FROM hdpe_cut_pieces WHERE stock_id = %s AND status = 'IN_STOCK') = 0
                 THEN 'SOLD_OUT' ELSE status
             END,
+            deleted_at = CASE
+                WHEN (SELECT COUNT(*) FROM hdpe_cut_pieces WHERE stock_id = %s AND status = 'IN_STOCK') = 0
+                THEN NOW() ELSE NULL
+            END,
             updated_at = NOW()
             WHERE id = %s
-        """, (stock_id, stock_id, stock_id))
+        """, (stock_id, stock_id, stock_id, stock_id))
 
         # Create transaction
         cursor.execute("""
@@ -546,9 +551,10 @@ class AggregateInventoryHelper:
             UPDATE inventory_stock
             SET quantity = quantity - %s,
                 status = CASE WHEN quantity - %s = 0 THEN 'SOLD_OUT' ELSE status END,
+                deleted_at = CASE WHEN quantity - %s = 0 THEN NOW() ELSE NULL END,
                 updated_at = NOW()
             WHERE id = %s
-        """, (quantity, quantity, stock_id))
+        """, (quantity, quantity, quantity, stock_id))
 
         # Create transaction
         total_pieces = quantity * pieces_per_bundle
@@ -595,9 +601,13 @@ class AggregateInventoryHelper:
                 WHEN (SELECT COUNT(*) FROM sprinkler_spare_pieces WHERE stock_id = %s AND status = 'IN_STOCK') = 0
                 THEN 'SOLD_OUT' ELSE status
             END,
+            deleted_at = CASE
+                WHEN (SELECT COUNT(*) FROM sprinkler_spare_pieces WHERE stock_id = %s AND status = 'IN_STOCK') = 0
+                THEN NOW() ELSE NULL
+            END,
             updated_at = NOW()
             WHERE id = %s
-        """, (stock_id, stock_id, stock_id))
+        """, (stock_id, stock_id, stock_id, stock_id))
 
         # Create transaction
         cursor.execute("""
