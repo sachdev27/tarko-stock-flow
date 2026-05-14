@@ -136,9 +136,12 @@ def create_scrap():
 
                     cursor.execute("""
                         UPDATE inventory_stock
-                        SET quantity = %s, status = %s, updated_at = NOW()
+                        SET quantity = %s,
+                            status = %s,
+                            deleted_at = CASE WHEN %s = 'SOLD_OUT' THEN NOW() ELSE NULL END,
+                            updated_at = NOW()
                         WHERE id = %s
-                    """, (new_quantity, new_status, stock_id))
+                    """, (new_quantity, new_status, new_status, stock_id))
 
                     # Create scrap item
                     cursor.execute("""

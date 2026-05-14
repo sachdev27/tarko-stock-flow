@@ -503,9 +503,10 @@ def create_dispatch():
                         cursor.execute("""
                             UPDATE inventory_stock
                             SET status = CASE WHEN %s <= 0 THEN 'SOLD_OUT' ELSE 'IN_STOCK' END,
+                                deleted_at = CASE WHEN %s <= 0 THEN NOW() ELSE NULL END,
                                 updated_at = NOW()
                             WHERE id = %s
-                        """, (remaining, stock_id))
+                        """, (remaining, remaining, stock_id))
 
                         # Record in inventory_transactions
                         cursor.execute("""
@@ -620,9 +621,13 @@ def create_dispatch():
                                     WHEN %s <= 0 THEN 'SOLD_OUT'
                                     ELSE 'IN_STOCK'
                                 END,
+                                deleted_at = CASE
+                                    WHEN %s <= 0 THEN NOW()
+                                    ELSE NULL
+                                END,
                                 updated_at = NOW()
                             WHERE id = %s
-                        """, (remaining, stock_id))
+                        """, (remaining, remaining, stock_id))
 
                         # Record in inventory_transactions
                         cursor.execute("""
@@ -662,9 +667,13 @@ def create_dispatch():
                                     WHEN quantity - %s <= 0 THEN 'SOLD_OUT'
                                     ELSE 'IN_STOCK'
                                 END,
+                                deleted_at = CASE
+                                    WHEN quantity - %s <= 0 THEN NOW()
+                                    ELSE NULL
+                                END,
                                 updated_at = NOW()
                             WHERE id = %s
-                        """, (quantity, quantity, stock_id))
+                        """, (quantity, quantity, quantity, stock_id))
 
                         # Record in inventory_transactions
                         cursor.execute("""
@@ -761,9 +770,10 @@ def create_dispatch():
                             cursor.execute("""
                                 UPDATE inventory_stock
                                 SET status = CASE WHEN %s <= 0 THEN 'SOLD_OUT' ELSE 'IN_STOCK' END,
+                                    deleted_at = CASE WHEN %s <= 0 THEN NOW() ELSE NULL END,
                                     updated_at = NOW()
                                 WHERE id = %s
-                            """, (remaining, stock_id))
+                            """, (remaining, remaining, stock_id))
                         else:
                             # For true FULL_ROLL (not from cut pieces), manually update quantity
                             cursor.execute("""
@@ -773,9 +783,13 @@ def create_dispatch():
                                         WHEN quantity - %s <= 0 THEN 'SOLD_OUT'
                                         ELSE 'IN_STOCK'
                                     END,
+                                    deleted_at = CASE
+                                        WHEN quantity - %s <= 0 THEN NOW()
+                                        ELSE NULL
+                                    END,
                                     updated_at = NOW()
                                 WHERE id = %s
-                            """, (quantity, quantity, stock_id))
+                            """, (quantity, quantity, quantity, stock_id))
 
                         # Create appropriate notes based on stock type
                         if stock_type == 'CUT_ROLL':
