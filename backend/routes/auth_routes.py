@@ -3,7 +3,7 @@ from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identi
 from services.auth import (
     create_user, get_user_by_email, check_password, get_user_role,
     is_account_locked, record_failed_login, reset_failed_login_attempts,
-    get_lockout_info
+    get_lockout_info, get_user_by_id
 )
 from database import execute_query
 
@@ -19,14 +19,15 @@ def login():
     """Login user with email or username - with account lockout protection"""
     try:
         data = request.get_json()
-        login_input = data.get('email') or data.get('username')  # Support both
+        login_input = (data.get('email') or data.get('username') or '').strip()  # Support both
         password = data.get('password')
 
         if not login_input or not password:
             return jsonify({'error': 'Email/username and password required'}), 400
 
         # Get user by email or username (try email first, then username)
-        user = get_user_by_email(login_input)
+        email_lookup = login_input.lower() if '@' in login_input else login_input
+        user = get_user_by_email(email_lookup)
         if not user:
             # Try as username
             user = execute_query("SELECT * FROM users WHERE username = %s AND deleted_at IS NULL", (login_input,), fetch_one=True)
@@ -37,9 +38,11 @@ def login():
         # Check if account is locked
         if is_account_locked(user):
             lockout_info = get_lockout_info(user)
+            minutes_remaining = lockout_info['minutes_remaining'] if lockout_info else 30
+            locked_until = lockout_info['locked_until'] if lockout_info else None
             return jsonify({
-                'error': f'Account is locked due to too many failed login attempts. Please try again in {lockout_info["minutes_remaining"]} minutes.',
-                'locked_until': lockout_info['locked_until']
+                'error': f'Account is locked due to too many failed login attempts. Please try again in {minutes_remaining} minutes.',
+                'locked_until': locked_until
             }), 423  # 423 Locked status code
 
         # Check if user is active
@@ -98,11 +101,12 @@ def get_current_user():
     try:
         user_id = get_jwt_identity()
 
-        query = "SELECT id, email, username, full_name, is_active, created_at, last_login_at FROM users WHERE id = %s"
-        user = execute_query(query, (user_id,), fetch_one=True)
+        user = get_user_by_id(user_id)
 
         if not user:
-            return jsonify({'error': 'User not found'}), 404
+            # Token can still be structurally valid while the underlying user is deleted/missing.
+            # Treat this as unauthorized so clients clear token and force re-auth.
+            return jsonify({'error': 'Invalid token', 'msg': 'User account not found'}), 401
 
         role = get_user_role(user_id)
 

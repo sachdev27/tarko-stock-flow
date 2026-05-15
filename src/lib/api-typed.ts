@@ -37,9 +37,18 @@ apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     console.error('API Error:', error.response?.status, error.response?.data || error.message);
+    const requestUrl = error.config?.url || '';
+    const isAuthMeRequest = requestUrl.includes('/auth/me');
 
     if (error.response?.status === 401) {
       console.warn('401 Unauthorized - Token expired or invalid');
+      localStorage.removeItem('token');
+      if (!window.location.pathname.includes('/auth')) {
+        window.location.href = '/auth';
+      }
+    } else if (error.response?.status === 404 && isAuthMeRequest) {
+      // Backward-compatible handling for older backends that return 404 for missing token user.
+      console.warn('404 on /auth/me treated as invalid session');
       localStorage.removeItem('token');
       if (!window.location.pathname.includes('/auth')) {
         window.location.href = '/auth';

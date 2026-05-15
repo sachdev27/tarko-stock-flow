@@ -27,12 +27,21 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     console.error('API Error:', error.response?.status, error.response?.data || error.message);
+    const requestUrl = error.config?.url || '';
+    const isAuthMeRequest = requestUrl.includes('/auth/me');
 
     if (error.response?.status === 401) {
       // Token is invalid or expired
       console.warn('401 Unauthorized - Token expired or invalid, clearing and redirecting to login');
       localStorage.removeItem('token');
       // Only redirect if not already on auth page
+      if (!window.location.pathname.includes('/auth')) {
+        window.location.href = '/auth';
+      }
+    } else if (error.response?.status === 404 && isAuthMeRequest) {
+      // Backward-compatible handling for older backends that return 404 for missing token user.
+      console.warn('404 on /auth/me treated as invalid session, clearing and redirecting to login');
+      localStorage.removeItem('token');
       if (!window.location.pathname.includes('/auth')) {
         window.location.href = '/auth';
       }
